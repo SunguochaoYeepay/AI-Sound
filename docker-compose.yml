@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  # 后端API服务
+  api:
+    build:
+      context: ./services/api
+      dockerfile: Dockerfile
+    image: ai-sound/api:latest
+    container_name: ai-sound-api
+    ports:
+      - "9930:9930"
+    volumes:
+      - ./checkpoints:/app/checkpoints
+      - ./services/api/output:/app/output
+      - ./data:/app/data
+      - ./MegaTTS3:/app/MegaTTS3
+    environment:
+      - MODEL_PATH=/app/checkpoints/megatts3_base.pth
+      - OUTPUT_DIR=/app/output
+      - API_HOST=0.0.0.0
+      - API_PORT=9930
+      - USE_GPU=true
+      - FP16=true
+      - PYTHONPATH=/app:/app/MegaTTS3
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9930/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # 前端Web管理界面
+  web:
+    build:
+      context: ./services/web-admin
+      dockerfile: Dockerfile
+    image: ai-sound/web:latest
+    container_name: ai-sound-web
+    ports:
+      - "80:80"
+    environment:
+      - API_URL=http://api:9930
+    depends_on:
+      - api
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3

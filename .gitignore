@@ -1,0 +1,147 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Test outputs
+emotion_test_output/
+test_outputs/
+test_results/
+voice_compare_output/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment
+.env
+.venv
+venv/
+ENV/
+
+# Logs
+*.log
+
+# Local development
+.DS_Store
+Thumbs.db
+
+# 缓存文件
+.env.local
+.env.*.local
+
+# 输出和缓存目录
+output/
+tts_cache/
+
+# 日志文件
+logs/
+
+# 临时文件
+*.tmp
+
+# 自动生成的文件
+*.pth.tar
+*.pth.gz
+
+# 添加对大模型文件的忽略
+*.pth
+checkpoints/*.pth
+checkpoints/**/*.pth
+checkpoints/**/*.bin
+checkpoints/**/*.pt
+checkpoints/**/*.model
+checkpoints/**/*.onnx
+
+# node_modules
+node_modules/
+**/node_modules/
+src/web/node_modules/
+
+# 其他大型二进制文件
+*.mp3
+*.wav
+*.flac
+*.ogg
+
+# 大型数据文件
+*.npy
+*.npz
+*.h5
+*.hdf5
+*.pkl
+*.pickle
+*.joblib
+*.parquet
+*.feather
+*.arrow
+*.bin
+*.dat
+*.db
+*.sqlite
+*.sqlite3
+
+# 压缩文件
+*.zip
+*.tar
+*.gz
+*.bz2
+*.7z
+*.rar
+
+# 图像和视频文件
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.bmp
+*.tiff
+*.ico
+*.mp4
+*.avi
+*.mov
+*.wmv
+*.flv
+*.mkv
+
+# 文档和办公文件
+*.pdf
+*.doc
+*.docx
+*.ppt
+*.pptx
+*.xls
+*.xlsx
+
+# 模型文件
+models/
+pretrained/
+weights/
+*.model
+*.weights
+*.pt
+*.pth
+*.onnx
+*.tflite
+*.pb
+*.trt 

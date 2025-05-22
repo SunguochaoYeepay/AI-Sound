@@ -1,0 +1,50 @@
+# Git
+.git
+.gitignore
+
+# 虚拟环境
+venv/
+env/
+.env
+
+# 已有的输出文件（不需要复制进容器）
+output/
+checkpoints/
+
+# 前端代码（不需要放入后端容器）
+src/web/
+**/node_modules/
+**/.nuxt/
+**/dist/
+
+# 缓存
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+tts_cache/
+
+# 日志和临时文件
+*.log
+tmp/
+temp/
+
+# 文档和示例
+docs/
+examples/
+
+# 编辑器文件
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 不需要打包的脚本
+download_models.py
+check_env.py
+create_ref_audio.py
+run.py 

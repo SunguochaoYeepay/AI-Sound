@@ -1,0 +1,55 @@
+version: '3'
+
+services:
+  # 后端API服务
+  api:
+    build:
+      context: ..
+      dockerfile: ./services/api/Dockerfile
+    image: megatts3-api:latest
+    ports:
+      - "9930:9930"
+    volumes:
+      - ../data/checkpoints:/app/checkpoints
+      - ../data/output:/app/output
+      - ../data/temp:/app/data
+      - ../MegaTTS3:/app/MegaTTS3
+    environment:
+      - MODEL_PATH=/app/checkpoints/megatts3_base.pth
+      - OUTPUT_DIR=/app/output
+      - API_HOST=0.0.0.0
+      - API_PORT=9930
+      - USE_GPU=true
+      - FP16=true
+      - GPU_ID=0
+      - BATCH_SIZE=64
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9930/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      
+  # Web前端管理界面
+  web-admin:
+    build: ./web-admin
+    image: megatts3-web-admin:latest
+    ports:
+      - "8080:80"
+    environment:
+      - VITE_API_BASE_URL=http://localhost:9930
+    depends_on:
+      - api
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80"]
+      interval: 30s
+      timeout: 10s
+      retries: 3 
