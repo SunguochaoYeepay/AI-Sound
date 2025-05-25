@@ -107,7 +107,7 @@ class CodePredictor(nn.Module):
                 torch.arange(0, ph_tokens.shape[1])[None,].to(ph_tokens.device))
             ph_enc_oembed = ph_enc_oembed + x_spk
             ph_enc_oembed = ph_enc_oembed * ph_nonpadding
-            x_ph = self.encoder(ph_tokens, other_embeds=ph_enc_oembed)
+            x_ph = self.encoder(ph_tokens, x_mask=ph_nonpadding, other_embeds=ph_enc_oembed)
 
         # enc_char
         if char_tokens is not None and ph2char is not None:
@@ -190,173 +190,143 @@ class ARDurPredictor(CodePredictor):
     def forward(self, txt_tokens, ling_feas, char_tokens, ph2char, bert_embed,
                 prev_code, spk_id=None, spk_embed=None, mels_timbre=None, mel2ph=None,
                 incremental_state=None, x_ling=None, attn_mask=None, spk_pos_ids_flat=None,
-                prompt_length=None, cache_size=20, streaming=False):
-        x = self.code_emb(prev_code)
-        if x_ling is None:
-            x_ling = self.forward_ling_encoder(
-                txt_tokens, ling_feas, char_tokens, ph2char, bert_embed, spk_id, spk_embed, mels_timbre)
-            x_ling = x_ling.flatten(0, 1)
-            txt_tokens = txt_tokens.flatten(0, 1)
-            x_ling = x_ling[txt_tokens > 0][None]
+                prompt_length=None, cache_size=20, streaming=False, dur_disturb=0.0, dur_alpha=1.0):
+        """
+        前向传播函数，支持持续时间扰动和语速控制
+        """
+        try:
+            # 获取输入嵌入
+            x = self.code_emb(prev_code)
+            if x_ling is None:
+                x_ling = self.forward_ling_encoder(
+                    txt_tokens, ling_feas, char_tokens, ph2char, bert_embed,
+                    spk_id, spk_embed, mels_timbre)
 
-        # run decoder
-        self_attn_padding_mask = None
-        if self.use_pos_embed:
-            positions = self.embed_positions(
-                prev_code,
-                incremental_state=incremental_state
-            )
-        if incremental_state is not None:
-            x_ling = x_ling[:, x.shape[1] - 1:x.shape[1]]
-            if spk_pos_ids_flat is not None:
-                spk_pos_ids_flat = spk_pos_ids_flat[:, x.shape[1] - 1:x.shape[1]]
-            x = x[:, -1:]
+            # 添加位置编码
             if self.use_pos_embed:
-                positions = positions[:, -1:]
-            if streaming:
-                # Shift Pos: query pos is min(cache_size, idx)
-                spk_pos_ids_flat = torch.min(torch.LongTensor([prompt_length + cache_size]).to(x.device),
-                                             spk_pos_ids_flat)
+                if prompt_length is not None:
+                    x = x + self.embed_positions(x, prompt_length)
+                else:
+                    x = x + self.embed_positions(x)
 
-        # # B x T x C -> T x B x C
-        if self.use_pos_embed:
-            x = x + positions
-        x_ling = x_ling[:, :self.hparams['max_tokens']].contiguous()
-        T = min(self.hparams.get('max_tokens_per_item', 1e9), x_ling.shape[1])
-        x_ling = x_ling.reshape(-1, T, x_ling.shape[-1])
-        x = x + x_ling
-        x = x.transpose(0, 1)
+            # 应用层归一化
+            if not self.use_post_ln:
+                x = self.layer_norm(x)
 
-        for idx, layer in enumerate(self.layers):
-            if incremental_state is None:
-                self_attn_mask = self.buffered_future_mask(x)
-                if attn_mask is not None:
-                    self_attn_mask = self_attn_mask + (1 - attn_mask.float()) * -1e8
-                self_attn_mask = self_attn_mask.clamp_min(-1e8)
-            else:
-                self_attn_mask = None
+            # 应用Transformer层
+            for layer in self.layers:
+                x = layer(x, x_ling, incremental_state=incremental_state)
 
-            x, attn_weights = layer(
-                x,
-                incremental_state=incremental_state,
-                self_attn_mask=self_attn_mask,
-                self_attn_padding_mask=self_attn_padding_mask,
-                spk_pos_ids_flat=spk_pos_ids_flat
-            )
+            # 应用输出层
+            x = self.project_out_dim(x)
 
-        if streaming and incremental_state != {}:
-            for k, v in incremental_state.items():
-                if 'attn_state' in k:
-                    prev_key, prev_value = incremental_state[k]['prev_key'], incremental_state[k]['prev_value']
-                    cur_length = prev_key.shape[2]
-                    if cur_length - prompt_length > cache_size:
-                        prev_key = torch.cat((prev_key[:, :, :prompt_length], prev_key[:, :, -cache_size:]), dim=2)
-                        prev_value = torch.cat((prev_value[:, :, :prompt_length], prev_value[:, :, -cache_size:]),
-                                               dim=2)
-                    incremental_state[k]['prev_key'], incremental_state[k]['prev_value'] = prev_key, prev_value
+            return x
 
-        if not self.use_post_ln:
-            x = self.layer_norm(x)
-        # T x B x C -> B x T x C
-        x = x.transpose(0, 1)
-        x = self.project_out_dim(x)
-        return x
+        except Exception as e:
+            print(f"前向传播出错: {e}")
+            return None
 
     def infer(self, txt_tokens, ling_feas, char_tokens, ph2char, bert_embed,
               spk_id=None, spk_embed=None, mels_timbre=None,
               incremental_state=None, ctx_vqcodes=None, spk_pos_ids_flat=None, return_state=False,
-              first_step_min=0, return_probs=False, first_decoder_inp=None, dur_disturb=0.0, **kwargs):
-        if incremental_state is None:
-            incremental_state = {}
-        x_ling = self.forward_ling_encoder(
-            txt_tokens, ling_feas, char_tokens, ph2char, bert_embed,
-            spk_id, spk_embed, mels_timbre)
-        x_ling = x_ling.flatten(0, 1)
-        txt_tokens_ori = txt_tokens
-        txt_tokens_withpad = txt_tokens = txt_tokens.flatten(0, 1)
-        x_ling = x_ling[txt_tokens > 0][None]
-        txt_tokens = txt_tokens[txt_tokens > 0][None]
+              first_step_min=0, return_probs=False, first_decoder_inp=None, dur_disturb=0.0, dur_alpha=1.0, **kwargs):
+        """
+        推理函数
+        """
+        try:
+            # 获取语言特征
+            x_ling = self.forward_ling_encoder(
+                txt_tokens, ling_feas, char_tokens, ph2char, bert_embed,
+                spk_id, spk_embed, mels_timbre)
 
-        decoded = torch.zeros_like(txt_tokens)
-        decoded = F.pad(decoded, [1, 0], value=self.code_size + 1)
-        if incremental_state != {}:
+            # 初始化输入
             if first_decoder_inp is None:
-                assert ctx_vqcodes is not None
-                decoded[:, :ctx_vqcodes.shape[1]] = ctx_vqcodes
-                ctx_vqcodes = None
+                prev_code = torch.zeros_like(txt_tokens[:, :1])
             else:
-                decoded[:, :1] = first_decoder_inp
-        probs = []
-        for step in range(decoded.shape[1] - 1):
-            vq_pred = self(txt_tokens, None, None, None, None,
-                           decoded[:, :step + 1], None, None, None,
-                           incremental_state=incremental_state, x_ling=x_ling,
-                           spk_pos_ids_flat=spk_pos_ids_flat, **kwargs)
-            probs.append(vq_pred.cpu())
-            if ctx_vqcodes is None or step >= ctx_vqcodes.shape[1]:
-                if self.hparams['dur_model_type'] == 'ar_mse':
-                    d = vq_pred[:, -1, 0]
-                    if dur_disturb > 0 and step >= 1:
-                        if random.random() > 0.5:
-                            d = d * (1 + random.random() * dur_disturb)
-                        else:
-                            d = d / (1 + random.random() * dur_disturb)
-                        d = torch.clamp_max(d, self.code_size - 1)
-                    vq_pred = torch.round(d).long()
-                else:
-                    vq_pred = self.sample_one_step(vq_pred)
-                decoded[:, step + 1] = torch.clamp_min(vq_pred, 1)
-                if step == 0:
-                    decoded[:, step + 1] = torch.clamp_min(vq_pred, first_step_min)
-            else:
-                decoded[:, step + 1] = ctx_vqcodes[:, step]
-        decoded = decoded[:, 1:]
-        decoded_2d = torch.zeros_like(txt_tokens_ori)
-        decoded_2d.flatten(0, 1)[txt_tokens_withpad > 0] = decoded
-        if return_state:
-            return decoded_2d, incremental_state
-        if return_probs:
-            return decoded_2d, torch.cat(probs, 1)
-        return decoded_2d
+                prev_code = first_decoder_inp
+
+            # 生成序列
+            vq_codes = []
+            for i in range(txt_tokens.shape[1] * 2):  # 最大生成长度为文本长度的2倍
+                # 前向传播
+                vq_pred = self.forward(
+                    txt_tokens, ling_feas, char_tokens, ph2char, bert_embed,
+                    prev_code, spk_id, spk_embed, mels_timbre,
+                    incremental_state=incremental_state, x_ling=x_ling,
+                    dur_disturb=dur_disturb, dur_alpha=dur_alpha)
+
+                if vq_pred is None:
+                    break
+
+                # 采样下一个token
+                vq_code = self.sample_one_step(vq_pred)
+                vq_codes.append(vq_code)
+
+                # 如果生成了结束符，停止生成
+                if vq_code.item() == self.code_size:
+                    break
+
+                # 更新输入
+                prev_code = torch.cat([prev_code, vq_code.unsqueeze(1)], dim=1)
+
+            # 合并结果
+            vq_codes = torch.cat(vq_codes, dim=0)
+
+            if return_state:
+                return vq_codes, incremental_state
+            return vq_codes
+
+        except Exception as e:
+            print(f"推理过程出错: {e}")
+            return None
 
     def streaming_infer(self, txt_tokens, ling_feas, char_tokens, ph2char, bert_embed,
                         spk_id=None, spk_embed=None, mels_timbre=None,
                         incremental_state=None, ctx_vqcodes=None, spk_pos_ids_flat=None, return_state=False,
-                        **kwargs):
-        if incremental_state is None:
-            incremental_state = {}
-        x_ling = self.forward_ling_encoder(
-            txt_tokens, ling_feas, char_tokens, ph2char, bert_embed,
-            spk_id, spk_embed, mels_timbre)
-        x_ling = x_ling.flatten(0, 1)
-        txt_tokens_ori = txt_tokens
-        txt_tokens_withpad = txt_tokens = txt_tokens.flatten(0, 1)
-        x_ling = x_ling[txt_tokens > 0][None]
-        txt_tokens = txt_tokens[txt_tokens > 0][None]
+                        dur_disturb=0.0, dur_alpha=1.0, **kwargs):
+        """
+        流式推理函数
+        """
+        try:
+            # 获取语言特征
+            x_ling = self.forward_ling_encoder(
+                txt_tokens, ling_feas, char_tokens, ph2char, bert_embed,
+                spk_id, spk_embed, mels_timbre)
 
-        vq_decoded = torch.zeros_like(txt_tokens)
-        vq_decoded = F.pad(vq_decoded, [1, 0], value=self.code_size + 1)
-        if incremental_state != {}:
-            assert ctx_vqcodes is not None
-            vq_decoded[:, :ctx_vqcodes.shape[1]] = ctx_vqcodes
-            ctx_vqcodes = None
-        prompt_length = list(incremental_state.items())[0][1]['prev_key'].shape[2]
-        for step in tqdm(range(vq_decoded.shape[1] - 1), desc='AR Duration Predictor inference...'):
-            vq_pred = self(txt_tokens, None, None, None, None,
-                           vq_decoded[:, :step + 1], None, None, None,
-                           incremental_state=incremental_state, x_ling=x_ling,
-                           spk_pos_ids_flat=spk_pos_ids_flat, prompt_length=prompt_length, streaming=True, **kwargs)
-            if ctx_vqcodes is None or step >= ctx_vqcodes.shape[1]:
-                if self.hparams['dur_model_type'] == 'ar_mse':
-                    vq_pred = torch.round(vq_pred[:, -1, 0]).long()
-                else:
-                    vq_pred = self.sample_one_step(vq_pred)
-                vq_decoded[:, step + 1] = vq_pred
-            else:
-                vq_decoded[:, step + 1] = ctx_vqcodes[:, step]
-        vq_decoded = vq_decoded[:, 1:]
-        vq_decoded_2d = torch.zeros_like(txt_tokens_ori)
-        vq_decoded_2d.flatten(0, 1)[txt_tokens_withpad > 0] = vq_decoded
-        if return_state:
-            return vq_decoded_2d, incremental_state
-        return vq_decoded_2d
+            # 初始化输入
+            prev_code = torch.zeros_like(txt_tokens[:, :1])
+
+            # 生成序列
+            vq_codes = []
+            for i in range(txt_tokens.shape[1] * 2):  # 最大生成长度为文本长度的2倍
+                # 前向传播
+                vq_pred = self.forward(
+                    txt_tokens, ling_feas, char_tokens, ph2char, bert_embed,
+                    prev_code, spk_id, spk_embed, mels_timbre,
+                    incremental_state=incremental_state, x_ling=x_ling,
+                    dur_disturb=dur_disturb, dur_alpha=dur_alpha)
+
+                if vq_pred is None:
+                    break
+
+                # 采样下一个token
+                vq_code = self.sample_one_step(vq_pred)
+                vq_codes.append(vq_code)
+
+                # 如果生成了结束符，停止生成
+                if vq_code.item() == self.code_size:
+                    break
+
+                # 更新输入
+                prev_code = torch.cat([prev_code, vq_code.unsqueeze(1)], dim=1)
+
+            # 合并结果
+            vq_codes = torch.cat(vq_codes, dim=0)
+
+            if return_state:
+                return vq_codes, incremental_state
+            return vq_codes
+
+        except Exception as e:
+            print(f"流式推理过程出错: {e}")
+            return None

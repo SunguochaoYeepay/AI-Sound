@@ -31,6 +31,12 @@ def find_project_root():
     # 当前脚本所在目录
     current_dir = Path(__file__).resolve().parent
     
+    # 检查是否在容器环境中
+    docker_path = Path("/app")
+    if docker_path.exists():
+        logger.info("检测到Docker容器环境，使用/app作为项目根目录")
+        return docker_path
+    
     # 尝试不同的方式找到根目录
     candidates = [
         current_dir,  # 当前目录
@@ -115,7 +121,30 @@ def start_server(args):
     
     # 设置环境变量
     env = os.environ.copy()
-    env["MODEL_PATH"] = str(root_dir / "data" / "checkpoints" / "megatts3_base.pth")
+    
+    # 在Docker环境中使用固定路径
+    if root_dir == Path("/app"):
+        env["MODEL_PATH"] = "/app/data/checkpoints/megatts3_base.pth"
+        logger.info(f"Docker环境中使用模型路径: {env['MODEL_PATH']}")
+        # 确保模型文件目录存在
+        os.makedirs("/app/data/checkpoints", exist_ok=True)
+        
+        # 检查模型文件是否存在
+        if not Path(env["MODEL_PATH"]).exists():
+            logger.warning(f"模型文件不存在: {env['MODEL_PATH']}")
+            # 尝试从其他可能的位置复制模型文件
+            possible_paths = [
+                "/app/checkpoints/megatts3_base.pth",
+                "/app/MegaTTS3/checkpoints/megatts3_base.pth"
+            ]
+            for path in possible_paths:
+                if Path(path).exists():
+                    logger.info(f"找到模型文件: {path}，复制到目标位置")
+                    os.system(f"cp {path} {env['MODEL_PATH']}")
+                    break
+    else:
+        env["MODEL_PATH"] = str(root_dir / "data" / "checkpoints" / "megatts3_base.pth")
+        
     env["OUTPUT_DIR"] = str(api_dir / "output")
     env["VOICE_FEATURES_DIR"] = str(root_dir / "data" / "voice_features")
     
@@ -165,12 +194,17 @@ def start_server(args):
             
             # 如果使用 verbose 模式，将输出重定向到终端
             while True:
-                output = process.stdout.readline()
-                if output == b'' and process.poll() is not None:
+                if process.poll() is not None:
                     break
-                if output:
-                    sys.stdout.write(output.decode())
-                    sys.stdout.flush()
+                    
+                if args.verbose and process.stdout:
+                    output = process.stdout.readline()
+                    if output:
+                        sys.stdout.write(output.decode())
+                        sys.stdout.flush()
+                else:
+                    # 如果没有启用verbose或者stdout为None，就等待进程结束
+                    time.sleep(1)
         else:
             logger.error(f"API服务启动失败，请检查日志")
             process.terminate()

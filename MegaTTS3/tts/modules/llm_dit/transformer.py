@@ -1,29 +1,16 @@
-# Copyright 2025 ByteDance and/or its affiliates.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-
+import math
 from typing import Any, Optional, Tuple
 
 import torch
 import torch.nn.functional as F
 from torch import nn
+from .config import config
 
 
 def precompute_freqs_cis(dim: int, end: int, theta: float = 10000.0):
     freqs = 1.0 / (theta ** (torch.arange(0, dim, 2)[: (dim // 2)].float() / dim))
-    t = torch.arange(end, device=freqs.device)  # type: ignore
-    freqs = torch.outer(t, freqs).float()  # type: ignore
+    t = torch.arange(end, device=freqs.device)
+    freqs = torch.outer(t, freqs).float()
     freqs_cis = torch.polar(torch.ones_like(freqs), freqs)  # complex64
     return freqs_cis
 
@@ -132,20 +119,19 @@ class FeedForward(nn.Module):
             self,
             dim: int,
             hidden_dim: int,
-            multiple_of: int,
-            ffn_dim_multiplier: Optional[float],
+            multiple_of: int = None,
+            ffn_dim_multiplier: Optional[float] = None,
     ):
         super().__init__()
         if ffn_dim_multiplier is not None:
             hidden_dim = int(ffn_dim_multiplier * hidden_dim)
-        hidden_dim = multiple_of * ((hidden_dim + multiple_of - 1) // multiple_of)
+        if multiple_of:
+            hidden_dim = multiple_of * ((hidden_dim + multiple_of - 1) // multiple_of)
+        else:
+            hidden_dim = dim * 4  # 使用输入维度的4倍作为隐藏层大小
 
-        self.w1 = nn.Linear(
-            dim, hidden_dim
-        )
-        self.w2 = nn.Linear(
-            hidden_dim, dim
-        )
+        self.w1 = nn.Linear(dim, hidden_dim)
+        self.w2 = nn.Linear(hidden_dim, dim)
 
     def forward(self, x):
         return self.w2(F.silu(self.w1(x)))
@@ -161,8 +147,6 @@ class TransformerBlock(nn.Module):
         self.feed_forward = FeedForward(
             dim=encoder_dim,
             hidden_dim=2 * encoder_dim,
-            multiple_of=256,
-            ffn_dim_multiplier=None,
         )
         self.attention_norm = AdaLNZero(encoder_dim)
         self.ffn_norm = nn.LayerNorm(encoder_dim, elementwise_affine=False, eps=1e-6)
@@ -175,19 +159,6 @@ class TransformerBlock(nn.Module):
             freqs_cis: torch.Tensor,
             mask: Optional[torch.Tensor],
     ):
-        """
-        Perform a forward pass through the TransformerBlock.
-
-        Args:
-            x (torch.Tensor): Input tensor.
-            start_pos (int): Starting position for attention caching.
-            freqs_cis (torch.Tensor): Precomputed cosine and sine frequencies.
-            mask (torch.Tensor, optional): Masking tensor for attention. Defaults to None.
-
-        Returns:
-            torch.Tensor: Output tensor after applying attention and feedforward layers.
-
-        """
         # pre-norm & modulation for attention input
         norm, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.attention_norm(x, emb=t)
 
@@ -198,33 +169,33 @@ class TransformerBlock(nn.Module):
         h = x + gate_msa.unsqueeze(1) * attn_output
 
         norm = self.ffn_norm(h) * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
-        ff_output = self.feed_forward(norm)
-        out = h + gate_mlp.unsqueeze(1) * ff_output
+        ff = self.feed_forward(norm)
+        h = h + gate_mlp.unsqueeze(1) * ff
 
-        return out
+        return h
 
 
 class Transformer(nn.Module):
     def __init__(self, encoder_n_layers, encoder_dim, encoder_n_heads, max_seq_len):
         super().__init__()
-        # Decoder
+        self.encoder_n_layers = encoder_n_layers
+        self.encoder_dim = encoder_dim
+        self.encoder_n_heads = encoder_n_heads
+        self.max_seq_len = max_seq_len
+
+        self.freqs_cis = precompute_freqs_cis(
+            self.encoder_dim // self.encoder_n_heads, self.max_seq_len * 2
+        )
+
         self.layers = torch.nn.ModuleList()
-        for _ in range(encoder_n_layers):
+        for layer_id in range(encoder_n_layers):
             self.layers.append(TransformerBlock(encoder_dim, encoder_n_heads, max_seq_len))
 
-        self.norm = AdaLNZero_Out(encoder_dim)
-        self.out_proj = nn.Linear(encoder_dim, encoder_dim)
+        self.norm_out = AdaLNZero_Out(encoder_dim)
 
-        # Rope embedding
-        freqs_cis = precompute_freqs_cis(
-            encoder_dim // encoder_n_heads, max_seq_len
-        )
-        self.register_buffer("freqs_cis", torch.view_as_real(freqs_cis), persistent=False)
-    
     def forward(self, x, t, attn_mask, start_pos=0):
-        freqs_cis = torch.view_as_complex(self.freqs_cis.float())[start_pos: start_pos + x.size(1)]
-        for i, layer in enumerate(self.layers):
+        freqs_cis = self.freqs_cis[start_pos: start_pos + x.shape[1]]
+        for layer in self.layers:
             x = layer(x, t, start_pos, freqs_cis, attn_mask)
-        x = self.norm(x, t)
-        x = self.out_proj(x)
+        x = self.norm_out(x, t)
         return x

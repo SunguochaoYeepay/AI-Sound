@@ -20,7 +20,7 @@ def parse_args():
     
     parser.add_argument('--host', type=str, default='0.0.0.0',
                         help='API服务主机地址')
-    parser.add_argument('--port', type=int, default=7929,
+    parser.add_argument('--port', type=int, default=8001,
                         help='API服务端口')
     parser.add_argument('--reload', action='store_true',
                         help='是否启用热重载')
@@ -41,6 +41,21 @@ def main():
     port = int(os.environ.get('API_PORT', args.port))
     reload = os.environ.get('API_RELOAD', '').lower() == 'true' or args.reload
     workers = int(os.environ.get('API_WORKERS', args.workers))
+    
+    logger.info(f"最终配置: host={host}, port={port}, reload={reload}, workers={workers}")
+    
+    # 加载TTS模型 - 预热
+    try:
+        from tts.engine import MegaTTSEngine
+        model_path = os.environ.get('TTS_MODEL_PATH', 'data/checkpoints/megatts3_base.pth')
+        use_gpu = os.environ.get('USE_GPU', '1') == '1'
+        device_id = int(os.environ.get('DEVICE_ID', '0'))
+        
+        logger.info(f"预加载TTS模型: {model_path}, use_gpu={use_gpu}, device_id={device_id}")
+        engine = MegaTTSEngine(model_path=model_path, use_gpu=use_gpu, device_id=device_id)
+        logger.info(f"TTS模型加载成功")
+    except Exception as e:
+        logger.error(f"TTS模型加载失败: {str(e)}")
     
     # 启动服务
     uvicorn.run(

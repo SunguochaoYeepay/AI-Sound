@@ -92,7 +92,7 @@ def make_dur_prompt(self, mel2ph_ref, ph_ref, tone_ref):
     return incremental_state_dur_prompt, ctx_dur_tokens
 
 ''' Duration Prediction '''
-def dur_pred(self, ctx_dur_tokens, incremental_state_dur_prompt, ph_pred, tone_pred, seg_i, dur_disturb, dur_alpha, is_first, is_final):
+def dur_pred(self, ctx_dur_tokens, incremental_state_dur_prompt, ph_pred, tone_pred, seg_i, dur_disturb=0.1, dur_alpha=1.0, is_first=True, is_final=True):
     last_dur_token = ctx_dur_tokens[:, -1:]
     last_dur_pos_prompt = ctx_dur_tokens.shape[1]
     incremental_state_dur = deepcopy(incremental_state_dur_prompt)
@@ -111,18 +111,6 @@ def dur_pred(self, ctx_dur_tokens, incremental_state_dur_prompt, ph_pred, tone_p
 
     dur_pred = dur_pred - 1
     dur_pred = dur_pred.clamp(0, self.hp_dur_model['dur_code_size'] - 1)
-    # if is_final:
-    #     dur_pred[:, -1] = dur_pred[:, -1].clamp(64, 128)
-    # else:
-    #     dur_pred[:, -1] = dur_pred[:, -1].clamp(48, 128)
-    # if seg_i > 0:
-        # dur_pred[:, 0] = 0
-    # ['。', '！', '？', 'sil']
-    # for sil_token in [148, 153, 166, 145]:
-    #     dur_pred[ph_pred==sil_token].clamp_min(32)
-    # # ['，', '；'] 
-    # for sil_token in [163, 165]:
-    #     dur_pred[ph_pred==sil_token].clamp_min(16)
     if not is_final:
         # add 0.32ms for crossfade
         dur_pred[:, -1] =  dur_pred[:, -1] + 32
@@ -151,63 +139,40 @@ def dur_pred(self, ctx_dur_tokens, incremental_state_dur_prompt, ph_pred, tone_p
     mel2ph_pred = self.length_regulator(dur_pred).to(self.device)
     return mel2ph_pred
 
-def prepare_inputs_for_dit(self, mel2ph_ref, mel2ph_pred, ph_ref, tone_ref, ph_pred, tone_pred, vae_latent):
+def prepare_inputs_for_dit(text_inp, g2p_model, g2p_tokenizer, speech_start_idx, aligner_lm, dur_model, ling_dict, device, dur_disturb=0.1, dur_alpha=1.0):
     """
-    准备DiT模型的输入，添加边界检查以避免CUDA索引越界错误
+    准备DiT模型的输入
     """
     try:
-        # 边界检查：确保索引在有效范围内
-        max_idx_phone = self.cfg_mask_token_phone
-        max_idx_tone = self.cfg_mask_token_tone
+        # 1. 文本到音素转换
+        txt_token = g2p_tokenizer('<BOT>' + text_inp + '<BOS>')['input_ids']
+        input_ids = torch.LongTensor([txt_token+[145+speech_start_idx]]).to(device)
         
-        # 检查并修复phone索引
-        if torch.max(ph_ref) > max_idx_phone:
-            print(f"警告：参考phone索引超出范围，最大值={torch.max(ph_ref).item()}，限制为{max_idx_phone}")
-            ph_ref = torch.clamp(ph_ref, 0, max_idx_phone)
+        with torch.amp.autocast(device_type=device.split(':')[0], enabled=True):
+            outputs = g2p_model.generate(input_ids, max_new_tokens=256, do_sample=True, top_k=1, eos_token_id=800+1+speech_start_idx)
         
-        if torch.max(ph_pred) > max_idx_phone:
-            print(f"警告：预测phone索引超出范围，最大值={torch.max(ph_pred).item()}，限制为{max_idx_phone}")
-            ph_pred = torch.clamp(ph_pred, 0, max_idx_phone)
+        ph_tokens = outputs[:, len(txt_token):-1]-speech_start_idx
+        ph_pred, tone_pred = split_ph(ph_tokens[0])
+        ph_pred, tone_pred = ph_pred[None, :].to(device), tone_pred[None, :].to(device)
         
-        # 检查并修复tone索引
-        if torch.max(tone_ref) > max_idx_tone:
-            print(f"警告：参考tone索引超出范围，最大值={torch.max(tone_ref).item()}，限制为{max_idx_tone}")
-            tone_ref = torch.clamp(tone_ref, 0, max_idx_tone)
-            
-        if torch.max(tone_pred) > max_idx_tone:
-            print(f"警告：预测tone索引超出范围，最大值={torch.max(tone_pred).item()}，限制为{max_idx_tone}")
-            tone_pred = torch.clamp(tone_pred, 0, max_idx_tone)
+        # 2. 持续时间预测
+        dur_pred = dur_model.infer(
+            ph_pred, {'tone': tone_pred}, None, None, None,
+            dur_disturb=dur_disturb,
+            dur_alpha=dur_alpha
+        )
         
-        # 数据形状检查
-        print(f"数据形状: mel2ph_ref={mel2ph_ref.shape}, mel2ph_pred={mel2ph_pred.shape}, vae_latent={vae_latent.shape}")
-        
-        # 原始实现
-        align_dur2 = mel2ph_ref.size(1) * 4 // vae_latent.size(1)
-        ids = torch.zeros_like(mel2ph_pred).fill_(0)
-        mel2ph_pred_vae = torch.repeat_interleave(mel2ph_pred, align_dur2, dim=1)
-        mel2ph_ref_vae = torch.repeat_interleave(mel2ph_ref, align_dur2, dim=1)
-        
+        # 3. 准备输入字典
         inputs = {
-            'prompt_phone': ph_ref,
-            'prompt_tone': tone_ref,
-            'cfgs_phone': ph_pred,
-            'cfgs_tone': tone_pred,
-            'prompt_mel2ph': mel2ph_ref_vae[:, :vae_latent.size(1)],
-            'cfgs_mel2ph': mel2ph_pred_vae[:, :vae_latent.size(1)],
-            'ids': ids
+            'ph_pred': ph_pred,
+            'tone_pred': tone_pred,
+            'dur_pred': dur_pred,
+            'is_first': True,
+            'is_final': True
         }
         
         return inputs
+        
     except Exception as e:
-        print(f"在prepare_inputs_for_dit中发生错误: {e}")
-        # 返回空的输入，由调用者处理
-        inputs = {
-            'prompt_phone': ph_ref,
-            'prompt_tone': tone_ref,
-            'cfgs_phone': ph_pred,
-            'cfgs_tone': tone_pred,
-            'prompt_mel2ph': mel2ph_ref,
-            'cfgs_mel2ph': mel2ph_pred,
-            'ids': torch.zeros_like(mel2ph_pred)
-        }
-        return inputs
+        print(f"准备DiT输入时出错: {e}")
+        raise e

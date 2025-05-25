@@ -1,3 +1,19 @@
+hidden_size: 256
+ffn_hidden_size: 512  # 减半
+c_spk_enc: 256  # 减半
+latent_size: 128  # 减半
+vae_enc_hidden_size: 192  # 减半
+
+# 保持其他参数不变
+audio_num_mel_bins: 160
+audio_sample_rate: 24000
+frames_multiple: 8
+latent_dim: 32
+use_cfg: true
+use_seq_cfg: true
+precision: bf16
+
+# 模型参数
 acous_params:
 - - 480
   - 1200
@@ -6,11 +22,8 @@ acous_params:
   - 1200
   - 160
 amp: true
-audio_num_mel_bins: 160
-audio_sample_rate: 24000
 base_config:
 - ./base_config.yaml
-c_spk_enc: 512
 char_dict_size: 15000
 conv_use_pos: false
 dec0_dilations:
@@ -61,21 +74,16 @@ encoder_type: rel_fft
 f0_max: 600
 f0_min: 60
 ffn_act: gelu
-ffn_hidden_size: 1024
 fft_size: 1200
 fg_spk_enc_hidden: 256
 fmax: 12000
 fmin: 0
-frames_multiple: 8
-gen_dir_name: ''
-hidden_size: 512
 hop_size: 240
 ignore_begin_end_sil: false
 keep_c0_init: true
 kl_min: 0
 kl_start_steps: 1
 latent_dim: 32
-latent_size: 256
 layers_in_block: 2
 ling_label_dict_size:
 - 20
@@ -101,9 +109,6 @@ no_text_enc: false
 num_heads: 2
 out_wav_norm: true
 pad_frames: false
-
-precision: bf16
-seed: 1234
 use_bert_input: false
 use_cfg: true
 use_char: true
@@ -139,7 +144,6 @@ use_vqvae: true
 use_word_encoder: true
 use_word_input: false
 vae_dur_grad: 0.1
-vae_enc_hidden_size: 384
 vae_stride: 4
 vae_word_conder_layers: 0
 vq_stride: 8

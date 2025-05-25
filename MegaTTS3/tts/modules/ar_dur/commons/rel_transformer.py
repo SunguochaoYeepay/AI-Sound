@@ -38,6 +38,27 @@ def sequence_mask(length, max_length=None):
     return x.unsqueeze(0) < length.unsqueeze(1)
 
 
+class LayerNorm(nn.Module):
+    def __init__(self, channels, eps=1e-4):
+        super().__init__()
+        self.channels = channels
+        self.eps = eps
+
+        self.gamma = nn.Parameter(torch.ones(channels))
+        self.beta = nn.Parameter(torch.zeros(channels))
+
+    def forward(self, x):
+        n_dims = len(x.shape)
+        mean = torch.mean(x, dim=-1, keepdim=True)
+        variance = torch.mean((x - mean) ** 2, dim=-1, keepdim=True)
+
+        x = (x - mean) * torch.rsqrt(variance + self.eps)
+
+        shape = [1] * (n_dims - 1) + [-1]
+        x = x * self.gamma.view(*shape) + self.beta.view(*shape)
+        return x
+
+
 class Encoder(nn.Module):
     def __init__(self, hidden_channels, filter_channels, n_heads, n_layers, kernel_size=1, p_dropout=0.,
                  window_size=None, block_length=None, pre_ln=False, **kwargs):
@@ -133,21 +154,23 @@ class MultiHeadAttention(nn.Module):
         nn.init.xavier_uniform_(self.conv_v.weight)
 
     def forward(self, x, c, attn_mask=None):
-        q = self.conv_q(x)
-        k = self.conv_k(c)
-        v = self.conv_v(c)
+        q = self.conv_q(x.transpose(1, 2)).transpose(1, 2)
+        k = self.conv_k(c.transpose(1, 2)).transpose(1, 2)
+        v = self.conv_v(c.transpose(1, 2)).transpose(1, 2)
 
         x, self.attn = self.attention(q, k, v, mask=attn_mask)
 
-        x = self.conv_o(x)
+        x = self.conv_o(x.transpose(1, 2)).transpose(1, 2)
         return x
 
     def attention(self, query, key, value, mask=None):
-        # reshape [b, d, t] -> [b, n_h, t, d_k]
-        b, d, t_s, t_t = (*key.size(), query.size(2))
-        query = query.view(b, self.n_heads, self.k_channels, t_t).transpose(2, 3)
-        key = key.view(b, self.n_heads, self.k_channels, t_s).transpose(2, 3)
-        value = value.view(b, self.n_heads, self.k_channels, t_s).transpose(2, 3)
+        # reshape [b, t, d] -> [b, n_h, t, d_k]
+        b, t_t, d = query.size()
+        t_s = key.size(1)
+        
+        query = query.view(b, t_t, self.n_heads, -1).transpose(1, 2)
+        key = key.view(b, t_s, self.n_heads, -1).transpose(1, 2)
+        value = value.view(b, t_s, self.n_heads, -1).transpose(1, 2)
 
         scores = torch.matmul(query, key.transpose(-2, -1)) / math.sqrt(self.k_channels)
         if self.window_size is not None:
@@ -172,7 +195,7 @@ class MultiHeadAttention(nn.Module):
             relative_weights = self._absolute_position_to_relative_position(p_attn)
             value_relative_embeddings = self._get_relative_embeddings(self.emb_rel_v, t_s)
             output = output + self._matmul_with_relative_values(relative_weights, value_relative_embeddings)
-        output = output.transpose(2, 3).contiguous().view(b, d, t_t)  # [b, n_h, t_t, d_k] -> [b, d, t_t]
+        output = output.transpose(1, 2).contiguous().view(b, t_t, d)  # [b, n_h, t_t, d_k] -> [b, t_t, d]
         return output, p_attn
 
     def _matmul_with_relative_values(self, x, y):
@@ -233,7 +256,7 @@ class MultiHeadAttention(nn.Module):
         batch, heads, length, _ = x.size()
         # padd along column
         x = F.pad(x, convert_pad_shape([[0, 0], [0, 0], [0, 0], [0, length - 1]]))
-        x_flat = x.view([batch, heads, -1])
+        x_flat = x.view([batch, heads, length ** 2 + length * (length - 1)])
         # add 0's in the beginning that will skew the elements after reshape
         x_flat = F.pad(x_flat, convert_pad_shape([[0, 0], [0, 0], [length, 0]]))
         x_final = x_flat.view([batch, heads, length, 2 * length])[:, :, :, 1:]
@@ -266,69 +289,12 @@ class FFN(nn.Module):
         self.drop = nn.Dropout(p_dropout)
 
     def forward(self, x, x_mask):
+        x = x.transpose(1, 2)
         x = self.conv_1(x * x_mask)
-        if self.activation == "gelu":
-            x = x * torch.sigmoid(1.702 * x)
-        else:
-            x = torch.relu(x)
+        x = torch.relu(x)
         x = self.drop(x)
         x = self.conv_2(x * x_mask)
-        return x * x_mask
-
-
-class LayerNorm(nn.Module):
-    def __init__(self, channels, eps=1e-4):
-        super().__init__()
-        self.channels = channels
-        self.eps = eps
-
-        self.gamma = nn.Parameter(torch.ones(channels))
-        self.beta = nn.Parameter(torch.zeros(channels))
-
-    def forward(self, x):
-        n_dims = len(x.shape)
-        mean = torch.mean(x, 1, keepdim=True)
-        variance = torch.mean((x - mean) ** 2, 1, keepdim=True)
-
-        x = (x - mean) * torch.rsqrt(variance + self.eps)
-
-        shape = [1, -1] + [1] * (n_dims - 2)
-        x = x * self.gamma.view(*shape) + self.beta.view(*shape)
-        return x
-
-
-class ConvReluNorm(nn.Module):
-    def __init__(self, in_channels, hidden_channels, out_channels, kernel_size, n_layers, p_dropout):
-        super().__init__()
-        self.in_channels = in_channels
-        self.hidden_channels = hidden_channels
-        self.out_channels = out_channels
-        self.kernel_size = kernel_size
-        self.n_layers = n_layers
-        self.p_dropout = p_dropout
-        assert n_layers > 1, "Number of layers should be larger than 0."
-
-        self.conv_layers = nn.ModuleList()
-        self.norm_layers = nn.ModuleList()
-        self.conv_layers.append(nn.Conv1d(in_channels, hidden_channels, kernel_size, padding=kernel_size // 2))
-        self.norm_layers.append(LayerNorm(hidden_channels))
-        self.relu_drop = nn.Sequential(
-            nn.ReLU(),
-            nn.Dropout(p_dropout))
-        for _ in range(n_layers - 1):
-            self.conv_layers.append(nn.Conv1d(hidden_channels, hidden_channels, kernel_size, padding=kernel_size // 2))
-            self.norm_layers.append(LayerNorm(hidden_channels))
-        self.proj = nn.Conv1d(hidden_channels, out_channels, 1)
-        self.proj.weight.data.zero_()
-        self.proj.bias.data.zero_()
-
-    def forward(self, x, x_mask):
-        x_org = x
-        for i in range(self.n_layers):
-            x = self.conv_layers[i](x * x_mask)
-            x = self.norm_layers[i](x)
-            x = self.relu_drop(x)
-        x = x_org + self.proj(x)
+        x = x.transpose(1, 2)
         return x * x_mask
 
 
@@ -348,9 +314,7 @@ class RelTransformerEncoder(nn.Module):
                  prenet=True,
                  pre_ln=True,
                  ):
-
         super().__init__()
-
         self.n_vocab = n_vocab
         self.out_channels = out_channels
         self.hidden_channels = hidden_channels
@@ -361,17 +325,14 @@ class RelTransformerEncoder(nn.Module):
         self.p_dropout = p_dropout
         self.window_size = window_size
         self.block_length = block_length
+        self.in_channels = in_channels
         self.prenet = prenet
-        if n_vocab > 0:
-            self.emb = Embedding(n_vocab, hidden_channels, padding_idx=0)
+        self.pre_ln = pre_ln
 
-        if prenet:
-            if in_channels is None:
-                in_channels = hidden_channels
-            self.pre = ConvReluNorm(in_channels, in_channels, in_channels,
-                                    kernel_size=5, n_layers=3, p_dropout=0)
-        if in_channels is not None and in_channels != hidden_channels:
-            self.encoder_inp_proj = nn.Conv1d(in_channels, hidden_channels, 1)
+        if n_vocab > 0:
+            self.emb = Embedding(n_vocab, hidden_channels)
+        if in_channels is not None and in_channels != hidden_channels and prenet:
+            self.prenet_fc = nn.Linear(in_channels, hidden_channels)
         self.encoder = Encoder(
             hidden_channels,
             filter_channels,
@@ -386,18 +347,11 @@ class RelTransformerEncoder(nn.Module):
 
     def forward(self, x, x_mask=None, other_embeds=0, attn_mask=1):
         if self.n_vocab > 0:
-            x_lengths = (x > 0).long().sum(-1)
-            x = self.emb(x) * math.sqrt(self.hidden_channels)  # [b, t, h]
-        else:
-            x_lengths = (x.abs().sum(-1) > 0).long().sum(-1)
+            x = self.emb(x)
         x = x + other_embeds
-        x = torch.transpose(x, 1, -1)  # [b, h, t]
-        x_mask = torch.unsqueeze(sequence_mask(x_lengths, x.size(2)), 1).to(x.dtype)
-
-        if self.prenet:
-            x = self.pre(x, x_mask)
-            self.prenet_out = x.transpose(1, 2)
-        if hasattr(self, 'encoder_inp_proj'):
-            x = self.encoder_inp_proj(x) * x_mask
+        if x_mask is None:
+            x_mask = torch.ones_like(x)[:, :, :1]
+        if hasattr(self, 'prenet_fc'):
+            x = self.prenet_fc(x)
         x = self.encoder(x, x_mask, attn_mask)
-        return x.transpose(1, 2)
+        return x

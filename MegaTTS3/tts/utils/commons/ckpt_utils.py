@@ -109,31 +109,35 @@ def load_ckpt(cur_model, ckpt_base_dir, model_name='model', force=True, strict=T
                     k[len(rest_model_name) + 1:]: v for k, v in state_dict_all[base_model_name].items()
                     if k.startswith(f'{rest_model_name}.')}
             state_dict = {k.replace('module.', '').replace('_orig_mod.', ''): v for k, v in state_dict.items()}
-            if not strict and delete_unmatch:
-                try:
-                    cur_model.load_state_dict(state_dict, strict=True)
-                    if not silent:
-                        print(f"| loaded '{model_name}' from '{ckpt_path}' with strict=True.")
-                except:
-                    cur_model_state_dict = cur_model.state_dict()
-                    cur_model_state_dict = {k.replace('module.', '').replace('_orig_mod.', ''): v for k, v in
-                                            cur_model_state_dict.items()}
-                    unmatched_keys = []
-                    for key, param in state_dict.items():
-                        if key in cur_model_state_dict:
-                            new_param = cur_model_state_dict[key]
-                            if new_param.shape != param.shape:
-                                unmatched_keys.append(key)
-                                print("| Unmatched keys: ", key, "cur model: ", new_param.shape,
-                                        "ckpt model: ", param.shape)
-                    for key in unmatched_keys:
-                        del state_dict[key]
+            
+            # 处理预训练模型中的额外键
+            if not strict:
+                cur_model_state_dict = cur_model.state_dict()
+                cur_model_state_dict = {k.replace('module.', '').replace('_orig_mod.', ''): v for k, v in
+                                        cur_model_state_dict.items()}
+                # 只保留当前模型中存在的键
+                state_dict = {k: v for k, v in state_dict.items() if k in cur_model_state_dict}
+                # 检查形状不匹配的键
+                unmatched_keys = []
+                for key, param in state_dict.items():
+                    if key in cur_model_state_dict:
+                        new_param = cur_model_state_dict[key]
+                        if new_param.shape != param.shape:
+                            unmatched_keys.append(key)
+                            print("| Unmatched keys: ", key, "cur model: ", new_param.shape,
+                                    "ckpt model: ", param.shape)
+                # 删除形状不匹配的键
+                for key in unmatched_keys:
+                    del state_dict[key]
+            
+            # 加载状态字典
             load_results = cur_model.load_state_dict(state_dict, strict=strict)
             cur_model.to(device)
             if not silent:
                 print(f"| loaded '{model_name}' from '{ckpt_path}'.")
                 missing_keys, unexpected_keys = load_results.missing_keys, load_results.unexpected_keys
                 print(f"| Missing keys: {len(missing_keys)}, Unexpected keys: {len(unexpected_keys)}")
+        
         if load_opt:
             optimizer_states = checkpoint['optimizer_states']
             assert len(opts) == len(optimizer_states)
