@@ -2,10 +2,10 @@
 
 ## 1. 本地目录准备
 
-确保你的本地 `D:/AI-Sound/espnet` 目录结构如下（最少要有这些文件）：
+确保你的本地 `D:/AI-Sound/megaTTS/espnet` 目录结构如下（最少要有这些文件）：
 
 ```
-D:/AI-Sound/espnet/
+D:/AI-Sound/megaTTS/espnet/
 ├── test.txt                # 输入文本，每行一句
 ├── exp/
 │   └── tts_train_xxx/
@@ -16,16 +16,16 @@ D:/AI-Sound/espnet/
 - `test.txt` 示例内容：
   ```
   你好，世界！
-  Hello, world!
+  Hello, world！
   ```
 
 ## 2. 启动 ESPnet Docker 容器
 
 ```bash
-docker run --gpus all -it --rm -v D:/AI-Sound/espnet:/workspace espnet/espnet:gpu-latest /bin/bash
+docker run --gpus all -it --rm -v D:/AI-Sound/megaTTS/espnet:/workspace espnet/espnet:gpu-latest /bin/bash
 ```
 
-- 进入容器后，`/workspace` 就是你本地的 `D:/AI-Sound/espnet`
+- 进入容器后，`/workspace` 就是你本地的 `D:/AI-Sound/megaTTS/espnet`
 
 ## 3. 容器内执行 TTS 推理命令
 
@@ -48,7 +48,7 @@ python3 /espnet/espnet2/bin/tts_inference.py \
 ## 4. 查看结果
 
 - 合成的音频文件会在 `/workspace/output` 目录下
-- 你本地 `D:/AI-Sound/espnet/output` 也能直接访问
+- 你本地 `D:/AI-Sound/megaTTS/espnet/output` 也能直接访问
 
 ---
 
