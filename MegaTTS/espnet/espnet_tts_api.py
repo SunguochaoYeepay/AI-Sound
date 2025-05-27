@@ -13,13 +13,20 @@ text2speech = Text2Speech(
 
 @app.route('/tts', methods=['POST'])
 def tts():
-    text = request.json.get('text')
-    if not text:
-        return jsonify({'error': 'No text provided'}), 400
-    wav = text2speech(text)["wav"].view(-1).cpu().numpy()
-    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
-        sf.write(f.name, wav, 24000)
-        return send_file(f.name, mimetype="audio/wav", as_attachment=True, download_name="output.wav")
+    try:
+        text = request.json.get('text')
+        if not text:
+            return jsonify({'error': 'No text provided'}), 400
+        result = text2speech(text)
+        wav = result["wav"].view(-1).cpu().numpy()
+        print(f"合成音频长度: {len(wav)} 采样率: 24000")
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+            sf.write(f.name, wav, 24000)
+            return send_file(f.name, mimetype="audio/wav", as_attachment=True, download_name="output.wav")
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
