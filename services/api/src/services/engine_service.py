@@ -286,61 +286,202 @@ class EngineService:
     async def get_engine_stats(self) -> Dict[str, Any]:
         """获取引擎统计信息"""
         try:
-            pipeline = [
-                {
-                    "$group": {
-                        "_id": None,
-                        "total": {"$sum": 1},
-                        "enabled": {"$sum": {"$cond": ["$is_enabled", 1, 0]}},
-                        "by_status": {
-                            "$push": {
-                                "status": "$status",
-                                "count": 1
-                            }
-                        },
-                        "by_type": {
-                            "$push": {
-                                "type": "$type",
-                                "count": 1
-                            }
-                        }
-                    }
-                }
-            ]
+            # 从数据库获取统计
+            total = await self.collection.count_documents({})
+            enabled = await self.collection.count_documents({"is_enabled": True})
+            ready = await self.collection.count_documents({"status": EngineStatus.READY.value})
+            error = await self.collection.count_documents({"status": EngineStatus.ERROR.value})
             
-            cursor = self.collection.aggregate(pipeline)
-            result = await cursor.to_list(length=1)
+            # 从适配器工厂获取运行时统计
+            adapter_stats = self.adapter_factory.get_adapter_stats()
             
-            if result:
-                stats = result[0]
-                # 统计状态分布
-                status_counts = {}
-                for item in stats["by_status"]:
-                    status = item["status"]
-                    status_counts[status] = status_counts.get(status, 0) + 1
-                
-                # 统计类型分布
-                type_counts = {}
-                for item in stats["by_type"]:
-                    engine_type = item["type"]
-                    type_counts[engine_type] = type_counts.get(engine_type, 0) + 1
-                
-                return {
-                    "total_engines": stats["total"],
-                    "enabled_engines": stats["enabled"],
-                    "by_status": status_counts,
-                    "by_type": type_counts
-                }
+            # 按类型统计
+            type_stats = {}
+            for engine_type in EngineType:
+                count = await self.collection.count_documents({"type": engine_type.value})
+                type_stats[engine_type.value] = count
+            
+            # 最近活动
+            recent_activity = []
+            cursor = self.collection.find({}).sort("updated_at", -1).limit(5)
+            async for doc in cursor:
+                recent_activity.append({
+                    "engine_id": doc["id"],
+                    "name": doc["name"],
+                    "action": "updated",
+                    "timestamp": doc.get("updated_at", doc["created_at"])
+                })
             
             return {
-                "total_engines": 0,
-                "enabled_engines": 0,
-                "by_status": {},
-                "by_type": {}
+                "total_engines": total,
+                "enabled_engines": enabled,
+                "ready_engines": ready,
+                "error_engines": error,
+                "type_distribution": type_stats,
+                "adapter_stats": adapter_stats,
+                "recent_activity": recent_activity,
+                "health_check_interval": self._health_check_interval
             }
         except Exception as e:
             logger.error(f"获取引擎统计失败: {e}")
             raise
+
+    async def check_all_health(self) -> Dict[str, Any]:
+        """检查所有引擎的健康状态"""
+        try:
+            # 获取所有启用的引擎
+            engines = await self.list_engines(enabled_only=True)
+            
+            health_results = {}
+            total_checked = 0
+            healthy_count = 0
+            
+            # 并发检查所有引擎
+            tasks = []
+            for engine in engines:
+                tasks.append(self._check_single_engine_health(engine))
+            
+            if tasks:
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                
+                for i, result in enumerate(results):
+                    engine = engines[i]
+                    total_checked += 1
+                    
+                    if isinstance(result, Exception):
+                        health_results[engine.id] = {
+                            "engine_id": engine.id,
+                            "name": engine.name,
+                            "healthy": False,
+                            "status": "error",
+                            "error": str(result),
+                            "checked_at": datetime.now()
+                        }
+                    else:
+                        health_results[engine.id] = result
+                        if result.get("healthy", False):
+                            healthy_count += 1
+            
+            # 更新数据库中的健康状态
+            for engine_id, health_data in health_results.items():
+                await self.collection.update_one(
+                    {"id": engine_id},
+                    {"$set": {
+                        "last_health_check": health_data["checked_at"],
+                        "status": EngineStatus.READY.value if health_data["healthy"] else EngineStatus.ERROR.value
+                    }}
+                )
+            
+            return {
+                "summary": {
+                    "total_checked": total_checked,
+                    "healthy_count": healthy_count,
+                    "unhealthy_count": total_checked - healthy_count,
+                    "health_rate": (healthy_count / total_checked * 100) if total_checked > 0 else 0
+                },
+                "details": health_results,
+                "checked_at": datetime.now()
+            }
+        except Exception as e:
+            logger.error(f"批量健康检查失败: {e}")
+            raise
+
+    async def get_engines_summary(self) -> Dict[str, Any]:
+        """获取引擎摘要信息"""
+        try:
+            # 获取基础统计
+            stats = await self.get_engine_stats()
+            
+            # 获取引擎列表（简化信息）
+            engines = await self.list_engines(limit=100)
+            engine_summary = []
+            
+            for engine in engines:
+                # 获取适配器状态
+                adapter = await self.adapter_factory.get_adapter(engine.id)
+                adapter_status = "unknown"
+                if adapter:
+                    adapter_status = adapter.status.value
+                
+                engine_summary.append({
+                    "id": engine.id,
+                    "name": engine.name,
+                    "type": engine.type.value,
+                    "status": engine.status.value,
+                    "adapter_status": adapter_status,
+                    "is_enabled": engine.is_enabled,
+                    "last_health_check": engine.last_health_check,
+                    "created_at": engine.created_at
+                })
+            
+            # 获取性能指标
+            performance_metrics = await self._get_performance_metrics()
+            
+            return {
+                "statistics": stats,
+                "engines": engine_summary,
+                "performance": performance_metrics,
+                "system_info": {
+                    "monitoring_enabled": self._health_check_task is not None,
+                    "check_interval": self._health_check_interval,
+                    "adapter_factory_stats": self.adapter_factory.get_adapter_stats()
+                }
+            }
+        except Exception as e:
+            logger.error(f"获取引擎摘要失败: {e}")
+            raise
+
+    async def _check_single_engine_health(self, engine: Engine) -> Dict[str, Any]:
+        """检查单个引擎的健康状态"""
+        try:
+            adapter = await self.adapter_factory.get_adapter(engine.id)
+            if not adapter:
+                return {
+                    "engine_id": engine.id,
+                    "name": engine.name,
+                    "healthy": False,
+                    "status": "adapter_not_found",
+                    "error": "适配器未找到",
+                    "checked_at": datetime.now()
+                }
+            
+            # 执行健康检查
+            health_data = await adapter.health_check()
+            
+            return {
+                "engine_id": engine.id,
+                "name": engine.name,
+                "healthy": adapter.is_ready,
+                "status": adapter.status.value,
+                "details": health_data,
+                "checked_at": datetime.now()
+            }
+        except Exception as e:
+            return {
+                "engine_id": engine.id,
+                "name": engine.name,
+                "healthy": False,
+                "status": "check_failed",
+                "error": str(e),
+                "checked_at": datetime.now()
+            }
+
+    async def _get_performance_metrics(self) -> Dict[str, Any]:
+        """获取性能指标"""
+        try:
+            # 这里可以添加更多性能指标
+            # 例如：响应时间、吞吐量、错误率等
+            
+            return {
+                "avg_response_time": 0.0,  # 平均响应时间(秒)
+                "total_requests": 0,       # 总请求数
+                "success_rate": 100.0,     # 成功率(%)
+                "error_rate": 0.0,         # 错误率(%)
+                "uptime": "100%"           # 运行时间
+            }
+        except Exception as e:
+            logger.warning(f"获取性能指标失败: {e}")
+            return {}
     
     async def start_health_monitoring(self):
         """启动健康监控"""

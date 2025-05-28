@@ -39,8 +39,8 @@ services:
       - PYTHONPATH=/app:/app/MegaTTS3
       # 添加引擎服务URL配置
       - MEGATTS3_URL=http://host.docker.internal:7929
-      - ESPNET_URL=http://host.docker.internal:9000
-      - BERTVITS2_URL=http://host.docker.internal:9932
+      - ESPNET_URL=http://espnet-service:9001
+      - BERTVITS2_URL=http://bert-vits2-service:9932
       # MongoDB配置
       - DB_HOST=mongodb
       - DB_PORT=27017
@@ -94,6 +94,30 @@ services:
     restart: always
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9932/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ESPnet TTS引擎
+  espnet:
+    build:
+      context: ../MegaTTS/espnet
+      dockerfile: dockerfile
+    image: ai-sound-espnet:latest
+    container_name: espnet-service
+    ports:
+      - "9001:9001"
+    volumes:
+      - ../MegaTTS/espnet:/workspace
+      - ../models/espnet:/workspace/models
+      - ../data/espnet:/workspace/data
+      - ../logs/espnet:/workspace/logs
+    environment:
+      - PYTHONPATH=/workspace
+      - CUDA_VISIBLE_DEVICES=""
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9001/health"]
       interval: 30s
       timeout: 10s
       retries: 3

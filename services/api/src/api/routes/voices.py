@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse
 from typing import List, Optional
 import logging
 
-from ...models.voice import Voice, VoiceCreate, VoiceUpdate
+from ...models.voice import Voice, VoiceCreate, VoiceUpdate, VoiceGender
 from ...services.voice_service import VoiceService
 from ...core.dependencies import get_db
 
@@ -28,13 +28,22 @@ async def list_voices(
     """获取声音列表"""
     try:
         service = VoiceService(db)
+        
+        # 转换gender参数
+        gender_enum = None
+        if gender:
+            try:
+                gender_enum = VoiceGender(gender)
+            except ValueError:
+                pass  # 忽略无效的gender值
+        
         voices = await service.list_voices(
             skip=skip,
             limit=limit,
             search=search,
-            engine=engine,
+            engine_id=engine,
             language=language,
-            gender=gender
+            gender=gender_enum
         )
         return voices
     except Exception as e:

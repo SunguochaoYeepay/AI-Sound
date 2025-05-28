@@ -49,17 +49,17 @@ class DependencyManager:
         engine_configs = {
             "megatts3": {
                 "type": "megatts3",
-                "url": settings.engines.megatts3_url,
+                "endpoint": settings.engines.megatts3_url,
                 "enabled": True
             },
             "espnet": {
                 "type": "espnet", 
-                "url": settings.engines.espnet_url,
+                "endpoint": settings.engines.espnet_url,
                 "enabled": True
             },
             "bert_vits2": {
                 "type": "bert_vits2",
-                "url": settings.engines.bertvits2_url,
+                "endpoint": settings.engines.bertvits2_url,
                 "enabled": True
             }
         }

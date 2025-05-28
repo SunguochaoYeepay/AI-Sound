@@ -5,3 +5,12 @@ WORKDIR /workspace
 
 RUN pip install --upgrade pip && \
     pip install -r requirements.txt
+
+# 复制服务器文件
+COPY . /workspace/
+
+# 暴露端口
+EXPOSE 9001
+
+# 启动命令
+CMD ["python", "espnet_server.py"]

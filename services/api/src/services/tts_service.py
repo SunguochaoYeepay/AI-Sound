@@ -59,7 +59,11 @@ class TTSService:
             }
             
             # 执行合成
-            result = await adapter.synthesize(**synthesis_params)
+            result = await adapter.synthesize_safe(**synthesis_params)
+            
+            # 检查合成是否成功
+            if not result.success:
+                raise ValueError(result.error_message or "合成失败")
             
             # 构建结果
             audio_url = f"/api/audio/{output_filename}"
@@ -68,9 +72,9 @@ class TTSService:
             return SynthesisResult(
                 task_id=task_id,
                 audio_url=audio_url,
-                duration=result.get("duration"),
+                duration=result.duration,
                 file_size=file_size,
-                sample_rate=request.sample_rate,
+                sample_rate=result.sample_rate or request.sample_rate,
                 format=request.format
             )
             

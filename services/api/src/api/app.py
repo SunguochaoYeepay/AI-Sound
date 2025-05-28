@@ -65,8 +65,8 @@ def create_app() -> FastAPI:
         title=settings.app_name,
         version=settings.version,
         description="AI-Sound TTS系统 - 集成多种TTS引擎的语音合成平台",
-        docs_url="/docs" if settings.debug else None,
-        redoc_url="/redoc" if settings.debug else None,
+        docs_url="/docs",
+        redoc_url="/redoc",
         lifespan=lifespan
     )
     

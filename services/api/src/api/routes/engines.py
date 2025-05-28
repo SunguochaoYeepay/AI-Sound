@@ -287,8 +287,8 @@ async def check_all_engines_health(db=Depends(get_db)):
     """检查所有引擎健康状态"""
     try:
         service = EngineService(db)
-        health_results = await service.check_all_health()
-        return health_results
+        health_data = await service.check_all_health()
+        return health_data
     except Exception as e:
         logger.error(f"检查所有引擎健康状态失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
