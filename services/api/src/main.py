@@ -1,5 +1,6 @@
 """
-MegaTTS3 API服务入口
+AI-Sound TTS系统API服务入口
+基于新架构的统一入口文件
 """
 
 import os
@@ -7,20 +8,21 @@ import argparse
 import uvicorn
 import logging
 
-# 配置日志
+# 配置基础日志
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger("main")
 
+
 def parse_args():
     """解析命令行参数"""
-    parser = argparse.ArgumentParser(description='MegaTTS3 API服务')
+    parser = argparse.ArgumentParser(description='AI-Sound TTS API服务')
     
     parser.add_argument('--host', type=str, default='0.0.0.0',
                         help='API服务主机地址')
-    parser.add_argument('--port', type=int, default=8001,
+    parser.add_argument('--port', type=int, default=9930,
                         help='API服务端口')
     parser.add_argument('--reload', action='store_true',
                         help='是否启用热重载')
@@ -29,12 +31,10 @@ def parse_args():
     
     return parser.parse_args()
 
+
 def main():
     """主函数"""
     args = parse_args()
-    
-    # 启动API服务
-    logger.info(f"正在启动API服务，地址：{args.host}:{args.port}")
     
     # 从环境变量中读取配置
     host = os.environ.get('API_HOST', args.host)
@@ -42,29 +42,23 @@ def main():
     reload = os.environ.get('API_RELOAD', '').lower() == 'true' or args.reload
     workers = int(os.environ.get('API_WORKERS', args.workers))
     
-    logger.info(f"最终配置: host={host}, port={port}, reload={reload}, workers={workers}")
+    logger.info(f"正在启动AI-Sound TTS API服务")
+    logger.info(f"配置: host={host}, port={port}, reload={reload}, workers={workers}")
     
-    # 加载TTS模型 - 预热
+    # 启动服务 - 使用新架构的应用
     try:
-        from tts.engine import MegaTTSEngine
-        model_path = os.environ.get('TTS_MODEL_PATH', 'data/checkpoints/megatts3_base.pth')
-        use_gpu = os.environ.get('USE_GPU', '1') == '1'
-        device_id = int(os.environ.get('DEVICE_ID', '0'))
-        
-        logger.info(f"预加载TTS模型: {model_path}, use_gpu={use_gpu}, device_id={device_id}")
-        engine = MegaTTSEngine(model_path=model_path, use_gpu=use_gpu, device_id=device_id)
-        logger.info(f"TTS模型加载成功")
+        uvicorn.run(
+            "src.api.app:app",  # 使用新架构的应用入口
+            host=host,
+            port=port,
+            reload=reload,
+            workers=workers if not reload else 1,
+            log_level="info"
+        )
     except Exception as e:
-        logger.error(f"TTS模型加载失败: {str(e)}")
-    
-    # 启动服务
-    uvicorn.run(
-        "src.api.server:app",
-        host=host,
-        port=port,
-        reload=reload,
-        workers=workers
-    )
+        logger.error(f"启动API服务失败: {e}")
+        raise
+
 
 if __name__ == "__main__":
     main()

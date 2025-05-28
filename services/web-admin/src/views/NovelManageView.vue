@@ -222,7 +222,7 @@
 import { defineComponent, ref, reactive, onMounted, computed, h, resolveComponent } from 'vue';
 import { message, Modal } from 'ant-design-vue';
 import { useRouter } from 'vue-router';
-import { useApiStore } from '@/store/api';
+// 移除旧的 store 引用
 import { 
   InboxOutlined, 
   DownOutlined, 
@@ -238,7 +238,7 @@ export default defineComponent({
   },
   setup() {
     const router = useRouter();
-    const apiStore = useApiStore();
+    // 移除 apiStore 引用
     const novels = ref([]);
     const loading = ref(true);
     const currentFile = ref(null);

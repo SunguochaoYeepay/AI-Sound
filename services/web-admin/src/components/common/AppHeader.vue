@@ -2,7 +2,7 @@
   <a-layout-header class="header">
     <div class="header-content">
       <div class="title">
-        <span class="system-name">MegaTTS3</span>
+        <span class="system-name">AI-Sound</span>
         <span class="version">v1.0.0</span>
       </div>
       

@@ -297,7 +297,7 @@
 <script>
 import { defineComponent, ref, reactive, onMounted, watch } from 'vue';
 import { message } from 'ant-design-vue';
-import { useApiStore } from '@/store/api';
+import { ttsAPI } from '../services/api';
 import { useRoute, useRouter } from 'vue-router';
 import PageHeader from '@/components/common/PageHeader.vue';
 import { 
@@ -317,7 +317,7 @@ export default defineComponent({
     DownloadOutlined
   },
   setup() {
-    const apiStore = useApiStore();
+    // 移除 apiStore 引用
     const route = useRoute();
     const router = useRouter();
     

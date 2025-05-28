@@ -1,19 +1,31 @@
+# FastAPI核心依赖
 fastapi>=0.104.1
 uvicorn>=0.24.0
 python-multipart>=0.0.6
 pydantic>=2.4.2
+pydantic-settings>=2.0.0
+
+# 基础工具
 numpy>=1.24.0
-scipy>=1.10.0
-torch>=2.0.0
-torchaudio>=2.0.0
-librosa>=0.10.0
 soundfile>=0.12.1
 pydub>=0.25.1
 psutil>=5.9.0
-redis>=4.6.0
 jieba>=0.42.1
 tqdm>=4.66.1
-# 添加适配器依赖
+
+# 数据库依赖
+motor>=3.3.0
+pymongo>=4.5.0
+
+# HTTP客户端和异步IO
 httpx>=0.24.0
-asyncio>=3.4.3
 aiofiles>=0.8.0
+
+# WebSocket依赖
+websockets>=11.0.0
+
+# 日志依赖
+loguru>=0.7.0
+
+# 缓存依赖（可选）
+redis>=4.6.0

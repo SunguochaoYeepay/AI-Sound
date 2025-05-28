@@ -1,0 +1,14 @@
+{
+  "megatts3": {
+    "speed": 1,
+    "pitch": 0,
+    "volume": 1,
+    "emotion": "neutral",
+    "sdp_ratio": 0.2
+  },
+  "espnet": {
+    "speed": 1,
+    "pitch": 0,
+    "volume": 1
+  }
+}

@@ -1,6 +1,6 @@
 <template>
   <div class="dashboard">
-    <page-header title="系统控制台" subtitle="MegaTTS3 系统状态与任务监控" />
+    <page-header title="系统控制台" subtitle="AI-Sound 语音合成系统状态与任务监控" />
     
     <a-row :gutter="16">
       <a-col :span="12">
@@ -142,7 +142,7 @@
 
 <script>
 import { defineComponent, ref, onMounted } from 'vue';
-import { useApiStore } from '@/store/api';
+import { engineAPI, systemAPI } from '../services/api';
 import PageHeader from '@/components/common/PageHeader.vue';
 import axios from 'axios'; // 添加axios导入
 import { 
@@ -170,7 +170,7 @@ export default defineComponent({
     CloudServerOutlined
   },
   setup() {
-    const apiStore = useApiStore();
+    // 移除 apiStore 引用
     const apiStatus = ref(false);
     const loading = ref(false);
     const loadingEngines = ref(false);
@@ -232,11 +232,11 @@ export default defineComponent({
     const checkApiStatus = async () => {
       loading.value = true;
       try {
-        const result = await apiStore.checkHealth();
-        apiStatus.value = result.status === 'ok';
+        await systemAPI.healthCheck();
+        apiStatus.value = true;
       } catch (error) {
         apiStatus.value = false;
-        console.error('API状态检查失败', error);
+        console.error('API状态检查失败:', error);
       } finally {
         loading.value = false;
       }
@@ -246,9 +246,10 @@ export default defineComponent({
     const getSystemInfo = async () => {
       loading.value = true;
       try {
-        systemInfo.value = await apiStore.getSystemInfo();
+        const response = await systemAPI.getSystemInfo();
+        systemInfo.value = response.data || {};
       } catch (error) {
-        console.error('获取系统信息失败', error);
+        console.error('获取系统信息失败:', error);
       } finally {
         loading.value = false;
       }
@@ -258,9 +259,10 @@ export default defineComponent({
     const getStats = async () => {
       loading.value = true;
       try {
-        stats.value = await apiStore.getStats();
+        const response = await systemAPI.getSystemStats();
+        stats.value = response.data || {};
       } catch (error) {
-        console.error('获取统计信息失败', error);
+        console.error('获取统计信息失败:', error);
       } finally {
         loading.value = false;
       }
@@ -270,9 +272,23 @@ export default defineComponent({
     const getRecentTasks = async () => {
       loading.value = true;
       try {
-        recentTasks.value = await apiStore.getRecentTasks(5);
+        // 暂时使用模拟数据
+        recentTasks.value = [
+          {
+            id: 'task_001',
+            type: '语音合成',
+            created_at: '2024-01-15 10:30:00',
+            status: 'completed'
+          },
+          {
+            id: 'task_002',
+            type: '小说处理',
+            created_at: '2024-01-15 09:15:00',
+            status: 'processing'
+          }
+        ];
       } catch (error) {
-        console.error('获取最近任务失败', error);
+        console.error('获取最近任务失败:', error);
       } finally {
         loading.value = false;
       }
@@ -282,22 +298,32 @@ export default defineComponent({
     const checkEnginesHealth = async () => {
       loadingEngines.value = true;
       try {
-        // 使用替代的健康检查API端点
-        const baseUrl = apiStore.$state.baseUrl;
-        const response = await axios.get(`${baseUrl}/health/engines`);
+        // 使用新的API服务获取引擎列表
+        const response = await engineAPI.getEngines();
+        const engines = response.data || [];
         
-        // 格式化响应数据
-        if (response.data && response.data.engines) {
-          enginesHealth.value = response.data.engines || {
-            megatts3: { healthy: false, message: '未检查', last_check: Date.now() / 1000 },
-            espnet: { healthy: false, message: '未检查', last_check: Date.now() / 1000 }
-          };
-        } else {
-          enginesHealth.value = {
-            megatts3: { healthy: false, message: '数据格式错误', last_check: Date.now() / 1000 },
-            espnet: { healthy: false, message: '数据格式错误', last_check: Date.now() / 1000 }
-          };
+        // 重置引擎状态
+        const newHealth = {};
+        
+        // 为每个引擎检查健康状态
+        for (const engine of engines) {
+          try {
+            await engineAPI.checkHealth(engine.id);
+            newHealth[engine.id] = {
+              healthy: true,
+              message: '运行正常',
+              last_check: Date.now() / 1000
+            };
+          } catch (error) {
+            newHealth[engine.id] = {
+              healthy: false,
+              message: '连接失败',
+              last_check: Date.now() / 1000
+            };
+          }
         }
+        
+        enginesHealth.value = newHealth;
       } catch (error) {
         console.error('获取引擎健康状态失败', error);
         // 失败时提供默认值

@@ -3,13 +3,15 @@ import { createRouter, createWebHistory } from 'vue-router'
 // 懒加载路由
 const TtsDemoView = () => import('../views/TtsDemoView.vue')
 const DashboardView = () => import('../views/DashboardView.vue')
+const EngineStatusView = () => import('../views/EngineStatusView.vue')
 const NovelProcessorView = () => import('../views/NovelProcessorView.vue')
 const TaskMonitorView = () => import('../views/TaskMonitorView.vue')
 const NovelManageView = () => import('../views/NovelManageView.vue')
-const SettingsView = () => import('../views/SettingsView.vue')
+const SystemSettingsView = () => import('../views/SystemSettingsView.vue')
 const AudioLibraryView = () => import('../views/AudioLibraryView.vue')
 const VoiceFeatureView = () => import('../views/VoiceFeatureView.vue')
 const VoiceListView = () => import('../views/VoiceListView.vue')
+const VoiceUploadView = () => import('../views/VoiceUploadView.vue')
 const CharacterMapperView = () => import('../views/CharacterMapperView.vue')
 
 const routes = [
@@ -18,6 +20,12 @@ const routes = [
     name: 'Dashboard',
     component: DashboardView,
     meta: { title: '控制台' }
+  },
+  {
+    path: '/engines',
+    name: 'EngineStatus',
+    component: EngineStatusView,
+    meta: { title: '引擎状态' }
   },
   {
     path: '/tts',
@@ -62,6 +70,12 @@ const routes = [
     meta: { title: '声音库' }
   },
   {
+    path: '/voice-upload',
+    name: 'VoiceUpload',
+    component: VoiceUploadView,
+    meta: { title: '声音上传' }
+  },
+  {
     path: '/character-mapper',
     name: 'CharacterMapper',
     component: CharacterMapperView,
@@ -69,8 +83,8 @@ const routes = [
   },
   {
     path: '/settings',
-    name: 'Settings',
-    component: SettingsView,
+    name: 'SystemSettings',
+    component: SystemSettingsView,
     meta: { title: '系统设置' }
   },
   {
@@ -87,7 +101,7 @@ const router = createRouter({
 // 路由前置守卫，设置页面标题
 router.beforeEach((to, from, next) => {
   if (to.meta.title) {
-    document.title = `MegaTTS3 - ${to.meta.title}`
+    document.title = `AI-Sound - ${to.meta.title}`
   }
   next()
 })

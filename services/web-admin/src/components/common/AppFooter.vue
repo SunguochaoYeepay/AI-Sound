@@ -1,6 +1,6 @@
 <template>
   <a-layout-footer class="footer">
-    MegaTTS3 &copy; {{ currentYear }} | 基于深度学习的文本转语音系统
+    AI-Sound &copy; {{ currentYear }} | 智能语音合成系统
   </a-layout-footer>
 </template>
 

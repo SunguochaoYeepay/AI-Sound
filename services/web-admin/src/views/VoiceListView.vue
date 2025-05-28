@@ -225,7 +225,7 @@
 import { defineComponent, ref, reactive, computed, onMounted, onUnmounted, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 import { message, Modal } from 'ant-design-vue';
-import axios from '../plugins/axios';
+import { voiceAPI, ttsAPI } from '../services/api';
 import WaveSurfer from 'wavesurfer.js';
 import { 
   PlusOutlined,
@@ -283,6 +283,26 @@ export default defineComponent({
       description: ''
     });
     
+    // Base64转Blob工具函数
+    const base64ToBlob = (base64, mimeType) => {
+      const byteCharacters = atob(base64);
+      const byteArrays = [];
+      
+      for (let offset = 0; offset < byteCharacters.length; offset += 512) {
+        const slice = byteCharacters.slice(offset, offset + 512);
+        
+        const byteNumbers = new Array(slice.length);
+        for (let i = 0; i < slice.length; i++) {
+          byteNumbers[i] = slice.charCodeAt(i);
+        }
+        
+        const byteArray = new Uint8Array(byteNumbers);
+        byteArrays.push(byteArray);
+      }
+      
+      return new Blob(byteArrays, { type: mimeType });
+    };
+    
     // 标签选项
     const tagOptions = [
       { value: 'male', label: '男性' },
@@ -327,14 +347,11 @@ export default defineComponent({
     const fetchVoiceList = async () => {
       loading.value = true;
       try {
-        const response = await axios.get('/api/voices/list');
-        if (response.data && response.data.success) {
-          voiceList.value = response.data.voices || [];
-        } else {
-          message.error('获取声音列表失败: ' + (response.data.message || '未知错误'));
-        }
+        const response = await voiceAPI.getVoices();
+        voiceList.value = response.data || [];
       } catch (error) {
-        message.error('获取声音列表失败: ' + (error.response?.data?.message || error.message || '未知错误'));
+        console.error('获取声音列表失败:', error);
+        message.error('获取声音列表失败: ' + (error.response?.data?.message || error.message));
       } finally {
         loading.value = false;
       }
@@ -393,19 +410,19 @@ export default defineComponent({
       
       try {
         // 加载预览音频
-        const response = await axios.get(`/api/voices/${voice.id}/preview`);
-        if (response.data && response.data.success) {
-          const audioUrl = response.data.audio_url || response.data.audio_base64;
-          if (audioUrl) {
-            waveSurfer.value.load(audioUrl);
-          } else {
-            message.warning('没有可用的预览音频');
-          }
+        const response = await voiceAPI.previewVoice(voice.id, '这是一段用于测试声音的文本');
+        if (response && response.audio_url) {
+          waveSurfer.value.load(response.audio_url);
+        } else if (response && response.audio_base64) {
+          const blob = base64ToBlob(response.audio_base64, 'audio/wav');
+          const audioUrl = URL.createObjectURL(blob);
+          waveSurfer.value.load(audioUrl);
         } else {
-          message.error('获取预览音频失败: ' + (response.data.message || '未知错误'));
+          message.warning('没有可用的预览音频');
         }
       } catch (error) {
-        message.error('获取预览音频失败: ' + (error.response?.data?.message || error.message || '未知错误'));
+        console.error('获取预览音频失败:', error);
+        message.error('获取预览音频失败: ' + (error.response?.data?.message || error.message));
       }
     };
     
@@ -434,30 +451,31 @@ export default defineComponent({
       
       try {
         // 调用API生成预览音频
-        const response = await axios.post('/api/tts/text', {
+        const response = await ttsAPI.synthesize({
           text: previewText.value,
-          voice_id: selectedVoice.value.id
+          voice_id: selectedVoice.value.id,
+          format: 'wav',
+          return_base64: true
         });
         
-        if (response.data && response.data.success) {
-          const audioUrl = response.data.audio_url || response.data.audio_base64;
-          if (audioUrl) {
-            // 重置并加载新音频
-            if (waveSurfer.value) {
-              waveSurfer.value.pause();
-              waveSurfer.value.load(audioUrl);
-              waveSurfer.value.on('ready', () => {
-                waveSurfer.value.play();
-              });
-            }
-          } else {
-            message.warning('生成的音频无法播放');
+        if (response && response.audio_base64) {
+          const blob = base64ToBlob(response.audio_base64, 'audio/wav');
+          const audioUrl = URL.createObjectURL(blob);
+          
+          // 重置并加载新音频
+          if (waveSurfer.value) {
+            waveSurfer.value.pause();
+            waveSurfer.value.load(audioUrl);
+            waveSurfer.value.on('ready', () => {
+              waveSurfer.value.play();
+            });
           }
         } else {
-          message.error('生成预览音频失败: ' + (response.data.message || '未知错误'));
+          message.warning('生成的音频无法播放');
         }
       } catch (error) {
-        message.error('生成预览音频失败: ' + (error.response?.data?.message || error.message || '未知错误'));
+        console.error('生成预览音频失败:', error);
+        message.error('生成预览音频失败: ' + (error.response?.data?.message || error.message));
       } finally {
         generatingPreview.value = false;
       }
@@ -486,7 +504,7 @@ export default defineComponent({
       
       try {
         // 调用API更新声音信息
-        const response = await axios.put(`/api/voices/${editForm.id}`, {
+        const response = await voiceAPI.updateVoice(editForm.id, {
           name: editForm.name,
           attributes: {
             gender: editForm.gender,
@@ -496,30 +514,27 @@ export default defineComponent({
           description: editForm.description
         });
         
-        if (response.data && response.data.success) {
-          message.success('声音信息更新成功');
-          editModalVisible.value = false;
-          
-          // 更新本地列表
-          const index = voiceList.value.findIndex(voice => voice.id === editForm.id);
-          if (index !== -1) {
-            voiceList.value[index] = {
-              ...voiceList.value[index],
-              name: editForm.name,
-              attributes: {
-                ...voiceList.value[index].attributes,
-                gender: editForm.gender,
-                age_group: editForm.age_group
-              },
-              tags: [...editForm.tags],
-              description: editForm.description
-            };
-          }
-        } else {
-          message.error('更新声音信息失败: ' + (response.data.message || '未知错误'));
+        message.success('声音信息更新成功');
+        editModalVisible.value = false;
+        
+        // 更新本地列表
+        const index = voiceList.value.findIndex(voice => voice.id === editForm.id);
+        if (index !== -1) {
+          voiceList.value[index] = {
+            ...voiceList.value[index],
+            name: editForm.name,
+            attributes: {
+              ...voiceList.value[index].attributes,
+              gender: editForm.gender,
+              age_group: editForm.age_group
+            },
+            tags: [...editForm.tags],
+            description: editForm.description
+          };
         }
       } catch (error) {
-        message.error('更新声音信息失败: ' + (error.response?.data?.message || error.message || '未知错误'));
+        console.error('更新声音信息失败:', error);
+        message.error('更新声音信息失败: ' + (error.response?.data?.message || error.message));
       } finally {
         updating.value = false;
       }
@@ -536,18 +551,14 @@ export default defineComponent({
         async onOk() {
           try {
             // 调用API删除声音
-            const response = await axios.delete(`/api/voices/${voice.id}`);
+            await voiceAPI.deleteVoice(voice.id);
+            message.success('声音已删除');
             
-            if (response.data && response.data.success) {
-              message.success('声音已删除');
-              
-              // 从列表中移除
-              voiceList.value = voiceList.value.filter(item => item.id !== voice.id);
-            } else {
-              message.error('删除声音失败: ' + (response.data.message || '未知错误'));
-            }
+            // 从列表中移除
+            voiceList.value = voiceList.value.filter(item => item.id !== voice.id);
           } catch (error) {
-            message.error('删除声音失败: ' + (error.response?.data?.message || error.message || '未知错误'));
+            console.error('删除声音失败:', error);
+            message.error('删除声音失败: ' + (error.response?.data?.message || error.message));
           }
         }
       });
@@ -562,9 +573,9 @@ export default defineComponent({
       });
     };
     
-    // 前往声纹提取页面
+    // 前往声音上传页面
     const goToVoiceFeature = () => {
-      router.push('/voice-feature');
+      router.push('/voice-upload');
     };
     
     // 页面加载时获取声音列表

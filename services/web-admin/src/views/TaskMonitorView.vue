@@ -190,7 +190,7 @@
                 <audio 
                   controls 
                   style="width: 100%" 
-                  :src="`${apiStore.baseUrl}/api/download/${currentTask.result.preview_file}`"
+                  :src="`/api/tts/download/${currentTask.result.preview_file}`"
                 ></audio>
                 <div class="preview-info">
                   <p>总生成章节: {{ currentTask.result.completed_chapters || 0 }}</p>
@@ -217,7 +217,7 @@ import {
   DownloadOutlined
 } from '@ant-design/icons-vue';
 import { message } from 'ant-design-vue';
-import { useApiStore } from '@/store/api';
+import { ttsAPI } from '../services/api';
 
 export default defineComponent({
   name: 'TaskMonitorView',
@@ -228,7 +228,7 @@ export default defineComponent({
   setup() {
     const route = useRoute();
     const router = useRouter();
-    const apiStore = useApiStore();
+    // 移除 apiStore 引用
     
     // 状态变量
     const loading = ref(false);
@@ -339,19 +339,11 @@ export default defineComponent({
     const loadTasks = async () => {
       loading.value = true;
       try {
-        const response = await apiStore.getAllTasks();
-        if (response && Array.isArray(response.tasks)) {
-          tasks.value = response.tasks.map(task => ({
-            taskId: task.task_id,
-            type: task.type === 'novel' ? '小说处理' : '语音合成',
-            status: task.status,
-            progress: task.progress || 0,
-            created_at: task.created_at,
-            updated_at: task.updated_at
-          }));
-        }
+        const response = await ttsAPI.getTasks();
+        tasks.value = response.data || [];
       } catch (error) {
-        console.error('加载任务列表失败', error);
+        console.error('加载任务列表失败:', error);
+        message.error('加载任务列表失败: ' + (error.response?.data?.message || error.message));
       } finally {
         loading.value = false;
       }
@@ -361,19 +353,18 @@ export default defineComponent({
     const viewTaskDetail = async (taskId) => {
       detailLoading.value = true;
       try {
-        const taskDetail = await apiStore.getTaskDetails(taskId);
-        if (taskDetail) {
-          currentTask.value = taskDetail;
-          
-          // 开始轮询，如果任务正在处理中
-          if (taskDetail.status === 'processing') {
-            startPolling();
-          } else {
-            stopPolling();
-          }
+        const response = await ttsAPI.getTaskStatus(taskId);
+        currentTask.value = response.data;
+        
+        // 开始轮询，如果任务正在处理中
+        if (response.data.status === 'processing') {
+          startPolling();
+        } else {
+          stopPolling();
         }
       } catch (error) {
-        console.error('加载任务详情失败', error);
+        console.error('加载任务详情失败:', error);
+        message.error('加载任务详情失败: ' + (error.response?.data?.message || error.message));
       } finally {
         detailLoading.value = false;
       }
@@ -384,20 +375,18 @@ export default defineComponent({
       if (!currentTask.value) return;
       
       try {
-        const taskDetail = await apiStore.getTaskDetails(currentTask.value.taskId);
-        if (taskDetail) {
-          currentTask.value = taskDetail;
+        const response = await ttsAPI.getTaskStatus(currentTask.value.task_id || currentTask.value.taskId);
+        currentTask.value = response.data;
+        
+        // 如果任务已经完成或失败，停止轮询
+        if (response.data.status !== 'processing' && response.data.status !== 'pending') {
+          stopPolling();
           
-          // 如果任务已经完成或失败，停止轮询
-          if (taskDetail.status !== 'processing' && taskDetail.status !== 'pending') {
-            stopPolling();
-            
-            // 也刷新任务列表，反映新状态
-            loadTasks();
-          }
+          // 也刷新任务列表，反映新状态
+          loadTasks();
         }
       } catch (error) {
-        console.error('刷新任务详情失败', error);
+        console.error('刷新任务详情失败:', error);
       }
     };
     
@@ -410,9 +399,22 @@ export default defineComponent({
     };
     
     // 下载任务结果
-    const downloadResult = (taskId) => {
-      const downloadUrl = `${apiStore.baseUrl}/api/download/${taskId}.zip`;
-      window.open(downloadUrl, '_blank');
+    const downloadResult = async (taskId) => {
+      try {
+        const response = await ttsAPI.downloadTask(taskId);
+        // 创建下载链接
+        const url = window.URL.createObjectURL(new Blob([response.data]));
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', `task_${taskId}.zip`);
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(url);
+      } catch (error) {
+        console.error('下载任务结果失败:', error);
+        message.error('下载任务结果失败: ' + (error.response?.data?.message || error.message));
+      }
     };
     
     // 开始轮询
@@ -464,7 +466,6 @@ export default defineComponent({
     });
     
     return {
-      apiStore,
       loading,
       detailLoading,
       activeTab,

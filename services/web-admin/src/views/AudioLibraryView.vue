@@ -60,7 +60,7 @@
 <script>
 import { defineComponent, ref, onMounted } from 'vue';
 import { message } from 'ant-design-vue';
-import { useApiStore } from '@/store/api';
+// 移除旧的 store 引用
 import { SoundOutlined, DownloadOutlined, DeleteOutlined } from '@ant-design/icons-vue';
 
 export default defineComponent({
@@ -71,7 +71,7 @@ export default defineComponent({
     DeleteOutlined
   },
   setup() {
-    const apiStore = useApiStore();
+    // 移除 apiStore 引用
     const audioFiles = ref([]);
     const loading = ref(true);
     const playerVisible = ref(false);

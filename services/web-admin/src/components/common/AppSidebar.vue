@@ -6,7 +6,7 @@
     class="sidebar"
   >
     <div class="logo">
-      <span v-if="!collapsed" class="logo-text">MegaTTS3</span>
+      <span v-if="!collapsed" class="logo-text">AI-Sound</span>
     </div>
     
     <a-menu
@@ -18,6 +18,11 @@
       <a-menu-item key="dashboard" @click="() => router.push('/')">
         <template #icon><dashboard-outlined /></template>
         <span>控制台</span>
+      </a-menu-item>
+      
+      <a-menu-item key="engines" @click="() => router.push('/engines')">
+        <template #icon><api-outlined /></template>
+        <span>引擎状态</span>
       </a-menu-item>
       
       <!-- 声音管理分组 -->
@@ -106,7 +111,8 @@ import {
   ScheduleOutlined,
   AudioOutlined,
   UnorderedListOutlined,
-  UserSwitchOutlined
+  UserSwitchOutlined,
+  ApiOutlined
 } from '@ant-design/icons-vue';
 
 export default defineComponent({
@@ -123,7 +129,8 @@ export default defineComponent({
     ScheduleOutlined,
     AudioOutlined,
     UnorderedListOutlined,
-    UserSwitchOutlined
+    UserSwitchOutlined,
+    ApiOutlined
   },
   setup() {
     const collapsed = ref(false);
@@ -141,6 +148,8 @@ export default defineComponent({
       
       if (path === '/' || path === '/dashboard') {
         selectedKeys.value = ['dashboard'];
+      } else if (path.startsWith('/engines')) {
+        selectedKeys.value = ['engines'];
       } else if (path.startsWith('/tts')) {
         selectedKeys.value = ['tts'];
         openKeys.value = ['voice-management'];

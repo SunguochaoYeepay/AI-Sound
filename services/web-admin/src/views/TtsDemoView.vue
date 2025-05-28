@@ -22,12 +22,15 @@
                     v-model:value="formState.voiceId"
                     placeholder="选择音色"
                     :disabled="processing"
+                    :loading="loadingVoices"
                   >
-                    <a-select-option value="female_young">年轻女声</a-select-option>
-                    <a-select-option value="female_mature">成熟女声</a-select-option>
-                    <a-select-option value="male_young">年轻男声</a-select-option>
-                    <a-select-option value="male_middle">中年男声</a-select-option>
-                    <a-select-option value="male_elder">老年男声</a-select-option>
+                    <a-select-option 
+                      v-for="voice in availableVoices" 
+                      :key="voice.id" 
+                      :value="voice.id"
+                    >
+                      {{ voice.name }} ({{ voice.language }})
+                    </a-select-option>
                   </a-select>
                 </a-form-item>
               </a-col>
@@ -170,7 +173,7 @@
 <script>
 import { defineComponent, ref, reactive, onMounted, onBeforeUnmount, h } from 'vue';
 import { message } from 'ant-design-vue';
-import { useApiStore } from '@/store/api';
+import { ttsAPI, voiceAPI } from '../services/api';
 import { 
   SoundOutlined, 
   PlayCircleOutlined, 
@@ -192,14 +195,14 @@ export default defineComponent({
     UploadOutlined
   },
   setup() {
-    const apiStore = useApiStore();
+    // 移除旧的API store
     const waveformRef = ref(null);
     const wavesurfer = ref(null);
     const voiceFileRef = ref(null);
     
     // 表单状态
     const formState = reactive({
-      text: '你好，我是MegaTTS3语音合成系统，很高兴为您服务！',
+      text: '你好，我是AI-Sound语音合成系统，很高兴为您服务！',
       voiceId: 'female_young',
       emotionType: 'neutral',
       emotionIntensity: 0.5,
@@ -215,6 +218,10 @@ export default defineComponent({
     const audioDuration = ref(0);
     const isPlaying = ref(false);
     const processing = ref(false);
+    
+    // 声音列表状态
+    const availableVoices = ref([]);
+    const loadingVoices = ref(false);
     
     // 新增：声纹文件状态
     const voiceFile = ref(null);
@@ -293,8 +300,17 @@ export default defineComponent({
           formData.append('voice_file', voiceFile.value);
         }
         
-        // 使用textToSpeechMultipart发送请求
-        const response = await apiStore.textToSpeechMultipart(formData);
+        // 使用新的TTS API发送请求
+        const response = await ttsAPI.synthesize({
+          text: formState.text,
+          voice_id: formState.voiceId,
+          emotion_type: formState.emotionType,
+          emotion_intensity: formState.emotionIntensity,
+          speed_scale: formState.speedScale,
+          pitch_scale: formState.pitchScale,
+          format: 'wav',
+          return_base64: true
+        });
         
         if (response && response.audio_base64) {
           audioBase64.value = response.audio_base64;
@@ -363,7 +379,7 @@ export default defineComponent({
     
     // 重置表单
     const resetForm = () => {
-      formState.text = '你好，我是MegaTTS3语音合成系统，很高兴为您服务！';
+      formState.text = '你好，我是AI-Sound语音合成系统，很高兴为您服务！';
       formState.voiceId = 'female_young';
       formState.emotionType = 'neutral';
       formState.emotionIntensity = 0.5;
@@ -397,7 +413,32 @@ export default defineComponent({
       return emotionMap[emotionType] || emotionType;
     };
     
+    // 加载可用声音列表
+    const loadAvailableVoices = async () => {
+      loadingVoices.value = true;
+      try {
+        const response = await voiceAPI.getVoices();
+        availableVoices.value = response.data || [];
+        
+        // 如果有声音且当前选中的声音不在列表中，选择第一个
+        if (availableVoices.value.length > 0) {
+          const currentVoiceExists = availableVoices.value.some(v => v.id === formState.voiceId);
+          if (!currentVoiceExists) {
+            formState.voiceId = availableVoices.value[0].id;
+          }
+        }
+      } catch (error) {
+        console.error('加载声音列表失败:', error);
+        message.error('加载声音列表失败');
+      } finally {
+        loadingVoices.value = false;
+      }
+    };
+    
     onMounted(() => {
+      // 加载声音列表
+      loadAvailableVoices();
+      
       // 初始化波形图（如果有默认音频）
       if (audioUrl.value) {
         initWaveSurfer();
@@ -423,6 +464,8 @@ export default defineComponent({
       audioDuration,
       isPlaying,
       processing,
+      availableVoices,
+      loadingVoices,
       generateSpeech,
       togglePlay,
       downloadAudio,

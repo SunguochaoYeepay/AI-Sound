@@ -169,7 +169,7 @@
 <script>
 import { defineComponent, ref, reactive, computed, onMounted } from 'vue';
 import { message, Modal } from 'ant-design-vue';
-import axios from '../plugins/axios';
+import { characterAPI, voiceAPI } from '../services/api';
 import {
   PlusOutlined,
   EditOutlined,
@@ -268,14 +268,11 @@ export default defineComponent({
     const fetchCharacters = async () => {
       loading.value = true;
       try {
-        const response = await axios.get('/api/characters');
-        if (response.data && response.data.success) {
-          characterList.value = response.data.characters || [];
-        } else {
-          message.error('获取角色列表失败: ' + (response.data.message || '未知错误'));
-        }
+        const response = await characterAPI.getCharacters();
+        characterList.value = response.data || [];
       } catch (error) {
-        message.error('获取角色列表失败: ' + (error.response?.data?.message || error.message || '未知错误'));
+        console.error('获取角色列表失败:', error);
+        message.error('获取角色列表失败: ' + (error.response?.data?.message || error.message));
       } finally {
         loading.value = false;
       }
@@ -285,14 +282,11 @@ export default defineComponent({
     const fetchVoices = async () => {
       voicesLoading.value = true;
       try {
-        const response = await axios.get('/api/voices/list');
-        if (response.data && response.data.success) {
-          voiceList.value = response.data.voices || [];
-        } else {
-          message.error('获取声音列表失败: ' + (response.data.message || '未知错误'));
-        }
+        const response = await voiceAPI.getVoices();
+        voiceList.value = response.data || [];
       } catch (error) {
-        message.error('获取声音列表失败: ' + (error.response?.data?.message || error.message || '未知错误'));
+        console.error('获取声音列表失败:', error);
+        message.error('获取声音列表失败: ' + (error.response?.data?.message || error.message));
       } finally {
         voicesLoading.value = false;
       }
@@ -321,23 +315,20 @@ export default defineComponent({
       
       try {
         // 调用API创建角色
-        const response = await axios.post('/api/characters/map', {
+        await characterAPI.createCharacter({
           name: characterForm.name,
           voice_id: characterForm.voice_id,
           attributes: characterForm.attributes
         });
         
-        if (response.data && response.data.success) {
-          message.success('角色创建成功');
-          modalVisible.value = false;
-          
-          // 刷新角色列表
-          fetchCharacters();
-        } else {
-          message.error('创建角色失败: ' + (response.data.message || '未知错误'));
-        }
+        message.success('角色创建成功');
+        modalVisible.value = false;
+        
+        // 刷新角色列表
+        fetchCharacters();
       } catch (error) {
-        message.error('创建角色失败: ' + (error.response?.data?.message || error.message || '未知错误'));
+        console.error('创建角色失败:', error);
+        message.error('创建角色失败: ' + (error.response?.data?.message || error.message));
       } finally {
         modalLoading.value = false;
       }
@@ -373,23 +364,20 @@ export default defineComponent({
       
       try {
         // 调用API更新角色
-        const response = await axios.put(`/api/characters/${encodeURIComponent(editingCharacterName.value)}`, {
+        await characterAPI.updateCharacter(editingCharacterName.value, {
           name: characterForm.name,
           voice_id: characterForm.voice_id,
           attributes: characterForm.attributes
         });
         
-        if (response.data && response.data.success) {
-          message.success('角色更新成功');
-          modalVisible.value = false;
-          
-          // 刷新角色列表
-          fetchCharacters();
-        } else {
-          message.error('更新角色失败: ' + (response.data.message || '未知错误'));
-        }
+        message.success('角色更新成功');
+        modalVisible.value = false;
+        
+        // 刷新角色列表
+        fetchCharacters();
       } catch (error) {
-        message.error('更新角色失败: ' + (error.response?.data?.message || error.message || '未知错误'));
+        console.error('更新角色失败:', error);
+        message.error('更新角色失败: ' + (error.response?.data?.message || error.message));
       } finally {
         modalLoading.value = false;
       }
@@ -406,18 +394,14 @@ export default defineComponent({
         async onOk() {
           try {
             // 调用API删除角色
-            const response = await axios.delete(`/api/characters/${encodeURIComponent(character.name)}`);
+            await characterAPI.deleteCharacter(character.id || character.name);
+            message.success('角色已删除');
             
-            if (response.data && response.data.success) {
-              message.success('角色已删除');
-              
-              // 从列表中移除
-              characterList.value = characterList.value.filter(item => item.name !== character.name);
-            } else {
-              message.error('删除角色失败: ' + (response.data.message || '未知错误'));
-            }
+            // 从列表中移除
+            characterList.value = characterList.value.filter(item => item.name !== character.name);
           } catch (error) {
-            message.error('删除角色失败: ' + (error.response?.data?.message || error.message || '未知错误'));
+            console.error('删除角色失败:', error);
+            message.error('删除角色失败: ' + (error.response?.data?.message || error.message));
           }
         }
       });
@@ -454,33 +438,36 @@ export default defineComponent({
       analyzedCharacters.value = [];
       
       try {
-        // 调用API分析小说角色
-        const response = await axios.post('/api/characters/analyze', {
-          text: novelText.value
-        });
+        // 简单的本地角色识别（正则匹配）
+        const text = novelText.value;
+        const characterPattern = /[“”「」‘’]([^“”「」‘’。，！？]{1,10})[“”「」‘’]/g;
+        const characters = new Map();
         
-        if (response.data && response.data.success) {
-          // 处理分析结果
-          const characters = response.data.characters || {};
-          
-          // 转换为数组并按出现频率排序
-          const characterArray = Object.entries(characters).map(([name, count]) => ({
-            name,
-            count
-          })).sort((a, b) => b.count - a.count);
-          
-          analyzedCharacters.value = characterArray;
-          
-          if (characterArray.length === 0) {
-            message.info('未识别出任何角色');
-          } else {
-            message.success(`成功识别出 ${characterArray.length} 个角色`);
+        let match;
+        while ((match = characterPattern.exec(text)) !== null) {
+          const name = match[1].trim();
+          if (name.length > 0 && name.length <= 10) {
+            characters.set(name, (characters.get(name) || 0) + 1);
           }
+        }
+        
+        // 转换为数组并按出现频率排序
+        const characterArray = Array.from(characters.entries())
+          .map(([name, count]) => ({ name, count }))
+          .filter(char => char.count >= 2) // 过滤出现次数太少的
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 20); // 最多显示20个角色
+        
+        analyzedCharacters.value = characterArray;
+        
+        if (characterArray.length === 0) {
+          message.info('未识别出任何角色，请检查文本格式');
         } else {
-          message.error('分析角色失败: ' + (response.data.message || '未知错误'));
+          message.success(`成功识别出 ${characterArray.length} 个角色`);
         }
       } catch (error) {
-        message.error('分析角色失败: ' + (error.response?.data?.message || error.message || '未知错误'));
+        console.error('分析角色失败:', error);
+        message.error('分析角色失败: ' + error.message);
       } finally {
         analyzing.value = false;
       }
@@ -512,74 +499,55 @@ export default defineComponent({
       try {
         message.loading('正在为角色分配声音...', 0);
         
-        // 获取声音推荐
-        const response = await axios.post('/api/characters/analyze', {
-          text: novelText.value,
-          suggest_voices: true
-        });
+        // 逐个映射角色
+        let successCount = 0;
         
-        if (response.data && response.data.success) {
-          const suggestions = response.data.suggestions || {};
+        for (const character of analyzedCharacters.value) {
+          // 根据角色名称推测性别
+          const nameHint = character.name;
+          const isMale = /先生|男|爸|哥|弟|叔|爷|王|李|张|刘/.test(nameHint);
+          const isFemale = /女士|女|妈|姐|妹|婶|奶|娜|莉|琳|玉/.test(nameHint);
           
-          // 逐个映射角色
-          let successCount = 0;
-          
-          for (const character of analyzedCharacters.value) {
-            // 获取推荐的声音或随机选择一个
-            let voiceId = null;
-            
-            if (suggestions[character.name] && suggestions[character.name].length > 0) {
-              // 使用推荐的第一个声音
-              voiceId = suggestions[character.name][0];
-            } else {
-              // 根据角色名称推测性别
-              const nameHint = character.name.toLowerCase();
-              const isMale = /先生|男|爸|哥|弟|叔|爷/.test(nameHint);
-              const isFemale = /女士|女|妈|姐|妹|婶|奶/.test(nameHint);
-              
-              // 筛选声音
-              const voices = voiceList.value.filter(v => {
-                if (isMale && v.attributes?.gender === 'male') return true;
-                if (isFemale && v.attributes?.gender === 'female') return true;
-                return false;
-              });
-              
-              if (voices.length > 0) {
-                // 随机选择一个合适的声音
-                voiceId = voices[Math.floor(Math.random() * voices.length)].id;
-              } else {
-                // 没有合适的声音，随机选择一个
-                voiceId = voiceList.value[Math.floor(Math.random() * voiceList.value.length)].id;
-              }
-            }
-            
-            // 创建角色映射
-            try {
-              await axios.post('/api/characters/map', {
-                name: character.name,
-                voice_id: voiceId
-              });
-              
-              successCount++;
-            } catch (error) {
-              console.error(`映射角色 ${character.name} 失败:`, error);
-            }
+          // 筛选声音
+          let voices = voiceList.value;
+          if (isMale) {
+            voices = voiceList.value.filter(v => v.attributes?.gender === 'male');
+          } else if (isFemale) {
+            voices = voiceList.value.filter(v => v.attributes?.gender === 'female');
           }
           
-          message.destroy();
-          if (successCount > 0) {
-            message.success(`成功映射 ${successCount} 个角色`);
-            fetchCharacters(); // 刷新角色列表
-          } else {
-            message.warning('没有成功映射任何角色');
+          if (voices.length === 0) {
+            voices = voiceList.value; // 如果没有匹配的，使用所有声音
           }
+          
+          // 随机选择一个声音
+          const voiceId = voices[Math.floor(Math.random() * voices.length)].id;
+          
+          // 创建角色映射
+          try {
+            await characterAPI.createCharacter({
+              name: character.name,
+              voice_id: voiceId,
+              attributes: isMale ? ['male'] : isFemale ? ['female'] : []
+            });
+            
+            successCount++;
+          } catch (error) {
+            console.error(`映射角色 ${character.name} 失败:`, error);
+          }
+        }
+        
+        message.destroy();
+        if (successCount > 0) {
+          message.success(`成功映射 ${successCount} 个角色`);
+          fetchCharacters(); // 刷新角色列表
         } else {
-          message.destroy();
-          message.error('获取声音推荐失败: ' + (response.data.message || '未知错误'));
+          message.warning('没有成功映射任何角色');
         }
       } catch (error) {
         message.destroy();
-        message.error('角色映射失败: ' + (error.response?.data?.message || error.message || '未知错误'));
+        console.error('角色映射失败:', error);
+        message.error('角色映射失败: ' + (error.response?.data?.message || error.message));
       }
     };
     

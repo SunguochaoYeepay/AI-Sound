@@ -1,7 +1,7 @@
 {
-  "name": "megatts3-web-admin",
+  "name": "ai-sound-web-admin",
   "version": "1.0.0",
-  "description": "MegaTTS3管理界面",
+  "description": "AI-Sound语音合成系统管理界面",
   "author": "",
   "private": true,
   "scripts": {
