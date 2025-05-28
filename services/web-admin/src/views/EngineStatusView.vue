@@ -314,7 +314,7 @@ const engineStats = computed(() => {
   }
   
   engines.value.forEach(engine => {
-    if (engine.status === 'running' && engine.health_status === 'healthy') {
+    if (engine.status === 'ready' || (engine.status === 'running' && engine.health_status === 'healthy')) {
       stats.online++
     } else if (engine.status === 'stopped') {
       stats.offline++
@@ -331,7 +331,15 @@ const refreshEngines = async () => {
   loading.value = true
   try {
     const response = await engineAPI.getEngines()
-    engines.value = response.data || []
+    // 修复数据映射，适配后端返回的数据结构
+    const rawEngines = response.data || []
+    engines.value = rawEngines.map(engine => ({
+      ...engine,
+      engine_type: engine.type, // 映射 type 到 engine_type
+      health_status: engine.status === 'ready' ? 'healthy' : 'unknown', // 映射状态
+      url: engine.config?.endpoint || 'N/A', // 从配置中获取URL
+      last_health_check: engine.last_health_check || engine.updated_at
+    }))
     message.success('引擎列表刷新成功')
   } catch (error) {
     console.error('获取引擎列表失败:', error)
@@ -465,7 +473,8 @@ const getEngineTypeName = (type) => {
 
 const getStatusBadge = (status) => {
   const badges = {
-    running: 'processing',
+    ready: 'processing',
+    running: 'processing', 
     stopped: 'default',
     error: 'error'
   }
@@ -474,6 +483,7 @@ const getStatusBadge = (status) => {
 
 const getStatusText = (status) => {
   const texts = {
+    ready: '就绪',
     running: '运行中',
     stopped: '已停止',
     error: '错误'

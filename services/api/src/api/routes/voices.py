@@ -15,12 +15,12 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/voices", tags=["voices"])
 
 
-@router.get("/", response_model=List[Voice])
+@router.get("/")
 async def list_voices(
     skip: int = Query(0, ge=0, description="跳过记录数"),
     limit: int = Query(50, ge=1, le=100, description="返回记录数"),
     search: Optional[str] = Query(None, description="搜索关键词"),
-    engine: Optional[str] = Query(None, description="引擎过滤"),
+    engine_id: Optional[str] = Query(None, description="引擎过滤"),
     language: Optional[str] = Query(None, description="语言过滤"),
     gender: Optional[str] = Query(None, description="性别过滤"),
     db=Depends(get_db)
@@ -41,17 +41,37 @@ async def list_voices(
             skip=skip,
             limit=limit,
             search=search,
-            engine_id=engine,
+            engine_id=engine_id,
             language=language,
             gender=gender_enum
         )
-        return voices
+        
+        # 转换为docs规范格式
+        formatted_voices = []
+        for voice in voices:
+            formatted_voice = {
+                "id": voice.id,
+                "name": voice.name,
+                "engine_id": voice.engine_id,
+                "gender": voice.gender.value if voice.gender else "unknown",
+                "language": voice.language,
+                "description": voice.description,
+                "preview_url": f"/api/voices/{voice.id}/preview"
+            }
+            formatted_voices.append(formatted_voice)
+        
+        return {
+            "success": True,
+            "data": {
+                "voices": formatted_voices
+            }
+        }
     except Exception as e:
         logger.error(f"获取声音列表失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/{voice_id}", response_model=Voice)
+@router.get("/{voice_id}")
 async def get_voice(voice_id: str, db=Depends(get_db)):
     """获取指定声音详情"""
     try:
@@ -59,7 +79,26 @@ async def get_voice(voice_id: str, db=Depends(get_db)):
         voice = await service.get_voice(voice_id)
         if not voice:
             raise HTTPException(status_code=404, detail="声音未找到")
-        return voice
+        
+        # 转换为docs规范格式
+        formatted_voice = {
+            "id": voice.id,
+            "name": voice.name,
+            "engine_id": voice.engine_id,
+            "gender": voice.gender.value if voice.gender else "unknown",
+            "language": voice.language,
+            "description": voice.description,
+            "attributes": {
+                "age_group": "young",
+                "style": "natural"
+            },
+            "preview_url": f"/api/voices/{voice.id}/preview"
+        }
+        
+        return {
+            "success": True,
+            "data": formatted_voice
+        }
     except HTTPException:
         raise
     except Exception as e:
@@ -67,19 +106,28 @@ async def get_voice(voice_id: str, db=Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/", response_model=Voice)
+@router.post("/")
 async def create_voice(voice_data: VoiceCreate, db=Depends(get_db)):
     """创建新声音"""
     try:
         service = VoiceService(db)
         voice = await service.create_voice(voice_data)
-        return voice
+        
+        return {
+            "success": True,
+            "message": "声音上传成功",
+            "data": {
+                "voice_id": voice.id,
+                "name": voice.name,
+                "engine_id": voice.engine_id
+            }
+        }
     except Exception as e:
         logger.error(f"创建声音失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.put("/{voice_id}", response_model=Voice)
+@router.put("/{voice_id}")
 async def update_voice(
     voice_id: str, 
     voice_data: VoiceUpdate, 
@@ -91,7 +139,11 @@ async def update_voice(
         voice = await service.update_voice(voice_id, voice_data)
         if not voice:
             raise HTTPException(status_code=404, detail="声音未找到")
-        return voice
+        
+        return {
+            "success": True,
+            "message": "声音信息更新成功"
+        }
     except HTTPException:
         raise
     except Exception as e:
@@ -107,7 +159,11 @@ async def delete_voice(voice_id: str, db=Depends(get_db)):
         success = await service.delete_voice(voice_id)
         if not success:
             raise HTTPException(status_code=404, detail="声音未找到")
-        return {"message": "声音已删除"}
+        
+        return {
+            "success": True,
+            "message": "声音删除成功"
+        }
     except HTTPException:
         raise
     except Exception as e:

@@ -40,7 +40,14 @@ class WebSocketService {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const host = import.meta.env.VITE_WS_HOST || window.location.host
     const port = import.meta.env.VITE_WS_PORT || '9930'
-    return `${protocol}//${host.split(':')[0]}:${port}/ws`
+    // 生成客户端ID
+    const clientId = this.generateClientId()
+    return `${protocol}//${host.split(':')[0]}:${port}/ws/${clientId}`
+  }
+
+  // 生成客户端ID
+  generateClientId() {
+    return 'client_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now()
   }
 
   // 设置事件处理器

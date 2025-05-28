@@ -25,7 +25,7 @@ def get_tts_service(adapter_factory: AdapterFactory = Depends(get_adapter_factor
     return TTSService(adapter_factory)
 
 
-@router.post("/synthesize", response_model=SynthesisResult)
+@router.post("/synthesize")
 async def synthesize_text(request: SynthesisRequest, tts_service: TTSService = Depends(get_tts_service)):
     """同步文本合成"""
     try:
@@ -36,7 +36,17 @@ async def synthesize_text(request: SynthesisRequest, tts_service: TTSService = D
             )
         
         result = await tts_service.synthesize_text(request)
-        return result
+        
+        # 转换为docs规范格式
+        return {
+            "success": True,
+            "message": "合成成功",
+            "data": {
+                "audio_url": f"/api/tts/audio/{result.audio_file}",
+                "duration": result.duration,
+                "engine_used": result.engine_used or request.engine
+            }
+        }
     except HTTPException:
         raise
     except Exception as e:
@@ -63,7 +73,7 @@ async def synthesize_text_async(request: SynthesisRequest, tts_service: TTSServi
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/batch-synthesize-async")
+@router.post("/batch")
 async def batch_synthesize_async(request: BatchSynthesisRequest, tts_service: TTSService = Depends(get_tts_service)):
     """异步批量文本合成"""
     try:
@@ -80,7 +90,16 @@ async def batch_synthesize_async(request: BatchSynthesisRequest, tts_service: TT
                 )
         
         task_id = await tts_service.batch_synthesize_async(request)
-        return {"task_id": task_id, "message": "批量合成任务已创建"}
+        
+        return {
+            "success": True,
+            "message": "批量合成任务已创建",
+            "data": {
+                "task_id": task_id,
+                "total_items": len(request.texts),
+                "estimated_time": len(request.texts) * 2  # 预估每个文本2秒
+            }
+        }
     except HTTPException:
         raise
     except Exception as e:
