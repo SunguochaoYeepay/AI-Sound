@@ -22,7 +22,7 @@ services:
       - GPU_ID=0
       - BATCH_SIZE=64
       # 添加引擎服务URL配置
-      - MEGATTS3_URL=http://host.docker.internal:9931
+      - MEGATTS3_URL=http://host.docker.internal:7929
       - ESPNET_URL=http://host.docker.internal:9932
     extra_hosts:
       - "host.docker.internal:host-gateway"

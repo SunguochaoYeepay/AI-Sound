@@ -70,6 +70,43 @@
       </a-col>
     </a-row>
     
+    <!-- 引擎状态卡片 -->
+    <a-row style="margin-top: 16px">
+      <a-col :span="24">
+        <a-card title="引擎状态" :loading="loadingEngines">
+          <a-button style="margin-bottom: 16px" type="primary" size="small" @click="checkEnginesHealth">
+            <reload-outlined />刷新状态
+          </a-button>
+          <a-row :gutter="16">
+            <a-col :span="12" v-for="(status, engine) in enginesHealth" :key="engine">
+              <a-card class="engine-card">
+                <div class="engine-header">
+                  <div class="engine-title">
+                    <cloud-server-outlined />
+                    <span>{{ getEngineName(engine) }}</span>
+                  </div>
+                  <a-tag :color="status.healthy ? 'green' : 'red'">
+                    {{ status.healthy ? '正常' : '异常' }}
+                  </a-tag>
+                </div>
+                <a-divider style="margin: 12px 0" />
+                <div class="engine-info">
+                  <div class="info-item">
+                    <div class="info-label">上次检查</div>
+                    <div class="info-value">{{ formatTime(status.last_check) }}</div>
+                  </div>
+                  <div class="info-item">
+                    <div class="info-label">状态信息</div>
+                    <div class="info-value">{{ status.message || '正常' }}</div>
+                  </div>
+                </div>
+              </a-card>
+            </a-col>
+          </a-row>
+        </a-card>
+      </a-col>
+    </a-row>
+    
     <a-row style="margin-top: 16px">
       <a-col :span="24">
         <a-card title="最近任务">
@@ -107,13 +144,16 @@
 import { defineComponent, ref, onMounted } from 'vue';
 import { useApiStore } from '@/store/api';
 import PageHeader from '@/components/common/PageHeader.vue';
+import axios from 'axios'; // 添加axios导入
 import { 
   DashboardOutlined, 
   RocketOutlined, 
   HddOutlined,
   SoundOutlined,
   ReadOutlined,
-  LoadingOutlined
+  LoadingOutlined,
+  ReloadOutlined,
+  CloudServerOutlined
 } from '@ant-design/icons-vue';
 
 export default defineComponent({
@@ -125,12 +165,20 @@ export default defineComponent({
     HddOutlined,
     SoundOutlined,
     ReadOutlined,
-    LoadingOutlined
+    LoadingOutlined,
+    ReloadOutlined,
+    CloudServerOutlined
   },
   setup() {
     const apiStore = useApiStore();
     const apiStatus = ref(false);
     const loading = ref(false);
+    const loadingEngines = ref(false);
+    
+    const enginesHealth = ref({
+      megatts3: { healthy: false, message: '未检查', last_check: 0 },
+      espnet: { healthy: false, message: '未检查', last_check: 0 }
+    });
     
     const systemInfo = ref({
       gpu_available: false,
@@ -230,6 +278,57 @@ export default defineComponent({
       }
     };
     
+    // 检查引擎健康状态
+    const checkEnginesHealth = async () => {
+      loadingEngines.value = true;
+      try {
+        // 使用替代的健康检查API端点
+        const baseUrl = apiStore.$state.baseUrl;
+        const response = await axios.get(`${baseUrl}/health/engines`);
+        
+        // 格式化响应数据
+        if (response.data && response.data.engines) {
+          enginesHealth.value = response.data.engines || {
+            megatts3: { healthy: false, message: '未检查', last_check: Date.now() / 1000 },
+            espnet: { healthy: false, message: '未检查', last_check: Date.now() / 1000 }
+          };
+        } else {
+          enginesHealth.value = {
+            megatts3: { healthy: false, message: '数据格式错误', last_check: Date.now() / 1000 },
+            espnet: { healthy: false, message: '数据格式错误', last_check: Date.now() / 1000 }
+          };
+        }
+      } catch (error) {
+        console.error('获取引擎健康状态失败', error);
+        // 失败时提供默认值
+        enginesHealth.value = {
+          megatts3: { healthy: false, message: '请求失败', last_check: Date.now() / 1000 },
+          espnet: { healthy: false, message: '请求失败', last_check: Date.now() / 1000 }
+        };
+      } finally {
+        loadingEngines.value = false;
+      }
+    };
+    
+    // 获取引擎名称
+    const getEngineName = (engineType) => {
+      const names = {
+        'megatts3': 'MegaTTS3',
+        'espnet': 'ESPnet',
+        'edge': 'Edge TTS',
+        'baidu': '百度语音',
+        'xunfei': '讯飞语音'
+      };
+      return names[engineType] || engineType;
+    };
+    
+    // 格式化时间
+    const formatTime = (timestamp) => {
+      if (!timestamp) return '未知';
+      const date = new Date(timestamp * 1000);
+      return date.toLocaleString();
+    };
+    
     // 显示任务详情
     const showDetails = (taskId) => {
       console.log('查看任务详情', taskId);
@@ -264,7 +363,8 @@ export default defineComponent({
         await Promise.all([
           getSystemInfo(),
           getStats(),
-          getRecentTasks()
+          getRecentTasks(),
+          checkEnginesHealth()
         ]);
       }
       
@@ -275,8 +375,9 @@ export default defineComponent({
           await Promise.all([
             getSystemInfo(),
             getStats(),
-            getRecentTasks()
-          ]);
+            getRecentTasks(),
+              checkEnginesHealth()
+        ]);
         }
       }, 60000); // 每分钟刷新一次
     });
@@ -284,13 +385,18 @@ export default defineComponent({
     return {
       apiStatus,
       loading,
+      loadingEngines,
       systemInfo,
       stats,
       recentTasks,
+      enginesHealth,
       columns,
       showDetails,
       getStatusColor,
-      getStatusText
+      getStatusText,
+      checkEnginesHealth,
+      getEngineName,
+      formatTime
     };
   }
 });
@@ -341,5 +447,41 @@ export default defineComponent({
 
 .status-error {
   color: #f5222d;
+}
+
+.engine-card {
+  margin-bottom: 16px;
+}
+
+.engine-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.engine-title {
+  display: flex;
+  align-items: center;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.engine-title :deep(.anticon) {
+  margin-right: 8px;
+  font-size: 20px;
+}
+
+.engine-info {
+  margin-top: 8px;
+}
+
+.info-item {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.info-label {
+  color: rgba(0, 0, 0, 0.45);
 }
 </style> 

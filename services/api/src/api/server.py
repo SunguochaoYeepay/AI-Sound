@@ -168,6 +168,18 @@ def setup_routes():
         # 这里在函数内部导入routes，避免循环导入
         from .routes import router
         app.include_router(router)
+        
+        # 导入引擎路由
+        try:
+            import importlib
+            from src.api.engine_routes import engine_router
+            app.include_router(engine_router)
+            logger.info("引擎API路由注册成功")
+        except Exception as e:
+            logger.error(f"引擎API路由注册失败: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
+            
         logger.info("API路由注册成功")
     except Exception as e:
         logger.error(f"API路由注册失败: {str(e)}")

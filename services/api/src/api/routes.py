@@ -102,6 +102,35 @@ async def engine_health_check():
             "message": f"引擎健康检查失败: {str(e)}"
         }
 
+@router.get("/api/engines/health")
+async def get_engines_health():
+    """获取所有引擎健康状态"""
+    try:
+        # 获取服务监控器
+        from . import server
+        monitor = server.get_service_monitor()
+        if not monitor:
+            raise HTTPException(
+                status_code=500,
+                detail="服务监控器未初始化"
+            )
+        
+        # 获取健康状态
+        health_status = monitor.get_health_status()
+        
+        # 如果没有健康状态数据，立即执行一次检查
+        if not health_status:
+            await monitor._check_services()
+            health_status = monitor.get_health_status()
+            
+        return health_status
+    except Exception as e:
+        logger.error(f"获取引擎健康状态失败: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"获取引擎健康状态失败: {str(e)}"
+        )
+
 @router.post("/api/tts", response_model=TTSResponse)
 async def text_to_speech(request: TTSRequest):
     """
