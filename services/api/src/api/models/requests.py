@@ -21,6 +21,10 @@ class TTSRequest(BaseModel):
                               description="是否以Base64编码返回音频")
     output_format: str = Field("wav", title="输出格式", 
                             description="输出音频格式: wav, mp3, ogg, flac")
+    engine: Optional[str] = Field("auto", title="引擎选择",
+                               description="引擎选择: auto, megatts3, espnet")
+    formal: Optional[bool] = Field(False, title="正式场景",
+                                description="是否为正式场景，影响引擎选择")
 
 class NovelProcessRequest(BaseModel):
     """小说处理请求模型"""

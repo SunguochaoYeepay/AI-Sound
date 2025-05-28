@@ -47,7 +47,8 @@ async def health_check():
     # 服务运行时间（秒）
     uptime = time.time() - start_time
     
-    return {
+    # 基本健康信息
+    health_info = {
         "status": "ok",
         "version": "1.0.0",
         "uptime": uptime,
@@ -57,6 +58,49 @@ async def health_check():
             "python": platform.python_version(),
         }
     }
+    
+    # 尝试获取引擎状态
+    try:
+        # 获取服务监控器
+        monitor = server.get_service_monitor()
+        if monitor:
+            # 获取引擎健康状态
+            health_info["engines"] = monitor.get_health_status()
+    except Exception as e:
+        logger.warning(f"获取引擎健康状态失败: {str(e)}")
+    
+    return health_info
+
+@router.get("/health/engines")
+async def engine_health_check():
+    """引擎健康检查"""
+    try:
+        # 获取TTS路由器
+        from . import server
+        router = server.get_tts_router()
+        if not router:
+            return {
+                "status": "error",
+                "message": "TTS引擎路由器未初始化"
+            }
+        
+        # 执行健康检查
+        results = await router.check_all_engines_health()
+        
+        # 所有引擎都健康时返回正常状态
+        all_healthy = all(results.values())
+        
+        return {
+            "status": "ok" if all_healthy else "warning",
+            "message": "所有引擎健康" if all_healthy else "部分引擎不健康",
+            "engines": router.get_health_status()
+        }
+    except Exception as e:
+        logger.error(f"引擎健康检查失败: {str(e)}")
+        return {
+            "status": "error",
+            "message": f"引擎健康检查失败: {str(e)}"
+        }
 
 @router.post("/api/tts", response_model=TTSResponse)
 async def text_to_speech(request: TTSRequest):
@@ -66,12 +110,45 @@ async def text_to_speech(request: TTSRequest):
     将文本转换为语音，支持不同音色和情感
     """
     try:
-        # 获取TTS引擎
-        engine = get_tts_engine()
+        # 获取TTS引擎路由器和选择器
+        tts_router = server.get_tts_router()
+        engine_selector = server.get_engine_selector()
+        
+        if not tts_router or not engine_selector:
+            raise HTTPException(
+                status_code=500,
+                detail="TTS引擎路由器未初始化"
+            )
+        
+        # 确定要使用的引擎
+        engine_type = None
+        
+        # 如果用户指定了引擎
+        if request.engine and request.engine != "auto":
+            try:
+                from src.tts.engine import TTSEngineType
+                engine_type = TTSEngineType(request.engine)
+                logger.info(f"用户指定引擎: {engine_type.value}")
+            except ValueError:
+                logger.warning(f"无效的引擎类型: {request.engine}，使用自动选择")
+        
+        # 如果未指定或指定了auto，使用选择器
+        if not engine_type:
+            # 准备选择器需要的额外参数
+            requirements = {
+                "emotion_type": request.emotion_type,
+                "emotion_intensity": request.emotion_intensity,
+                "formal": request.formal
+            }
+            
+            # 使用选择器选择引擎
+            engine_type = engine_selector.select_engine(request.text, requirements)
+            logger.info(f"选择器选择的引擎: {engine_type.value}")
         
         # 合成语音
         process_start_time = time.time()
-        audio = engine.synthesize(
+        audio = await tts_router.synthesize(
+            engine_type=engine_type,
             text=request.text,
             voice_id=request.voice_id,
             emotion_type=request.emotion_type,
@@ -83,7 +160,6 @@ async def text_to_speech(request: TTSRequest):
         
         # 返回Base64或临时文件
         if request.return_base64:
-            # 修改：使用上下文管理器确保文件被正确关闭，并使用try-finally保证文件被删除
             # 使用唯一文件名避免冲突
             unique_filename = f"megatts_tmp_{uuid.uuid4().hex}.{request.output_format}"
             
@@ -112,6 +188,7 @@ async def text_to_speech(request: TTSRequest):
                 return TTSResponse(
                     success=True,
                     message="语音合成成功",
+                    engine=engine_type.value,
                     audio_base64=audio_base64,
                     duration=len(audio) / 22050  # 假设采样率为22050
                 )
@@ -143,6 +220,7 @@ async def text_to_speech(request: TTSRequest):
             return TTSResponse(
                 success=True,
                 message="语音合成成功",
+                engine=engine_type.value,
                 audio_url=f"/api/download/{audio_id}.{request.output_format}",
                 duration=len(audio) / 22050  # 假设采样率为22050
             )
@@ -1063,6 +1141,170 @@ async def get_stats():
 
 # 其他API路由待迁移
 # 语音模型管理接口
+@router.get("/api/engines")
+async def list_engines():
+    """
+    获取可用的TTS引擎列表
+    
+    返回所有可用的TTS引擎及其状态
+    """
+    try:
+        # 获取TTS引擎路由器
+        from . import server
+        tts_router = server.get_tts_router()
+        if not tts_router:
+            raise HTTPException(
+                status_code=500,
+                detail="TTS引擎路由器未初始化"
+            )
+        
+        # 获取健康状态
+        health_status = tts_router.get_health_status()
+        
+        # 获取所有已注册的引擎
+        engines = {}
+        for engine_type, engine in tts_router.get_registered_engines().items():
+            engines[engine_type.value] = {
+                "name": engine_type.value,
+                "healthy": health_status.get(engine_type.value, {}).get("healthy", False),
+                "last_check": health_status.get(engine_type.value, {}).get("last_check", 0),
+                "message": health_status.get(engine_type.value, {}).get("message", "")
+            }
+        
+        return {
+            "success": True,
+            "engines": engines
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取TTS引擎列表失败: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"获取TTS引擎列表失败: {str(e)}"
+        )
+
+@router.get("/api/engines/{engine_name}")
+async def get_engine_details(engine_name: str):
+    """
+    获取特定引擎的详细信息
+    
+    返回特定引擎的详细信息和功能
+    """
+    try:
+        # 验证引擎名称
+        try:
+            from src.tts.engine import TTSEngineType
+            engine_type = TTSEngineType(engine_name)
+        except ValueError:
+            raise HTTPException(
+                status_code=404,
+                detail=f"无效的引擎名称: {engine_name}"
+            )
+        
+        # 获取TTS引擎路由器
+        from . import server
+        tts_router = server.get_tts_router()
+        if not tts_router:
+            raise HTTPException(
+                status_code=500,
+                detail="TTS引擎路由器未初始化"
+            )
+        
+        # 获取引擎
+        engine = tts_router.get_engine(engine_type)
+        if not engine:
+            raise HTTPException(
+                status_code=404,
+                detail=f"引擎 {engine_name} 未注册"
+            )
+        
+        # 获取健康状态
+        health_status = tts_router.get_health_status().get(engine_name, {})
+        
+        # 获取引擎音色
+        voices = {}
+        try:
+            voices = await tts_router.get_available_voices(engine_type)
+        except Exception as e:
+            logger.warning(f"获取引擎 {engine_name} 音色失败: {str(e)}")
+        
+        # 创建引擎详情
+        engine_details = {
+            "name": engine_name,
+            "healthy": health_status.get("healthy", False),
+            "last_check": health_status.get("last_check", 0),
+            "message": health_status.get("message", ""),
+            "voices_count": len(voices),
+            "voices": voices
+        }
+        
+        return {
+            "success": True,
+            "engine": engine_details
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取引擎详情失败: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"获取引擎详情失败: {str(e)}"
+        )
+
+@router.post("/api/engines/{engine_name}/health")
+async def check_engine_health(engine_name: str):
+    """
+    检查特定引擎的健康状态
+    
+    强制执行引擎健康检查
+    """
+    try:
+        # 验证引擎名称
+        try:
+            from src.tts.engine import TTSEngineType
+            engine_type = TTSEngineType(engine_name)
+        except ValueError:
+            raise HTTPException(
+                status_code=404,
+                detail=f"无效的引擎名称: {engine_name}"
+            )
+        
+        # 获取TTS引擎路由器
+        from . import server
+        tts_router = server.get_tts_router()
+        if not tts_router:
+            raise HTTPException(
+                status_code=500,
+                detail="TTS引擎路由器未初始化"
+            )
+        
+        # 检查引擎是否存在
+        if not tts_router.get_engine(engine_type):
+            raise HTTPException(
+                status_code=404,
+                detail=f"引擎 {engine_name} 未注册"
+            )
+        
+        # 执行健康检查
+        is_healthy = await tts_router.check_engine_health(engine_type)
+        health_status = tts_router.get_health_status().get(engine_name, {})
+        
+        return {
+            "success": True,
+            "engine": engine_name,
+            "healthy": is_healthy,
+            "status": health_status
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"检查引擎健康状态失败: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"检查引擎健康状态失败: {str(e)}"
+        )
+
 @router.get("/api/voices")
 async def list_voices():
     """
@@ -1071,8 +1313,17 @@ async def list_voices():
     返回所有可用的语音模型及其参数
     """
     try:
-        engine = get_tts_engine()
-        voices = engine.get_available_voices()
+        # 获取TTS引擎路由器
+        from . import server
+        tts_router = server.get_tts_router()
+        if not tts_router:
+            raise HTTPException(
+                status_code=500,
+                detail="TTS引擎路由器未初始化"
+            )
+        
+        # 获取所有引擎的音色列表
+        voices = await tts_router.get_available_voices()
         
         return {
             "success": True,

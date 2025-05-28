@@ -70,52 +70,88 @@ def get_config() -> Dict[str, Any]:
         "redis_url": os.environ.get("REDIS_URL", "redis://localhost:6379/0")
     }
 
-# 创建TTS引擎单例
-tts_engine = None
+# 导入TTS引擎路由器和适配器
+from src.tts.engine import TTSEngineRouter, TTSEngineType
+from src.tts.adapters import MegaTTS3Adapter, ESPnetAdapter
+from src.tts.engine_selector import EngineSelector
+from src.monitor.service_monitor import ServiceMonitor
 
-# 定义一个懒加载的TTS引擎获取函数
-def get_tts_engine():
-    """获取TTS引擎单例"""
+# 创建TTS引擎路由器单例
+tts_router = None
+engine_selector = None
+service_monitor = None
+
+# 定义一个懒加载的TTS引擎路由器获取函数
+def get_tts_router():
+    """获取TTS引擎路由器单例"""
     try:
-        global tts_engine
-        if tts_engine is None:
-            # 使用绝对导入
-            from src.tts.engine import MegaTTSEngine
+        global tts_router, engine_selector, service_monitor
+        if tts_router is None:
             config = get_config()
-            logger.info("初始化TTS引擎...")
-            logger.info(f"模型路径: {config['model_path']}")
-            logger.info(f"使用GPU: {config['use_gpu']}")
-            logger.info(f"使用FP16: {config['fp16']}")
+            logger.info("初始化TTS引擎路由器...")
             
-            # 检查环境变量
-            sample_wav_path = os.environ.get("SAMPLE_WAV_PATH")
-            logger.info(f"样本WAV路径: {sample_wav_path}")
+            # 创建引擎路由器
+            tts_router = TTSEngineRouter()
             
-            # 设置环境变量
-            if sample_wav_path:
-                os.environ["SAMPLE_WAV_PATH"] = sample_wav_path
+            # 获取服务URL
+            # 使用host.docker.internal访问宿主机上的服务
+            megatts3_url = os.environ.get("MEGATTS3_URL", "http://host.docker.internal:9931")
+            espnet_url = os.environ.get("ESPNET_URL", "http://host.docker.internal:9932")
             
-            # 初始化引擎
-            tts_engine = MegaTTSEngine(
-                model_path=config["model_path"],
-                use_gpu=config["use_gpu"],
-                fp16=config["fp16"],
-                batch_size=config["batch_size"]
-            )
+            logger.info(f"MegaTTS3服务URL: {megatts3_url}")
+            logger.info(f"ESPnet服务URL: {espnet_url}")
             
-            # 验证引擎
-            if hasattr(tts_engine, 'synthesize'):
-                logger.info("TTS引擎初始化成功，有synthesize方法")
-            else:
-                logger.error("TTS引擎初始化失败，无synthesize方法")
+            # 注册引擎适配器
+            try:
+                megatts3_adapter = MegaTTS3Adapter(megatts3_url)
+                tts_router.register_engine(TTSEngineType.MEGATTS3, megatts3_adapter)
+                logger.info("MegaTTS3引擎注册成功")
+            except Exception as e:
+                logger.error(f"注册MegaTTS3引擎失败: {str(e)}")
                 
-            logger.info("TTS引擎初始化完成")
-        return tts_engine
+            try:
+                espnet_adapter = ESPnetAdapter(espnet_url)
+                tts_router.register_engine(TTSEngineType.ESPNET, espnet_adapter)
+                logger.info("ESPnet引擎注册成功")
+            except Exception as e:
+                logger.error(f"注册ESPnet引擎失败: {str(e)}")
+            
+            # 创建引擎选择器
+            engine_selector = EngineSelector()
+            
+            # 创建服务监控器
+            service_monitor = ServiceMonitor(tts_router, check_interval=30)
+            
+            # 启动监控（在应用启动时启动）
+            logger.info("TTS引擎路由器初始化完成")
+        return tts_router
     except Exception as e:
-        logger.error(f"TTS引擎初始化失败: {str(e)}")
+        logger.error(f"TTS引擎路由器初始化失败: {str(e)}")
         import traceback
         logger.error(traceback.format_exc())
         return None
+
+# 为了兼容性保留的函数，返回MegaTTS3适配器
+def get_tts_engine():
+    """获取默认TTS引擎（向后兼容）"""
+    router = get_tts_router()
+    if router:
+        return router.get_engine(TTSEngineType.MEGATTS3)
+    return None
+
+# 获取引擎选择器
+def get_engine_selector():
+    """获取引擎选择器"""
+    if engine_selector is None:
+        get_tts_router()  # 确保初始化
+    return engine_selector
+
+# 获取服务监控器
+def get_service_monitor():
+    """获取服务监控器"""
+    if service_monitor is None:
+        get_tts_router()  # 确保初始化
+    return service_monitor
 
 # 任务存储实现
 task_store = {}
@@ -210,3 +246,32 @@ async def text_to_speech_direct(request: Request):
 
 # 打印启动信息
 logger.info("API服务已初始化完成，路由已注册")
+
+# 在应用启动时初始化路由器和监控（异步）
+@app.on_event("startup")
+async def startup_event():
+    # 初始化TTS路由器
+    router = get_tts_router()
+    if not router:
+        logger.error("TTS引擎路由器初始化失败")
+        return
+    
+    # 初始检查引擎健康状态
+    logger.info("启动服务监控...")
+    monitor = get_service_monitor()
+    if monitor:
+        await monitor.start_monitoring()
+        logger.info("服务监控已启动")
+    else:
+        logger.error("服务监控初始化失败")
+
+# 在应用关闭时停止监控
+@app.on_event("shutdown")
+async def shutdown_event():
+    logger.info("停止服务监控...")
+    monitor = get_service_monitor()
+    if monitor:
+        await monitor.stop_monitoring()
+        logger.info("服务监控已停止")
+    else:
+        logger.warning("服务监控不存在，无需停止")

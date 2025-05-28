@@ -9,6 +9,7 @@ class TTSResponse(BaseModel):
     """TTS响应模型"""
     success: bool = Field(..., title="成功标志", description="是否成功")
     message: str = Field("", title="消息", description="处理结果消息")
+    engine: Optional[str] = Field(None, title="引擎", description="使用的TTS引擎")
     audio_base64: Optional[str] = Field(None, title="音频Base64", 
                                     description="Base64编码的音频数据")
     audio_url: Optional[str] = Field(None, title="音频URL", 

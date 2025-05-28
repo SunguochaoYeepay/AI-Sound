@@ -14,3 +14,28 @@
 
 中国企业必须以前瞻性的战略眼光积极布局 Agent 能力建设，力争在这一新兴领域抢占先发优势，为未来的竞争奠定坚实基础。",tts_train_vits_raw_phn_pypinyin_g2p_phone,flagged/合成音频/2ecc2ad0c7f2a954ff16/tmpidp_r_yz.wav,,,,2025-05-27 13:39:37.357947
 222222,aishell3_vits_winniech,,合成失败: Missing required argument: 'spembs',,,2025-05-27 14:02:15.616280
+"自动扫描exp/下所有模型，支持一键切换和参数自适应。
+
+",tts_train_vits_raw_phn_tacotron_g2p_en_no_space,,"合成失败: 
+**********************************************************************
+  Resource [93mcmudict[0m not found.
+  Please use the NLTK Downloader to obtain the resource:
+
+  [31m>>> import nltk
+  >>> nltk.download('cmudict')
+  [0m
+  For more information see: https://www.nltk.org/data.html
+
+  Attempted to load [93mcorpora/cmudict[0m
+
+  Searched in:
+    - '/root/nltk_data'
+    - '/opt/miniconda/nltk_data'
+    - '/opt/miniconda/share/nltk_data'
+    - '/opt/miniconda/lib/nltk_data'
+    - '/usr/share/nltk_data'
+    - '/usr/local/share/nltk_data'
+    - '/usr/lib/nltk_data'
+    - '/usr/local/lib/nltk_data'
+**********************************************************************
+",,,2025-05-28 08:58:46.728877

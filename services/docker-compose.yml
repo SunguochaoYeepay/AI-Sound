@@ -21,6 +21,11 @@ services:
       - FP16=true
       - GPU_ID=0
       - BATCH_SIZE=64
+      # 添加引擎服务URL配置
+      - MEGATTS3_URL=http://host.docker.internal:9931
+      - ESPNET_URL=http://host.docker.internal:9932
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     deploy:
       resources:
         reservations:
@@ -50,4 +55,10 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:80"]
       interval: 30s
       timeout: 10s
-      retries: 3 
+      retries: 3
+
+# 网络配置
+networks:
+  default:
+    name: ai-sound-network
+    external: true
