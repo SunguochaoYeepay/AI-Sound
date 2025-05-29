@@ -186,18 +186,19 @@ class VoiceService:
             logger.error(f"删除声音失败: {e}")
             raise
     
-    async def preview_voice(self, voice_id: str, preview_data: VoicePreview) -> VoicePreviewResult:
+    async def preview_voice(self, voice_id: str, text: str = "你好，这是声音预览。") -> Optional[Dict[str, Any]]:
         """声音预览"""
         try:
             # 获取声音信息
             voice = await self.get_voice(voice_id)
             if not voice:
-                raise ValueError("声音未找到")
+                return None  # 返回None而不是抛出异常
             
             # 获取引擎适配器
             adapter = await self.adapter_factory.get_adapter(voice.engine_id)
             if not adapter:
-                raise ValueError(f"引擎适配器未找到: {voice.engine_id}")
+                logger.warning(f"引擎适配器未找到: {voice.engine_id}")
+                return None
             
             # 生成预览音频
             preview_id = f"preview_{int(datetime.now().timestamp())}_{uuid.uuid4().hex[:8]}"
@@ -207,26 +208,34 @@ class VoiceService:
             
             # 执行合成
             synthesis_params = {
-                "text": preview_data.text,
-                "voice_id": voice.engine_voice_id,
-                "speed": preview_data.speed,
-                "pitch": preview_data.pitch,
+                "text": text,
+                "voice_id": voice.engine_voice_id or voice.name,
+                "speed": 1.0,
+                "pitch": 0.0,
                 "output_path": str(output_filepath)
             }
             
             result = await adapter.synthesize(**synthesis_params)
             
+            if not result.get("success", True):
+                logger.error(f"声音合成失败: {result.get('error', '未知错误')}")
+                return None
+            
             # 构建预览结果
             audio_url = f"/api/voices/preview/{output_filename}"
             
-            return VoicePreviewResult(
-                voice_id=voice_id,
-                audio_url=audio_url,
-                duration=result.get("duration")
-            )
+            return {
+                "success": True,
+                "data": {
+                    "voice_id": voice_id,
+                    "audio_url": audio_url,
+                    "duration": result.get("duration", 2.5),
+                    "text": text
+                }
+            }
         except Exception as e:
             logger.error(f"声音预览失败: {e}")
-            raise
+            return None
     
     async def upload_voice_file(self, voice_id: str, file_data: bytes, upload_info: VoiceUpload) -> bool:
         """上传声音文件"""
