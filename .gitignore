@@ -167,4 +167,31 @@ weights/
 *.onnx
 *.tflite
 *.pb
-*.trt 
+*.trt
+
+# ===========================================
+# Docker 数据持久化目录 - 绝对不要提交到Git！
+# ===========================================
+# MongoDB数据目录
+docker/volumes/mongodb/
+docker/volumes/mongodb_backup/
+
+# 其他Docker数据卷（但保留.gitkeep文件）
+docker/volumes/*/
+!docker/volumes/.gitkeep
+
+# Docker临时文件
+docker/tmp/
+docker/logs/
+
+# ===========================================
+# MongoDB数据文件 - 运行时生成，不要提交
+# ===========================================
+*.wt
+*.lock
+*.turtle
+*.bson
+WiredTiger*
+mongod.lock
+diagnostic.data/
+journal/ 

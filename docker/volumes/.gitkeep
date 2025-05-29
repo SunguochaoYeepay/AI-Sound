@@ -1,0 +1,9 @@
+# 保留docker/volumes目录结构
+# 但忽略所有数据文件
+# 
+# 这个目录用于Docker数据持久化：
+# - mongodb/ - MongoDB数据库文件
+# - mongodb_backup/ - 数据库备份文件
+# - 其他服务的数据卷
+#
+# 注意：数据文件不应该提交到Git！ 

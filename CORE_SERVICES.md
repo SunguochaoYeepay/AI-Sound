@@ -85,6 +85,7 @@ AI-Sound/
 ├── start_all_core.bat       # 一键启动所有服务
 ├── stop_all_core.bat        # 停止所有服务
 ├── backup_mongodb.bat       # 数据备份脚本
+├── check_git_safety.bat     # Git数据安全检查
 ├── docker/
 │   └── volumes/
 │       └── mongodb/         # 数据持久化目录 🎯
@@ -102,4 +103,38 @@ AI-Sound/
 2. 连接数据库并创建一些数据
 3. 停止服务: `stop_all_core.bat`
 4. 重新启动: `start_mongodb.bat`
-5. 数据依然存在！🎊 
+5. 数据依然存在！🎊
+
+## 🔒 Git 数据安全（重要！）
+
+### ⚠️ 数据安全原则
+- **绝对不要**将MongoDB数据文件提交到Git！
+- **绝对不要**将Docker数据卷提交到Git！
+- 数据文件可能包含敏感信息且体积巨大
+
+### 🛡️ 安全检查
+```bash
+check_git_safety.bat    # 检查是否有数据文件被意外跟踪
+```
+
+### 📋 已忽略的文件类型
+```
+# MongoDB数据文件
+*.wt, *.lock, *.turtle, *.bson
+WiredTiger*, mongod.lock
+diagnostic.data/, journal/
+
+# Docker数据卷
+docker/volumes/mongodb/
+docker/volumes/mongodb_backup/
+docker/volumes/*/
+```
+
+### 🚨 如果意外提交了数据文件
+```bash
+# 从Git中移除但保留本地文件
+git rm --cached -r docker/volumes/mongodb/
+git commit -m "Remove MongoDB data files from Git"
+```
+
+**记住：数据持久化 ≠ Git版本控制！数据文件应该通过备份管理，而不是Git！** 
