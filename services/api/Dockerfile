@@ -1,4 +1,4 @@
-# 使用轻量级Python基础镜像
+# 使用标准Python基础镜像（如果本地有就直接使用）
 FROM python:3.11-slim
 
 # 构建参数
@@ -18,11 +18,9 @@ WORKDIR /app
 # 创建必要的目录
 RUN mkdir -p /app/src /app/data /app/output
 
-# 配置APT镜像源（可选）
-RUN if [ -n "${APT_MIRROR}" ]; then \
-        sed -i "s/deb.debian.org/${APT_MIRROR}/g" /etc/apt/sources.list.d/debian.sources || \
-        sed -i "s/deb.debian.org/${APT_MIRROR}/g" /etc/apt/sources.list; \
-    fi
+# 配置APT镜像源
+RUN sed -i 's/deb.debian.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || \
+    sed -i 's/deb.debian.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.list 2>/dev/null || true
 
 # 安装系统依赖
 RUN apt-get update && apt-get install -y --no-install-recommends \
