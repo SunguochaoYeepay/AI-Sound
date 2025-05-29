@@ -43,7 +43,8 @@ print(f"Python路径: {sys.path}")
 # 导入应用
 try:
     # 导入本地API应用
-    from api.server import app
+    from src.api.app import create_app
+    app = create_app()
     print("成功导入API应用")
 except ImportError as e:
     print(f"导入API应用失败: {e}")
