@@ -35,6 +35,10 @@ async def lifespan(app: FastAPI):
         # 初始化依赖服务
         await dependency_manager.initialize()
         
+        # 初始化测试数据
+        from ..core.database import init_test_data
+        await init_test_data()
+        
         # 启动任务队列
         await task_queue.start()
         

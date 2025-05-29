@@ -72,7 +72,17 @@ class VoiceService:
             cursor = self.collection.find(query).skip(skip).limit(limit)
             voices = []
             async for doc in cursor:
-                doc["_id"] = str(doc["_id"])
+                # 正确处理MongoDB文档转换
+                if "_id" in doc:
+                    del doc["_id"]  # 删除MongoDB的_id字段
+                # 确保必要字段存在
+                if "id" not in doc:
+                    doc["id"] = f"voice_{int(datetime.now().timestamp())}"
+                if "created_at" not in doc:
+                    doc["created_at"] = datetime.now()
+                if "updated_at" not in doc:
+                    doc["updated_at"] = datetime.now()
+                
                 voices.append(Voice(**doc))
             
             return voices
@@ -85,7 +95,14 @@ class VoiceService:
         try:
             doc = await self.collection.find_one({"id": voice_id})
             if doc:
-                doc["_id"] = str(doc["_id"])
+                # 正确处理MongoDB文档转换
+                if "_id" in doc:
+                    del doc["_id"]  # 删除MongoDB的_id字段
+                # 确保必要字段存在
+                if "created_at" not in doc:
+                    doc["created_at"] = datetime.now()
+                if "updated_at" not in doc:
+                    doc["updated_at"] = datetime.now()
                 return Voice(**doc)
             return None
         except Exception as e:
@@ -392,9 +409,396 @@ class VoiceService:
             logger.error(f"更新声音使用次数失败: {e}")
     
     async def get_voices_by_engine(self, engine_id: str) -> List[Voice]:
-        """根据引擎获取声音列表"""
+        """获取指定引擎的声音列表"""
         try:
-            return await self.list_voices(engine_id=engine_id, active_only=True)
+            return await self.list_voices(engine_id=engine_id, limit=1000)
         except Exception as e:
-            logger.error(f"根据引擎获取声音失败: {e}")
+            logger.error(f"获取引擎声音列表失败: {e}")
+            raise
+
+    async def get_language_stats(self) -> Dict[str, Any]:
+        """获取语言统计信息"""
+        try:
+            pipeline = [
+                {"$group": {
+                    "_id": "$language",
+                    "count": {"$sum": 1},
+                    "active_count": {"$sum": {"$cond": ["$is_active", 1, 0]}}
+                }},
+                {"$sort": {"count": -1}}
+            ]
+            
+            cursor = self.collection.aggregate(pipeline)
+            language_stats = []
+            total_voices = 0
+            
+            async for doc in cursor:
+                language_stats.append({
+                    "language": doc["_id"],
+                    "total_count": doc["count"],
+                    "active_count": doc["active_count"]
+                })
+                total_voices += doc["count"]
+            
+            return {
+                "total_voices": total_voices,
+                "languages": language_stats,
+                "language_count": len(language_stats)
+            }
+        except Exception as e:
+            logger.error(f"获取语言统计失败: {e}")
+            raise
+
+    async def get_engine_stats(self) -> Dict[str, Any]:
+        """获取引擎统计信息"""
+        try:
+            pipeline = [
+                {"$group": {
+                    "_id": "$engine_id",
+                    "count": {"$sum": 1},
+                    "active_count": {"$sum": {"$cond": ["$is_active", 1, 0]}},
+                    "avg_usage": {"$avg": "$usage_count"}
+                }},
+                {"$sort": {"count": -1}}
+            ]
+            
+            cursor = self.collection.aggregate(pipeline)
+            engine_stats = []
+            total_voices = 0
+            
+            async for doc in cursor:
+                engine_stats.append({
+                    "engine_id": doc["_id"],
+                    "total_count": doc["count"],
+                    "active_count": doc["active_count"],
+                    "avg_usage": round(doc.get("avg_usage", 0), 2)
+                })
+                total_voices += doc["count"]
+            
+            return {
+                "total_voices": total_voices,
+                "engines": engine_stats,
+                "engine_count": len(engine_stats)
+            }
+        except Exception as e:
+            logger.error(f"获取引擎统计失败: {e}")
+            raise
+
+    async def search_similar_voices(
+        self, 
+        voice_id: Optional[str] = None,
+        language: Optional[str] = None,
+        gender: Optional[str] = None,
+        style: Optional[str] = None,
+        limit: int = 10
+    ) -> List[Dict[str, Any]]:
+        """搜索相似声音"""
+        try:
+            query = {"is_active": True}
+            
+            # 如果提供了参考声音ID，获取其属性
+            if voice_id:
+                reference_voice = await self.get_voice(voice_id)
+                if reference_voice:
+                    language = language or reference_voice.language
+                    gender = gender or reference_voice.gender.value
+                    style = style or reference_voice.style.value
+            
+            # 构建查询条件
+            if language:
+                query["language"] = language
+            if gender:
+                query["gender"] = gender
+            if style:
+                query["style"] = style
+            
+            # 排除参考声音本身
+            if voice_id:
+                query["id"] = {"$ne": voice_id}
+            
+            cursor = self.collection.find(query).limit(limit)
+            similar_voices = []
+            
+            async for doc in cursor:
+                # 正确处理MongoDB文档转换
+                if "_id" in doc:
+                    del doc["_id"]
+                
+                similar_voices.append({
+                    "id": doc.get("id"),
+                    "name": doc.get("name"),
+                    "display_name": doc.get("display_name"),
+                    "language": doc.get("language"),
+                    "gender": doc.get("gender"),
+                    "style": doc.get("style"),
+                    "engine_id": doc.get("engine_id"),
+                    "similarity_score": 0.85  # 模拟相似度分数
+                })
+            
+            return similar_voices
+        except Exception as e:
+            logger.error(f"搜索相似声音失败: {e}")
+            raise
+
+    async def get_voice_sample(self, voice_id: str) -> Optional[str]:
+        """获取声音样本文件路径"""
+        try:
+            voice = await self.get_voice(voice_id)
+            if not voice:
+                return None
+            
+            # 检查是否有样本文件
+            if voice.sample_path and Path(voice.sample_path).exists():
+                return voice.sample_path
+            
+            # 如果没有样本文件，生成一个
+            sample_text = "你好，这是声音样本。"
+            sample_filename = f"sample_{voice_id}.wav"
+            sample_path = self.upload_path / "samples" / sample_filename
+            sample_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # 使用引擎生成样本
+            adapter = await self.adapter_factory.get_adapter(voice.engine_id)
+            if adapter:
+                synthesis_params = {
+                    "text": sample_text,
+                    "voice_id": voice.engine_voice_id,
+                    "output_path": str(sample_path)
+                }
+                await adapter.synthesize(**synthesis_params)
+                
+                # 更新数据库中的样本路径
+                await self.collection.update_one(
+                    {"id": voice_id},
+                    {"$set": {"sample_path": str(sample_path)}}
+                )
+                
+                return str(sample_path)
+            
+            return None
+        except Exception as e:
+            logger.error(f"获取声音样本失败: {e}")
+            raise
+
+    async def analyze_voice(self, voice_id: str) -> Optional[Dict[str, Any]]:
+        """分析声音特征"""
+        try:
+            voice = await self.get_voice(voice_id)
+            if not voice:
+                return None
+            
+            # 模拟声音分析结果
+            analysis_result = {
+                "voice_id": voice_id,
+                "analysis": {
+                    "fundamental_frequency": {
+                        "mean": 220.5,
+                        "std": 15.2,
+                        "min": 180.0,
+                        "max": 280.0
+                    },
+                    "formants": {
+                        "f1": 650.0,
+                        "f2": 1200.0,
+                        "f3": 2500.0
+                    },
+                    "spectral_features": {
+                        "spectral_centroid": 1500.0,
+                        "spectral_rolloff": 3000.0,
+                        "spectral_bandwidth": 800.0
+                    },
+                    "voice_quality": {
+                        "jitter": 0.02,
+                        "shimmer": 0.03,
+                        "hnr": 15.5
+                    },
+                    "emotion_prediction": {
+                        "neutral": 0.7,
+                        "happy": 0.2,
+                        "sad": 0.05,
+                        "angry": 0.03,
+                        "surprised": 0.02
+                    }
+                },
+                "analyzed_at": datetime.now(),
+                "duration": 2.5,
+                "sample_rate": 22050
+            }
+            
+            return analysis_result
+        except Exception as e:
+            logger.error(f"分析声音特征失败: {e}")
+            raise
+
+    async def batch_import_voices(self, voices_data: List[VoiceCreate]) -> Dict[str, Any]:
+        """批量导入声音"""
+        try:
+            imported_voices = []
+            failed_imports = []
+            
+            for voice_data in voices_data:
+                try:
+                    voice = await self.create_voice(voice_data)
+                    imported_voices.append({
+                        "id": voice.id,
+                        "name": voice.name,
+                        "status": "success"
+                    })
+                except Exception as e:
+                    failed_imports.append({
+                        "name": voice_data.name,
+                        "error": str(e),
+                        "status": "failed"
+                    })
+            
+            return {
+                "success": True,
+                "imported_count": len(imported_voices),
+                "failed_count": len(failed_imports),
+                "imported_voices": imported_voices,
+                "failed_imports": failed_imports
+            }
+        except Exception as e:
+            logger.error(f"批量导入声音失败: {e}")
+            raise
+
+    async def batch_export_voices(self, voice_ids: List[str]) -> str:
+        """批量导出声音"""
+        try:
+            import zipfile
+            import tempfile
+            
+            # 创建临时zip文件
+            temp_dir = Path(tempfile.mkdtemp())
+            zip_path = temp_dir / "voices_export.zip"
+            
+            with zipfile.ZipFile(zip_path, 'w') as zip_file:
+                for voice_id in voice_ids:
+                    voice = await self.get_voice(voice_id)
+                    if voice:
+                        # 添加声音信息到zip
+                        voice_info = {
+                            "id": voice.id,
+                            "name": voice.name,
+                            "engine_id": voice.engine_id,
+                            "language": voice.language,
+                            "gender": voice.gender.value if voice.gender else "unknown",
+                            "description": voice.description
+                        }
+                        
+                        # 写入声音信息文件
+                        info_filename = f"{voice_id}_info.json"
+                        zip_file.writestr(info_filename, str(voice_info))
+                        
+                        # 如果有音频文件，也添加到zip
+                        if voice.file_path and Path(voice.file_path).exists():
+                            zip_file.write(voice.file_path, f"{voice_id}_audio.wav")
+            
+            return str(zip_path)
+        except Exception as e:
+            logger.error(f"批量导出声音失败: {e}")
+            raise
+
+    async def clone_voice(self, voice_id: str, new_name: str) -> Optional[Dict[str, Any]]:
+        """克隆声音"""
+        try:
+            original_voice = await self.get_voice(voice_id)
+            if not original_voice:
+                return None
+            
+            # 创建克隆的声音数据
+            clone_data = VoiceCreate(
+                name=new_name,
+                display_name=f"{original_voice.display_name} (克隆)",
+                engine_id=original_voice.engine_id,
+                engine_voice_id=original_voice.engine_voice_id,
+                language=original_voice.language,
+                gender=original_voice.gender,
+                style=original_voice.style,
+                source=original_voice.source,
+                description=f"克隆自 {original_voice.name}",
+                tags=original_voice.tags + ["克隆"]
+            )
+            
+            # 创建克隆声音
+            cloned_voice = await self.create_voice(clone_data)
+            
+            return {
+                "success": True,
+                "original_voice_id": voice_id,
+                "cloned_voice_id": cloned_voice.id,
+                "cloned_voice_name": cloned_voice.name
+            }
+        except Exception as e:
+            logger.error(f"克隆声音失败: {e}")
+            raise
+
+    async def sync_voices_from_engine(self, engine_id: str) -> Dict[str, Any]:
+        """从引擎同步声音"""
+        try:
+            # 获取引擎适配器
+            adapter = await self.adapter_factory.get_adapter(engine_id)
+            if not adapter:
+                return {
+                    "success": False,
+                    "error": f"引擎适配器未找到: {engine_id}"
+                }
+            
+            # 从适配器获取声音列表
+            engine_voices = await adapter.get_voices()
+            
+            synced_voices = []
+            failed_syncs = []
+            
+            for engine_voice in engine_voices:
+                try:
+                    # 检查声音是否已存在
+                    existing_voice = await self.collection.find_one({
+                        "engine_id": engine_id,
+                        "engine_voice_id": engine_voice.get("id")
+                    })
+                    
+                    if not existing_voice:
+                        # 创建新声音
+                        voice_data = VoiceCreate(
+                            name=engine_voice.get("name", "unknown"),
+                            display_name=engine_voice.get("display_name", engine_voice.get("name", "unknown")),
+                            engine_id=engine_id,
+                            engine_voice_id=engine_voice.get("id"),
+                            language=engine_voice.get("language", "zh-CN"),
+                            gender=VoiceGender(engine_voice.get("gender", "female")),
+                            style=VoiceStyle.NEUTRAL,
+                            source=VoiceSource.BUILTIN,
+                            description=f"从引擎 {engine_id} 同步的声音"
+                        )
+                        
+                        voice = await self.create_voice(voice_data)
+                        synced_voices.append({
+                            "id": voice.id,
+                            "name": voice.name,
+                            "status": "created"
+                        })
+                    else:
+                        synced_voices.append({
+                            "id": existing_voice["id"],
+                            "name": existing_voice["name"],
+                            "status": "already_exists"
+                        })
+                        
+                except Exception as e:
+                    failed_syncs.append({
+                        "engine_voice_id": engine_voice.get("id"),
+                        "error": str(e)
+                    })
+            
+            return {
+                "success": True,
+                "engine_id": engine_id,
+                "synced_count": len(synced_voices),
+                "failed_count": len(failed_syncs),
+                "synced_voices": synced_voices,
+                "failed_syncs": failed_syncs
+            }
+        except Exception as e:
+            logger.error(f"从引擎同步声音失败: {e}")
             raise

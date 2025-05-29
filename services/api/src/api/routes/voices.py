@@ -268,7 +268,7 @@ async def search_similar_voices(
     """搜索相似声音"""
     try:
         service = VoiceService(db)
-        similar_voices = await service.search_similar_voices(voice_id, limit)
+        similar_voices = await service.search_similar_voices(voice_id=voice_id, limit=limit)
         return {"similar_voices": similar_voices}
     except Exception as e:
         logger.error(f"搜索相似声音失败: {e}")
