@@ -164,7 +164,9 @@ async def get_supported_formats():
 async def get_audio_file(filename: str):
     """获取音频文件"""
     try:
-        file_path = settings.tts.output_path / filename
+        from pathlib import Path
+        output_path = Path(settings.tts.output_path)
+        file_path = output_path / filename
         if not file_path.exists():
             raise HTTPException(status_code=404, detail="音频文件未找到")
         

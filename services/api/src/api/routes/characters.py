@@ -146,7 +146,13 @@ async def test_character_voice(
     """测试角色声音"""
     try:
         service = CharacterService(db)
-        result = await service.test_voice(character_id, text, voice_id)
+        # 创建测试数据对象
+        from ...models.character import CharacterVoiceTest
+        test_data = CharacterVoiceTest(
+            text=text,
+            voice_id=voice_id
+        )
+        result = await service.test_character_voice(character_id, test_data)
         if not result:
             raise HTTPException(status_code=404, detail="角色未找到或没有可用声音")
         return result

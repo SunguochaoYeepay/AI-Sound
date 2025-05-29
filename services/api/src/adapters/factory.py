@@ -107,6 +107,42 @@ class BaseAdapter:
             logger.error(f"语音合成失败: {e}")
             raise
     
+    async def synthesize_safe(self, **kwargs):
+        """安全的合成方法（包装异常处理）"""
+        try:
+            # 确保适配器就绪
+            if not self._is_ready:
+                await self.initialize()
+            
+            # 设置状态为忙碌
+            self.status = AdapterStatus.BUSY
+            
+            try:
+                # 执行合成
+                result = await self.synthesize(**kwargs)
+                self.status = AdapterStatus.READY
+                
+                # 创建标准化的结果对象
+                from .base import SynthesisResult
+                return SynthesisResult(
+                    success=result.get("success", True),
+                    output_path=result.get("output_path"),
+                    duration=result.get("duration"),
+                    sample_rate=kwargs.get("sample_rate", 22050),
+                    error_message=result.get("error_message")
+                )
+            except Exception as e:
+                self.status = AdapterStatus.ERROR
+                raise
+                
+        except Exception as e:
+            logger.error(f"引擎 {self.engine_id} 合成失败: {e}")
+            from .base import SynthesisResult
+            return SynthesisResult(
+                success=False,
+                error_message=str(e)
+            )
+    
     async def cleanup(self) -> None:
         """清理资源"""
         try:
