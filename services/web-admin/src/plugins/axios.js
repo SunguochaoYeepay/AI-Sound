@@ -21,9 +21,17 @@ axiosInstance.interceptors.request.use(
   }
 )
 
-// 响应拦截器
+// 响应拦截器 - 统一处理新的API响应格式
 axiosInstance.interceptors.response.use(
-  response => response,
+  response => {
+    // 检查响应数据格式，如果是新的标准格式则自动提取data字段
+    if (response.data && typeof response.data === 'object' && 'success' in response.data && 'data' in response.data) {
+      // 新的API响应格式: { success: true, data: {...} }
+      // 将内层的data提升到response.data，保持向后兼容
+      response.data = response.data.data
+    }
+    return response
+  },
   error => {
     console.error('API请求错误', error)
     return Promise.reject(error)

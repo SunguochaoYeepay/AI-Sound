@@ -418,7 +418,8 @@ export default defineComponent({
       loadingVoices.value = true;
       try {
         const response = await voiceAPI.getVoices();
-        availableVoices.value = response.data || [];
+        // axios拦截器已经处理了API响应格式，直接使用原来的逻辑
+        availableVoices.value = response.data?.voices || [];
         
         // 如果有声音且当前选中的声音不在列表中，选择第一个
         if (availableVoices.value.length > 0) {

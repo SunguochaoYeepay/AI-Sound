@@ -348,7 +348,8 @@ export default defineComponent({
       loading.value = true;
       try {
         const response = await voiceAPI.getVoices();
-        voiceList.value = response.data || [];
+        // axios拦截器已经处理了API响应格式，直接使用原来的逻辑
+        voiceList.value = response.data?.voices || [];
       } catch (error) {
         console.error('获取声音列表失败:', error);
         message.error('获取声音列表失败: ' + (error.response?.data?.message || error.message));

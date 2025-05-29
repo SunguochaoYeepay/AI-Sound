@@ -269,7 +269,7 @@ export default defineComponent({
       loading.value = true;
       try {
         const response = await characterAPI.getCharacters();
-        characterList.value = response.data || [];
+        characterList.value = response.data?.characters || [];
       } catch (error) {
         console.error('获取角色列表失败:', error);
         message.error('获取角色列表失败: ' + (error.response?.data?.message || error.message));
@@ -283,7 +283,7 @@ export default defineComponent({
       voicesLoading.value = true;
       try {
         const response = await voiceAPI.getVoices();
-        voiceList.value = response.data || [];
+        voiceList.value = response.data?.voices || [];
       } catch (error) {
         console.error('获取声音列表失败:', error);
         message.error('获取声音列表失败: ' + (error.response?.data?.message || error.message));
@@ -440,7 +440,7 @@ export default defineComponent({
       try {
         // 简单的本地角色识别（正则匹配）
         const text = novelText.value;
-        const characterPattern = /[“”「」‘’]([^“”「」‘’。，！？]{1,10})[“”「」‘’]/g;
+        const characterPattern = /[""「」'']([^""「」''。，！？]{1,10})[""「」'']/g;
         const characters = new Map();
         
         let match;

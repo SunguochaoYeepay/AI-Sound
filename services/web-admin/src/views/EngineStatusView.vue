@@ -314,9 +314,9 @@ const engineStats = computed(() => {
   }
   
   engines.value.forEach(engine => {
-    if (engine.status === 'ready' || (engine.status === 'running' && engine.health_status === 'healthy')) {
+    if (engine.status === 'healthy' || engine.health_status === 'healthy') {
       stats.online++
-    } else if (engine.status === 'stopped') {
+    } else if (engine.status === 'unhealthy' || engine.status === 'stopped') {
       stats.offline++
     } else {
       stats.error++
@@ -331,12 +331,12 @@ const refreshEngines = async () => {
   loading.value = true
   try {
     const response = await engineAPI.getEngines()
-    // 修复数据映射，适配后端返回的数据结构
-    const rawEngines = response.data || []
+    // axios拦截器已经处理了API响应格式，直接使用原来的逻辑
+    const rawEngines = response.data?.engines || []
     engines.value = rawEngines.map(engine => ({
       ...engine,
-      engine_type: engine.type, // 映射 type 到 engine_type
-      health_status: engine.status === 'ready' ? 'healthy' : 'unknown', // 映射状态
+      engine_type: engine.type || 'espnet', // 映射 type 到 engine_type
+      health_status: engine.status === 'healthy' ? 'healthy' : 'unknown', // 映射状态
       url: engine.config?.endpoint || 'N/A', // 从配置中获取URL
       last_health_check: engine.last_health_check || engine.updated_at
     }))
@@ -473,6 +473,8 @@ const getEngineTypeName = (type) => {
 
 const getStatusBadge = (status) => {
   const badges = {
+    healthy: 'processing',
+    unhealthy: 'error',
     ready: 'processing',
     running: 'processing', 
     stopped: 'default',
@@ -483,6 +485,8 @@ const getStatusBadge = (status) => {
 
 const getStatusText = (status) => {
   const texts = {
+    healthy: '健康',
+    unhealthy: '不健康',
     ready: '就绪',
     running: '运行中',
     stopped: '已停止',

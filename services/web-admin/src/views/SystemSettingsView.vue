@@ -343,6 +343,7 @@ export default defineComponent({
     const loadSettings = async () => {
       try {
         const response = await systemAPI.getSettings();
+        // axios拦截器已经处理了API响应格式，直接使用原来的逻辑
         const settings = response.data || {};
         
         // 更新各个设置对象
@@ -369,6 +370,7 @@ export default defineComponent({
       infoLoading.value = true;
       try {
         const response = await systemAPI.getSystemInfo();
+        // axios拦截器已经处理了API响应格式，直接使用原来的逻辑
         systemInfo.value = response.data || {};
       } catch (error) {
         console.error('加载系统信息失败:', error);
