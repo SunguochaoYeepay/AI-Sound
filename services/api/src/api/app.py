@@ -11,6 +11,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 import logging
+from pathlib import Path
 
 from ..core.config import settings
 from ..core.logging import setup_logging
@@ -290,7 +291,7 @@ def setup_static_files(app: FastAPI) -> None:
     """设置静态文件服务"""
     try:
         # 音频文件服务
-        audio_path = settings.tts.output_path
+        audio_path = Path(settings.tts.output_path)
         if not audio_path.exists():
             audio_path.mkdir(parents=True, exist_ok=True)
         
@@ -298,8 +299,8 @@ def setup_static_files(app: FastAPI) -> None:
         
         # 模型文件服务（仅在调试模式下）
         if settings.debug:
-            model_path = settings.tts.model_path
-            if model_path.exists():
+            model_path = Path(settings.tts.model_path) if hasattr(settings.tts, 'model_path') else None
+            if model_path and model_path.exists():
                 app.mount("/models", StaticFiles(directory=str(model_path)), name="models")
         
         logger.info("静态文件服务已配置")

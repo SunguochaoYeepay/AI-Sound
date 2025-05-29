@@ -1,6 +1,0 @@
-@echo off
-echo 正在重新构建前端服务...
-docker-compose build web-admin --no-cache
-echo 构建完成，正在重启服务...
-docker-compose up -d web-admin
-echo 前端服务已重启，请刷新页面查看效果 
