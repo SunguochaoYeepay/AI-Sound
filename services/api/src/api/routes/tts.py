@@ -107,6 +107,12 @@ async def batch_synthesize_async(request: BatchSynthesisRequest, tts_service: TT
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/batch-synthesize")
+async def batch_synthesize_alias(request: BatchSynthesisRequest, tts_service: TTSService = Depends(get_tts_service)):
+    """异步批量文本合成 - 前端API别名"""
+    return await batch_synthesize_async(request, tts_service)
+
+
 @router.get("/tasks/{task_id}", response_model=TTSTask)
 async def get_task_status(task_id: str, tts_service: TTSService = Depends(get_tts_service)):
     """获取任务状态"""
@@ -120,6 +126,23 @@ async def get_task_status(task_id: str, tts_service: TTSService = Depends(get_tt
     except Exception as e:
         logger.error(f"获取任务状态失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/tasks")
+async def get_tasks(tts_service: TTSService = Depends(get_tts_service)):
+    """获取任务列表"""
+    try:
+        tasks = await tts_service.get_all_tasks()
+        return {"tasks": tasks}
+    except Exception as e:
+        logger.error(f"获取任务列表失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/tasks/{task_id}/cancel")
+async def cancel_task_alias(task_id: str, tts_service: TTSService = Depends(get_tts_service)):
+    """取消任务 - 前端API别名"""
+    return await cancel_task(task_id, tts_service)
 
 
 @router.delete("/tasks/{task_id}")

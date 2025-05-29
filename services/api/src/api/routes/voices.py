@@ -222,6 +222,17 @@ async def preview_voice(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/{voice_id}/preview")
+async def preview_voice_post(
+    voice_id: str,
+    request: dict,
+    db=Depends(get_db)
+):
+    """预览声音 - POST方法别名"""
+    text = request.get("text", "你好，这是声音预览。")
+    return await preview_voice(voice_id, text, db)
+
+
 @router.get("/{voice_id}/sample")
 async def get_voice_sample(voice_id: str, db=Depends(get_db)):
     """获取声音样本文件"""
@@ -372,4 +383,50 @@ async def sync_voices_from_engine(
         return result
     except Exception as e:
         logger.error(f"从引擎同步声音失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/extract-features")
+async def extract_features(
+    file: UploadFile = File(...),
+    engine: str = Query("megatts3", description="使用的引擎"),
+    db=Depends(get_db)
+):
+    """提取音频特征"""
+    try:
+        # 检查文件类型
+        allowed_types = ["audio/wav", "audio/mpeg", "audio/mp3", "audio/flac", "audio/ogg"]
+        if file.content_type not in allowed_types:
+            raise HTTPException(
+                status_code=400,
+                detail=f"不支持的文件类型: {file.content_type}"
+            )
+        
+        # 检查文件大小
+        if file.size and file.size > 50 * 1024 * 1024:  # 50MB限制
+            raise HTTPException(status_code=400, detail="文件大小超过限制 (50MB)")
+        
+        service = VoiceService(db)
+        
+        # 提取特征
+        result = await service.extract_features(file, engine)
+        
+        return {
+            "success": True,
+            "message": "特征提取成功",
+            "data": {
+                "features_file": result.get("features_file"),
+                "features_data": result.get("features_data"),
+                "engine_used": engine,
+                "audio_info": {
+                    "filename": file.filename,
+                    "size": file.size,
+                    "content_type": file.content_type
+                }
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"特征提取失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))

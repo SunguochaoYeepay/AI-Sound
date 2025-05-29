@@ -20,7 +20,7 @@ from ..core.queue import task_queue
 from ..core.websocket import websocket_manager, MessageType
 
 # 导入路由
-from .routes import engines, voices, characters, tts
+from .routes import engines, voices, characters, tts, system
 
 logger = logging.getLogger(__name__)
 
@@ -164,6 +164,12 @@ def register_routes(app: FastAPI) -> None:
                 }
             )
     
+    # 前端需要的健康检查别名
+    @app.get("/api/health")
+    async def api_health_check():
+        """健康检查端点 - 前端API别名"""
+        return await health_check()
+    
     # 系统信息
     @app.get("/info")
     async def system_info():
@@ -181,11 +187,18 @@ def register_routes(app: FastAPI) -> None:
             ]
         }
     
+    # 前端需要的系统信息别名
+    @app.get("/api/system/info")
+    async def api_system_info():
+        """系统信息端点 - 前端API别名"""
+        return await system_info()
+    
     # 注册业务路由
     app.include_router(engines.router)
     app.include_router(voices.router)
     app.include_router(characters.router)
     app.include_router(tts.router)
+    app.include_router(system.router)
 
 
 def register_websocket_routes(app: FastAPI) -> None:

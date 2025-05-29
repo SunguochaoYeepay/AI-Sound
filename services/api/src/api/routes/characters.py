@@ -161,3 +161,63 @@ async def test_character_voice(
     except Exception as e:
         logger.error(f"测试角色声音失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/batch")
+async def batch_character_operation(
+    operation: str,
+    character_ids: List[str],
+    data: dict = {},
+    db=Depends(get_db)
+):
+    """批量角色操作"""
+    try:
+        service = CharacterService(db)
+        result = await service.batch_operation(operation, character_ids, data)
+        
+        return {
+            "success": True,
+            "message": f"批量操作完成",
+            "data": result
+        }
+    except Exception as e:
+        logger.error(f"批量角色操作失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{character_id}/voice-mapping")
+async def set_voice_mapping(
+    character_id: str,
+    voice_data: dict,
+    db=Depends(get_db)
+):
+    """设置角色声音映射"""
+    try:
+        voice_id = voice_data.get("voice_id")
+        if not voice_id:
+            raise HTTPException(status_code=400, detail="voice_id 参数必填")
+        
+        service = CharacterService(db)
+        
+        # 验证角色是否存在
+        character = await service.get_character(character_id)
+        if not character:
+            raise HTTPException(status_code=404, detail="角色未找到")
+        
+        # 设置声音映射
+        result = await service.set_voice_mapping(character_id, voice_id)
+        
+        return {
+            "success": True,
+            "message": "声音映射设置成功",
+            "data": {
+                "character_id": character_id,
+                "voice_id": voice_id,
+                "mapping_id": result.get("mapping_id") if result else None
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"设置角色声音映射失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

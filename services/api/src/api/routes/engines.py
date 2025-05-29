@@ -2,7 +2,7 @@
 引擎管理API路由
 """
 
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, HTTPException, Depends, Query, File, UploadFile
 from typing import List, Optional, Dict, Any
 import logging
 
@@ -433,4 +433,60 @@ async def get_engine_metrics(engine_id: str, db=Depends(get_db)):
         raise
     except Exception as e:
         logger.error(f"获取引擎指标失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/megatts3/voices/{voice_id}/upload-reference")
+async def upload_megatts3_reference(
+    voice_id: str,
+    audio: UploadFile = File(..., description="参考音频文件"),
+    npy: Optional[UploadFile] = File(None, description="特征文件(.npy)"),
+    db=Depends(get_db)
+):
+    """MegaTTS3专用：上传参考音频和特征文件"""
+    try:
+        # 验证音频文件
+        if not audio.content_type.startswith('audio/'):
+            raise HTTPException(
+                status_code=400,
+                detail=f"音频文件类型无效: {audio.content_type}"
+            )
+        
+        # 验证特征文件（如果提供）
+        if npy and not npy.filename.endswith('.npy'):
+            raise HTTPException(
+                status_code=400,
+                detail="特征文件必须是.npy格式"
+            )
+        
+        # 检查文件大小
+        if audio.size and audio.size > 100 * 1024 * 1024:  # 100MB
+            raise HTTPException(status_code=400, detail="音频文件大小超过限制 (100MB)")
+        
+        if npy and npy.size and npy.size > 50 * 1024 * 1024:  # 50MB
+            raise HTTPException(status_code=400, detail="特征文件大小超过限制 (50MB)")
+        
+        service = EngineService(db)
+        
+        # 上传文件到MegaTTS3引擎
+        result = await service.upload_megatts3_reference(voice_id, audio, npy)
+        
+        return {
+            "success": True,
+            "message": "MegaTTS3参考文件上传成功",
+            "data": {
+                "voice_id": voice_id,
+                "audio_file": result.get("audio_file"),
+                "features_file": result.get("features_file"),
+                "upload_time": result.get("upload_time"),
+                "files_uploaded": {
+                    "audio": audio.filename,
+                    "features": npy.filename if npy else None
+                }
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"MegaTTS3参考文件上传失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
