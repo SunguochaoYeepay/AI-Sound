@@ -82,7 +82,7 @@ class EngineAPI extends BaseAPI {
   // 健康检查
   async checkHealth(engineId) {
     try {
-      const response = await axios.post(`${this.baseUrl}/${engineId}/health-check`)
+      const response = await axios.get(`${this.baseUrl}/${engineId}/health`)
       return this.handleResponse(response)
     } catch (error) {
       this.handleError(error)

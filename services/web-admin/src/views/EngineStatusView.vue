@@ -331,8 +331,26 @@ const refreshEngines = async () => {
   loading.value = true
   try {
     const response = await engineAPI.getEngines()
-    // axios拦截器已经处理了API响应格式，直接使用原来的逻辑
-    const rawEngines = response.data?.engines || []
+    console.log('完整API响应:', response) // 调试信息
+    console.log('API响应数据:', response.data) // 调试信息
+    console.log('数据类型:', typeof response.data) // 调试信息
+    
+    // 根据调试信息，engines数据直接在response中
+    let rawEngines = []
+    if (response && response.engines && Array.isArray(response.engines)) {
+      rawEngines = response.engines
+    } else if (response.data && response.data.engines && Array.isArray(response.data.engines)) {
+      rawEngines = response.data.engines
+    } else {
+      console.error('无法找到引擎数据:', response)
+      message.error('无法获取引擎数据')
+      engines.value = []
+      return
+    }
+    
+    console.log('提取的引擎数据:', rawEngines) // 调试信息
+    console.log('引擎数据类型:', typeof rawEngines, Array.isArray(rawEngines)) // 调试信息
+    
     engines.value = rawEngines.map(engine => ({
       ...engine,
       engine_type: engine.type || 'espnet', // 映射 type 到 engine_type
