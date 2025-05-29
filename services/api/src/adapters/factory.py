@@ -198,3 +198,29 @@ class AdapterFactory:
             "error_adapters": total_adapters - ready_adapters,
             "adapters": adapter_list
         }
+    
+    async def get_available_engines(self) -> List[Dict[str, Any]]:
+        """获取可用引擎列表"""
+        try:
+            engines = []
+            for engine_id, adapter in self._adapters.items():
+                engine_info = {
+                    "id": engine_id,
+                    "name": adapter.engine_type.upper(),
+                    "type": adapter.engine_type,
+                    "status": "healthy" if adapter.is_ready else "unhealthy",
+                    "is_ready": adapter.is_ready,
+                    "endpoint": adapter.config.get("endpoint", ""),
+                    "capabilities": {
+                        "supports_streaming": False,
+                        "supports_emotions": False,
+                        "max_text_length": 1000,
+                        "supported_formats": ["wav", "mp3"]
+                    }
+                }
+                engines.append(engine_info)
+            
+            return engines
+        except Exception as e:
+            logger.error(f"获取可用引擎列表失败: {e}")
+            return []

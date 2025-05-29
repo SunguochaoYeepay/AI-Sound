@@ -14,8 +14,8 @@ class DatabaseConfig(BaseSettings):
     host: str = Field(default="localhost", description="MongoDB主机地址")
     port: int = Field(default=27017, description="MongoDB端口")
     database: str = Field(default="ai_sound", description="数据库名称")
-    username: Optional[str] = Field(default="ai_sound_user", description="用户名")
-    password: Optional[str] = Field(default="ai_sound_pass_2024", description="密码")
+    username: Optional[str] = Field(default="admin", description="用户名")
+    password: Optional[str] = Field(default="admin123", description="密码")
     
     @property
     def url(self) -> str:

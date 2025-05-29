@@ -54,6 +54,77 @@ async def list_engines(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/health")
+async def check_all_engines_health(db=Depends(get_db)):
+    """检查所有引擎健康状态"""
+    try:
+        service = EngineService(db)
+        engines = await service.list_engines()
+        
+        health_status = {
+            "overall_status": "healthy",
+            "total_engines": len(engines),
+            "healthy_engines": 0,
+            "unhealthy_engines": 0,
+            "engines": []
+        }
+        
+        for engine in engines:
+            engine_health = {
+                "id": engine.id,
+                "name": engine.name,
+                "status": "healthy" if engine.status == "ready" else "unhealthy"
+            }
+            health_status["engines"].append(engine_health)
+            
+            if engine_health["status"] == "healthy":
+                health_status["healthy_engines"] += 1
+            else:
+                health_status["unhealthy_engines"] += 1
+        
+        # 如果有不健康的引擎，整体状态为警告
+        if health_status["unhealthy_engines"] > 0:
+            health_status["overall_status"] = "warning"
+        
+        return {
+            "success": True,
+            "data": health_status
+        }
+    except Exception as e:
+        logger.error(f"检查引擎健康状态失败: {e}")
+        return {
+            "success": False,
+            "data": {
+                "overall_status": "error",
+                "error": str(e)
+            }
+        }
+
+
+@router.post("/discover")
+async def discover_engines(db=Depends(get_db)):
+    """自动发现可用引擎"""
+    try:
+        service = EngineService(db)
+        discovered = await service.discover_engines()
+        return {"discovered_engines": discovered}
+    except Exception as e:
+        logger.error(f"自动发现引擎失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/stats/summary")
+async def get_engines_summary(db=Depends(get_db)):
+    """获取引擎统计摘要"""
+    try:
+        service = EngineService(db)
+        summary = await service.get_engines_summary()
+        return summary
+    except Exception as e:
+        logger.error(f"获取引擎统计摘要失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/{engine_id}")
 async def get_engine(engine_id: str, db=Depends(get_db)):
     """获取指定引擎详情"""
@@ -362,62 +433,4 @@ async def get_engine_metrics(engine_id: str, db=Depends(get_db)):
         raise
     except Exception as e:
         logger.error(f"获取引擎指标失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/discover")
-async def discover_engines(db=Depends(get_db)):
-    """自动发现可用引擎"""
-    try:
-        service = EngineService(db)
-        discovered = await service.discover_engines()
-        return {"discovered_engines": discovered}
-    except Exception as e:
-        logger.error(f"自动发现引擎失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/health")
-async def check_all_engines_health(db=Depends(get_db)):
-    """检查所有引擎健康状态"""
-    try:
-        service = EngineService(db)
-        engines = await service.list_engines()
-        
-        health_engines = []
-        for engine in engines:
-            health_engine = {
-                "id": engine.id,
-                "status": "healthy" if engine.status == "ready" else "unhealthy",
-                "last_check": engine.last_health_check.isoformat() if engine.last_health_check else None,
-                "details": {
-                    "gpu_available": True,
-                    "memory_usage": "1.2GB/8GB",
-                    "response_time": 0.05
-                }
-            }
-            if engine.status != "ready":
-                health_engine["error"] = engine.error_message or "服务不可用"
-            health_engines.append(health_engine)
-        
-        return {
-            "success": True,
-            "data": {
-                "engines": health_engines
-            }
-        }
-    except Exception as e:
-        logger.error(f"检查所有引擎健康状态失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/stats/summary")
-async def get_engines_summary(db=Depends(get_db)):
-    """获取引擎统计摘要"""
-    try:
-        service = EngineService(db)
-        summary = await service.get_engines_summary()
-        return summary
-    except Exception as e:
-        logger.error(f"获取引擎统计摘要失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))

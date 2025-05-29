@@ -159,11 +159,20 @@ async def init_test_data():
             {
                 "id": "char_001",
                 "name": "小助手",
+                "display_name": "智能小助手",
                 "description": "智能助手角色",
-                "voice_id": "voice_001",
+                "type": "main",
+                "gender": "unknown",
                 "personality": "friendly",
                 "tags": ["助手", "友好"],
+                "category": "general",
                 "is_active": True,
+                "usage_count": 0,
+                "default_speed": 1.0,
+                "default_pitch": 0.0,
+                "default_volume": 1.0,
+                "voice_mappings": [],
+                "default_voice_id": "voice_001",
                 "created_at": datetime.now(),
                 "updated_at": datetime.now()
             }
