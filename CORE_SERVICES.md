@@ -2,18 +2,25 @@
 
 ## 🚀 快速启动
 
-### 方式一：一键启动所有服务
+### 方式一：混合模式启动（推荐）
 ```bash
-start_all_core.bat
+start_all_hybrid.bat    # MongoDB用Docker，API用本地venv
 ```
 
-### 方式二：分别启动服务
+### 方式二：纯Docker模式启动
+```bash
+start_all_core.bat      # 所有服务都用Docker（需要网络正常）
+```
+
+### 方式三：分别启动服务
 ```bash
 # 1. 启动数据库（必须先启动）
 start_mongodb.bat
 
-# 2. 启动API服务
+# 2. 启动API服务（本地venv模式，推荐）
 start_api.bat
+# 或详细版本
+start_api_venv_fixed.bat
 
 # 3. 启动管理界面
 start_admin.bat
@@ -21,7 +28,11 @@ start_admin.bat
 
 ## 🛑 停止服务
 ```bash
+# 停止所有服务
 stop_all_core.bat
+
+# 单独停止API服务（本地venv模式）
+stop_api.bat
 ```
 
 ## 📋 服务信息
@@ -80,12 +91,16 @@ backup_mongodb.bat    # 备份MongoDB数据
 ```
 AI-Sound/
 ├── start_mongodb.bat         # MongoDB启动脚本
-├── start_api.bat            # API启动脚本  
+├── start_api.bat            # API启动脚本（本地venv模式）
+├── start_api_venv_fixed.bat # API启动脚本（详细版）
 ├── start_admin.bat          # Admin启动脚本
-├── start_all_core.bat       # 一键启动所有服务
+├── start_all_core.bat       # 一键启动（纯Docker）
+├── start_all_hybrid.bat     # 一键启动（混合模式，推荐）
 ├── stop_all_core.bat        # 停止所有服务
+├── stop_api.bat             # 停止API服务
 ├── backup_mongodb.bat       # 数据备份脚本
 ├── check_git_safety.bat     # Git数据安全检查
+├── venv/                    # Python虚拟环境
 ├── docker/
 │   └── volumes/
 │       └── mongodb/         # 数据持久化目录 🎯
