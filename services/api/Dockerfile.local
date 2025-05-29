@@ -1,5 +1,5 @@
-# 使用Ubuntu基础镜像（通常本地有）
-FROM ubuntu:20.04
+# 使用Python官方镜像，避免网络问题
+FROM python:3.10-slim
 
 # 设置环境变量
 ENV PYTHONUNBUFFERED=1 \
@@ -13,22 +13,16 @@ WORKDIR /app
 # 创建必要的目录
 RUN mkdir -p /app/src /app/data /app/output
 
-# 安装Python和系统依赖
+# 安装系统依赖
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 \
-    python3-pip \
-    python3-dev \
     ffmpeg \
     libsndfile1 \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# 创建Python3软链接
-RUN ln -s /usr/bin/python3 /usr/bin/python
-
 # 复制并安装Python依赖（简化版）
 COPY services/api/requirements.txt /app/
-RUN pip3 install --no-cache-dir fastapi uvicorn requests pymongo
+RUN pip install --no-cache-dir fastapi uvicorn requests pymongo
 
 # 复制源代码
 COPY services/api/src/ /app/src/
@@ -46,4 +40,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:9930/health || exit 1
 
 # 运行API服务
-CMD ["python3", "-m", "src.main", "--host", "0.0.0.0", "--port", "9930"] 
+CMD ["python", "-m", "src.main", "--host", "0.0.0.0", "--port", "9930"] 

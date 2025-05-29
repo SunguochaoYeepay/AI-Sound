@@ -14,8 +14,8 @@ class DatabaseConfig(BaseSettings):
     host: str = Field(default="localhost", description="MongoDB主机地址")
     port: int = Field(default=27017, description="MongoDB端口")
     database: str = Field(default="ai_sound", description="数据库名称")
-    username: Optional[str] = Field(default=None, description="用户名")
-    password: Optional[str] = Field(default=None, description="密码")
+    username: Optional[str] = Field(default="ai_sound_user", description="用户名")
+    password: Optional[str] = Field(default="ai_sound_pass_2024", description="密码")
     
     @property
     def url(self) -> str:
@@ -72,8 +72,8 @@ class TTSConfig(BaseSettings):
 
 class EngineConfig(BaseSettings):
     """TTS引擎服务配置"""
-    megatts3_url: str = Field(default="http://localhost:7929", description="MegaTTS3服务URL")
-    espnet_url: str = Field(default="http://localhost:9000", description="ESPnet服务URL")
+    megatts3_url: str = Field(default="http://localhost:7931", description="MegaTTS3服务URL")
+    espnet_url: str = Field(default="http://localhost:9001", description="ESPnet服务URL")
     bertvits2_url: str = Field(default="http://localhost:9932", description="Bert-VITS2服务URL")
     
     class Config:
@@ -110,8 +110,8 @@ class Settings(BaseSettings):
     engines: EngineConfig = EngineConfig()
     
     class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
+        # 移除env_file配置，只从环境变量读取
+        extra = "ignore"  # 忽略额外的环境变量
 
 
 # 全局配置实例

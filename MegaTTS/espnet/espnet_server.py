@@ -64,7 +64,7 @@ def health_check():
 
 @app.route('/synthesize', methods=['POST'])
 def synthesize():
-    """文本合成端点"""
+    """文本合成端点 - 与适配器接口标准化"""
     try:
         if not model_loaded:
             return jsonify({
@@ -72,7 +72,7 @@ def synthesize():
                 'error': 'ESPnet模型未加载'
             }), 500
         
-        # 获取请求参数
+        # 获取请求参数 - 支持适配器的参数格式
         data = request.get_json()
         if not data:
             return jsonify({
@@ -87,19 +87,33 @@ def synthesize():
                 'error': '文本参数为空'
             }), 400
         
-        voice_id = data.get('voice_id', 'default')
+        # 适配器标准参数映射
+        speaker = data.get('speaker', data.get('voice_id', 'default'))
         speed = data.get('speed', 1.0)
         pitch = data.get('pitch', 0.0)
+        volume = data.get('volume', 1.0)
+        sample_rate = data.get('sample_rate', 24000)
         output_path = data.get('output_path')
+        format_type = data.get('format', 'wav')
         
-        logger.info(f"合成请求: text='{text}', voice_id='{voice_id}'")
+        logger.info(f"合成请求: text='{text}', speaker='{speaker}', speed={speed}, pitch={pitch}")
         
         # 执行TTS合成
         result = text2speech(text)
         wav = result["wav"].view(-1).cpu().numpy()
         
+        # 应用语速调整（简单实现）
+        if speed != 1.0:
+            import scipy.signal
+            # 简单的时间拉伸（实际应用中可能需要更复杂的算法）
+            new_length = int(len(wav) / speed)
+            wav = scipy.signal.resample(wav, new_length)
+        
+        # 应用音量调整
+        if volume != 1.0:
+            wav = wav * volume
+        
         # 计算音频时长
-        sample_rate = 24000
         duration = len(wav) / sample_rate
         
         logger.info(f"合成完成: 长度={len(wav)}, 采样率={sample_rate}, 时长={duration:.2f}s")
@@ -118,16 +132,23 @@ def synthesize():
                 'sample_rate': sample_rate
             })
         else:
-            # 返回音频文件
+            # 返回音频文件，设置响应头
             import soundfile as sf
             with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
                 sf.write(f.name, wav, sample_rate)
-                return send_file(
+                
+                response = send_file(
                     f.name, 
                     mimetype="audio/wav", 
                     as_attachment=True, 
                     download_name="espnet_output.wav"
                 )
+                
+                # 添加元数据响应头（适配器需要）
+                response.headers["X-Audio-Duration"] = str(duration)
+                response.headers["X-Audio-Sample-Rate"] = str(sample_rate)
+                
+                return response
         
     except Exception as e:
         logger.error(f"合成失败: {e}")
