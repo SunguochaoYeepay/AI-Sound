@@ -80,8 +80,8 @@
                 <template #title>
                   <div class="voice-card-title">
                     {{ voice.name }}
-                    <a-tag color="blue" v-if="voice.attributes.gender === 'male'">男性</a-tag>
-                    <a-tag color="magenta" v-else-if="voice.attributes.gender === 'female'">女性</a-tag>
+                    <a-tag color="blue" v-if="voice.gender === 'male'">男性</a-tag>
+                    <a-tag color="magenta" v-else-if="voice.gender === 'female'">女性</a-tag>
                   </div>
                 </template>
                 <template #extra>
@@ -132,7 +132,7 @@
     
     <!-- 预览声音对话框 -->
     <a-modal
-      v-model:visible="previewModalVisible"
+      v-model:open="previewModalVisible"
       title="声音预览"
       :footer="null"
       @cancel="stopPreviewAudio"
@@ -180,7 +180,7 @@
     
     <!-- 编辑声音对话框 -->
     <a-modal
-      v-model:visible="editModalVisible"
+      v-model:open="editModalVisible"
       title="编辑声音信息"
       @ok="updateVoice"
       :confirm-loading="updating"
@@ -325,12 +325,12 @@ export default defineComponent({
         }
         
         // 性别筛选
-        if (genderFilter.value && voice.attributes.gender !== genderFilter.value) {
+        if (genderFilter.value && voice.gender !== genderFilter.value) {
           return false;
         }
         
         // 年龄段筛选
-        if (ageFilter.value && voice.attributes.age_group !== ageFilter.value) {
+        if (ageFilter.value && voice.age_group !== ageFilter.value) {
           return false;
         }
         
@@ -348,8 +348,15 @@ export default defineComponent({
       loading.value = true;
       try {
         const response = await voiceAPI.getVoices();
-        // axios拦截器已经处理了API响应格式，直接使用原来的逻辑
-        voiceList.value = response.data?.voices || [];
+        // axios拦截器已经处理了API响应格式，response.data已经是{ voices: [...] }
+        const voices = response.voices || [];
+        
+        // 为每个voice对象添加缺失字段的默认值
+        voiceList.value = voices.map(voice => ({
+          ...voice,
+          tags: voice.tags || [],
+          age_group: voice.age_group || 'unknown'
+        }));
       } catch (error) {
         console.error('获取声音列表失败:', error);
         message.error('获取声音列表失败: ' + (error.response?.data?.message || error.message));
@@ -486,8 +493,8 @@ export default defineComponent({
     const editVoice = (voice) => {
       editForm.id = voice.id;
       editForm.name = voice.name;
-      editForm.gender = voice.attributes.gender;
-      editForm.age_group = voice.attributes.age_group;
+      editForm.gender = voice.gender;
+      editForm.age_group = voice.age_group;
       editForm.tags = [...voice.tags];
       editForm.description = voice.description;
       
@@ -507,10 +514,8 @@ export default defineComponent({
         // 调用API更新声音信息
         const response = await voiceAPI.updateVoice(editForm.id, {
           name: editForm.name,
-          attributes: {
-            gender: editForm.gender,
-            age_group: editForm.age_group
-          },
+          gender: editForm.gender,
+          age_group: editForm.age_group,
           tags: editForm.tags,
           description: editForm.description
         });
@@ -524,11 +529,8 @@ export default defineComponent({
           voiceList.value[index] = {
             ...voiceList.value[index],
             name: editForm.name,
-            attributes: {
-              ...voiceList.value[index].attributes,
-              gender: editForm.gender,
-              age_group: editForm.age_group
-            },
+            gender: editForm.gender,
+            age_group: editForm.age_group,
             tags: [...editForm.tags],
             description: editForm.description
           };

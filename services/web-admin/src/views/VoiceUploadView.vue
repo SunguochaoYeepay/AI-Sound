@@ -88,9 +88,7 @@
         
         <!-- 音频文件上传 -->
         <a-form-item 
-          label="参考音频文件" 
-          name="audioFile"
-          :rules="[{ required: true, message: '请上传音频文件' }]"
+          label="参考音频文件"
         >
           <a-upload-dragger
             v-model:file-list="audioFileList"
@@ -108,6 +106,9 @@
               支持 WAV、MP3、FLAC、M4A 格式，建议使用高质量音频文件（时长10-30秒）
             </p>
           </a-upload-dragger>
+          <div v-if="!audioFileList.length" style="color: #ff4d4f; margin-top: 8px;">
+            请上传音频文件
+          </div>
         </a-form-item>
         
         <!-- 特征文件上传（可选，MegaTTS3专用） -->

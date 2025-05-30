@@ -8,6 +8,10 @@ from typing import Dict, Optional, Any, List
 from enum import Enum
 import logging
 
+from .base import BaseTTSAdapter, SynthesisParams, SynthesisResult, EngineStatus, ParameterMapper
+from .megatts3_adapter import MegaTTS3Adapter
+from .espnet_adapter import ESPnetAdapter
+
 logger = logging.getLogger(__name__)
 
 
@@ -20,145 +24,18 @@ class AdapterStatus(str, Enum):
     OFFLINE = "offline"
 
 
-class BaseAdapter:
-    """基础适配器类"""
-    
-    def __init__(self, engine_id: str, engine_type: str, config: Dict[str, Any]):
-        self.engine_id = engine_id
-        self.engine_type = engine_type
-        self.config = config
-        self.status = AdapterStatus.OFFLINE
-        self._is_ready = False
-    
-    @property
-    def is_ready(self) -> bool:
-        """检查适配器是否就绪"""
-        return self._is_ready and self.status == AdapterStatus.READY
-    
-    async def initialize(self) -> None:
-        """初始化适配器"""
-        try:
-            self.status = AdapterStatus.INITIALIZING
-            # 模拟初始化过程
-            await asyncio.sleep(0.1)
-            self.status = AdapterStatus.READY
-            self._is_ready = True
-            logger.info(f"适配器初始化成功: {self.engine_id}")
-        except Exception as e:
-            self.status = AdapterStatus.ERROR
-            self._is_ready = False
-            logger.error(f"适配器初始化失败: {self.engine_id} - {e}")
-            raise
-    
-    async def health_check(self) -> Dict[str, Any]:
-        """健康检查"""
-        try:
-            if not self._is_ready:
-                raise RuntimeError("适配器未就绪")
-            
-            return {
-                "status": "healthy",
-                "engine_id": self.engine_id,
-                "engine_type": self.engine_type,
-                "response_time": 50.0,
-                "memory_usage": "128MB",
-                "cpu_usage": "5%"
-            }
-        except Exception as e:
-            self.status = AdapterStatus.ERROR
-            raise
-    
-    async def get_voices(self) -> List[Dict[str, Any]]:
-        """获取支持的声音列表"""
-        try:
-            if not self._is_ready:
-                raise RuntimeError("适配器未就绪")
-            
-            # 返回模拟的声音列表
-            return [
-                {
-                    "id": "default_voice",
-                    "name": "默认声音",
-                    "display_name": "默认声音",
-                    "language": "zh-CN",
-                    "gender": "female"
-                }
-            ]
-        except Exception as e:
-            logger.error(f"获取声音列表失败: {e}")
-            raise
-    
-    async def synthesize(self, **kwargs) -> Dict[str, Any]:
-        """语音合成"""
-        try:
-            if not self._is_ready:
-                raise RuntimeError("适配器未就绪")
-            
-            # 模拟合成过程
-            await asyncio.sleep(0.5)
-            
-            return {
-                "success": True,
-                "duration": 2.5,
-                "file_size": "128KB",
-                "output_path": kwargs.get("output_path", "/tmp/output.wav")
-            }
-        except Exception as e:
-            logger.error(f"语音合成失败: {e}")
-            raise
-    
-    async def synthesize_safe(self, **kwargs):
-        """安全的合成方法（包装异常处理）"""
-        try:
-            # 确保适配器就绪
-            if not self._is_ready:
-                await self.initialize()
-            
-            # 设置状态为忙碌
-            self.status = AdapterStatus.BUSY
-            
-            try:
-                # 执行合成
-                result = await self.synthesize(**kwargs)
-                self.status = AdapterStatus.READY
-                
-                # 创建标准化的结果对象
-                from .base import SynthesisResult
-                return SynthesisResult(
-                    success=result.get("success", True),
-                    output_path=result.get("output_path"),
-                    duration=result.get("duration"),
-                    sample_rate=kwargs.get("sample_rate", 22050),
-                    error_message=result.get("error_message")
-                )
-            except Exception as e:
-                self.status = AdapterStatus.ERROR
-                raise
-                
-        except Exception as e:
-            logger.error(f"引擎 {self.engine_id} 合成失败: {e}")
-            from .base import SynthesisResult
-            return SynthesisResult(
-                success=False,
-                error_message=str(e)
-            )
-    
-    async def cleanup(self) -> None:
-        """清理资源"""
-        try:
-            self.status = AdapterStatus.OFFLINE
-            self._is_ready = False
-            logger.info(f"适配器已清理: {self.engine_id}")
-        except Exception as e:
-            logger.error(f"适配器清理失败: {self.engine_id} - {e}")
-
-
 class AdapterFactory:
     """适配器工厂"""
     
     def __init__(self):
-        self._adapters: Dict[str, BaseAdapter] = {}
+        self._adapters: Dict[str, BaseTTSAdapter] = {}
         self._initialized = False
+        # 引擎类型映射
+        self._adapter_classes = {
+            "megatts3": MegaTTS3Adapter,
+            "espnet": ESPnetAdapter,
+            "bert_vits2": MegaTTS3Adapter,  # 暂时使用MegaTTS3适配器
+        }
     
     async def register_adapter(
         self, 
@@ -168,8 +45,15 @@ class AdapterFactory:
     ) -> None:
         """注册适配器"""
         try:
-            # 创建适配器实例
-            adapter = BaseAdapter(engine_id, engine_type, config)
+            # 根据引擎类型创建对应的适配器
+            adapter_class = self._adapter_classes.get(engine_type)
+            if not adapter_class:
+                logger.warning(f"不支持的引擎类型: {engine_type}，使用基础适配器")
+                # 如果不支持的类型，创建一个基础适配器
+                adapter = BaseTTSAdapter(engine_id, config)
+            else:
+                # 创建具体的适配器实例
+                adapter = adapter_class(engine_id, config)
             
             # 初始化适配器
             await adapter.initialize()
@@ -182,7 +66,7 @@ class AdapterFactory:
             logger.error(f"适配器注册失败: {engine_id} - {e}")
             raise
     
-    async def get_adapter(self, engine_id: str) -> Optional[BaseAdapter]:
+    async def get_adapter(self, engine_id: str) -> Optional[BaseTTSAdapter]:
         """获取适配器"""
         return self._adapters.get(engine_id)
     
@@ -217,15 +101,15 @@ class AdapterFactory:
     def get_adapter_stats(self) -> Dict[str, Any]:
         """获取适配器统计信息"""
         total_adapters = len(self._adapters)
-        ready_adapters = sum(1 for adapter in self._adapters.values() if adapter.is_ready)
+        ready_adapters = sum(1 for adapter in self._adapters.values() if adapter.status == EngineStatus.READY)
         
         adapter_list = []
         for engine_id, adapter in self._adapters.items():
             adapter_list.append({
                 "engine_id": engine_id,
-                "engine_type": adapter.engine_type,
+                "engine_type": getattr(adapter, 'engine_type', 'unknown'),
                 "status": adapter.status.value,
-                "is_ready": adapter.is_ready
+                "is_ready": adapter.status == EngineStatus.READY
             })
         
         return {
@@ -242,10 +126,10 @@ class AdapterFactory:
             for engine_id, adapter in self._adapters.items():
                 engine_info = {
                     "id": engine_id,
-                    "name": adapter.engine_type.upper(),
-                    "type": adapter.engine_type,
-                    "status": "healthy" if adapter.is_ready else "unhealthy",
-                    "is_ready": adapter.is_ready,
+                    "name": getattr(adapter, 'engine_type', 'unknown').upper(),
+                    "type": getattr(adapter, 'engine_type', 'unknown'),
+                    "status": "healthy" if adapter.status == EngineStatus.READY else "unhealthy",
+                    "is_ready": adapter.status == EngineStatus.READY,
                     "endpoint": adapter.config.get("endpoint", ""),
                     "capabilities": {
                         "supports_streaming": False,

@@ -42,9 +42,9 @@ async def synthesize_text(request: SynthesisRequest, tts_service: TTSService = D
             "success": True,
             "message": "合成成功",
             "data": {
-                "audio_url": f"/api/tts/audio/{result.audio_file}",
+                "audio_url": result.audio_url,
                 "duration": result.duration,
-                "engine_used": result.engine_used or request.engine
+                "engine_used": request.engine.value if request.engine else "default"
             }
         }
     except HTTPException:

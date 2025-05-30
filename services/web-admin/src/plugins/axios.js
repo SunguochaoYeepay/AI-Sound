@@ -2,7 +2,7 @@ import axios from 'axios'
 
 // 创建axios实例
 const axiosInstance = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:9930',
+  baseURL: import.meta.env.VITE_API_BASE_URL || '',  // 开发环境使用相对路径，让vite代理处理
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json',

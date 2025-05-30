@@ -17,6 +17,7 @@ from ..models.voice import (
 )
 from ..adapters.factory import AdapterFactory
 from ..core.config import settings
+from ..adapters.base import SynthesisParams
 
 logger = logging.getLogger(__name__)
 
@@ -129,6 +130,91 @@ class VoiceService:
         except Exception as e:
             logger.error(f"创建声音失败: {e}")
             raise
+
+    async def create_voice_with_file(self, voice_data: VoiceCreate, audio_file, npy_file=None) -> Dict[str, Any]:
+        """创建新声音并上传文件"""
+        try:
+            from fastapi import UploadFile
+            import aiofiles
+            import json
+            
+            # 生成声音ID
+            voice_id = f"voice_{int(datetime.now().timestamp())}_{uuid.uuid4().hex[:8]}"
+            
+            # 创建声音数据字典
+            voice_dict = voice_data.dict()
+            
+            # 补充必需字段
+            voice_dict["id"] = voice_id
+            voice_dict["display_name"] = voice_dict.get("display_name") or voice_dict["name"]
+            
+            # 确保engine_voice_id不为None，避免数据库唯一索引冲突
+            if not voice_dict.get("engine_voice_id"):
+                voice_dict["engine_voice_id"] = f"{voice_dict['engine_id']}_{voice_id}"
+            
+            voice_dict["source"] = VoiceSource.UPLOADED.value
+            voice_dict["created_at"] = datetime.now()
+            voice_dict["updated_at"] = datetime.now()
+            
+            # 创建声音文件目录
+            voice_dir = self.upload_path / voice_id
+            voice_dir.mkdir(parents=True, exist_ok=True)
+            
+            # 保存音频文件
+            audio_filename = f"{voice_id}_audio.wav"
+            audio_path = voice_dir / audio_filename
+            
+            async with aiofiles.open(audio_path, 'wb') as f:
+                content = await audio_file.read()
+                await f.write(content)
+            
+            # 更新文件路径
+            voice_dict["file_path"] = str(audio_path)
+            voice_dict["sample_path"] = str(audio_path)  # 使用同一个文件作为样本
+            
+            # 保存NPY文件（如果提供）
+            npy_path = None
+            if npy_file:
+                npy_filename = f"{voice_id}_features.npy"
+                npy_path = voice_dir / npy_filename
+                
+                async with aiofiles.open(npy_path, 'wb') as f:
+                    npy_content = await npy_file.read()
+                    await f.write(npy_content)
+                
+                voice_dict["features_path"] = str(npy_path)
+            
+            # 创建Voice对象并保存到数据库
+            voice = Voice(**voice_dict)
+            
+            # 检查是否存在相同的engine_id + engine_voice_id组合
+            existing_voice = await self.collection.find_one({
+                "engine_id": voice.engine_id,
+                "engine_voice_id": voice.engine_voice_id
+            })
+            
+            if existing_voice:
+                # 如果存在冲突，生成新的engine_voice_id
+                voice_dict["engine_voice_id"] = f"{voice.engine_id}_{voice_id}_{uuid.uuid4().hex[:4]}"
+                voice = Voice(**voice_dict)
+            
+            await self.collection.insert_one(voice.dict())
+            
+            # 返回结果
+            result = {
+                "voice_id": voice_id,
+                "name": voice.name,
+                "engine_id": voice.engine_id,
+                "audio_file": str(audio_path),
+                "features_file": str(npy_path) if npy_path else None,
+                "upload_time": datetime.now().isoformat()
+            }
+            
+            logger.info(f"声音创建并上传成功: {voice_id}")
+            return result
+        except Exception as e:
+            logger.error(f"创建声音并上传文件失败: {e}")
+            raise
     
     async def update_voice(self, voice_id: str, voice_data: VoiceUpdate) -> Optional[Voice]:
         """更新声音"""
@@ -207,18 +293,18 @@ class VoiceService:
             output_filepath.parent.mkdir(parents=True, exist_ok=True)
             
             # 执行合成
-            synthesis_params = {
-                "text": text,
-                "voice_id": voice.engine_voice_id or voice.name,
-                "speed": 1.0,
-                "pitch": 0.0,
-                "output_path": str(output_filepath)
-            }
+            synthesis_params = SynthesisParams(
+                text=text,
+                voice_id=voice.engine_voice_id or voice.name,
+                speed=1.0,
+                pitch=0.0,
+                output_path=str(output_filepath)
+            )
             
-            result = await adapter.synthesize(**synthesis_params)
+            result = await adapter.synthesize(synthesis_params)
             
-            if not result.get("success", True):
-                logger.error(f"声音合成失败: {result.get('error', '未知错误')}")
+            if not result.success:
+                logger.error(f"声音合成失败: {result.error_message or '未知错误'}")
                 return None
             
             # 构建预览结果
@@ -229,7 +315,7 @@ class VoiceService:
                 "data": {
                     "voice_id": voice_id,
                     "audio_url": audio_url,
-                    "duration": result.get("duration", 2.5),
+                    "duration": result.duration or 2.5,
                     "text": text
                 }
             }
@@ -569,12 +655,12 @@ class VoiceService:
             # 使用引擎生成样本
             adapter = await self.adapter_factory.get_adapter(voice.engine_id)
             if adapter:
-                synthesis_params = {
-                    "text": sample_text,
-                    "voice_id": voice.engine_voice_id,
-                    "output_path": str(sample_path)
-                }
-                await adapter.synthesize(**synthesis_params)
+                synthesis_params = SynthesisParams(
+                    text=sample_text,
+                    voice_id=voice.engine_voice_id,
+                    output_path=str(sample_path)
+                )
+                await adapter.synthesize(synthesis_params)
                 
                 # 更新数据库中的样本路径
                 await self.collection.update_one(

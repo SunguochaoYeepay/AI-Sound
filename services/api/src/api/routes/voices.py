@@ -2,7 +2,7 @@
 声音管理API路由
 """
 
-from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File
+from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File, Form
 from fastapi.responses import FileResponse
 from typing import List, Optional
 import logging
@@ -172,6 +172,80 @@ async def delete_voice(voice_id: str, db=Depends(get_db)):
 
 
 @router.post("/upload")
+async def upload_voice_and_create(
+    audio: UploadFile = File(..., description="音频文件"),
+    npy: Optional[UploadFile] = File(None, description="特征文件(.npy，可选)"),
+    metadata: str = Form(..., description="声音元数据JSON"),
+    db=Depends(get_db)
+):
+    """上传声音文件并创建新声音"""
+    try:
+        import json
+        
+        # 解析元数据
+        try:
+            voice_metadata = json.loads(metadata)
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=400, detail="无效的元数据JSON格式")
+        
+        # 验证必需字段
+        if not voice_metadata.get("name"):
+            raise HTTPException(status_code=400, detail="声音名称不能为空")
+        
+        # 检查音频文件类型
+        allowed_audio_types = ["audio/wav", "audio/mpeg", "audio/mp3", "audio/flac", "audio/ogg"]
+        if audio.content_type not in allowed_audio_types:
+            raise HTTPException(
+                status_code=400,
+                detail=f"不支持的音频文件类型: {audio.content_type}"
+            )
+        
+        # 检查音频文件大小（限制50MB）
+        if audio.size and audio.size > 50 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="音频文件大小超过限制 (50MB)")
+        
+        # 检查NPY文件
+        if npy:
+            if not npy.filename.lower().endswith('.npy'):
+                raise HTTPException(status_code=400, detail="特征文件必须是.npy格式")
+            if npy.size and npy.size > 10 * 1024 * 1024:
+                raise HTTPException(status_code=400, detail="特征文件大小超过限制 (10MB)")
+        
+        service = VoiceService(db)
+        
+        # 创建声音数据对象
+        voice_create_data = VoiceCreate(
+            name=voice_metadata["name"],
+            engine_id=voice_metadata.get("engine", "megatts3"),
+            language=voice_metadata.get("language", "zh-CN"),
+            gender=VoiceGender(voice_metadata.get("gender", "unknown")) if voice_metadata.get("gender") else VoiceGender.UNKNOWN,
+            description=voice_metadata.get("description", ""),
+            tags=voice_metadata.get("tags", [])
+        )
+        
+        # 创建新声音并上传文件
+        result = await service.create_voice_with_file(voice_create_data, audio, npy)
+        
+        return {
+            "success": True,
+            "message": "声音创建并上传成功",
+            "data": {
+                "voice_id": result["voice_id"],
+                "name": result["name"],
+                "engine_id": result["engine_id"],
+                "audio_file": result["audio_file"],
+                "features_file": result.get("features_file"),
+                "upload_time": result["upload_time"]
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"上传声音文件并创建失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/upload-file")
 async def upload_voice_file(
     file: UploadFile = File(...),
     voice_id: str = Query(..., description="声音ID"),
