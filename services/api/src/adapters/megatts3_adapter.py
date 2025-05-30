@@ -3,13 +3,13 @@ MegaTTS3引擎适配器实现
 """
 
 import asyncio
-import httpx
 import os
 import subprocess
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 import logging
 
+from .urllib_async import AsyncUrllibClient
 from .base import BaseTTSAdapter, SynthesisParams, SynthesisResult, EngineStatus, ParameterMapper
 
 logger = logging.getLogger(__name__)
@@ -31,7 +31,7 @@ class MegaTTS3Adapter(BaseTTSAdapter):
         self.timeout = config.get("timeout", 60)
         
         # HTTP客户端（API模式）
-        self._client: Optional[httpx.AsyncClient] = None
+        self._client: Optional[AsyncUrllibClient] = None
         
         # 本地模型（本地模式）
         self._model = None
@@ -63,16 +63,25 @@ class MegaTTS3Adapter(BaseTTSAdapter):
     
     async def _initialize_api_mode(self) -> None:
         """初始化API模式"""
-        self._client = httpx.AsyncClient(
-            timeout=httpx.Timeout(self.timeout),
-            limits=httpx.Limits(max_connections=10, max_keepalive_connections=5)
+        # 使用简单的请求头，模拟urllib行为
+        headers = {
+            "Accept": "application/json",
+            "User-Agent": "python-urllib/3.11"
+        }
+        
+        # 使用urllib异步客户端
+        self._client = AsyncUrllibClient(
+            timeout=30.0,
+            headers=headers
         )
         
         # 测试API连接
         try:
             response = await self._client.get(f"{self.endpoint}/health")
             response.raise_for_status()
+            logger.info(f"MegaTTS3 API连接成功: {self.endpoint}")
         except Exception as e:
+            logger.error(f"MegaTTS3 API连接失败: {self.endpoint} - {e}")
             raise ConnectionError(f"无法连接到MegaTTS3 API: {e}")
     
     async def _initialize_local_mode(self) -> None:
@@ -134,7 +143,7 @@ class MegaTTS3Adapter(BaseTTSAdapter):
         # 调用API
         response = await self._client.post(
             f"{self.endpoint}/synthesize",
-            json=api_params
+            json_data=api_params
         )
         response.raise_for_status()
         

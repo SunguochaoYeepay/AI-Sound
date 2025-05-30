@@ -72,9 +72,9 @@ class TTSConfig(BaseSettings):
 
 class EngineConfig(BaseSettings):
     """TTS引擎服务配置"""
-    megatts3_url: str = Field(default="http://localhost:7931", description="MegaTTS3服务URL")
-    espnet_url: str = Field(default="http://localhost:9001", description="ESPnet服务URL")
-    bertvits2_url: str = Field(default="http://localhost:9932", description="Bert-VITS2服务URL")
+    megatts3_url: str = Field(default="http://127.0.0.1:7929", description="MegaTTS3服务URL")
+    espnet_url: str = Field(default="http://127.0.0.1:9001", description="ESPnet服务URL")
+    bertvits2_url: str = Field(default="http://127.0.0.1:9932", description="Bert-VITS2服务URL")
     
     class Config:
         env_prefix = ""  # 直接使用环境变量名

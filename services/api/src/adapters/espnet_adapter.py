@@ -3,12 +3,12 @@ ESPnet引擎适配器实现
 """
 
 import asyncio
-import httpx
 import os
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 import logging
 
+from .urllib_async import AsyncUrllibClient
 from .base import BaseTTSAdapter, SynthesisParams, SynthesisResult, EngineStatus, ParameterMapper
 
 logger = logging.getLogger(__name__)
@@ -27,7 +27,7 @@ class ESPnetAdapter(BaseTTSAdapter):
         self.timeout = config.get("timeout", 30)
         
         # HTTP客户端
-        self._client: Optional[httpx.AsyncClient] = None
+        self._client: Optional[AsyncUrllibClient] = None
         
         # 声音映射
         self._voice_mapping = {}
@@ -37,10 +37,16 @@ class ESPnetAdapter(BaseTTSAdapter):
         try:
             self.status = EngineStatus.INITIALIZING
             
-            # 创建HTTP客户端
-            self._client = httpx.AsyncClient(
-                timeout=httpx.Timeout(self.timeout),
-                limits=httpx.Limits(max_connections=10, max_keepalive_connections=5)
+            # 使用简单的请求头，模拟urllib行为
+            headers = {
+                "Accept": "application/json",
+                "User-Agent": "python-urllib/3.11"
+            }
+            
+            # 使用urllib异步客户端
+            self._client = AsyncUrllibClient(
+                timeout=self.timeout,
+                headers=headers
             )
             
             # 检查模型文件
@@ -73,7 +79,7 @@ class ESPnetAdapter(BaseTTSAdapter):
             # 调用ESPnet API
             response = await self._client.post(
                 f"{self.endpoint}/synthesize",
-                json=espnet_params
+                json_data=espnet_params
             )
             response.raise_for_status()
             
@@ -176,9 +182,12 @@ class ESPnetAdapter(BaseTTSAdapter):
     async def _test_connection(self) -> None:
         """测试连接"""
         try:
+            logger.info(f"正在测试ESPnet连接: {self.endpoint}")
             response = await self._client.get(f"{self.endpoint}/health")
             response.raise_for_status()
+            logger.info(f"ESPnet API连接成功: {self.endpoint}")
         except Exception as e:
+            logger.error(f"ESPnet API连接失败: {self.endpoint} - {e}")
             raise ConnectionError(f"无法连接到ESPnet服务: {e}")
     
     async def _load_voices(self) -> None:
@@ -245,7 +254,7 @@ class ESPnetAdapter(BaseTTSAdapter):
         try:
             response = await self._client.post(
                 f"{self.endpoint}/model",
-                json={"model_path": model_path}
+                json_data={"model_path": model_path}
             )
             response.raise_for_status()
             
