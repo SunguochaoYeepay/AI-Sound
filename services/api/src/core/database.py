@@ -74,19 +74,33 @@ async def get_collection(name: str):
     return db_manager.get_collection(name)
 
 
-async def init_test_data():
-    """初始化测试数据"""
+async def init_database():
+    """初始化数据库连接和基础结构"""
     try:
         if not db_manager.is_connected:
             await db_manager.connect()
         
         db = db_manager.get_database()
         
-        # 清理旧数据，确保数据格式正确
-        logger.info("清理旧数据...")
-        await db["engines"].delete_many({})
-        await db["voices"].delete_many({})
-        await db["characters"].delete_many({})
+        # 确保索引存在（如果需要的话）
+        # 这里可以添加创建索引的代码，但不插入任何数据
+        
+        logger.info("数据库初始化完成")
+        
+    except Exception as e:
+        logger.error(f"数据库初始化失败: {e}")
+        raise
+
+
+async def init_test_data_manual():
+    """手动初始化测试数据（仅用于开发环境）"""
+    try:
+        if not db_manager.is_connected:
+            await db_manager.connect()
+        
+        db = db_manager.get_database()
+        
+        logger.info("开始手动初始化测试数据...")
         
         # 初始化引擎数据
         engines_collection = db["engines"]
@@ -183,4 +197,54 @@ async def init_test_data():
             
     except Exception as e:
         logger.error(f"初始化测试数据失败: {e}")
+        raise
+
+
+async def cleanup_test_data():
+    """清理测试数据"""
+    try:
+        if not db_manager.is_connected:
+            await db_manager.connect()
+        
+        db = db_manager.get_database()
+        
+        # 删除测试引擎
+        result_engines = await db["engines"].delete_many({"id": {"$in": ["megatts3_001"]}})
+        logger.info(f"已删除 {result_engines.deleted_count} 个测试引擎")
+        
+        # 删除测试声音
+        result_voices = await db["voices"].delete_many({"id": {"$in": ["voice_001"]}, "name": "xiaoxiao"})
+        logger.info(f"已删除 {result_voices.deleted_count} 个测试声音")
+        
+        # 删除测试角色
+        result_characters = await db["characters"].delete_many({"id": {"$in": ["char_001"]}})
+        logger.info(f"已删除 {result_characters.deleted_count} 个测试角色")
+        
+        logger.info("测试数据清理完成")
+        
+    except Exception as e:
+        logger.error(f"清理测试数据失败: {e}")
+        raise
+
+
+async def reset_database():
+    """重置数据库（危险操作，会删除所有数据）"""
+    try:
+        if not db_manager.is_connected:
+            await db_manager.connect()
+        
+        db = db_manager.get_database()
+        
+        # 删除所有数据
+        await db["engines"].delete_many({})
+        await db["voices"].delete_many({})
+        await db["characters"].delete_many({})
+        
+        logger.warning("数据库已重置，所有数据已删除")
+        
+        # 重新初始化测试数据
+        await init_test_data_manual()
+        
+    except Exception as e:
+        logger.error(f"重置数据库失败: {e}")
         raise
