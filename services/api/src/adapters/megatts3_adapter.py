@@ -138,12 +138,12 @@ class MegaTTS3Adapter(BaseTTSAdapter):
             raise RuntimeError("API客户端未初始化")
         
         try:
-            # 映射参数
-            api_params = self._map_synthesis_params(params)
+            # 映射参数到MegaTTS3格式
+            api_params = self._map_synthesis_params_to_megatts3(params)
             
-            # 调用API
+            # 调用MegaTTS3 API (修正路径)
             response = await self._client.post(
-                f"{self.endpoint}/synthesize",
+                f"{self.endpoint}/api/synthesis/synthesize-by-text",
                 json_data=api_params
             )
             response.raise_for_status()
@@ -265,11 +265,50 @@ class MegaTTS3Adapter(BaseTTSAdapter):
                 if not self._client:
                     await self.initialize()
                 
-                response = await self._client.get(f"{self.endpoint}/voices")
+                # MegaTTS3声音对列表端点 (无需额外的/list)
+                response = await self._client.get(f"{self.endpoint}/api/voice-pairs")
                 response.raise_for_status()
                 
-                voices_data = response.json()
-                return voices_data.get("voices", [])
+                # 处理响应格式 - 可能是列表或包含voice_pairs字段的字典
+                response_data = response.json()
+                voices = []
+                
+                # 根据实际响应格式处理
+                if isinstance(response_data, list):
+                    # 直接是声音对列表
+                    for pair_info in response_data:
+                        voices.append({
+                            "id": pair_info.get('id', ''),
+                            "name": pair_info.get('name', pair_info.get('id', '')),
+                            "language": pair_info.get('language', 'zh-CN'),
+                            "gender": pair_info.get('gender', 'unknown'),
+                            "description": f"MegaTTS3声音对: {pair_info.get('description', '')}"
+                        })
+                elif isinstance(response_data, dict):
+                    # 可能包含voice_pairs字段或其他结构
+                    if 'voice_pairs' in response_data:
+                        for pair_id, pair_info in response_data['voice_pairs'].items():
+                            voices.append({
+                                "id": pair_id,
+                                "name": pair_info.get('name', pair_id),
+                                "language": "zh-CN",
+                                "gender": "unknown",
+                                "description": f"MegaTTS3声音对: {pair_info.get('description', '')}"
+                            })
+                    elif 'data' in response_data:
+                        # 可能是包装在data字段中
+                        data = response_data['data']
+                        if isinstance(data, list):
+                            for pair_info in data:
+                                voices.append({
+                                    "id": pair_info.get('id', ''),
+                                    "name": pair_info.get('name', pair_info.get('id', '')),
+                                    "language": pair_info.get('language', 'zh-CN'),
+                                    "gender": pair_info.get('gender', 'unknown'),
+                                    "description": f"MegaTTS3声音对: {pair_info.get('description', '')}"
+                                })
+                
+                return voices
             else:
                 # 本地模式：返回预定义的声音列表
                 return self._get_builtin_voices()
@@ -383,31 +422,24 @@ class MegaTTS3Adapter(BaseTTSAdapter):
             logger.warning(f"加载声音映射失败: {e}")
             self._voice_mapping = {}
     
-    def _map_synthesis_params(self, params: SynthesisParams) -> Dict[str, Any]:
+    def _map_synthesis_params_to_megatts3(self, params: SynthesisParams) -> Dict[str, Any]:
         """映射合成参数到MegaTTS3格式"""
-        # 映射声音ID
-        voice_id = params.voice_id
-        if voice_id in self._voice_mapping:
-            voice_info = self._voice_mapping[voice_id]
-            mega_voice_id = voice_info.get("mega_id", voice_id)
-        else:
-            mega_voice_id = voice_id
-        
-        # MegaTTS3参数映射
-        mega_params = {
+        # MegaTTS3需要特定的参数格式
+        megatts3_params = {
             "text": params.text,
-            "speaker": mega_voice_id,
-            "speed": params.speed,
-            "pitch": params.pitch,
-            "volume": params.volume,
-            "sample_rate": params.sample_rate,
-            "format": "wav"
+            "voice_pair_id": params.voice_id,  # 使用声音对ID
+            "infer_timestep": 32,  # MegaTTS3推理步数
+            "p_w": 1.4,  # 音素权重
+            "t_w": 3.0,  # 时长权重
+            "dur_disturb": 0.2,  # 时长扰动
+            "dur_alpha": 1.0   # 时长缩放
         }
         
-        # 添加自定义参数
-        mega_params.update(params.extra_params)
+        # 如果有额外参数，合并进去
+        if params.extra_params:
+            megatts3_params.update(params.extra_params)
         
-        return mega_params
+        return megatts3_params
     
     def _estimate_duration(self, text: str, speed: float) -> float:
         """估算音频时长"""
