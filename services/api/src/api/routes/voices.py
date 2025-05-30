@@ -6,10 +6,12 @@ from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File, 
 from fastapi.responses import FileResponse
 from typing import List, Optional
 import logging
+from pathlib import Path
 
 from ...models.voice import Voice, VoiceCreate, VoiceUpdate, VoiceGender
 from ...services.voice_service import VoiceService
-from ...core.dependencies import get_db
+from ...core.dependencies import get_db, get_voice_service
+from ...core.config import settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/voices", tags=["voices"])
@@ -23,12 +25,10 @@ async def list_voices(
     engine_id: Optional[str] = Query(None, description="引擎过滤"),
     language: Optional[str] = Query(None, description="语言过滤"),
     gender: Optional[str] = Query(None, description="性别过滤"),
-    db=Depends(get_db)
+    service: VoiceService = Depends(get_voice_service)
 ):
     """获取声音列表"""
     try:
-        service = VoiceService(db)
-        
         # 转换gender参数
         gender_enum = None
         if gender:
@@ -280,11 +280,10 @@ async def upload_voice_file(
 async def preview_voice(
     voice_id: str,
     text: str = Query("你好，这是声音预览。", description="预览文本"),
-    db=Depends(get_db)
+    service: VoiceService = Depends(get_voice_service)
 ):
     """预览声音"""
     try:
-        service = VoiceService(db)
         result = await service.preview_voice(voice_id, text)
         if not result:
             raise HTTPException(status_code=404, detail="声音未找到或预览失败")
@@ -300,11 +299,20 @@ async def preview_voice(
 async def preview_voice_post(
     voice_id: str,
     request: dict,
-    db=Depends(get_db)
+    service: VoiceService = Depends(get_voice_service)
 ):
     """预览声音 - POST方法别名"""
     text = request.get("text", "你好，这是声音预览。")
-    return await preview_voice(voice_id, text, db)
+    try:
+        result = await service.preview_voice(voice_id, text)
+        if not result:
+            raise HTTPException(status_code=404, detail="声音未找到或预览失败")
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"预览声音失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/{voice_id}/sample")
@@ -503,4 +511,29 @@ async def extract_features(
         raise
     except Exception as e:
         logger.error(f"特征提取失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/preview/{filename}")
+async def get_preview_file(filename: str):
+    """获取预览音频文件"""
+    try:
+        # 构建预览文件路径
+        upload_path = Path(settings.tts.output_path) / "voices"
+        preview_file_path = upload_path / "previews" / filename
+        
+        # 检查文件是否存在
+        if not preview_file_path.exists():
+            raise HTTPException(status_code=404, detail="预览文件未找到")
+        
+        # 返回音频文件
+        return FileResponse(
+            path=str(preview_file_path),
+            media_type="audio/wav",
+            filename=filename
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取预览文件失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))

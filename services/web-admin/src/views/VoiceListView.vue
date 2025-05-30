@@ -514,7 +514,7 @@ export default defineComponent({
         // 调用API更新声音信息
         const response = await voiceAPI.updateVoice(editForm.id, {
           name: editForm.name,
-          gender: editForm.gender,
+            gender: editForm.gender,
           age_group: editForm.age_group,
           tags: editForm.tags,
           description: editForm.description
@@ -529,7 +529,7 @@ export default defineComponent({
           voiceList.value[index] = {
             ...voiceList.value[index],
             name: editForm.name,
-            gender: editForm.gender,
+              gender: editForm.gender,
             age_group: editForm.age_group,
             tags: [...editForm.tags],
             description: editForm.description

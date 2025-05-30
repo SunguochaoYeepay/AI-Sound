@@ -130,3 +130,9 @@ async def get_db():
 async def get_adapter_factory() -> AdapterFactory:
     """获取适配器工厂（FastAPI依赖）"""
     return dependency_manager.adapter_factory
+
+
+async def get_voice_service(db=Depends(get_db), adapter_factory: AdapterFactory = Depends(get_adapter_factory)):
+    """获取声音服务（FastAPI依赖）"""
+    from ..services.voice_service import VoiceService
+    return VoiceService(db, adapter_factory)

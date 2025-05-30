@@ -25,10 +25,14 @@ logger = logging.getLogger(__name__)
 class VoiceService:
     """声音服务"""
     
-    def __init__(self, db):
+    def __init__(self, db, adapter_factory=None):
         self.db = db
         self.collection = db["voices"]
-        self.adapter_factory = AdapterFactory()
+        # 如果提供了adapter_factory就使用它，否则创建新实例（向后兼容）
+        if adapter_factory is not None:
+            self.adapter_factory = adapter_factory
+        else:
+            self.adapter_factory = AdapterFactory()
         self.upload_path = Path(settings.tts.output_path) / "voices"
         self.upload_path.mkdir(parents=True, exist_ok=True)
     
