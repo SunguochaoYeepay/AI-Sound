@@ -44,7 +44,7 @@
                     show-search
                     optionFilterProp="label"
                   >
-                    <template v-if="availableVoices?.length === 0">
+                    <template v-if="availableVoices.length === 0">
                       <a-select-option value="female_young">年轻女声</a-select-option>
                       <a-select-option value="female_mature">成熟女声</a-select-option>
                       <a-select-option value="male_young">年轻男声</a-select-option>
@@ -221,7 +221,7 @@
         
         <!-- 角色映射卡片 -->
         <a-card title="角色声音映射" class="mt-16" v-if="formState.useCharacterVoiceMapping">
-          <div v-if="characterVoiceMappings?.length === 0" class="empty-mappings">
+          <div v-if="characterVoiceMappings.length === 0" class="empty-mappings">
             <p>暂无角色声音映射</p>
             <a-button type="link" @click="goToCharacterMapper">前往设置角色声音映射</a-button>
           </div>
@@ -251,7 +251,7 @@
       :footer="null"
       width="600px"
     >
-      <a-empty v-if="characterVoiceMappings?.length === 0" description="暂无角色声音映射">
+      <a-empty v-if="characterVoiceMappings.length === 0" description="暂无角色声音映射">
         <template #description>
           <div>
             <p>没有找到角色声音映射</p>
@@ -402,7 +402,7 @@ export default defineComponent({
       try {
         const voices = await apiStore.getNovels();
         if (voices && Array.isArray(voices)) {
-          availableVoices.value = voices?.map(voice => ({
+          availableVoices.value = voices.map(voice => ({
             value: voice.id,
             label: voice.name,
             gender: voice.attributes?.gender,

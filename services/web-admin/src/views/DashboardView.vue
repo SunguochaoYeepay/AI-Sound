@@ -300,8 +300,8 @@ export default defineComponent({
       try {
         // 使用新的API服务获取引擎列表
         const response = await engineAPI.getEngines();
-        // axios拦截器已经处理了API响应格式，直接使用原来的逻辑
-        const engines = response.data?.engines || [];
+        // axios拦截器已经处理了API响应格式，response.engines已经是数组
+        const engines = response.engines || [];
         
         // 重置引擎状态
         const newHealth = {};

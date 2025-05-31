@@ -275,13 +275,13 @@ export default defineComponent({
     
     // 根据状态过滤的任务列表
     const processingTasks = computed(() => {
-      return tasks.value?.filter(task => 
+      return tasks.value.filter(task => 
         task.status === 'pending' || task.status === 'processing'
       );
     });
     
     const completedTasks = computed(() => {
-      return tasks.value?.filter(task => task.status === 'completed');
+      return tasks.value.filter(task => task.status === 'completed');
     });
     
     // 获取状态对应的颜色

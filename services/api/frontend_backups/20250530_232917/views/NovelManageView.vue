@@ -126,7 +126,7 @@
             <a-descriptions-item label="标题" span="2">{{ currentNovel.name }}</a-descriptions-item>
             <a-descriptions-item label="文件大小">{{ formatFileSize(currentNovel.size) }}</a-descriptions-item>
             <a-descriptions-item label="上传时间">{{ currentNovel.uploadTime }}</a-descriptions-item>
-            <a-descriptions-item label="章节数">{{ novelChapters?.length }}</a-descriptions-item>
+            <a-descriptions-item label="章节数">{{ novelChapters.length }}</a-descriptions-item>
             <a-descriptions-item label="状态">
               <a-tag :color="getStatusColor(currentNovel.status)">
                 {{ getStatusText(currentNovel.status) }}

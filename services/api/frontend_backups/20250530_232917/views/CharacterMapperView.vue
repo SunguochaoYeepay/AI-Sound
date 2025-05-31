@@ -93,7 +93,7 @@
           
           <a-spin :spinning="analyzing">
             <div v-if="analyzedCharacters.length > 0" class="analyzer-results">
-              <p>共识别出 {{ analyzedCharacters?.length }} 个角色：</p>
+              <p>共识别出 {{ analyzedCharacters.length }} 个角色：</p>
               
               <a-list size="small" bordered>
                 <a-list-item v-for="character in analyzedCharacters" :key="character.name">
@@ -243,7 +243,7 @@ export default defineComponent({
     
     // 声音选项
     const voiceOptions = computed(() => {
-      return voiceList.value?.map(voice => ({
+      return voiceList.value.map(voice => ({
         value: voice.id,
         label: voice.name,
         gender: voice.attributes?.gender,
@@ -398,7 +398,7 @@ export default defineComponent({
             message.success('角色已删除');
             
             // 从列表中移除
-            characterList.value = characterList.value?.filter(item => item.name !== character.name);
+            characterList.value = characterList.value.filter(item => item.name !== character.name);
           } catch (error) {
             console.error('删除角色失败:', error);
             message.error('删除角色失败: ' + (error.response?.data?.message || error.message));
@@ -446,7 +446,7 @@ export default defineComponent({
         let match;
         while ((match = characterPattern.exec(text)) !== null) {
           const name = match[1].trim();
-          if (name.length > 0 && name?.length <= 10) {
+          if (name.length > 0 && name.length <= 10) {
             characters.set(name, (characters.get(name) || 0) + 1);
           }
         }
@@ -460,10 +460,10 @@ export default defineComponent({
         
         analyzedCharacters.value = characterArray;
         
-        if (characterArray?.length === 0) {
+        if (characterArray.length === 0) {
           message.info('未识别出任何角色，请检查文本格式');
         } else {
-          message.success(`成功识别出 ${characterArray?.length} 个角色`);
+          message.success(`成功识别出 ${characterArray.length} 个角色`);
         }
       } catch (error) {
         console.error('分析角色失败:', error);
@@ -486,12 +486,12 @@ export default defineComponent({
     
     // 一键映射所有角色
     const mapAllCharacters = async () => {
-      if (analyzedCharacters.value?.length === 0) {
+      if (analyzedCharacters.value.length === 0) {
         message.warning('没有可映射的角色');
         return;
       }
       
-      if (voiceList.value?.length === 0) {
+      if (voiceList.value.length === 0) {
         message.warning('没有可用的声音，请先添加声音');
         return;
       }
@@ -511,17 +511,17 @@ export default defineComponent({
           // 筛选声音
           let voices = voiceList.value;
           if (isMale) {
-            voices = voiceList.value?.filter(v => v.attributes?.gender === 'male');
+            voices = voiceList.value.filter(v => v.attributes?.gender === 'male');
           } else if (isFemale) {
-            voices = voiceList.value?.filter(v => v.attributes?.gender === 'female');
+            voices = voiceList.value.filter(v => v.attributes?.gender === 'female');
           }
           
-          if (voices?.length === 0) {
+          if (voices.length === 0) {
             voices = voiceList.value; // 如果没有匹配的，使用所有声音
           }
           
           // 随机选择一个声音
-          const voiceId = voices[Math.floor(Math.random() * voices?.length)].id;
+          const voiceId = voices[Math.floor(Math.random() * voices.length)].id;
           
           // 创建角色映射
           try {

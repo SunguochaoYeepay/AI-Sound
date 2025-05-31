@@ -307,7 +307,7 @@ const columns = [
 // 计算属性 - 引擎统计
 const engineStats = computed(() => {
   const stats = {
-    total: engines.value?.length,
+    total: engines.value.length,
     online: 0,
     offline: 0,
     error: 0
@@ -346,7 +346,7 @@ const refreshEngines = async () => {
     
     console.log('提取的引擎数据:', rawEngines) // 调试信息
     
-    engines.value = rawEngines?.map(engine => ({
+    engines.value = rawEngines.map(engine => ({
       ...engine,
       engine_type: engine.type || 'espnet', // 映射 type 到 engine_type
       health_status: engine.status === 'healthy' ? 'healthy' : 'unknown', // 映射状态

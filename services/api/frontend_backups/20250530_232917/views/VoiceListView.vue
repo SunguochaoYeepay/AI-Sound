@@ -67,7 +67,7 @@
     <a-row>
       <a-col :span="24">
         <a-spin :spinning="loading">
-          <a-empty v-if="filteredVoiceList?.length === 0 && !loading" description="暂无声音数据" />
+          <a-empty v-if="filteredVoiceList.length === 0 && !loading" description="暂无声音数据" />
           
           <a-row :gutter="[16, 16]" v-else>
             <a-col :xs="24" :sm="12" :md="8" :lg="6" v-for="voice in filteredVoiceList" :key="voice.id">
@@ -288,11 +288,11 @@ export default defineComponent({
       const byteCharacters = atob(base64);
       const byteArrays = [];
       
-      for (let offset = 0; offset < byteCharacters?.length; offset += 512) {
+      for (let offset = 0; offset < byteCharacters.length; offset += 512) {
         const slice = byteCharacters.slice(offset, offset + 512);
         
-        const byteNumbers = new Array(slice?.length);
-        for (let i = 0; i < slice?.length; i++) {
+        const byteNumbers = new Array(slice.length);
+        for (let i = 0; i < slice.length; i++) {
           byteNumbers[i] = slice.charCodeAt(i);
         }
         
@@ -317,7 +317,7 @@ export default defineComponent({
     
     // 筛选后的声音列表
     const filteredVoiceList = computed(() => {
-      return voiceList.value?.filter(voice => {
+      return voiceList.value.filter(voice => {
         // 关键词筛选
         if (searchKeyword.value && !voice.name.toLowerCase().includes(searchKeyword.value.toLowerCase()) && 
             !voice.tags.some(tag => tag.toLowerCase().includes(searchKeyword.value.toLowerCase()))) {
@@ -352,7 +352,7 @@ export default defineComponent({
         const voices = response.voices || [];
         
         // 为每个voice对象添加缺失字段的默认值
-        voiceList.value = voices?.map(voice => ({
+        voiceList.value = voices.map(voice => ({
           ...voice,
           tags: voice.tags || [],
           age_group: voice.age_group || 'unknown'
@@ -558,7 +558,7 @@ export default defineComponent({
             message.success('声音已删除');
             
             // 从列表中移除
-            voiceList.value = voiceList.value?.filter(item => item.id !== voice.id);
+            voiceList.value = voiceList.value.filter(item => item.id !== voice.id);
           } catch (error) {
             console.error('删除声音失败:', error);
             message.error('删除声音失败: ' + (error.response?.data?.message || error.message));

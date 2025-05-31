@@ -28,7 +28,7 @@ axiosInstance.interceptors.response.use(
     if (response.data && typeof response.data === 'object' && 'success' in response.data && 'data' in response.data) {
       // 新的API响应格式: { success: true, data: {...} }
       // 将内层的data提升到response.data，保持向后兼容
-      response.data = response.data
+      response.data = response.data.data
     }
     return response
   },

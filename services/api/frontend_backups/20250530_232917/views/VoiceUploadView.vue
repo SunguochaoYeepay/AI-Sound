@@ -106,7 +106,7 @@
               支持 WAV、MP3、FLAC、M4A 格式，建议使用高质量音频文件（时长10-30秒）
             </p>
           </a-upload-dragger>
-          <div v-if="!audioFileList?.length" style="color: #ff4d4f; margin-top: 8px;">
+          <div v-if="!audioFileList.length" style="color: #ff4d4f; margin-top: 8px;">
             请上传音频文件
           </div>
         </a-form-item>
@@ -165,7 +165,7 @@
               type="primary" 
               html-type="submit"
               :loading="uploading"
-              :disabled="!audioFileList?.length"
+              :disabled="!audioFileList.length"
             >
               <template #icon><upload-outlined /></template>
               上传并处理
@@ -396,7 +396,7 @@ export default defineComponent({
     
     // 处理上传
     const handleUpload = async () => {
-      if (!audioFileList.value?.length) {
+      if (!audioFileList.value.length) {
         message.error('请先上传音频文件');
         return;
       }
