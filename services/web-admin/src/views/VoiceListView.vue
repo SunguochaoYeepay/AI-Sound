@@ -340,7 +340,7 @@ export default defineComponent({
         }
         
         return true;
-      });
+      }) || []; // 确保始终返回数组
     });
     
     // 加载声音列表
@@ -348,8 +348,11 @@ export default defineComponent({
       loading.value = true;
       try {
         const response = await voiceAPI.getVoices();
-        // axios拦截器已经处理了API响应格式，response.data已经是{ voices: [...] }
-        const voices = response.voices || [];
+        console.log('声音API响应:', response); // 调试日志
+        
+        // 修复API响应格式解析：response.data.voices 而不是 response.voices
+        const voices = response.data?.voices || [];
+        console.log('解析到的声音数据:', voices); // 调试日志
         
         // 为每个voice对象添加缺失字段的默认值
         voiceList.value = voices?.map(voice => ({
@@ -357,6 +360,8 @@ export default defineComponent({
           tags: voice.tags || [],
           age_group: voice.age_group || 'unknown'
         }));
+        
+        console.log('最终voiceList:', voiceList.value); // 调试日志
       } catch (error) {
         console.error('获取声音列表失败:', error);
         message.error('获取声音列表失败: ' + (error.response?.data?.message || error.message));

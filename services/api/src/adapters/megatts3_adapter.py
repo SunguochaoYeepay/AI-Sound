@@ -141,9 +141,9 @@ class MegaTTS3Adapter(BaseTTSAdapter):
             # 映射参数到MegaTTS3格式
             api_params = self._map_synthesis_params_to_megatts3(params)
             
-            # 调用MegaTTS3 API (修正路径)
+            # 修复API调用端点：使用/api/synthesis/by-paths而不是synthesize-by-text
             response = await self._client.post(
-                f"{self.endpoint}/api/synthesis/synthesize-by-text",
+                f"{self.endpoint}/api/synthesis/by-paths",
                 json_data=api_params
             )
             response.raise_for_status()
