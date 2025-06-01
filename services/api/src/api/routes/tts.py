@@ -198,12 +198,11 @@ async def get_audio_file(filename: str):
             '.wav': 'audio/wav',
             '.mp3': 'audio/mpeg',
             '.ogg': 'audio/ogg',
-            '.flac': 'audio/flac'
         }
         media_type = media_type_map.get(file_path.suffix.lower(), 'application/octet-stream')
         
         return FileResponse(
-            path=file_path,
+            path=str(file_path),
             media_type=media_type,
             filename=filename
         )
@@ -212,3 +211,36 @@ async def get_audio_file(filename: str):
     except Exception as e:
         logger.error(f"获取音频文件失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# MegaTTS3专用端点
+@router.get("/megatts3/health")
+async def check_megatts3_health(tts_service: TTSService = Depends(get_tts_service)):
+    """MegaTTS3引擎健康检查"""
+    try:
+        # 获取MegaTTS3适配器
+        adapter = await tts_service.adapter_factory.get_adapter('megatts3')
+        health_info = await adapter.health_check()
+        
+        return {
+            "success": True,
+            "data": {
+                "status": health_info.get("status", "unknown"),
+                "engine": "megatts3",
+                "mode": health_info.get("mode", "unknown"),
+                "model_loaded": health_info.get("model_loaded", False),
+                "response_time_ms": health_info.get("response_time_ms", 0),
+                "available_voices": health_info.get("available_voices", 0),
+                "message": health_info.get("message", "MegaTTS3 健康检查完成")
+            }
+        }
+    except Exception as e:
+        logger.error(f"MegaTTS3健康检查失败: {e}")
+        return {
+            "success": False,
+            "data": {
+                "status": "error",
+                "engine": "megatts3",
+                "message": str(e)
+            }
+        }
