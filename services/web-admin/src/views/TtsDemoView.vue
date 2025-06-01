@@ -17,6 +17,37 @@
             
             <a-row :gutter="16">
               <a-col :span="8">
+                <a-form-item label="TTS引擎选择">
+                  <a-select
+                    v-model:value="formState.engine"
+                    placeholder="选择TTS引擎"
+                    :disabled="processing"
+                    :loading="loadingEngines"
+                    @change="onEngineChange"
+                  >
+                    <a-select-option value="auto">
+                      🤖 智能选择 (推荐)
+                    </a-select-option>
+                    <a-select-option 
+                      v-for="engine in availableEngines" 
+                      :key="engine.id" 
+                      :value="engine.id"
+                      :disabled="engine.status !== 'healthy'"
+                    >
+                      {{ getEngineDisplayName(engine) }}
+                      <a-tag 
+                        :color="engine.status === 'healthy' ? 'green' : 'red'"
+                        size="small"
+                        style="margin-left: 8px;"
+                      >
+                        {{ engine.status === 'healthy' ? '正常' : '离线' }}
+                      </a-tag>
+                    </a-select-option>
+                  </a-select>
+                </a-form-item>
+              </a-col>
+              
+              <a-col :span="8">
                 <a-form-item label="音色选择">
                   <a-select
                     v-model:value="formState.voiceId"
@@ -29,7 +60,7 @@
                       :key="voice.id" 
                       :value="voice.id"
                     >
-                      {{ voice.name }} ({{ voice.language }})
+                      {{ voice.name }} ({{ voice.language || '中文' }})
                     </a-select-option>
                   </a-select>
                 </a-form-item>
@@ -173,7 +204,7 @@
 <script>
 import { defineComponent, ref, reactive, onMounted, onBeforeUnmount, h } from 'vue';
 import { message } from 'ant-design-vue';
-import { ttsAPI, voiceAPI } from '../services/api';
+import { ttsAPI, voiceAPI, engineAPI } from '../services/api';
 import { 
   SoundOutlined, 
   PlayCircleOutlined, 
@@ -202,8 +233,9 @@ export default defineComponent({
     
     // 表单状态
     const formState = reactive({
-      text: '你好，我是AI-Sound语音合成系统，很高兴为您服务！',
-      voiceId: 'female_young',
+      text: '老爹，这是AI-Sound语音合成系统的演示！',
+      voiceId: 'voice_1748615762_2f4146ac',
+      engine: 'auto', // 默认智能选择
       emotionType: 'neutral',
       emotionIntensity: 0.5,
       speedScale: 1.0,
@@ -222,6 +254,10 @@ export default defineComponent({
     // 声音列表状态
     const availableVoices = ref([]);
     const loadingVoices = ref(false);
+    
+    // 引擎列表状态
+    const availableEngines = ref([]);
+    const loadingEngines = ref(false);
     
     // 新增：声纹文件状态
     const voiceFile = ref(null);
@@ -283,50 +319,40 @@ export default defineComponent({
       }
       processing.value = true;
       try {
-        // 使用FormData发送请求，支持文件上传
-        const formData = new FormData();
-        formData.append('text', formState.text);
-        formData.append('voice_id', formState.voiceId);
-        formData.append('emotion_type', formState.emotionType);
-        formData.append('emotion_intensity', formState.emotionIntensity);
-        formData.append('speed_scale', formState.speedScale);
-        formData.append('pitch_scale', formState.pitchScale);
-        formData.append('p_w', formState.p_w);
-        formData.append('t_w', formState.t_w);
-        formData.append('return_base64', true);
-        
-        // 如果有声纹文件，添加到请求中
-        if (voiceFile.value) {
-          formData.append('voice_file', voiceFile.value);
-        }
-        
-        // 使用新的TTS API发送请求
-        const response = await ttsAPI.synthesize({
+        // 准备合成参数
+        const synthesisParams = {
           text: formState.text,
           voice_id: formState.voiceId,
-          emotion_type: formState.emotionType,
-          emotion_intensity: formState.emotionIntensity,
-          speed_scale: formState.speedScale,
-          pitch_scale: formState.pitchScale,
-          format: 'wav',
-          return_base64: true
-        });
+          speed: formState.speedScale,
+          pitch: formState.pitchScale,
+          format: 'wav'
+        };
         
-        if (response && response.audio_base64) {
-          audioBase64.value = response.audio_base64;
-          audioDuration.value = response.duration || 1.0;
-          if (audioBase64.value) {
-            const blob = base64ToBlob(audioBase64.value, 'audio/wav');
-            if (audioUrl.value) {
-              URL.revokeObjectURL(audioUrl.value);
-            }
-            audioUrl.value = URL.createObjectURL(blob);
-            setTimeout(() => {
-              initWaveSurfer();
-              wavesurfer.value.load(audioUrl.value);
-            }, 100);
+        // 如果选择了特定引擎，添加到参数中
+        if (formState.engine && formState.engine !== 'auto') {
+          synthesisParams.engine = formState.engine;
+        }
+        
+        // 使用统一的API代理调用
+        const response = await ttsAPI.synthesize(synthesisParams);
+        
+        if (response && response.data && response.data.audio_url) {
+          // 下载音频文件
+          const audioResponse = await fetch(response.data.audio_url);
+          const blob = await audioResponse.blob();
+          
+          if (audioUrl.value) {
+            URL.revokeObjectURL(audioUrl.value);
           }
-          message.success('语音生成成功');
+          audioUrl.value = URL.createObjectURL(blob);
+          audioDuration.value = response.data.duration || 1.0;
+          
+          setTimeout(() => {
+            initWaveSurfer();
+            wavesurfer.value.load(audioUrl.value);
+          }, 100);
+          
+          message.success(`语音生成成功！`);
         } else {
           message.error(response?.message || '语音生成失败');
         }
@@ -377,10 +403,70 @@ export default defineComponent({
       }
     };
     
+    // 获取引擎显示名称
+    const getEngineDisplayName = (engine) => {
+      const engineMap = {
+        'megatts3': '🚀 MegaTTS3',
+        'megatts3_001': '🚀 MegaTTS3-001',
+        'espnet': '🎵 ESPnet', 
+        'bert_vits2': '🎭 Bert-VITS2'
+      };
+      
+      // 如果有映射，使用映射名称；否则使用引擎名称，如果是UNKNOWN则使用ID
+      const mappedName = engineMap[engine.id];
+      if (mappedName) {
+        return mappedName;
+      }
+      
+      // 如果name是UNKNOWN，使用ID
+      if (engine.name === 'UNKNOWN' || !engine.name) {
+        return `🔧 ${engine.id.toUpperCase()}`;
+      }
+      
+      return engine.name || engine.id;
+    };
+    
+    // 引擎切换处理
+    const onEngineChange = async (engineId) => {
+      if (engineId === 'auto') {
+        message.info('已启用智能引擎选择，系统将根据文本特征自动选择最佳引擎');
+      } else {
+        const engine = availableEngines.value.find(e => e.id === engineId);
+        if (engine) {
+          message.info(`已选择 ${getEngineDisplayName(engine)} 引擎`);
+        }
+      }
+      
+      // 重新加载该引擎的声音列表
+      await loadAvailableVoices();
+    };
+    
+    // 加载可用引擎列表
+    const loadAvailableEngines = async () => {
+      loadingEngines.value = true;
+      try {
+        const response = await engineAPI.getEngines();
+        // 兼容不同的API响应格式
+        availableEngines.value = response.engines || response.data?.engines || [];
+        
+        // 显示引擎状态统计
+        const healthyEngines = availableEngines.value.filter(e => e.status === 'healthy');
+        console.log(`已加载 ${availableEngines.value.length} 个引擎，其中 ${healthyEngines.length} 个正常运行`);
+        
+      } catch (error) {
+        console.error('加载引擎列表失败:', error);
+        // 静默失败，使用默认配置
+        availableEngines.value = [];
+      } finally {
+        loadingEngines.value = false;
+      }
+    };
+    
     // 重置表单
     const resetForm = () => {
-      formState.text = '你好，我是AI-Sound语音合成系统，很高兴为您服务！';
-      formState.voiceId = 'female_young';
+      formState.text = '老爹，这是AI-Sound语音合成系统的演示！';
+      formState.voiceId = 'voice_1748615762_2f4146ac';
+      formState.engine = 'auto';
       formState.emotionType = 'neutral';
       formState.emotionIntensity = 0.5;
       formState.speedScale = 1.0;
@@ -436,9 +522,12 @@ export default defineComponent({
       }
     };
     
-    onMounted(() => {
-      // 加载声音列表
-      loadAvailableVoices();
+    onMounted(async () => {
+      // 先加载引擎列表
+      await loadAvailableEngines();
+      
+      // 再加载声音列表
+      await loadAvailableVoices();
       
       // 初始化波形图（如果有默认音频）
       if (audioUrl.value) {
@@ -467,6 +556,8 @@ export default defineComponent({
       processing,
       availableVoices,
       loadingVoices,
+      availableEngines,
+      loadingEngines,
       generateSpeech,
       togglePlay,
       downloadAudio,
@@ -480,7 +571,10 @@ export default defineComponent({
       voiceFileName,
       onVoiceFileChange,
       voiceFileRef,
-      triggerFileUpload
+      triggerFileUpload,
+      getEngineDisplayName,
+      onEngineChange,
+      loadAvailableEngines
     };
   }
 });

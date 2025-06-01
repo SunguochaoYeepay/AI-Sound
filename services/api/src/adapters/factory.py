@@ -29,6 +29,7 @@ class AdapterFactory:
     
     def __init__(self):
         self._adapters: Dict[str, BaseTTSAdapter] = {}
+        self._engine_types: Dict[str, str] = {}  # 保存引擎类型映射
         self._initialized = False
         # 引擎类型映射
         self._adapter_classes = {
@@ -45,15 +46,17 @@ class AdapterFactory:
     ) -> None:
         """注册适配器"""
         try:
+            # 保存引擎类型信息
+            self._engine_types[engine_id] = engine_type
+            
             # 根据引擎类型创建对应的适配器
             adapter_class = self._adapter_classes.get(engine_type)
             if not adapter_class:
-                logger.warning(f"不支持的引擎类型: {engine_type}，使用基础适配器")
-                # 如果不支持的类型，创建一个基础适配器
-                adapter = BaseTTSAdapter(engine_id, config)
-            else:
-                # 创建具体的适配器实例
-                adapter = adapter_class(engine_id, config)
+                logger.warning(f"不支持的引擎类型: {engine_type}，跳过注册")
+                return
+            
+            # 创建具体的适配器实例
+            adapter = adapter_class(engine_id, config)
             
             # 初始化适配器
             await adapter.initialize()
@@ -77,6 +80,9 @@ class AdapterFactory:
             if adapter:
                 await adapter.cleanup()
                 del self._adapters[engine_id]
+                # 同时删除类型映射
+                if engine_id in self._engine_types:
+                    del self._engine_types[engine_id]
                 logger.info(f"适配器已移除: {engine_id}")
                 return True
             return False
@@ -94,6 +100,7 @@ class AdapterFactory:
                     logger.error(f"清理适配器失败: {engine_id} - {e}")
             
             self._adapters.clear()
+            self._engine_types.clear()  # 清理类型映射
             logger.info("所有适配器已清理")
         except Exception as e:
             logger.error(f"清理所有适配器失败: {e}")
@@ -105,9 +112,10 @@ class AdapterFactory:
         
         adapter_list = []
         for engine_id, adapter in self._adapters.items():
+            engine_type = self._engine_types.get(engine_id, 'unknown')
             adapter_list.append({
                 "engine_id": engine_id,
-                "engine_type": getattr(adapter, 'engine_type', 'unknown'),
+                "engine_type": engine_type,
                 "status": adapter.status.value,
                 "is_ready": adapter.status == EngineStatus.READY
             })
@@ -123,11 +131,23 @@ class AdapterFactory:
         """获取可用引擎列表"""
         try:
             engines = []
+            
+            # 引擎名称映射
+            engine_name_map = {
+                "megatts3": "MegaTTS3",
+                "espnet": "ESPnet",
+                "bert_vits2": "Bert-VITS2"
+            }
+            
             for engine_id, adapter in self._adapters.items():
+                # 从保存的映射中获取引擎类型
+                engine_type = self._engine_types.get(engine_id, 'unknown')
+                engine_name = engine_name_map.get(engine_type, engine_type.upper())
+                
                 engine_info = {
                     "id": engine_id,
-                    "name": getattr(adapter, 'engine_type', 'unknown').upper(),
-                    "type": getattr(adapter, 'engine_type', 'unknown'),
+                    "name": engine_name,
+                    "type": engine_type,
                     "status": "healthy" if adapter.status == EngineStatus.READY else "unhealthy",
                     "is_ready": adapter.status == EngineStatus.READY,
                     "endpoint": adapter.config.get("endpoint", ""),

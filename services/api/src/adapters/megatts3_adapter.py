@@ -138,12 +138,15 @@ class MegaTTS3Adapter(BaseTTSAdapter):
             raise RuntimeError("API客户端未初始化")
         
         try:
+            # 每次合成前重新加载声音映射，确保获取最新的声音列表
+            await self._load_voices()
+            
             # 映射参数到MegaTTS3格式
             api_params = self._map_synthesis_params_to_megatts3(params)
             
-            # 修复API调用端点：使用/api/synthesis/by-paths而不是synthesize-by-text
+            # 修复API调用端点：使用/api/synthesis/by-pairs
             response = await self._client.post(
-                f"{self.endpoint}/api/synthesis/by-paths",
+                f"{self.endpoint}/api/synthesis/by-pairs",
                 json_data=api_params
             )
             response.raise_for_status()
@@ -278,7 +281,8 @@ class MegaTTS3Adapter(BaseTTSAdapter):
                     # 直接是声音对列表
                     for pair_info in response_data:
                         voices.append({
-                            "id": pair_info.get('id', ''),
+                            "id": pair_info.get('name', pair_info.get('id', '')),  # 使用name作为ID，它是原始的voice_id
+                            "pair_id": pair_info.get('id', ''),  # 保存实际的pair_id用于API调用
                             "name": pair_info.get('name', pair_info.get('id', '')),
                             "language": pair_info.get('language', 'zh-CN'),
                             "gender": pair_info.get('gender', 'unknown'),
@@ -292,7 +296,8 @@ class MegaTTS3Adapter(BaseTTSAdapter):
                         if isinstance(voice_pairs, list):
                             for pair_info in voice_pairs:
                                 voices.append({
-                                    "id": pair_info.get('id', ''),
+                                    "id": pair_info.get('name', pair_info.get('id', '')),  # 使用name作为ID
+                                    "pair_id": pair_info.get('id', ''),  # 保存实际的pair_id
                                     "name": pair_info.get('name', pair_info.get('id', '')),
                                     "language": pair_info.get('language', 'zh-CN'),
                                     "gender": pair_info.get('gender', 'unknown'),
@@ -304,7 +309,8 @@ class MegaTTS3Adapter(BaseTTSAdapter):
                         if isinstance(data, list):
                             for pair_info in data:
                                 voices.append({
-                                    "id": pair_info.get('id', ''),
+                                    "id": pair_info.get('name', pair_info.get('id', '')),  # 使用name作为ID
+                                    "pair_id": pair_info.get('id', ''),  # 保存实际的pair_id
                                     "name": pair_info.get('name', pair_info.get('id', '')),
                                     "language": pair_info.get('language', 'zh-CN'),
                                     "gender": pair_info.get('gender', 'unknown'),
@@ -427,18 +433,18 @@ class MegaTTS3Adapter(BaseTTSAdapter):
     
     def _map_synthesis_params_to_megatts3(self, params: SynthesisParams) -> Dict[str, Any]:
         """映射合成参数到MegaTTS3格式"""
-        # MegaTTS3 by-paths端点需要文件路径参数
-        # 这里需要根据voice_id获取对应的wav和npy文件路径
+        # MegaTTS3 by-pairs端点需要voice_id参数
+        # 需要将voice_id映射为实际的MegaTTS3声音对ID
         voice_info = self._voice_mapping.get(params.voice_id, {})
         
-        # 默认文件路径（应该从声音库配置中获取）
-        wav_file_path = voice_info.get("wav_file_path", f"/app/checkpoints/voices/{params.voice_id}.wav")
-        npy_file_path = voice_info.get("npy_file_path", f"/app/checkpoints/voices/{params.voice_id}.npy")
+        # 使用pair_id作为实际的API调用参数
+        # 因为MegaTTS3容器中实际的声音对ID是UUID格式
+        actual_voice_id = voice_info.get("pair_id", params.voice_id)
         
         megatts3_params = {
+            "voice_id": actual_voice_id,
             "text": params.text,
-            "wav_file_path": wav_file_path,
-            "npy_file_path": npy_file_path,
+            "language": "zh-CN",  # 默认中文
             "infer_timestep": 32,  # MegaTTS3推理步数
             "p_w": 1.4,  # 音素权重
             "t_w": 3.0,  # 时长权重

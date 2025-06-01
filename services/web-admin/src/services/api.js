@@ -26,13 +26,13 @@ class BaseAPI {
 // 引擎管理API
 class EngineAPI extends BaseAPI {
   constructor() {
-    super('/api/engines')
+    super('/api/tts')
   }
 
   // 获取所有引擎
   async getEngines() {
     try {
-      const response = await axios.get(this.baseUrl)
+      const response = await axios.get(`${this.baseUrl}/engines`)
       return this.handleResponse(response)
     } catch (error) {
       this.handleError(error)
