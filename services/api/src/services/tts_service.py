@@ -65,8 +65,9 @@ class TTSService:
             if not result.success:
                 raise ValueError(result.error_message or "合成失败")
             
-            # 构建结果
-            audio_url = f"/api/audio/{output_filename}"
+            # 构建结果 - 使用完整的URL而不是相对路径
+            api_host = settings.api.host if settings.api.host != "0.0.0.0" else "127.0.0.1"
+            audio_url = f"http://{api_host}:{settings.api.port}/api/audio/{output_filename}"
             file_size = output_filepath.stat().st_size if output_filepath.exists() else 0
             
             return SynthesisResult(
@@ -278,9 +279,13 @@ class TTSService:
             total_duration = sum(r.duration for r in results if r.duration)
             file_size = sum(r.file_size for r in results if r.file_size)
             
+            # 构建完整的音频URL
+            api_host = settings.api.host if settings.api.host != "0.0.0.0" else "127.0.0.1"
+            audio_url = f"http://{api_host}:{settings.api.port}/api/audio/{concat_filename}"
+            
             return SynthesisResult(
                 task_id=f"concat_{task_id}",
-                audio_url=f"/api/audio/{concat_filename}",
+                audio_url=audio_url,
                 duration=total_duration,
                 file_size=file_size,
                 sample_rate=results[0].sample_rate,

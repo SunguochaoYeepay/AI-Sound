@@ -793,4 +793,98 @@ class EngineService:
             return await self.enable_engine(engine_id)
         except Exception as e:
             logger.error(f"重启引擎失败: {e}")
-            raise
+            return False
+            
+    async def upload_megatts3_reference(self, voice_id: str, audio_file, npy_file=None) -> Dict[str, Any]:
+        """上传参考音频和特征文件到MegaTTS3引擎"""
+        try:
+            import aiohttp
+            import aiofiles
+            from pathlib import Path
+            
+            # 获取MegaTTS3引擎配置，如果没有记录则使用默认配置
+            engine = await self.get_engine("megatts3")
+            megatts3_endpoint = settings.engines.megatts3_url  # 默认使用配置中的URL
+            
+            if engine and engine.endpoint:
+                megatts3_endpoint = engine.endpoint  # 如果有引擎记录且配置了端点，则使用引擎端点
+            
+            if not megatts3_endpoint:
+                raise Exception("MegaTTS3服务端点未配置")
+            
+            logger.info(f"使用MegaTTS3端点: {megatts3_endpoint}")
+            
+            # 准备上传数据
+            data = aiohttp.FormData()
+            
+            # 处理音频文件
+            if hasattr(audio_file, 'read'):
+                # 如果是UploadFile对象
+                audio_content = await audio_file.read()
+                data.add_field('wav_file', 
+                              audio_content, 
+                              filename=f"{voice_id}.wav",
+                              content_type='audio/wav')
+            else:
+                # 如果是文件路径
+                async with aiofiles.open(audio_file, 'rb') as f:
+                    audio_content = await f.read()
+                data.add_field('wav_file', 
+                              audio_content, 
+                              filename=f"{voice_id}.wav",
+                              content_type='audio/wav')
+            
+            # 处理NPY特征文件
+            if npy_file:
+                if hasattr(npy_file, 'read'):
+                    # 如果是UploadFile对象
+                    npy_content = await npy_file.read()
+                    data.add_field('npy_file', 
+                                  npy_content, 
+                                  filename=f"{voice_id}.npy",
+                                  content_type='application/octet-stream')
+                else:
+                    # 如果是文件路径
+                    async with aiofiles.open(npy_file, 'rb') as f:
+                        npy_content = await f.read()
+                    data.add_field('npy_file', 
+                                  npy_content, 
+                                  filename=f"{voice_id}.npy",
+                                  content_type='application/octet-stream')
+            
+            # 添加元数据
+            data.add_field('name', voice_id)
+            data.add_field('description', f'Voice pair for {voice_id}')
+            
+            # 上传到MegaTTS3服务
+            timeout = aiohttp.ClientTimeout(total=120)  # 2分钟超时
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.post(
+                    f"{megatts3_endpoint}/api/voice-pairs/upload",
+                    data=data
+                ) as response:
+                    
+                    if response.status == 200:
+                        response_data = await response.json()
+                        logger.info(f"MegaTTS3声音对上传成功: {voice_id}")
+                        return {
+                            "success": True,
+                            "pair_id": response_data.get("id", voice_id),
+                            "audio_file": f"{voice_id}.wav",
+                            "features_file": f"{voice_id}.npy" if npy_file else None,
+                            "upload_time": datetime.now().isoformat(),
+                            "megatts3_response": response_data
+                        }
+                    else:
+                        error_text = await response.text()
+                        logger.error(f"MegaTTS3上传失败 ({response.status}): {error_text}")
+                        raise Exception(f"MegaTTS3上传失败: {error_text}")
+            
+        except Exception as e:
+            logger.error(f"上传MegaTTS3参考文件失败: {e}")
+            # 不抛出异常，允许继续，只是记录错误
+            return {
+                "success": False,
+                "error": str(e),
+                "upload_time": datetime.now().isoformat()
+            }

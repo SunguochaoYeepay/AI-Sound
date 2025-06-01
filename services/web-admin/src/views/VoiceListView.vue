@@ -424,13 +424,22 @@ export default defineComponent({
       try {
         // 加载预览音频
         const response = await voiceAPI.previewVoice(voice.id, '这是一段用于测试声音的文本');
-        if (response && response.audio_url) {
+        console.log('预览音频API响应:', response); // 调试日志
+        
+        // 支持多种响应格式
+        if (response && response.data && response.data.audio_url) {
+          // 后端API格式：{success: true, data: {audio_url: "..."}}
+          waveSurfer.value.load(response.data.audio_url);
+        } else if (response && response.audio_url) {
+          // 直接audio_url格式
           waveSurfer.value.load(response.audio_url);
         } else if (response && response.audio_base64) {
+          // Base64格式
           const blob = base64ToBlob(response.audio_base64, 'audio/wav');
           const audioUrl = URL.createObjectURL(blob);
           waveSurfer.value.load(audioUrl);
         } else {
+          console.error('预览音频响应格式错误:', response);
           message.warning('没有可用的预览音频');
         }
       } catch (error) {
@@ -467,11 +476,24 @@ export default defineComponent({
         const response = await ttsAPI.synthesize({
           text: previewText.value,
           voice_id: selectedVoice.value.id,
-          format: 'wav',
-          return_base64: true
+          format: 'wav'
         });
         
-        if (response && response.audio_base64) {
+        // 支持两种格式：audio_base64和audio_url
+        if (response && response.data && response.data.audio_url) {
+          // 使用audio_url格式（后端返回的格式）
+          const audioUrl = response.data.audio_url;
+          
+          // 重置并加载新音频
+          if (waveSurfer.value) {
+            waveSurfer.value.pause();
+            waveSurfer.value.load(audioUrl);
+            waveSurfer.value.on('ready', () => {
+              waveSurfer.value.play();
+            });
+          }
+        } else if (response && response.audio_base64) {
+          // 兼容audio_base64格式
           const blob = base64ToBlob(response.audio_base64, 'audio/wav');
           const audioUrl = URL.createObjectURL(blob);
           
@@ -484,7 +506,8 @@ export default defineComponent({
             });
           }
         } else {
-          message.warning('生成的音频无法播放');
+          console.error('API响应格式错误:', response);
+          message.warning('生成的音频无法播放，响应格式不正确');
         }
       } catch (error) {
         console.error('生成预览音频失败:', error);

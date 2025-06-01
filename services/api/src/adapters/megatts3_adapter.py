@@ -287,14 +287,17 @@ class MegaTTS3Adapter(BaseTTSAdapter):
                 elif isinstance(response_data, dict):
                     # 可能包含voice_pairs字段或其他结构
                     if 'voice_pairs' in response_data:
-                        for pair_id, pair_info in response_data['voice_pairs'].items():
-                            voices.append({
-                                "id": pair_id,
-                                "name": pair_info.get('name', pair_id),
-                                "language": "zh-CN",
-                                "gender": "unknown",
-                                "description": f"MegaTTS3声音对: {pair_info.get('description', '')}"
-                            })
+                        # voice_pairs是列表，不是字典
+                        voice_pairs = response_data['voice_pairs']
+                        if isinstance(voice_pairs, list):
+                            for pair_info in voice_pairs:
+                                voices.append({
+                                    "id": pair_info.get('id', ''),
+                                    "name": pair_info.get('name', pair_info.get('id', '')),
+                                    "language": pair_info.get('language', 'zh-CN'),
+                                    "gender": pair_info.get('gender', 'unknown'),
+                                    "description": f"MegaTTS3声音对: {pair_info.get('description', '')}"
+                                })
                     elif 'data' in response_data:
                         # 可能是包装在data字段中
                         data = response_data['data']
@@ -424,10 +427,18 @@ class MegaTTS3Adapter(BaseTTSAdapter):
     
     def _map_synthesis_params_to_megatts3(self, params: SynthesisParams) -> Dict[str, Any]:
         """映射合成参数到MegaTTS3格式"""
-        # MegaTTS3需要特定的参数格式
+        # MegaTTS3 by-paths端点需要文件路径参数
+        # 这里需要根据voice_id获取对应的wav和npy文件路径
+        voice_info = self._voice_mapping.get(params.voice_id, {})
+        
+        # 默认文件路径（应该从声音库配置中获取）
+        wav_file_path = voice_info.get("wav_file_path", f"/app/checkpoints/voices/{params.voice_id}.wav")
+        npy_file_path = voice_info.get("npy_file_path", f"/app/checkpoints/voices/{params.voice_id}.npy")
+        
         megatts3_params = {
             "text": params.text,
-            "voice_pair_id": params.voice_id,  # 使用声音对ID
+            "wav_file_path": wav_file_path,
+            "npy_file_path": npy_file_path,
             "infer_timestep": 32,  # MegaTTS3推理步数
             "p_w": 1.4,  # 音素权重
             "t_w": 3.0,  # 时长权重

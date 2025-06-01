@@ -61,7 +61,7 @@ class APIConfig(BaseSettings):
 class TTSConfig(BaseSettings):
     """TTS引擎配置"""
     model_path: str = Field(default="data/models", description="模型文件路径")
-    output_path: str = Field(default="data/output", description="输出文件路径")
+    output_path: str = Field(default="services/api/data/output", description="输出文件路径")
     cache_path: str = Field(default="data/cache", description="缓存文件路径")
     max_text_length: int = Field(default=1000, description="最大文本长度")
     default_engine: str = Field(default="megatts3", description="默认TTS引擎")

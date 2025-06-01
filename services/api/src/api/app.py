@@ -307,12 +307,12 @@ def register_exception_handlers(app: FastAPI) -> None:
 def setup_static_files(app: FastAPI) -> None:
     """设置静态文件服务"""
     try:
-        # 音频文件服务
+        # 音频文件服务 - 挂载到 /api/audio 以匹配前端请求
         audio_path = Path(settings.tts.output_path)
         if not audio_path.exists():
             audio_path.mkdir(parents=True, exist_ok=True)
         
-        app.mount("/audio", StaticFiles(directory=str(audio_path)), name="audio")
+        app.mount("/api/audio", StaticFiles(directory=str(audio_path)), name="audio")
         
         # 模型文件服务（仅在调试模式下）
         if settings.debug:

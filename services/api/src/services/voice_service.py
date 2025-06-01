@@ -214,6 +214,9 @@ class VoiceService:
                 "upload_time": datetime.now().isoformat()
             }
             
+            # 🎯 新增：同步到对应引擎
+            await self._sync_voice_to_engine(voice, audio_path, npy_path)
+            
             logger.info(f"声音创建并上传成功: {voice_id}")
             return result
         except Exception as e:
@@ -311,8 +314,9 @@ class VoiceService:
                 logger.error(f"声音合成失败: {result.error_message or '未知错误'}")
                 return None
             
-            # 构建预览结果
-            audio_url = f"/api/voices/preview/{output_filename}"
+            # 构建预览结果 - 使用完整的URL而不是相对路径
+            api_host = settings.api.host if settings.api.host != "0.0.0.0" else "127.0.0.1"
+            audio_url = f"http://{api_host}:{settings.api.port}/api/voices/preview/{output_filename}"
             
             return {
                 "success": True,
@@ -901,3 +905,37 @@ class VoiceService:
         except Exception as e:
             logger.error(f"从引擎同步声音失败: {e}")
             raise
+
+    async def _sync_voice_to_engine(self, voice: Voice, audio_path: str, npy_path: str):
+        """同步声音到对应引擎"""
+        try:
+            if voice.engine_id == "megatts3":
+                # 延迟导入避免循环依赖
+                from .engine_service import EngineService
+                
+                # 创建EngineService实例
+                engine_service = EngineService(self.db)
+                
+                # 上传到MegaTTS3
+                result = await engine_service.upload_megatts3_reference(
+                    voice.id, 
+                    audio_path, 
+                    npy_path
+                )
+                
+                if result.get("success"):
+                    logger.info(f"声音已同步到MegaTTS3: {voice.id}")
+                else:
+                    logger.warning(f"声音同步到MegaTTS3失败: {result.get('error', '未知错误')}")
+            
+            # 未来可以在这里添加其他引擎的同步逻辑
+            elif voice.engine_id == "espnet":
+                logger.info(f"ESPnet引擎无需额外同步: {voice.id}")
+            elif voice.engine_id == "bertvits2":
+                logger.info(f"BertVITS2引擎暂不支持声音上传: {voice.id}")
+            else:
+                logger.info(f"未知引擎类型，跳过同步: {voice.engine_id}")
+                
+        except Exception as e:
+            logger.error(f"同步声音到引擎失败: {e}")
+            # 不抛出异常，允许主流程继续
