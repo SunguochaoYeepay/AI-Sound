@@ -52,11 +52,6 @@ class DependencyManager:
                 "endpoint": settings.engines.megatts3_url,
                 "enabled": True
             },
-            "megatts3_001": {
-                "type": "megatts3",
-                "endpoint": settings.engines.megatts3_url,
-                "enabled": True
-            },
             "espnet": {
                 "type": "espnet", 
                 "endpoint": settings.engines.espnet_url,
