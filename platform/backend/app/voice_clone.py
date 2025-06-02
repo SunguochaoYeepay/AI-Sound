@@ -125,13 +125,14 @@ async def synthesize_speech(
     time_step: int = Form(20),
     p_weight: float = Form(1.0),
     t_weight: float = Form(1.0),
-    latent_file_id: Optional[str] = Form(None),
+    latent_file_id: str = Form(...),
     voice_name: Optional[str] = Form("临时测试"),
     db: Session = Depends(get_db)
 ):
     """
     实时语音合成
     对应前端 BasicTTS.vue 的合成功能
+    注意：MegaTTS3采用WaveVAE decoder-only架构，必须同时提供音频文件和latent文件
     """
     start_time = time.time()
     tts_client = get_tts_client()
@@ -149,13 +150,10 @@ async def synthesize_speech(
         if not os.path.exists(reference_audio_path):
             raise HTTPException(status_code=404, detail="参考音频文件不存在")
         
-        # 处理潜向量文件（可选）
-        latent_file_path = None
-        if latent_file_id:
-            latent_file_path = os.path.join(UPLOAD_DIR, latent_file_id)
-            if not os.path.exists(latent_file_path):
-                logger.warning(f"潜向量文件不存在，将跳过: {latent_file_path}")
-                latent_file_path = None
+        # 验证latent文件（必需）
+        latent_file_path = os.path.join(UPLOAD_DIR, latent_file_id)
+        if not os.path.exists(latent_file_path):
+            raise HTTPException(status_code=404, detail="Latent特征文件不存在。MegaTTS3采用decoder-only架构，必须同时提供音频文件和latent文件")
         
         # 生成输出文件路径
         output_filename = f"tts_{uuid.uuid4().hex}.wav"

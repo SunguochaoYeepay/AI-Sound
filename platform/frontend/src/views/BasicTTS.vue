@@ -7,8 +7,11 @@
           声音克隆测试平台
         </h1>
         <p style="margin: 8px 0 0 0; color: #64748b; font-size: 16px;">
-          上传参考音频文件，让AI学习并克隆声音特征，生成指定文本的语音
+          基于MegaTTS3 WaveVAE decoder-only架构，需要同时提供音频文件和latent特征文件
         </p>
+        <div style="margin-top: 8px; padding: 8px 12px; background: #fef3cd; border: 1px solid #fde68a; border-radius: 6px; color: #92400e; font-size: 14px;">
+          ⚠️ 重要：MegaTTS3必须同时使用 .wav 和 .npy 文件才能工作
+        </div>
       </div>
       <div class="status-badges">
         <a-tag color="#10b981" size="large">
@@ -82,15 +85,15 @@
             </div>
           </div>
 
-          <!-- Latent文件上传（可选） -->
+          <!-- Latent文件上传（必需） -->
           <div class="form-section">
             <label class="form-label">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 8px;">
                 <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
               </svg>
-              Latent特征文件 <span style="color: #64748b;">（可选）</span>
+              Latent特征文件 <span style="color: #ef4444;">*</span>
             </label>
-            <p class="form-desc">预训练的声音特征文件（.npy格式），可提升克隆质量</p>
+            <p class="form-desc">MegaTTS3必需的声音特征文件（.npy格式），与音频文件配对使用</p>
             
             <a-upload
               v-model:fileList="latentFiles"
@@ -229,6 +232,12 @@
               {{ isGenerating ? '生成中...' : '开始生成语音' }}
             </a-button>
 
+            <div v-if="!canGenerate && !isGenerating" class="generate-hint">
+              <p style="color: #6b7280; font-size: 14px; text-align: center; margin-top: 12px;">
+                请确保已上传：音频文件(.wav) + Latent文件(.npy) + 输入文本
+              </p>
+            </div>
+
             <div v-if="isGenerating" class="progress-info">
               <a-progress :percent="progress" :show-info="false" />
               <div class="progress-text">{{ progressText }}</div>
@@ -339,7 +348,7 @@ const templates = ref([
 
 // 计算属性
 const canGenerate = computed(() => {
-  return audioFiles.value.length > 0 && text.value.trim() !== ''
+  return audioFiles.value.length > 0 && latentFiles.value.length > 0 && text.value.trim() !== ''
 })
 
 // 文件处理方法
@@ -700,6 +709,11 @@ const saveToLibrary = () => {
   background: linear-gradient(135deg, #0891b2 0%, #0e7490 100%) !important;
   transform: translateY(-2px) !important;
   box-shadow: 0 6px 20px rgba(6, 182, 212, 0.3) !important;
+}
+
+.generate-hint {
+  margin-top: 12px;
+  text-align: center;
 }
 
 .progress-info {

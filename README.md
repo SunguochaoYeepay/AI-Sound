@@ -13,8 +13,15 @@ AI-Sound 是一个统一管理多种 TTS（文本转语音）引擎的综合平�
 ## 🔥 当前状态
 
 ### ✅ 已运行服务
-- **MegaTTS3 API 服务**：`http://localhost:7929` - GPU加速，完全可用
+- **MegaTTS3 API 服务**：`http://localhost:7929` - GPU加速，WaveVAE decoder-only模式
 - **API 文档服务**：`http://localhost:8888` - 交互式文档和演示
+
+### 🎯 MegaTTS3 重要说明
+**MegaTTS3 采用 WaveVAE decoder-only 架构设计**：
+- ⚠️ **必需文件**：语音合成需要同时提供 `.wav` 音频文件和对应的 `.npy` latent文件
+- 🔒 **安全设计**：官方出于安全考虑，未发布 WaveVAE encoder 参数
+- 📁 **文件要求**：对于说话人A，需要在同一目录下有 `A.wav` 和 `A.npy` 文件
+- 🌐 **获取latent**：可通过官方提供的链接上传音频文件获取对应的 `.npy` 文件
 
 ### 📂 项目结构（已优化）
 ```
@@ -70,6 +77,9 @@ python start_api_demo.py
 
 ## 💻 API 使用示例
 
+### ⚠️ 重要提醒
+**MegaTTS3 语音合成必须同时提供音频文件和latent文件**
+
 ### Python 调用示例
 ```python
 import requests
@@ -79,13 +89,20 @@ import json
 health = requests.get("http://localhost:7929/health")
 print("服务状态:", health.json())
 
-# 语音合成
+# 语音合成 - 注意：需要同时上传 .wav 和 .npy 文件
+files = {
+    'audio_file': open('reference_speaker.wav', 'rb'),
+    'latent_file': open('reference_speaker.npy', 'rb')  # 必需！
+}
+data = {
+    'text': '欢迎使用AI-Sound MegaTTS3服务！',
+    'p_w': 1.4,
+    't_w': 3.0,
+    'time_step': 32
+}
+
 response = requests.post("http://localhost:7929/synthesize", 
-    json={
-        "text": "欢迎使用AI-Sound MegaTTS3服务！",
-        "speaker": "female_calm",
-        "language": "zh"
-    }
+    files=files, data=data
 )
 
 # 保存音频文件
@@ -93,6 +110,8 @@ if response.status_code == 200:
     with open("output.wav", "wb") as f:
         f.write(response.content)
     print("✅ 音频生成成功！")
+else:
+    print("❌ 生成失败:", response.json())
 ```
 
 ### cURL 调用示例
@@ -100,10 +119,14 @@ if response.status_code == 200:
 # 健康检查
 curl http://localhost:7929/health
 
-# 语音合成
+# 语音合成 - 必须同时上传两个文件
 curl -X POST http://localhost:7929/synthesize \
-  -H "Content-Type: application/json" \
-  -d '{"text":"你好，世界！","speaker":"female_calm","language":"zh"}' \
+  -F "audio_file=@reference_speaker.wav" \
+  -F "latent_file=@reference_speaker.npy" \
+  -F "text=你好，世界！" \
+  -F "p_w=1.4" \
+  -F "t_w=3.0" \
+  -F "time_step=32" \
   --output output.wav
 ```
 
