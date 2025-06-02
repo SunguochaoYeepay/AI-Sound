@@ -1,0 +1,1156 @@
+"""
+小说朗读API模块
+对应 NovelReader.vue 功能
+"""
+
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form, BackgroundTasks
+from fastapi.responses import FileResponse
+from sqlalchemy.orm import Session
+from sqlalchemy import desc, asc, func, or_, and_
+from typing import Dict, List, Any, Optional
+import os
+import json
+import time
+import logging
+import asyncio
+import re
+from datetime import datetime, timedelta
+
+from .database import get_db
+from .models import NovelProject, TextSegment, VoiceProfile, SystemLog
+from .tts_client import MegaTTS3Client, TTSRequest, get_tts_client
+from .utils import log_system_event, update_usage_stats, save_upload_file
+
+logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/api/novel-reader", tags=["小说朗读"])
+
+# 文件存储路径
+PROJECTS_DIR = "../data/projects"
+TEXTS_DIR = "../data/texts"
+AUDIO_DIR = "../data/audio"
+
+@router.post("/projects")
+async def create_project(
+    name: str = Form(...),
+    description: str = Form(""),
+    text_content: str = Form(""),
+    text_file: Optional[UploadFile] = File(None),
+    character_mapping: str = Form("{}"),
+    db: Session = Depends(get_db)
+):
+    """
+    创建新的朗读项目
+    对应前端 NovelReader.vue 的项目创建功能
+    """
+    try:
+        # 验证项目名称
+        if not name or len(name.strip()) == 0:
+            raise HTTPException(status_code=400, detail="项目名称不能为空")
+        
+        # 检查项目名称是否已存在
+        existing = db.query(NovelProject).filter(NovelProject.name == name).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="项目名称已存在")
+        
+        # 处理文本内容
+        final_text = text_content
+        text_file_path = None
+        
+        if text_file:
+            # 验证文件类型
+            if not text_file.filename.lower().endswith(('.txt', '.md')):
+                raise HTTPException(status_code=400, detail="只支持 .txt 和 .md 文件")
+            
+            # 保存文本文件
+            os.makedirs(TEXTS_DIR, exist_ok=True)
+            file_content = await text_file.read()
+            final_text = file_content.decode('utf-8', errors='ignore')
+            
+            # 保存文件到磁盘
+            import uuid
+            filename = f"project_{uuid.uuid4().hex}.txt"
+            text_file_path = os.path.join(TEXTS_DIR, filename)
+            
+            with open(text_file_path, 'w', encoding='utf-8') as f:
+                f.write(final_text)
+        
+        if not final_text or len(final_text.strip()) == 0:
+            raise HTTPException(status_code=400, detail="文本内容不能为空")
+        
+        # 解析角色映射
+        try:
+            char_mapping = json.loads(character_mapping) if character_mapping else {}
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=400, detail="角色映射格式错误")
+        
+        # 创建项目记录
+        project = NovelProject(
+            name=name,
+            description=description,
+            original_text=final_text,
+            text_file_path=text_file_path,
+            status='pending'
+        )
+        
+        project.set_character_mapping(char_mapping)
+        
+        db.add(project)
+        db.commit()
+        db.refresh(project)
+        
+        # 自动进行文本分段
+        await auto_segment_text(project.id, db)
+        
+        # 记录创建日志
+        await log_system_event(
+            db=db,
+            level="info",
+            message=f"朗读项目创建: {name}",
+            module="novel_reader",
+            details={
+                "project_id": project.id,
+                "text_length": len(final_text),
+                "has_file": text_file is not None,
+                "character_count": len(char_mapping)
+            }
+        )
+        
+        return {
+            "success": True,
+            "message": "项目创建成功",
+            "data": project.to_dict()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"创建项目失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"创建失败: {str(e)}")
+
+@router.get("/projects")
+async def get_projects(
+    page: int = Query(1, ge=1, description="页码"),
+    page_size: int = Query(20, ge=1, le=100, description="每页数量"),
+    search: str = Query("", description="搜索关键词"),
+    status: str = Query("", description="状态过滤"),
+    sort_by: str = Query("created_at", description="排序字段"),
+    sort_order: str = Query("desc", description="排序方向"),
+    db: Session = Depends(get_db)
+):
+    """
+    获取朗读项目列表
+    对应前端项目列表显示功能
+    """
+    try:
+        # 构建查询
+        query = db.query(NovelProject)
+        
+        # 搜索过滤
+        if search:
+            search_pattern = f"%{search}%"
+            query = query.filter(
+                or_(
+                    NovelProject.name.like(search_pattern),
+                    NovelProject.description.like(search_pattern)
+                )
+            )
+        
+        # 状态过滤
+        if status and status in ['pending', 'processing', 'paused', 'completed', 'failed']:
+            query = query.filter(NovelProject.status == status)
+        
+        # 排序
+        sort_field = getattr(NovelProject, sort_by, NovelProject.created_at)
+        if sort_order == "asc":
+            query = query.order_by(asc(sort_field))
+        else:
+            query = query.order_by(desc(sort_field))
+        
+        # 统计总数
+        total = query.count()
+        
+        # 分页
+        offset = (page - 1) * page_size
+        projects = query.offset(offset).limit(page_size).all()
+        
+        # 转换为字典格式
+        project_list = [project.to_dict() for project in projects]
+        
+        # 分页信息
+        total_pages = (total + page_size - 1) // page_size
+        
+        return {
+            "success": True,
+            "data": project_list,
+            "pagination": {
+                "page": page,
+                "pageSize": page_size,
+                "total": total,
+                "totalPages": total_pages,
+                "hasMore": page < total_pages
+            },
+            "filters": {
+                "search": search,
+                "status": status
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"获取项目列表失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取列表失败: {str(e)}")
+
+@router.get("/projects/{project_id}")
+async def get_project_detail(
+    project_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    获取项目详情
+    对应前端项目详情页功能
+    """
+    try:
+        project = db.query(NovelProject).filter(NovelProject.id == project_id).first()
+        
+        if not project:
+            raise HTTPException(status_code=404, detail="项目不存在")
+        
+        project_data = project.to_dict()
+        
+        # 获取文本段落列表
+        segments = db.query(TextSegment).filter(
+            TextSegment.project_id == project_id
+        ).order_by(TextSegment.segment_order).all()
+        
+        project_data['segments'] = [segment.to_dict() for segment in segments]
+        
+        # 统计信息
+        project_data['statistics'] = {
+            "totalCharacters": len(project.original_text) if project.original_text else 0,
+            "totalSegments": len(segments),
+            "completedSegments": len([s for s in segments if s.status == 'completed']),
+            "failedSegments": len([s for s in segments if s.status == 'failed']),
+            "pendingSegments": len([s for s in segments if s.status == 'pending']),
+            "processingSegments": len([s for s in segments if s.status == 'processing'])
+        }
+        
+        return {
+            "success": True,
+            "data": project_data
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取项目详情失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取详情失败: {str(e)}")
+
+@router.put("/projects/{project_id}")
+async def update_project(
+    project_id: int,
+    name: str = Form(...),
+    description: str = Form(""),
+    character_mapping: str = Form("{}"),
+    db: Session = Depends(get_db)
+):
+    """
+    更新项目信息
+    对应前端项目编辑功能
+    """
+    try:
+        project = db.query(NovelProject).filter(NovelProject.id == project_id).first()
+        
+        if not project:
+            raise HTTPException(status_code=404, detail="项目不存在")
+        
+        # 检查名称重复（排除自己）
+        existing = db.query(NovelProject).filter(
+            and_(
+                NovelProject.name == name,
+                NovelProject.id != project_id
+            )
+        ).first()
+        
+        if existing:
+            raise HTTPException(status_code=400, detail="项目名称已存在")
+        
+        # 解析角色映射
+        try:
+            char_mapping = json.loads(character_mapping) if character_mapping else {}
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=400, detail="角色映射格式错误")
+        
+        # 更新项目信息
+        old_name = project.name
+        project.name = name
+        project.description = description
+        project.set_character_mapping(char_mapping)
+        
+        db.commit()
+        db.refresh(project)
+        
+        # 更新相关段落的声音分配
+        if char_mapping:
+            await update_segments_voice_mapping(project_id, char_mapping, db)
+        
+        # 记录更新日志
+        await log_system_event(
+            db=db,
+            level="info",
+            message=f"项目更新: {old_name} -> {name}",
+            module="novel_reader",
+            details={
+                "project_id": project_id,
+                "old_name": old_name,
+                "new_name": name,
+                "character_mapping": char_mapping
+            }
+        )
+        
+        return {
+            "success": True,
+            "message": "项目更新成功",
+            "data": project.to_dict()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"更新项目失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"更新失败: {str(e)}")
+
+@router.delete("/projects/{project_id}")
+async def delete_project(
+    project_id: int,
+    force: bool = Query(False, description="强制删除"),
+    db: Session = Depends(get_db)
+):
+    """
+    删除项目
+    对应前端项目删除功能
+    """
+    try:
+        project = db.query(NovelProject).filter(NovelProject.id == project_id).first()
+        
+        if not project:
+            raise HTTPException(status_code=404, detail="项目不存在")
+        
+        # 检查是否正在处理中
+        if not force and project.status == 'processing':
+            raise HTTPException(status_code=400, detail="项目正在处理中，请使用强制删除")
+        
+        project_name = project.name
+        
+        # 删除相关文件
+        files_to_delete = []
+        
+        # 删除文本文件
+        if project.text_file_path and os.path.exists(project.text_file_path):
+            files_to_delete.append(project.text_file_path)
+        
+        # 删除最终音频文件
+        if project.final_audio_path and os.path.exists(project.final_audio_path):
+            files_to_delete.append(project.final_audio_path)
+        
+        # 删除所有段落的音频文件
+        segments = db.query(TextSegment).filter(TextSegment.project_id == project_id).all()
+        for segment in segments:
+            if segment.audio_file_path and os.path.exists(segment.audio_file_path):
+                files_to_delete.append(segment.audio_file_path)
+        
+        # 删除数据库记录（级联删除段落）
+        db.delete(project)
+        db.commit()
+        
+        # 删除物理文件
+        deleted_files = []
+        for file_path in files_to_delete:
+            try:
+                os.remove(file_path)
+                deleted_files.append(file_path)
+            except Exception as e:
+                logger.warning(f"删除文件失败 {file_path}: {str(e)}")
+        
+        # 记录删除日志
+        await log_system_event(
+            db=db,
+            level="info",
+            message=f"项目删除: {project_name}",
+            module="novel_reader",
+            details={
+                "project_id": project_id,
+                "project_name": project_name,
+                "deleted_files": len(deleted_files),
+                "force": force
+            }
+        )
+        
+        return {
+            "success": True,
+            "message": f"项目 '{project_name}' 删除成功",
+            "deletedFiles": len(deleted_files)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"删除项目失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"删除失败: {str(e)}")
+
+@router.post("/projects/{project_id}/segments")
+async def regenerate_segments(
+    project_id: int,
+    strategy: str = Form("auto", description="分段策略"),
+    custom_rules: str = Form("", description="自定义规则"),
+    db: Session = Depends(get_db)
+):
+    """
+    重新生成文本段落
+    对应前端重新分段功能
+    """
+    try:
+        project = db.query(NovelProject).filter(NovelProject.id == project_id).first()
+        
+        if not project:
+            raise HTTPException(status_code=404, detail="项目不存在")
+        
+        if project.status == 'processing':
+            raise HTTPException(status_code=400, detail="项目正在处理中，无法重新分段")
+        
+        # 删除现有段落
+        db.query(TextSegment).filter(TextSegment.project_id == project_id).delete()
+        db.commit()
+        
+        # 重新分段
+        segments_created = await segment_text_by_strategy(
+            project.original_text, 
+            project_id, 
+            strategy, 
+            custom_rules,
+            db
+        )
+        
+        # 更新项目状态
+        project.total_segments = segments_created
+        project.processed_segments = 0
+        project.current_segment = 0
+        project.status = 'pending'
+        db.commit()
+        
+        # 记录重新分段日志
+        await log_system_event(
+            db=db,
+            level="info",
+            message=f"项目重新分段: {project.name}",
+            module="novel_reader",
+            details={
+                "project_id": project_id,
+                "strategy": strategy,
+                "segments_created": segments_created
+            }
+        )
+        
+        return {
+            "success": True,
+            "message": f"重新分段完成，生成 {segments_created} 个段落",
+            "segmentsCount": segments_created
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"重新分段失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"分段失败: {str(e)}")
+
+@router.post("/projects/{project_id}/start-generation")
+async def start_audio_generation(
+    project_id: int,
+    background_tasks: BackgroundTasks,
+    parallel_tasks: int = Form(2, description="并行任务数"),
+    db: Session = Depends(get_db)
+):
+    """
+    开始音频生成
+    对应前端开始生成功能
+    """
+    try:
+        project = db.query(NovelProject).filter(NovelProject.id == project_id).first()
+        
+        if not project:
+            raise HTTPException(status_code=404, detail="项目不存在")
+        
+        if project.status == 'processing':
+            raise HTTPException(status_code=400, detail="项目已在处理中")
+        
+        # 检查是否有段落和角色映射
+        segments = db.query(TextSegment).filter(TextSegment.project_id == project_id).all()
+        if not segments:
+            raise HTTPException(status_code=400, detail="项目没有文本段落，请先进行分段")
+        
+        char_mapping = project.get_character_mapping()
+        if not char_mapping:
+            raise HTTPException(status_code=400, detail="请先设置角色声音映射")
+        
+        # 验证声音映射的有效性
+        for character, voice_id in char_mapping.items():
+            voice = db.query(VoiceProfile).filter(VoiceProfile.id == voice_id).first()
+            if not voice or voice.status != 'active':
+                raise HTTPException(status_code=400, detail=f"角色 '{character}' 的声音档案无效")
+        
+        # 更新项目状态
+        project.status = 'processing'
+        project.started_at = datetime.utcnow()
+        project.current_segment = 0
+        project.processed_segments = 0
+        
+        # 重置所有段落状态
+        for segment in segments:
+            if segment.status in ['completed', 'failed']:
+                segment.status = 'pending'
+                segment.error_message = None
+        
+        db.commit()
+        
+        # 启动后台任务
+        background_tasks.add_task(
+            process_audio_generation,
+            project_id,
+            parallel_tasks
+        )
+        
+        # 记录开始生成日志
+        await log_system_event(
+            db=db,
+            level="info",
+            message=f"开始音频生成: {project.name}",
+            module="novel_reader",
+            details={
+                "project_id": project_id,
+                "total_segments": len(segments),
+                "parallel_tasks": parallel_tasks,
+                "character_mapping": char_mapping
+            }
+        )
+        
+        return {
+            "success": True,
+            "message": "音频生成已开始",
+            "totalSegments": len(segments),
+            "parallelTasks": parallel_tasks
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"开始音频生成失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"启动失败: {str(e)}")
+
+@router.post("/projects/{project_id}/pause")
+async def pause_generation(
+    project_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    暂停音频生成
+    对应前端暂停功能
+    """
+    try:
+        project = db.query(NovelProject).filter(NovelProject.id == project_id).first()
+        
+        if not project:
+            raise HTTPException(status_code=404, detail="项目不存在")
+        
+        if project.status != 'processing':
+            raise HTTPException(status_code=400, detail="项目未在处理中")
+        
+        # 更新项目状态
+        project.status = 'paused'
+        db.commit()
+        
+        # 记录暂停日志
+        await log_system_event(
+            db=db,
+            level="info",
+            message=f"音频生成暂停: {project.name}",
+            module="novel_reader",
+            details={
+                "project_id": project_id,
+                "processed_segments": project.processed_segments,
+                "total_segments": project.total_segments
+            }
+        )
+        
+        return {
+            "success": True,
+            "message": "音频生成已暂停"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"暂停生成失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"暂停失败: {str(e)}")
+
+@router.post("/projects/{project_id}/resume")
+async def resume_generation(
+    project_id: int,
+    background_tasks: BackgroundTasks,
+    parallel_tasks: int = Form(2, description="并行任务数"),
+    db: Session = Depends(get_db)
+):
+    """
+    恢复音频生成
+    对应前端恢复功能
+    """
+    try:
+        project = db.query(NovelProject).filter(NovelProject.id == project_id).first()
+        
+        if not project:
+            raise HTTPException(status_code=404, detail="项目不存在")
+        
+        if project.status != 'paused':
+            raise HTTPException(status_code=400, detail="项目未处于暂停状态")
+        
+        # 更新项目状态
+        project.status = 'processing'
+        db.commit()
+        
+        # 重新启动后台任务
+        background_tasks.add_task(
+            process_audio_generation,
+            project_id,
+            parallel_tasks
+        )
+        
+        # 记录恢复日志
+        await log_system_event(
+            db=db,
+            level="info",
+            message=f"音频生成恢复: {project.name}",
+            module="novel_reader",
+            details={
+                "project_id": project_id,
+                "parallel_tasks": parallel_tasks
+            }
+        )
+        
+        return {
+            "success": True,
+            "message": "音频生成已恢复"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"恢复生成失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"恢复失败: {str(e)}")
+
+@router.get("/projects/{project_id}/progress")
+async def get_generation_progress(
+    project_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    获取生成进度
+    对应前端进度监控功能
+    """
+    try:
+        project = db.query(NovelProject).filter(NovelProject.id == project_id).first()
+        
+        if not project:
+            raise HTTPException(status_code=404, detail="项目不存在")
+        
+        # 获取段落统计
+        segments = db.query(TextSegment).filter(TextSegment.project_id == project_id).all()
+        
+        stats = {
+            "total": len(segments),
+            "completed": len([s for s in segments if s.status == 'completed']),
+            "failed": len([s for s in segments if s.status == 'failed']),
+            "processing": len([s for s in segments if s.status == 'processing']),
+            "pending": len([s for s in segments if s.status == 'pending'])
+        }
+        
+        # 计算进度百分比
+        progress_percent = 0
+        if stats["total"] > 0:
+            progress_percent = round((stats["completed"] / stats["total"]) * 100, 1)
+        
+        # 估算剩余时间
+        estimated_completion = None
+        if project.started_at and stats["completed"] > 0:
+            elapsed_time = datetime.utcnow() - project.started_at
+            avg_time_per_segment = elapsed_time.total_seconds() / stats["completed"]
+            remaining_segments = stats["total"] - stats["completed"]
+            remaining_seconds = avg_time_per_segment * remaining_segments
+            estimated_completion = (datetime.utcnow() + timedelta(seconds=remaining_seconds)).isoformat()
+        
+        # 最近完成的段落
+        recent_completed = db.query(TextSegment).filter(
+            and_(
+                TextSegment.project_id == project_id,
+                TextSegment.status == 'completed'
+            )
+        ).order_by(desc(TextSegment.id)).limit(5).all()
+        
+        recent_list = [
+            {
+                "id": segment.id,
+                "order": segment.segment_order,
+                "speaker": segment.detected_speaker,
+                "processingTime": segment.processing_time
+            }
+            for segment in recent_completed
+        ]
+        
+        return {
+            "success": True,
+            "progress": {
+                "projectId": project_id,
+                "status": project.status,
+                "progressPercent": progress_percent,
+                "statistics": stats,
+                "startedAt": project.started_at.isoformat() if project.started_at else None,
+                "estimatedCompletion": estimated_completion,
+                "recentCompleted": recent_list
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取进度失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取进度失败: {str(e)}")
+
+@router.get("/projects/{project_id}/download")
+async def download_final_audio(
+    project_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    下载最终音频文件
+    对应前端下载功能
+    """
+    try:
+        project = db.query(NovelProject).filter(NovelProject.id == project_id).first()
+        
+        if not project:
+            raise HTTPException(status_code=404, detail="项目不存在")
+        
+        if project.status != 'completed':
+            raise HTTPException(status_code=400, detail="项目尚未完成")
+        
+        if not project.final_audio_path or not os.path.exists(project.final_audio_path):
+            raise HTTPException(status_code=404, detail="音频文件不存在")
+        
+        # 记录下载日志
+        await log_system_event(
+            db=db,
+            level="info",
+            message=f"下载最终音频: {project.name}",
+            module="novel_reader",
+            details={
+                "project_id": project_id,
+                "file_path": project.final_audio_path
+            }
+        )
+        
+        return FileResponse(
+            path=project.final_audio_path,
+            filename=f"{project.name}_final.wav",
+            media_type="audio/wav"
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"下载音频失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"下载失败: {str(e)}")
+
+# 工具函数
+
+async def auto_segment_text(project_id: int, db: Session):
+    """自动分段"""
+    return await segment_text_by_strategy("", project_id, "auto", "", db)
+
+async def segment_text_by_strategy(
+    text: str, 
+    project_id: int, 
+    strategy: str, 
+    custom_rules: str,
+    db: Session
+) -> int:
+    """根据策略分段文本"""
+    try:
+        # 获取项目文本
+        if not text:
+            project = db.query(NovelProject).filter(NovelProject.id == project_id).first()
+            if not project or not project.original_text:
+                return 0
+            text = project.original_text
+        
+        segments = []
+        
+        if strategy == "auto":
+            # 自动分段：基于句号、感叹号、问号分段
+            sentences = re.split(r'[。！？]', text)
+            for i, sentence in enumerate(sentences):
+                sentence = sentence.strip()
+                if sentence:
+                    segments.append({
+                        "order": i + 1,
+                        "text": sentence + ("。" if i < len(sentences) - 1 else ""),
+                        "speaker": detect_speaker(sentence)
+                    })
+        
+        elif strategy == "paragraph":
+            # 段落分段：基于换行符分段
+            paragraphs = text.split('\n')
+            order = 1
+            for paragraph in paragraphs:
+                paragraph = paragraph.strip()
+                if paragraph:
+                    segments.append({
+                        "order": order,
+                        "text": paragraph,
+                        "speaker": detect_speaker(paragraph)
+                    })
+                    order += 1
+        
+        elif strategy == "dialogue":
+            # 对话分段：识别对话和叙述分开
+            lines = text.split('\n')
+            order = 1
+            for line in lines:
+                line = line.strip()
+                if line:
+                    segments.append({
+                        "order": order,
+                        "text": line,
+                        "speaker": detect_speaker(line)
+                    })
+                    order += 1
+        
+        elif strategy == "custom":
+            # 自定义分段规则
+            if custom_rules:
+                try:
+                    rules = json.loads(custom_rules)
+                    delimiter = rules.get("delimiter", "。")
+                    max_length = rules.get("max_length", 200)
+                    
+                    parts = text.split(delimiter)
+                    current_segment = ""
+                    order = 1
+                    
+                    for part in parts:
+                        part = part.strip()
+                        if not part:
+                            continue
+                        
+                        if len(current_segment + part) <= max_length:
+                            current_segment += part + delimiter
+                        else:
+                            if current_segment:
+                                segments.append({
+                                    "order": order,
+                                    "text": current_segment.rstrip(delimiter),
+                                    "speaker": detect_speaker(current_segment)
+                                })
+                                order += 1
+                            current_segment = part + delimiter
+                    
+                    # 添加最后一个段落
+                    if current_segment:
+                        segments.append({
+                            "order": order,
+                            "text": current_segment.rstrip(delimiter),
+                            "speaker": detect_speaker(current_segment)
+                        })
+                        
+                except json.JSONDecodeError:
+                    # 如果自定义规则解析失败，使用自动分段
+                    return await segment_text_by_strategy(text, project_id, "auto", "", db)
+        
+        # 保存段落到数据库
+        for segment_data in segments:
+            segment = TextSegment(
+                project_id=project_id,
+                segment_order=segment_data["order"],
+                text_content=segment_data["text"],
+                detected_speaker=segment_data["speaker"],
+                status='pending'
+            )
+            db.add(segment)
+        
+        db.commit()
+        return len(segments)
+        
+    except Exception as e:
+        logger.error(f"文本分段失败: {str(e)}")
+        return 0
+
+def detect_speaker(text: str) -> str:
+    """检测说话人"""
+    try:
+        # 简单的说话人检测逻辑
+        if '"' in text or '"' in text or '「' in text or '『' in text:
+            # 包含引号，可能是对话
+            # 尝试提取说话人名字
+            patterns = [
+                r'([^"]+)[说道]',
+                r'([^"]+)[:：]',
+                r'([一-龯]+)[说道]',
+            ]
+            
+            for pattern in patterns:
+                match = re.search(pattern, text)
+                if match:
+                    speaker = match.group(1).strip()
+                    if len(speaker) <= 10:  # 合理的名字长度
+                        return speaker
+        
+        # 默认返回旁白
+        return "旁白"
+        
+    except Exception:
+        return "旁白"
+
+async def update_segments_voice_mapping(project_id: int, char_mapping: Dict[str, str], db: Session):
+    """更新段落的声音映射"""
+    try:
+        segments = db.query(TextSegment).filter(TextSegment.project_id == project_id).all()
+        
+        for segment in segments:
+            if segment.detected_speaker in char_mapping:
+                voice_id = char_mapping[segment.detected_speaker]
+                # 验证声音ID是否有效
+                voice = db.query(VoiceProfile).filter(VoiceProfile.id == voice_id).first()
+                if voice and voice.status == 'active':
+                    segment.voice_profile_id = voice_id
+        
+        db.commit()
+        
+    except Exception as e:
+        logger.error(f"更新声音映射失败: {str(e)}")
+
+async def process_audio_generation(project_id: int, parallel_tasks: int = 2):
+    """后台音频生成任务"""
+    try:
+        from .database import SessionLocal
+        db = SessionLocal()
+        
+        try:
+            project = db.query(NovelProject).filter(NovelProject.id == project_id).first()
+            if not project:
+                return
+            
+            # 获取待处理的段落
+            pending_segments = db.query(TextSegment).filter(
+                and_(
+                    TextSegment.project_id == project_id,
+                    TextSegment.status == 'pending'
+                )
+            ).order_by(TextSegment.segment_order).all()
+            
+            if not pending_segments:
+                # 检查是否全部完成
+                await check_project_completion(project_id, db)
+                return
+            
+            # 获取TTS客户端
+            tts_client = get_tts_client()
+            
+            # 处理段落（限制并发数）
+            semaphore = asyncio.Semaphore(parallel_tasks)
+            tasks = []
+            
+            for segment in pending_segments:
+                if project.status != 'processing':  # 检查是否被暂停
+                    break
+                
+                task = asyncio.create_task(
+                    process_single_segment(segment, tts_client, semaphore, db)
+                )
+                tasks.append(task)
+            
+            # 等待所有任务完成
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # 检查项目完成状态
+            await check_project_completion(project_id, db)
+            
+        finally:
+            db.close()
+            
+    except Exception as e:
+        logger.error(f"音频生成后台任务失败: {str(e)}")
+
+async def process_single_segment(segment: TextSegment, tts_client, semaphore, db: Session):
+    """处理单个段落"""
+    async with semaphore:
+        try:
+            # 更新段落状态
+            segment.status = 'processing'
+            db.commit()
+            
+            # 获取声音档案
+            voice = db.query(VoiceProfile).filter(VoiceProfile.id == segment.voice_profile_id).first()
+            if not voice:
+                segment.status = 'failed'
+                segment.error_message = "声音档案不存在"
+                db.commit()
+                return
+            
+            # 生成音频文件路径
+            import uuid
+            audio_filename = f"segment_{segment.id}_{uuid.uuid4().hex}.wav"
+            audio_path = os.path.join(AUDIO_DIR, audio_filename)
+            
+            # 确保目录存在
+            os.makedirs(AUDIO_DIR, exist_ok=True)
+            
+            # 构建TTS请求
+            start_time = time.time()
+            tts_request = TTSRequest(
+                text=segment.text_content,
+                reference_audio_path=voice.reference_audio_path,
+                output_audio_path=audio_path,
+                time_step=20,  # 使用默认参数
+                p_weight=1.0,
+                t_weight=1.0,
+                latent_file_path=voice.latent_file_path
+            )
+            
+            # 调用TTS服务
+            response = await tts_client.synthesize_speech(tts_request)
+            processing_time = time.time() - start_time
+            
+            if response.success:
+                # 更新段落状态
+                segment.status = 'completed'
+                segment.audio_file_path = audio_path
+                segment.processing_time = processing_time
+                segment.error_message = None
+                
+                # 更新项目进度
+                project = db.query(NovelProject).filter(NovelProject.id == segment.project_id).first()
+                if project:
+                    project.processed_segments += 1
+                    project.current_segment = segment.segment_order
+                
+            else:
+                # 标记为失败
+                segment.status = 'failed'
+                segment.error_message = response.message
+                segment.processing_time = processing_time
+            
+            db.commit()
+            
+            # 记录处理日志
+            await log_system_event(
+                db=db,
+                level="info" if response.success else "error",
+                message=f"段落处理{'成功' if response.success else '失败'}: 段落{segment.segment_order}",
+                module="novel_reader",
+                details={
+                    "segment_id": segment.id,
+                    "project_id": segment.project_id,
+                    "processing_time": processing_time,
+                    "success": response.success,
+                    "error": response.message if not response.success else None
+                }
+            )
+            
+        except Exception as e:
+            # 标记为失败
+            segment.status = 'failed'
+            segment.error_message = str(e)
+            db.commit()
+            
+            logger.error(f"处理段落失败: {str(e)}")
+
+async def check_project_completion(project_id: int, db: Session):
+    """检查项目是否完成"""
+    try:
+        project = db.query(NovelProject).filter(NovelProject.id == project_id).first()
+        if not project:
+            return
+        
+        # 统计段落状态
+        segments = db.query(TextSegment).filter(TextSegment.project_id == project_id).all()
+        total = len(segments)
+        completed = len([s for s in segments if s.status == 'completed'])
+        failed = len([s for s in segments if s.status == 'failed'])
+        
+        if completed + failed == total:
+            # 所有段落都处理完成
+            if failed == 0:
+                # 全部成功，合并音频
+                await merge_audio_files(project, segments, db)
+                project.status = 'completed'
+                project.completed_at = datetime.utcnow()
+            else:
+                # 有失败的段落
+                project.status = 'failed'
+            
+            db.commit()
+            
+            # 记录完成日志
+            await log_system_event(
+                db=db,
+                level="info",
+                message=f"项目{'完成' if failed == 0 else '失败'}: {project.name}",
+                module="novel_reader",
+                details={
+                    "project_id": project_id,
+                    "total_segments": total,
+                    "completed_segments": completed,
+                    "failed_segments": failed
+                }
+            )
+            
+    except Exception as e:
+        logger.error(f"检查项目完成状态失败: {str(e)}")
+
+async def merge_audio_files(project: NovelProject, segments: List[TextSegment], db: Session):
+    """合并音频文件"""
+    try:
+        # 按顺序获取已完成的段落
+        completed_segments = [s for s in segments if s.status == 'completed' and s.audio_file_path]
+        completed_segments.sort(key=lambda x: x.segment_order)
+        
+        if not completed_segments:
+            return
+        
+        # 生成最终音频文件路径
+        import uuid
+        final_filename = f"project_{project.id}_{uuid.uuid4().hex}.wav"
+        final_path = os.path.join(AUDIO_DIR, final_filename)
+        
+        # 使用 pydub 合并音频文件
+        try:
+            from pydub import AudioSegment
+            
+            combined = AudioSegment.empty()
+            for segment in completed_segments:
+                if os.path.exists(segment.audio_file_path):
+                    audio = AudioSegment.from_wav(segment.audio_file_path)
+                    combined += audio
+                    # 添加短暂停顿
+                    combined += AudioSegment.silent(duration=500)  # 0.5秒停顿
+            
+            # 导出最终音频
+            combined.export(final_path, format="wav")
+            
+            # 更新项目记录
+            project.final_audio_path = final_path
+            db.commit()
+            
+            logger.info(f"音频合并完成: {final_path}")
+            
+        except ImportError:
+            logger.warning("未安装 pydub，跳过音频合并")
+            
+    except Exception as e:
+        logger.error(f"合并音频文件失败: {str(e)}") 

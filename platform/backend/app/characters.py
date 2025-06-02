@@ -1,0 +1,940 @@
+"""
+声音库管理API模块
+对应 Characters.vue 功能
+"""
+
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
+from fastapi.responses import FileResponse
+from sqlalchemy.orm import Session
+from sqlalchemy import desc, asc, func, or_, and_
+from typing import Dict, List, Any, Optional
+import os
+import json
+import time
+import logging
+from datetime import datetime, timedelta
+
+from .database import get_db
+from .models import VoiceProfile, SystemLog, UsageStats
+from .tts_client import MegaTTS3Client, TTSRequest, get_tts_client
+from .utils import log_system_event, update_usage_stats, validate_audio_file, get_audio_duration
+
+logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/api/characters", tags=["声音库管理"])
+
+# 音频文件存储路径
+VOICE_PROFILES_DIR = "../data/voice_profiles"
+AUDIO_DIR = "../data/audio"
+
+@router.get("/")
+async def get_voice_profiles(
+    page: int = Query(1, ge=1, description="页码"),
+    page_size: int = Query(20, ge=1, le=100, description="每页数量"),
+    search: str = Query("", description="搜索关键词"),
+    voice_type: str = Query("", description="声音类型过滤"),
+    quality_min: float = Query(0, ge=0, le=5, description="最低质量分"),
+    sort_by: str = Query("created_at", description="排序字段"),
+    sort_order: str = Query("desc", description="排序方向"),
+    tags: str = Query("", description="标签过滤(逗号分隔)"),
+    status: str = Query("", description="状态过滤"),
+    db: Session = Depends(get_db)
+):
+    """
+    获取声音档案列表
+    对应前端 Characters.vue 的列表显示功能
+    """
+    try:
+        # 构建查询
+        query = db.query(VoiceProfile)
+        
+        # 搜索过滤
+        if search:
+            search_pattern = f"%{search}%"
+            query = query.filter(
+                or_(
+                    VoiceProfile.name.like(search_pattern),
+                    VoiceProfile.description.like(search_pattern)
+                )
+            )
+        
+        # 声音类型过滤
+        if voice_type and voice_type in ['male', 'female', 'child']:
+            query = query.filter(VoiceProfile.type == voice_type)
+        
+        # 质量分过滤
+        if quality_min > 0:
+            query = query.filter(VoiceProfile.quality_score >= quality_min)
+        
+        # 状态过滤
+        if status:
+            query = query.filter(VoiceProfile.status == status)
+        else:
+            # 默认只显示激活的声音
+            query = query.filter(VoiceProfile.status == 'active')
+        
+        # 标签过滤
+        if tags:
+            tag_list = [tag.strip() for tag in tags.split(',') if tag.strip()]
+            for tag in tag_list:
+                query = query.filter(VoiceProfile.tags.like(f'%"{tag}"%'))
+        
+        # 排序
+        sort_field = getattr(VoiceProfile, sort_by, VoiceProfile.created_at)
+        if sort_order == "asc":
+            query = query.order_by(asc(sort_field))
+        else:
+            query = query.order_by(desc(sort_field))
+        
+        # 统计总数
+        total = query.count()
+        
+        # 分页
+        offset = (page - 1) * page_size
+        voices = query.offset(offset).limit(page_size).all()
+        
+        # 转换为字典格式
+        voice_list = []
+        for voice in voices:
+            voice_data = voice.to_dict()
+            
+            # 添加音频时长信息
+            if voice.reference_audio_path and os.path.exists(voice.reference_audio_path):
+                duration = get_audio_duration(voice.reference_audio_path)
+                voice_data['audioDuration'] = duration
+            
+            voice_list.append(voice_data)
+        
+        # 分页信息
+        total_pages = (total + page_size - 1) // page_size
+        
+        return {
+            "success": True,
+            "data": voice_list,
+            "pagination": {
+                "page": page,
+                "pageSize": page_size,
+                "total": total,
+                "totalPages": total_pages,
+                "hasMore": page < total_pages
+            },
+            "filters": {
+                "search": search,
+                "voiceType": voice_type,
+                "qualityMin": quality_min,
+                "tags": tags,
+                "status": status
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"获取声音档案列表失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取列表失败: {str(e)}")
+
+@router.get("/statistics")
+async def get_voice_statistics(
+    db: Session = Depends(get_db)
+):
+    """
+    获取声音库统计信息
+    对应前端统计面板功能
+    """
+    try:
+        # 基础统计
+        total_voices = db.query(VoiceProfile).filter(VoiceProfile.status == 'active').count()
+        
+        # 按类型统计
+        type_stats = db.query(
+            VoiceProfile.type,
+            func.count(VoiceProfile.id).label('count')
+        ).filter(VoiceProfile.status == 'active').group_by(VoiceProfile.type).all()
+        
+        type_distribution = {stat.type: stat.count for stat in type_stats}
+        
+        # 质量分布统计
+        quality_ranges = [
+            (0, 2, "低质量"),
+            (2, 3.5, "中等质量"), 
+            (3.5, 4.5, "高质量"),
+            (4.5, 5, "极高质量")
+        ]
+        
+        quality_distribution = {}
+        for min_score, max_score, label in quality_ranges:
+            count = db.query(VoiceProfile).filter(
+                and_(
+                    VoiceProfile.status == 'active',
+                    VoiceProfile.quality_score >= min_score,
+                    VoiceProfile.quality_score < max_score
+                )
+            ).count()
+            quality_distribution[label] = count
+        
+        # 使用频率统计
+        most_used = db.query(VoiceProfile).filter(
+            VoiceProfile.status == 'active'
+        ).order_by(desc(VoiceProfile.usage_count)).limit(5).all()
+        
+        top_voices = [
+            {
+                "name": voice.name,
+                "usageCount": voice.usage_count,
+                "quality": voice.quality_score
+            }
+            for voice in most_used
+        ]
+        
+        # 最近添加
+        recent_voices = db.query(VoiceProfile).filter(
+            VoiceProfile.status == 'active'
+        ).order_by(desc(VoiceProfile.created_at)).limit(5).all()
+        
+        recent_list = [
+            {
+                "name": voice.name,
+                "type": voice.type,
+                "quality": voice.quality_score,
+                "createdAt": voice.created_at.strftime("%Y-%m-%d")
+            }
+            for voice in recent_voices
+        ]
+        
+        # 平均质量分
+        avg_quality = db.query(func.avg(VoiceProfile.quality_score)).filter(
+            VoiceProfile.status == 'active'
+        ).scalar() or 0
+        
+        return {
+            "success": True,
+            "statistics": {
+                "totalVoices": total_voices,
+                "averageQuality": round(avg_quality, 2),
+                "typeDistribution": type_distribution,
+                "qualityDistribution": quality_distribution,
+                "topVoices": top_voices,
+                "recentVoices": recent_list
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"获取统计信息失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取统计失败: {str(e)}")
+
+@router.get("/{voice_id}")
+async def get_voice_profile(
+    voice_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    获取单个声音档案详情
+    对应前端详情面板功能
+    """
+    try:
+        voice = db.query(VoiceProfile).filter(VoiceProfile.id == voice_id).first()
+        
+        if not voice:
+            raise HTTPException(status_code=404, detail="声音档案不存在")
+        
+        voice_data = voice.to_dict()
+        
+        # 添加额外信息
+        if voice.reference_audio_path and os.path.exists(voice.reference_audio_path):
+            # 音频时长
+            duration = get_audio_duration(voice.reference_audio_path)
+            voice_data['audioDuration'] = duration
+            
+            # 文件大小
+            file_size = os.path.getsize(voice.reference_audio_path)
+            voice_data['fileSize'] = file_size
+            voice_data['fileSizeMB'] = round(file_size / (1024 * 1024), 2)
+        
+        # 最近使用记录
+        recent_usage = db.query(SystemLog).filter(
+            and_(
+                SystemLog.module == 'voice_clone',
+                SystemLog.details.like(f'%"voice_id": {voice_id}%')
+            )
+        ).order_by(desc(SystemLog.timestamp)).limit(10).all()
+        
+        usage_history = []
+        for log in recent_usage:
+            try:
+                details = json.loads(log.details) if log.details else {}
+                usage_history.append({
+                    "timestamp": log.timestamp.strftime("%Y-%m-%d %H:%M:%S"),
+                    "message": log.message,
+                    "processingTime": details.get("processing_time", 0)
+                })
+            except:
+                continue
+        
+        voice_data['usageHistory'] = usage_history
+        
+        return {
+            "success": True,
+            "data": voice_data
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取声音档案详情失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取详情失败: {str(e)}")
+
+@router.put("/{voice_id}")
+async def update_voice_profile(
+    voice_id: int,
+    name: str = Form(...),
+    description: str = Form(""),
+    voice_type: str = Form(...),
+    tags: str = Form(""),
+    color: str = Form("#06b6d4"),
+    parameters: str = Form("{}"),
+    db: Session = Depends(get_db)
+):
+    """
+    更新声音档案信息
+    对应前端编辑功能
+    """
+    try:
+        voice = db.query(VoiceProfile).filter(VoiceProfile.id == voice_id).first()
+        
+        if not voice:
+            raise HTTPException(status_code=404, detail="声音档案不存在")
+        
+        # 验证输入
+        if voice_type not in ['male', 'female', 'child']:
+            raise HTTPException(status_code=400, detail="声音类型必须是 male、female 或 child")
+        
+        # 检查名称重复（排除自己）
+        existing = db.query(VoiceProfile).filter(
+            and_(
+                VoiceProfile.name == name,
+                VoiceProfile.id != voice_id
+            )
+        ).first()
+        
+        if existing:
+            raise HTTPException(status_code=400, detail="声音名称已存在")
+        
+        # 处理标签
+        tag_list = []
+        if tags:
+            tag_list = [tag.strip() for tag in tags.split(',') if tag.strip()]
+        
+        # 处理参数
+        params_dict = {}
+        if parameters:
+            try:
+                params_dict = json.loads(parameters)
+            except json.JSONDecodeError:
+                raise HTTPException(status_code=400, detail="参数格式错误")
+        
+        # 更新字段
+        old_name = voice.name
+        voice.name = name
+        voice.description = description
+        voice.type = voice_type
+        voice.color = color
+        voice.set_tags(tag_list)
+        voice.set_parameters(params_dict)
+        voice.updated_at = datetime.utcnow()
+        
+        db.commit()
+        db.refresh(voice)
+        
+        # 记录更新日志
+        await log_system_event(
+            db=db,
+            level="info",
+            message=f"声音档案更新: {old_name} -> {name}",
+            module="characters",
+            details={
+                "voice_id": voice_id,
+                "old_name": old_name,
+                "new_name": name,
+                "changes": {
+                    "description": description,
+                    "type": voice_type,
+                    "tags": tag_list,
+                    "color": color,
+                    "parameters": params_dict
+                }
+            }
+        )
+        
+        return {
+            "success": True,
+            "message": "声音档案更新成功",
+            "data": voice.to_dict()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"更新声音档案失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"更新失败: {str(e)}")
+
+@router.delete("/{voice_id}")
+async def delete_voice_profile(
+    voice_id: int,
+    force: bool = Query(False, description="强制删除"),
+    db: Session = Depends(get_db)
+):
+    """
+    删除声音档案
+    对应前端删除功能
+    """
+    try:
+        voice = db.query(VoiceProfile).filter(VoiceProfile.id == voice_id).first()
+        
+        if not voice:
+            raise HTTPException(status_code=404, detail="声音档案不存在")
+        
+        # 检查是否正在使用中
+        if not force and voice.usage_count > 0:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"声音档案正在使用中(使用次数: {voice.usage_count})，请使用强制删除"
+            )
+        
+        voice_name = voice.name
+        
+        # 删除相关文件
+        files_to_delete = []
+        if voice.reference_audio_path and os.path.exists(voice.reference_audio_path):
+            files_to_delete.append(voice.reference_audio_path)
+        
+        if voice.latent_file_path and os.path.exists(voice.latent_file_path):
+            files_to_delete.append(voice.latent_file_path)
+        
+        if voice.sample_audio_path and os.path.exists(voice.sample_audio_path):
+            files_to_delete.append(voice.sample_audio_path)
+        
+        # 删除数据库记录
+        db.delete(voice)
+        db.commit()
+        
+        # 删除文件
+        deleted_files = []
+        for file_path in files_to_delete:
+            try:
+                os.remove(file_path)
+                deleted_files.append(file_path)
+            except Exception as e:
+                logger.warning(f"删除文件失败 {file_path}: {str(e)}")
+        
+        # 记录删除日志
+        await log_system_event(
+            db=db,
+            level="info",
+            message=f"声音档案删除: {voice_name}",
+            module="characters",
+            details={
+                "voice_id": voice_id,
+                "voice_name": voice_name,
+                "deleted_files": deleted_files,
+                "force": force
+            }
+        )
+        
+        return {
+            "success": True,
+            "message": f"声音档案 '{voice_name}' 删除成功",
+            "deletedFiles": len(deleted_files)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"删除声音档案失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"删除失败: {str(e)}")
+
+@router.post("/{voice_id}/test")
+async def test_voice_synthesis(
+    voice_id: int,
+    text: str = Form("这是声音测试，用于验证合成效果。"),
+    time_step: int = Form(20),
+    p_weight: float = Form(1.0),
+    t_weight: float = Form(1.0),
+    db: Session = Depends(get_db)
+):
+    """
+    测试声音合成
+    对应前端试听功能
+    """
+    start_time = time.time()
+    tts_client = get_tts_client()
+    
+    try:
+        # 获取声音档案
+        voice = db.query(VoiceProfile).filter(VoiceProfile.id == voice_id).first()
+        
+        if not voice:
+            raise HTTPException(status_code=404, detail="声音档案不存在")
+        
+        if not voice.reference_audio_path or not os.path.exists(voice.reference_audio_path):
+            raise HTTPException(status_code=400, detail="参考音频文件不存在")
+        
+        # 生成测试音频文件名
+        import uuid
+        test_filename = f"test_{voice_id}_{uuid.uuid4().hex}.wav"
+        test_path = os.path.join(AUDIO_DIR, test_filename)
+        
+        # 确保输出目录存在
+        os.makedirs(AUDIO_DIR, exist_ok=True)
+        
+        # 构建TTS请求
+        tts_request = TTSRequest(
+            text=text,
+            reference_audio_path=voice.reference_audio_path,
+            output_audio_path=test_path,
+            time_step=time_step,
+            p_weight=p_weight,
+            t_weight=t_weight,
+            latent_file_path=voice.latent_file_path
+        )
+        
+        # 调用MegaTTS3进行合成
+        response = await tts_client.synthesize_speech(tts_request)
+        
+        processing_time = time.time() - start_time
+        
+        if response.success:
+            # 更新使用统计
+            voice.usage_count += 1
+            voice.last_used = datetime.utcnow()
+            db.commit()
+            
+            # 记录测试日志
+            await log_system_event(
+                db=db,
+                level="info",
+                message=f"声音测试成功: {voice.name}",
+                module="characters",
+                details={
+                    "voice_id": voice_id,
+                    "text_length": len(text),
+                    "processing_time": processing_time,
+                    "parameters": {
+                        "time_step": time_step,
+                        "p_weight": p_weight,
+                        "t_weight": t_weight
+                    }
+                }
+            )
+            
+            # 更新系统使用统计
+            await update_usage_stats(db, success=True, processing_time=processing_time, audio_generated=True)
+            
+            return {
+                "success": True,
+                "message": "测试合成完成",
+                "audioUrl": f"/audio/{test_filename}",
+                "processingTime": round(processing_time, 2),
+                "audioId": test_filename
+            }
+        else:
+            # 记录失败日志
+            await log_system_event(
+                db=db,
+                level="error",
+                message=f"声音测试失败: {voice.name} - {response.message}",
+                module="characters",
+                details={
+                    "voice_id": voice_id,
+                    "error_code": response.error_code,
+                    "processing_time": processing_time
+                }
+            )
+            
+            # 更新系统使用统计
+            await update_usage_stats(db, success=False, processing_time=processing_time)
+            
+            raise HTTPException(status_code=500, detail=response.message)
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        processing_time = time.time() - start_time
+        logger.error(f"声音测试异常: {str(e)}")
+        
+        # 记录异常日志
+        await log_system_event(
+            db=db,
+            level="error",
+            message=f"声音测试异常: {str(e)}",
+            module="characters",
+            details={
+                "voice_id": voice_id,
+                "processing_time": processing_time
+            }
+        )
+        
+        # 更新系统使用统计
+        await update_usage_stats(db, success=False, processing_time=processing_time)
+        
+        raise HTTPException(status_code=500, detail=f"测试异常: {str(e)}")
+
+@router.post("/{voice_id}/evaluate-quality")
+async def evaluate_voice_quality(
+    voice_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    重新评估声音质量
+    对应前端质量评估功能
+    """
+    tts_client = get_tts_client()
+    
+    try:
+        voice = db.query(VoiceProfile).filter(VoiceProfile.id == voice_id).first()
+        
+        if not voice:
+            raise HTTPException(status_code=404, detail="声音档案不存在")
+        
+        quality_score = voice.quality_score
+        
+        # 如果有样本音频，重新评估
+        if voice.sample_audio_path and os.path.exists(voice.sample_audio_path):
+            quality_result = await tts_client.get_voice_quality_score(voice.sample_audio_path)
+            if quality_result.get("success", False):
+                quality_score = quality_result.get("quality_score", voice.quality_score)
+                
+                # 更新质量分
+                voice.quality_score = quality_score
+                voice.updated_at = datetime.utcnow()
+                db.commit()
+                
+                # 记录评估日志
+                await log_system_event(
+                    db=db,
+                    level="info",
+                    message=f"质量评估更新: {voice.name}",
+                    module="characters",
+                    details={
+                        "voice_id": voice_id,
+                        "old_quality": voice.quality_score,
+                        "new_quality": quality_score,
+                        "metrics": quality_result.get("metrics", {})
+                    }
+                )
+        
+        return {
+            "success": True,
+            "message": "质量评估完成",
+            "qualityScore": quality_score,
+            "updated": quality_score != voice.quality_score
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"质量评估失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"评估失败: {str(e)}")
+
+@router.post("/batch-operations")
+async def batch_operations(
+    operation: str = Form(...),
+    voice_ids: str = Form(...),
+    parameters: str = Form("{}"),
+    db: Session = Depends(get_db)
+):
+    """
+    批量操作声音档案
+    对应前端批量管理功能
+    """
+    try:
+        # 解析声音ID列表
+        try:
+            id_list = [int(id.strip()) for id in voice_ids.split(',') if id.strip()]
+        except ValueError:
+            raise HTTPException(status_code=400, detail="声音ID格式错误")
+        
+        if not id_list:
+            raise HTTPException(status_code=400, detail="未选择任何声音档案")
+        
+        # 解析参数
+        params = {}
+        if parameters:
+            try:
+                params = json.loads(parameters)
+            except json.JSONDecodeError:
+                raise HTTPException(status_code=400, detail="参数格式错误")
+        
+        # 获取声音档案
+        voices = db.query(VoiceProfile).filter(VoiceProfile.id.in_(id_list)).all()
+        
+        if len(voices) != len(id_list):
+            raise HTTPException(status_code=404, detail="部分声音档案不存在")
+        
+        results = []
+        
+        if operation == "delete":
+            # 批量删除
+            force = params.get("force", False)
+            
+            for voice in voices:
+                try:
+                    if not force and voice.usage_count > 0:
+                        results.append({
+                            "id": voice.id,
+                            "name": voice.name,
+                            "success": False,
+                            "error": f"正在使用中(使用次数: {voice.usage_count})"
+                        })
+                        continue
+                    
+                    # 删除文件
+                    files_to_delete = [
+                        voice.reference_audio_path,
+                        voice.latent_file_path,
+                        voice.sample_audio_path
+                    ]
+                    
+                    db.delete(voice)
+                    
+                    # 删除关联文件
+                    for file_path in files_to_delete:
+                        if file_path and os.path.exists(file_path):
+                            try:
+                                os.remove(file_path)
+                            except:
+                                pass
+                    
+                    results.append({
+                        "id": voice.id,
+                        "name": voice.name,
+                        "success": True
+                    })
+                    
+                except Exception as e:
+                    results.append({
+                        "id": voice.id,
+                        "name": voice.name,
+                        "success": False,
+                        "error": str(e)
+                    })
+        
+        elif operation == "update_tags":
+            # 批量更新标签
+            new_tags = params.get("tags", [])
+            action = params.get("action", "replace")  # replace, add, remove
+            
+            for voice in voices:
+                try:
+                    current_tags = voice.get_tags()
+                    
+                    if action == "replace":
+                        voice.set_tags(new_tags)
+                    elif action == "add":
+                        combined_tags = list(set(current_tags + new_tags))
+                        voice.set_tags(combined_tags)
+                    elif action == "remove":
+                        remaining_tags = [tag for tag in current_tags if tag not in new_tags]
+                        voice.set_tags(remaining_tags)
+                    
+                    voice.updated_at = datetime.utcnow()
+                    
+                    results.append({
+                        "id": voice.id,
+                        "name": voice.name,
+                        "success": True,
+                        "tags": voice.get_tags()
+                    })
+                    
+                except Exception as e:
+                    results.append({
+                        "id": voice.id,
+                        "name": voice.name,
+                        "success": False,
+                        "error": str(e)
+                    })
+        
+        elif operation == "update_status":
+            # 批量更新状态
+            new_status = params.get("status", "active")
+            
+            if new_status not in ['active', 'inactive', 'training']:
+                raise HTTPException(status_code=400, detail="无效的状态值")
+            
+            for voice in voices:
+                try:
+                    voice.status = new_status
+                    voice.updated_at = datetime.utcnow()
+                    
+                    results.append({
+                        "id": voice.id,
+                        "name": voice.name,
+                        "success": True,
+                        "status": new_status
+                    })
+                    
+                except Exception as e:
+                    results.append({
+                        "id": voice.id,
+                        "name": voice.name,
+                        "success": False,
+                        "error": str(e)
+                    })
+        
+        else:
+            raise HTTPException(status_code=400, detail=f"不支持的操作: {operation}")
+        
+        # 提交所有更改
+        db.commit()
+        
+        # 统计结果
+        successful = sum(1 for r in results if r["success"])
+        failed = len(results) - successful
+        
+        # 记录批量操作日志
+        await log_system_event(
+            db=db,
+            level="info",
+            message=f"批量操作完成: {operation}",
+            module="characters",
+            details={
+                "operation": operation,
+                "total": len(results),
+                "successful": successful,
+                "failed": failed,
+                "parameters": params
+            }
+        )
+        
+        return {
+            "success": True,
+            "message": f"批量操作完成: 成功 {successful}，失败 {failed}",
+            "results": results,
+            "summary": {
+                "total": len(results),
+                "successful": successful,
+                "failed": failed
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"批量操作失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"批量操作失败: {str(e)}")
+
+@router.get("/export/list")
+async def export_voice_list(
+    format: str = Query("json", description="导出格式"),
+    include_files: bool = Query(False, description="是否包含音频文件"),
+    db: Session = Depends(get_db)
+):
+    """
+    导出声音库列表
+    对应前端导出功能
+    """
+    try:
+        voices = db.query(VoiceProfile).filter(VoiceProfile.status == 'active').all()
+        
+        if format == "json":
+            voice_list = []
+            for voice in voices:
+                voice_data = voice.to_dict()
+                
+                if not include_files:
+                    # 移除文件路径信息
+                    voice_data.pop('referenceAudioUrl', None)
+                    voice_data.pop('latentFileUrl', None)
+                    voice_data.pop('sampleAudioUrl', None)
+                
+                voice_list.append(voice_data)
+            
+            return {
+                "success": True,
+                "format": "json",
+                "count": len(voice_list),
+                "data": voice_list,
+                "exportTime": datetime.now().isoformat()
+            }
+        
+        elif format == "csv":
+            import csv
+            import io
+            
+            output = io.StringIO()
+            writer = csv.writer(output)
+            
+            # 写入表头
+            headers = ['ID', '名称', '描述', '类型', '质量分', '使用次数', '状态', '创建时间']
+            writer.writerow(headers)
+            
+            # 写入数据
+            for voice in voices:
+                row = [
+                    voice.id,
+                    voice.name,
+                    voice.description or '',
+                    voice.type,
+                    voice.quality_score,
+                    voice.usage_count,
+                    voice.status,
+                    voice.created_at.strftime('%Y-%m-%d %H:%M:%S') if voice.created_at else ''
+                ]
+                writer.writerow(row)
+            
+            csv_content = output.getvalue()
+            output.close()
+            
+            return {
+                "success": True,
+                "format": "csv",
+                "count": len(voices),
+                "data": csv_content,
+                "exportTime": datetime.now().isoformat()
+            }
+        
+        else:
+            raise HTTPException(status_code=400, detail="不支持的导出格式")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"导出声音库失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"导出失败: {str(e)}")
+
+@router.get("/tags/popular")
+async def get_popular_tags(
+    limit: int = Query(20, ge=1, le=100, description="返回数量"),
+    db: Session = Depends(get_db)
+):
+    """
+    获取热门标签列表
+    对应前端标签选择功能
+    """
+    try:
+        # 获取所有活跃声音的标签
+        voices = db.query(VoiceProfile).filter(VoiceProfile.status == 'active').all()
+        
+        tag_count = {}
+        for voice in voices:
+            tags = voice.get_tags()
+            for tag in tags:
+                tag_count[tag] = tag_count.get(tag, 0) + 1
+        
+        # 按使用频率排序
+        popular_tags = sorted(tag_count.items(), key=lambda x: x[1], reverse=True)[:limit]
+        
+        tag_list = [
+            {
+                "tag": tag,
+                "count": count,
+                "percentage": round((count / len(voices)) * 100, 1) if voices else 0
+            }
+            for tag, count in popular_tags
+        ]
+        
+        return {
+            "success": True,
+            "tags": tag_list,
+            "total": len(tag_count)
+        }
+        
+    except Exception as e:
+        logger.error(f"获取热门标签失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取标签失败: {str(e)}") 
