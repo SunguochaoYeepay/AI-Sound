@@ -824,20 +824,14 @@ const saveVoice = async () => {
           uploadResponse = await voiceAPI.uploadVoice(formData)
         }
         
-        // 更新声音档案数据
-        const updateData = {
-          name: editingVoice.value.name,
-          description: editingVoice.value.description,
-          type: editingVoice.value.type,
-          status: editingVoice.value.status,
-          color: editingVoice.value.color,
-          parameters: editingVoice.value.params
-        }
-        
-        if (uploadResponse) {
-          updateData.reference_audio_path = uploadResponse.data.filePath
-          updateData.latent_file_path = uploadResponse.data.latentFilePath
-        }
+        // 更新声音档案数据 - 使用正确的字段名
+        const updateData = new FormData()
+        updateData.append('name', editingVoice.value.name)
+        updateData.append('description', editingVoice.value.description)
+        updateData.append('voice_type', editingVoice.value.type)
+        updateData.append('color', editingVoice.value.color)
+        updateData.append('parameters', JSON.stringify(editingVoice.value.params))
+        updateData.append('tags', '') // 暂时为空
         
         await charactersAPI.updateVoiceProfile(editingVoice.value.id, updateData)
         message.success('声音更新成功')
@@ -847,7 +841,7 @@ const saveVoice = async () => {
         return
       }
     } else {
-      // 新增声音 - 分两步：上传文件 + 创建声音档案
+      // 新增声音 - 使用voice-clone/clone-voice API
       try {
         // 1. 先上传文件
         const formData = new FormData()
@@ -866,19 +860,14 @@ const saveVoice = async () => {
           cloneData.append('latent_file_id', uploadResponse.data.latentFileId)
         }
         
-        const cloneResponse = await fetch('/api/voice-clone/clone-voice', {
-          method: 'POST',
-          body: cloneData
-        })
+        const cloneResponse = await voiceAPI.cloneVoice(cloneData)
         
-        const cloneResult = await cloneResponse.json()
-        
-        if (cloneResult.success) {
+        if (cloneResponse.data.success) {
           message.success('声音添加成功')
           // 刷新声音库列表
           await loadVoiceLibrary()
         } else {
-          message.error('声音添加失败: ' + cloneResult.message)
+          message.error('声音添加失败: ' + cloneResponse.data.message)
           return
         }
       } catch (error) {
