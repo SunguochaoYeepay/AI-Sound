@@ -143,23 +143,28 @@ async def update_usage_stats(
         if not stats:
             stats = UsageStats(date=today)
             db.add(stats)
+            db.flush()  # 确保对象有默认值
         
-        # 更新统计数据
-        stats.total_requests += 1
+        # 更新统计数据，确保处理None值
+        stats.total_requests = (stats.total_requests or 0) + 1
         
         if success:
-            stats.successful_requests += 1
-            stats.total_processing_time += processing_time
+            stats.successful_requests = (stats.successful_requests or 0) + 1
+            stats.total_processing_time = (stats.total_processing_time or 0.0) + processing_time
         else:
-            stats.failed_requests += 1
+            stats.failed_requests = (stats.failed_requests or 0) + 1
         
         if audio_generated:
-            stats.audio_files_generated += 1
+            stats.audio_files_generated = (stats.audio_files_generated or 0) + 1
         
         db.commit()
         
     except Exception as e:
         logger.error(f"更新使用统计失败: {str(e)}")
+        try:
+            db.rollback()
+        except Exception:
+            pass
         # 统计更新失败不应该影响主要业务逻辑
         pass
 

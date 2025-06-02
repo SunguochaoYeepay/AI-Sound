@@ -289,6 +289,7 @@
 <script setup>
 import { ref, computed, reactive } from 'vue'
 import { message } from 'ant-design-vue'
+import { systemAPI, voiceAPI } from '../api/index.js'
 
 // 响应式数据
 const audioFiles = ref([])
@@ -371,12 +372,14 @@ const beforeLatentUpload = (file) => {
 const handleAudioChange = (info) => {
   if (info.fileList.length > 0) {
     const file = info.fileList[0].originFileObj
+    audioFiles.value = [file] // 保存实际文件对象
     audioFileInfo.value = {
       name: file.name,
       size: formatFileSize(file.size),
       duration: '未知' // 实际项目中可以通过音频解析获取
     }
   } else {
+    audioFiles.value = []
     audioFileInfo.value = null
   }
 }
@@ -384,11 +387,13 @@ const handleAudioChange = (info) => {
 const handleLatentChange = (info) => {
   if (info.fileList.length > 0) {
     const file = info.fileList[0].originFileObj
+    latentFiles.value = [file] // 保存实际文件对象
     latentFileInfo.value = {
       name: file.name,
       size: formatFileSize(file.size)
     }
   } else {
+    latentFiles.value = []
     latentFileInfo.value = null
   }
 }
@@ -414,7 +419,7 @@ const resetParams = () => {
   message.success('参数已重置为默认值')
 }
 
-// 语音生成
+// 语音生成 - 真实API调用
 const generateSpeech = async () => {
   if (!canGenerate.value) return
   
@@ -423,42 +428,99 @@ const generateSpeech = async () => {
   progressText.value = '准备生成...'
   
   try {
-    // 模拟生成过程
-    const steps = [
-      { progress: 20, text: '上传音频文件...' },
-      { progress: 40, text: '分析声音特征...' },
-      { progress: 60, text: '训练声音模型...' },
-      { progress: 80, text: '合成目标语音...' },
-      { progress: 100, text: '生成完成！' }
-    ]
+    progress.value = 10
+    progressText.value = '检查后端服务状态...'
     
-    for (const step of steps) {
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      progress.value = step.progress
-      progressText.value = step.text
+    // 1. 首先检查后端健康状态
+    await systemAPI.healthCheck()
+    
+    progress.value = 30
+    progressText.value = '上传音频文件...'
+    
+    // 2. 上传音频文件
+    const formData = new FormData()
+    formData.append('file', audioFiles.value[0])
+    
+    const uploadResponse = await voiceAPI.uploadVoice(formData)
+    console.log('上传响应:', uploadResponse.data)
+    
+    progress.value = 60
+    progressText.value = '合成目标语音...'
+    
+    // 3. 调用语音合成API - 修正为后端期望的格式
+    const synthesizeData = {
+      text: text.value,
+      reference_file_id: uploadResponse.data.fileId, // 使用上传返回的fileId
+      time_step: params.timeStep,
+      p_weight: params.pWeight,
+      t_weight: params.tWeight
     }
     
-    // 模拟生成结果
-    generatedAudio.value = {
-      url: 'data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj',
-      size: '2.3 MB',
-      duration: '00:15',
-      quality: 4.5
+    // 如果有latent文件，添加latent_file_id
+    if (latentFiles.value.length > 0) {
+      // TODO: 需要先上传latent文件并获取ID
+      // synthesizeData.latent_file_id = latentFileId
     }
     
-    message.success('语音生成成功！')
+    const synthesizeResponse = await voiceAPI.synthesize(synthesizeData)
+    
+    progress.value = 100
+    progressText.value = '生成完成！'
+    
+    // 4. 处理生成结果
+    if (synthesizeResponse.data.success && synthesizeResponse.data.audioUrl) {
+      generatedAudio.value = {
+        url: `http://localhost:8000${synthesizeResponse.data.audioUrl}`, // 完整URL
+        size: '未知', // 后端暂时没有返回文件大小
+        duration: '未知', // 后端暂时没有返回时长
+        quality: 4.0, // 默认质量评分
+        processingTime: synthesizeResponse.data.processingTime
+      }
+      
+      message.success(`语音生成成功！耗时: ${synthesizeResponse.data.processingTime}秒`)
+    } else {
+      throw new Error(synthesizeResponse.data.message || '未收到有效的音频响应')
+    }
+    
   } catch (error) {
-    message.error('生成失败，请检查参数设置')
+    console.error('语音生成错误:', error)
+    
+    // 根据错误类型显示不同提示
+    if (error.response?.status === 503) {
+      message.error('后端服务暂不可用，请稍后重试')
+    } else if (error.response?.status === 400) {
+      message.error('请求参数错误：' + (error.response.data?.detail || '请检查输入'))
+    } else if (error.response?.status === 404) {
+      message.error('找不到资源：' + (error.response.data?.detail || '文件不存在'))
+    } else if (error.code === 'NETWORK_ERROR') {
+      message.error('网络连接失败，请检查后端服务是否启动')
+    } else {
+      message.error('生成失败：' + (error.response?.data?.detail || error.message || '未知错误'))
+    }
+    
+    // 重置状态
+    generatedAudio.value = null
   } finally {
     isGenerating.value = false
   }
 }
 
 const downloadAudio = () => {
-  message.success('开始下载音频文件')
+  if (generatedAudio.value?.url) {
+    const link = document.createElement('a')
+    link.href = generatedAudio.value.url
+    link.download = `generated_audio_${Date.now()}.wav`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    message.success('开始下载音频文件')
+  } else {
+    message.error('没有可下载的音频文件')
+  }
 }
 
 const saveToLibrary = () => {
+  // TODO: 实现保存到声音库的功能
   message.success('已保存到声音库')
 }
 </script>

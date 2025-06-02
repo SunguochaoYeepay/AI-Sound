@@ -105,36 +105,43 @@ class MegaTTS3Client:
                 logger.warning(f"潜向量文件不存在，将跳过: {request.latent_file_path}")
                 request.latent_file_path = None
             
+            # 读取文件内容到内存
+            with open(request.reference_audio_path, 'rb') as f:
+                reference_audio_content = f.read()
+            
+            latent_file_content = None
+            if request.latent_file_path:
+                with open(request.latent_file_path, 'rb') as f:
+                    latent_file_content = f.read()
+            
             # 构建请求数据
             form_data = aiohttp.FormData()
             form_data.add_field('text', request.text)
             form_data.add_field('time_step', str(request.time_step))
-            form_data.add_field('p_weight', str(request.p_weight))
-            form_data.add_field('t_weight', str(request.t_weight))
+            form_data.add_field('p_w', str(request.p_weight))
+            form_data.add_field('t_w', str(request.t_weight))
             
-            # 添加参考音频文件
-            with open(request.reference_audio_path, 'rb') as f:
-                form_data.add_field(
-                    'reference_audio',
-                    f,
-                    filename=os.path.basename(request.reference_audio_path),
-                    content_type='audio/*'
-                )
+            # 添加参考音频文件（使用内存中的内容）
+            form_data.add_field(
+                'audio_file',
+                reference_audio_content,
+                filename=os.path.basename(request.reference_audio_path),
+                content_type='audio/*'
+            )
             
             # 添加潜向量文件（如果有）
-            if request.latent_file_path:
-                with open(request.latent_file_path, 'rb') as f:
-                    form_data.add_field(
-                        'latent_file',
-                        f,
-                        filename=os.path.basename(request.latent_file_path),
-                        content_type='application/octet-stream'
-                    )
+            if latent_file_content:
+                form_data.add_field(
+                    'latent_file',
+                    latent_file_content,
+                    filename=os.path.basename(request.latent_file_path),
+                    content_type='application/octet-stream'
+                )
             
-            # 发送请求
+            # 发送请求 - 使用正确的MegaTTS3 API路径
             async with aiohttp.ClientSession(timeout=self.timeout) as session:
                 async with session.post(
-                    f"{self.base_url}/tts/synthesize",
+                    f"{self.base_url}/api/v1/tts/synthesize_file",
                     data=form_data
                 ) as response:
                     
