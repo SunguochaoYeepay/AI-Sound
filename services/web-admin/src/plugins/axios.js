@@ -10,6 +10,8 @@ const axiosInstance = axios.create({
   }
 })
 
+// 检查当前的baseURL配置
+
 // 请求拦截器
 axiosInstance.interceptors.request.use(
   config => {

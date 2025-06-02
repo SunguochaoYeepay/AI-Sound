@@ -14,6 +14,7 @@ import json
 import time
 import logging
 from datetime import datetime
+import shutil
 
 from .database import get_db
 from .models import VoiceProfile, SystemLog, UsageStats
@@ -294,17 +295,16 @@ async def clone_voice(
                 user_latent_file_path = None
         
         # 调用MegaTTS3进行声音克隆
-        clone_result = await tts_client.clone_voice(reference_audio_path, voice_name)
+        clone_result = await tts_client.validate_reference_audio(reference_audio_path, voice_name)
         
         if not clone_result.get("success", False):
-            raise HTTPException(status_code=500, detail=clone_result.get("message", "声音克隆失败"))
+            raise HTTPException(status_code=500, detail=clone_result.get("message", "音频验证失败"))
         
         # 移动参考音频到voice_profiles目录
         profile_ref_filename = f"{voice_name}_reference{os.path.splitext(reference_audio_path)[1]}"
         profile_ref_path = os.path.join(VOICE_PROFILES_DIR, profile_ref_filename)
         
         os.makedirs(VOICE_PROFILES_DIR, exist_ok=True)
-        import shutil
         shutil.copy2(reference_audio_path, profile_ref_path)
         
         # 确定最终使用的latent文件路径
@@ -316,9 +316,9 @@ async def clone_voice(
             shutil.copy2(user_latent_file_path, final_latent_file_path)
             logger.info(f"使用用户上传的latent文件: {final_latent_file_path}")
         else:
-            # 使用系统生成的latent文件
-            final_latent_file_path = clone_result.get("latent_file_path")
-            logger.info(f"使用系统生成的latent文件: {final_latent_file_path}")
+            # 没有latent文件就没有，MegaTTS3会自动处理
+            logger.info("未提供latent文件，将由MegaTTS3自动生成")
+            final_latent_file_path = None
         
         # 生成测试音频（使用固定测试文本）
         test_text = "这是声音克隆的测试音频，用于验证克隆效果。"
@@ -341,12 +341,16 @@ async def clone_voice(
             logger.warning(f"生成测试音频失败: {sample_result.message}")
             sample_path = None
         
-        # 评估音质
-        quality_score = 3.0  # 默认值
+        # 评估音质 - 简化版本
+        quality_score = 3.0  # 默认中等质量
         if sample_path and os.path.exists(sample_path):
-            quality_result = await tts_client.get_voice_quality_score(sample_path)
-            if quality_result.get("success", False):
-                quality_score = quality_result.get("quality_score", 3.0)
+            # 基于文件大小简单评估质量
+            file_size = os.path.getsize(sample_path)
+            if file_size > 100000:  # 100KB以上认为质量较好
+                quality_score = 4.0
+            logger.info(f"音质评估完成: {quality_score} (基于文件大小: {file_size})")
+        else:
+            logger.warning("无法评估音质：测试音频不存在")
         
         # 创建声音档案记录
         voice_profile = VoiceProfile(
@@ -459,9 +463,21 @@ async def optimize_parameters(
                         synthesis_result = await tts_client.synthesize_speech(test_request)
                         
                         if synthesis_result.success:
-                            # 评估音质
-                            quality_result = await tts_client.get_voice_quality_score(test_path)
-                            quality_score = quality_result.get("quality_score", 0.0) if quality_result.get("success") else 0.0
+                            # 简化质量评估 - 基于文件大小和处理时间
+                            quality_score = 1.0
+                            if os.path.exists(test_path):
+                                file_size = os.path.getsize(test_path)
+                                # 基于文件大小评估质量
+                                if file_size > 50000:  # 50KB以上
+                                    quality_score = 2.0
+                                if file_size > 100000:  # 100KB以上
+                                    quality_score = 3.0
+                                if file_size > 200000:  # 200KB以上
+                                    quality_score = 4.0
+                                
+                                # 基于处理时间调整评分
+                                if synthesis_result.processing_time < 3.0:
+                                    quality_score += 0.5
                             
                             optimization_results.append({
                                 "timeStep": time_step,
