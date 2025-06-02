@@ -646,4 +646,156 @@ async def cleanup_temp_files():
         
     except Exception as e:
         logger.error(f"清理临时文件失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"清理失败: {str(e)}") 
+        raise HTTPException(status_code=500, detail=f"清理失败: {str(e)}")
+
+@router.post("/synthesize-from-library")
+async def synthesize_from_library(
+    text: str = Form(...),
+    voice_profile_id: int = Form(...),
+    time_step: int = Form(20),
+    p_weight: float = Form(1.0),
+    t_weight: float = Form(1.0),
+    voice_name: Optional[str] = Form("声音库合成"),
+    db: Session = Depends(get_db)
+):
+    """
+    使用声音库中的声音进行合成
+    对应前端从声音库选择声音的功能
+    无需重新上传文件，直接使用已保存的音频文件和latent文件
+    """
+    start_time = time.time()
+    tts_client = get_tts_client()
+    
+    try:
+        # 验证输入
+        if not text or len(text.strip()) == 0:
+            raise HTTPException(status_code=400, detail="合成文本不能为空")
+        
+        if len(text) > 1000:
+            raise HTTPException(status_code=400, detail="文本长度不能超过1000字符")
+        
+        # 获取声音档案
+        voice_profile = db.query(VoiceProfile).filter(VoiceProfile.id == voice_profile_id).first()
+        if not voice_profile:
+            raise HTTPException(status_code=404, detail="声音档案不存在")
+        
+        if voice_profile.status != 'active':
+            raise HTTPException(status_code=400, detail="该声音档案不可用")
+        
+        # 验证声音库中的文件是否存在
+        if not voice_profile.reference_audio_path or not os.path.exists(voice_profile.reference_audio_path):
+            raise HTTPException(status_code=404, detail="声音库中的音频文件不存在")
+        
+        if not voice_profile.latent_file_path or not os.path.exists(voice_profile.latent_file_path):
+            raise HTTPException(status_code=404, detail="声音库中的latent文件不存在")
+        
+        # 生成输出文件路径
+        output_filename = f"library_tts_{uuid.uuid4().hex}.wav"
+        output_path = os.path.join(AUDIO_DIR, output_filename)
+        
+        # 确保输出目录存在
+        os.makedirs(AUDIO_DIR, exist_ok=True)
+        
+        # 构建TTS请求 - 直接使用声音库中的文件
+        tts_request = TTSRequest(
+            text=text,
+            reference_audio_path=voice_profile.reference_audio_path,
+            output_audio_path=output_path,
+            time_step=time_step,
+            p_weight=p_weight,
+            t_weight=t_weight,
+            latent_file_path=voice_profile.latent_file_path
+        )
+        
+        # 调用MegaTTS3进行合成
+        response = await tts_client.synthesize_speech(tts_request)
+        
+        processing_time = time.time() - start_time
+        
+        if response.success:
+            # 更新声音档案的使用统计
+            voice_profile.usage_count = (voice_profile.usage_count or 0) + 1
+            voice_profile.last_used = datetime.utcnow()
+            db.commit()
+            
+            # 记录成功日志
+            await log_system_event(
+                db=db,
+                level="info",
+                message=f"声音库合成成功: {voice_profile.name}",
+                module="voice_clone",
+                details={
+                    "voice_profile_id": voice_profile_id,
+                    "voice_name": voice_profile.name,
+                    "text_length": len(text),
+                    "processing_time": processing_time,
+                    "parameters": {
+                        "time_step": time_step,
+                        "p_weight": p_weight,
+                        "t_weight": t_weight
+                    }
+                }
+            )
+            
+            # 更新使用统计
+            await update_usage_stats(db, success=True, processing_time=processing_time)
+            
+            return {
+                "success": True,
+                "message": "声音库合成完成",
+                "audioUrl": f"/audio/{output_filename}",
+                "processingTime": round(processing_time, 2),
+                "audioId": output_filename,
+                "voiceProfile": {
+                    "id": voice_profile.id,
+                    "name": voice_profile.name,
+                    "usageCount": voice_profile.usage_count
+                },
+                "parameters": {
+                    "timeStep": time_step,
+                    "pWeight": p_weight,
+                    "tWeight": t_weight
+                }
+            }
+        else:
+            # 记录失败日志
+            await log_system_event(
+                db=db,
+                level="error",
+                message=f"声音库合成失败: {response.message}",
+                module="voice_clone",
+                details={
+                    "voice_profile_id": voice_profile_id,
+                    "error_code": response.error_code,
+                    "processing_time": processing_time,
+                    "text_length": len(text)
+                }
+            )
+            
+            # 更新使用统计
+            await update_usage_stats(db, success=False, processing_time=processing_time)
+            
+            raise HTTPException(status_code=500, detail=response.message)
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        processing_time = time.time() - start_time
+        logger.error(f"声音库合成异常: {str(e)}")
+        
+        # 记录异常日志
+        await log_system_event(
+            db=db,
+            level="error",
+            message=f"声音库合成异常: {str(e)}",
+            module="voice_clone",
+            details={
+                "voice_profile_id": voice_profile_id,
+                "processing_time": processing_time
+            }
+        )
+        
+        # 更新使用统计
+        await update_usage_stats(db, success=False, processing_time=processing_time)
+        
+        raise HTTPException(status_code=500, detail=f"合成异常: {str(e)}") 

@@ -390,7 +390,7 @@
           />
         </a-form-item>
 
-        <a-form-item label="参考音频文件" name="audioFile" required>
+        <a-form-item label="参考音频文件" required>
           <a-upload-dragger
             v-model:fileList="editingVoice.audioFileList"
             :multiple="false"
@@ -408,6 +408,41 @@
               <p style="font-size: 12px; color: #9ca3af; margin: 4px 0 0 0;">支持 WAV, MP3, M4A 格式</p>
             </div>
           </a-upload-dragger>
+        </a-form-item>
+
+        <a-form-item label="Latent特征文件" required>
+          <div style="margin-bottom: 8px; padding: 8px 12px; background: #fef3cd; border: 1px solid #fde68a; border-radius: 6px; color: #92400e; font-size: 13px;">
+            ⚠️ MegaTTS3必需文件：需要与音频文件配对的.npy特征文件
+          </div>
+          <a-upload
+            v-model:fileList="editingVoice.latentFileList"
+            :multiple="false"
+            :before-upload="beforeLatentUpload"
+            @change="handleEditLatentChange"
+            accept=".npy"
+            :show-upload-list="false"
+          >
+            <a-button>
+              <template #icon>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                </svg>
+              </template>
+              选择 .npy 文件
+            </a-button>
+          </a-upload>
+          
+          <div v-if="editingVoice.latentFileInfo" class="file-info" style="margin-top: 12px;">
+            <div class="file-item">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="#10b981">
+                <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+              </svg>
+              <div class="file-details">
+                <div class="file-name">{{ editingVoice.latentFileInfo.name }}</div>
+                <div class="file-meta">{{ editingVoice.latentFileInfo.size }}</div>
+              </div>
+            </div>
+          </div>
         </a-form-item>
 
         <a-divider>技术参数</a-divider>
@@ -520,6 +555,7 @@
 <script setup>
 import { ref, computed, reactive } from 'vue'
 import { message } from 'ant-design-vue'
+import { voiceAPI, charactersAPI } from '../api/index.js'
 
 // 响应式数据
 const searchQuery = ref('')
@@ -544,6 +580,9 @@ const editingVoice = ref({
   status: 'active',
   color: '#06b6d4',
   audioFileList: [],
+  latentFileList: [],
+  audioFileInfo: null,
+  latentFileInfo: null,
   params: {
     timeStep: 20,
     pWeight: 1.0,
@@ -559,9 +598,6 @@ const editRules = {
   ],
   type: [
     { required: true, message: '请选择声音类型', trigger: 'change' }
-  ],
-  audioFile: [
-    { required: true, message: '请上传音频文件', trigger: 'change' }
   ]
 }
 
@@ -727,6 +763,9 @@ const editVoice = (voice) => {
     status: voice.status,
     color: voice.color,
     audioFileList: [],
+    latentFileList: [],
+    audioFileInfo: null,
+    latentFileInfo: null,
     params: { ...voice.params }
   }
   showEditModal.value = true
@@ -742,6 +781,9 @@ const addNewVoice = () => {
     status: 'active',
     color: '#06b6d4',
     audioFileList: [],
+    latentFileList: [],
+    audioFileInfo: null,
+    latentFileInfo: null,
     params: {
       timeStep: 20,
       pWeight: 1.0,
@@ -756,37 +798,129 @@ const saveVoice = async () => {
   try {
     await editForm.value.validate()
     
+    // 验证文件上传
+    if (!editingVoice.value.audioFileList.length) {
+      message.error('请上传音频文件')
+      return
+    }
+    
+    if (!editingVoice.value.latentFileList.length) {
+      message.error('请上传Latent特征文件')
+      return
+    }
+    
     if (editingVoice.value.id) {
-      // 编辑现有声音
-      const index = voiceLibrary.value.findIndex(v => v.id === editingVoice.value.id)
-      if (index !== -1) {
-        voiceLibrary.value[index] = {
-          ...voiceLibrary.value[index],
-          ...editingVoice.value,
-          audioUrl: '/audio/sample_updated.wav',
-          createdAt: voiceLibrary.value[index].createdAt,
-          lastUsed: new Date().toISOString().split('T')[0],
-          usageCount: voiceLibrary.value[index].usageCount
+      // 编辑现有声音 - 使用实际API
+      try {
+        // 如果有新文件，先上传
+        let uploadResponse = null
+        if (editingVoice.value.audioFileList.length > 0) {
+          const formData = new FormData()
+          formData.append('file', editingVoice.value.audioFileList[0].originFileObj)
+          if (editingVoice.value.latentFileList.length > 0) {
+            formData.append('latent_file', editingVoice.value.latentFileList[0].originFileObj)
+          }
+          
+          uploadResponse = await voiceAPI.uploadVoice(formData)
         }
+        
+        // 更新声音档案数据
+        const updateData = {
+          name: editingVoice.value.name,
+          description: editingVoice.value.description,
+          type: editingVoice.value.type,
+          status: editingVoice.value.status,
+          color: editingVoice.value.color,
+          parameters: editingVoice.value.params
+        }
+        
+        if (uploadResponse) {
+          updateData.reference_audio_path = uploadResponse.data.filePath
+          updateData.latent_file_path = uploadResponse.data.latentFilePath
+        }
+        
+        await charactersAPI.updateVoiceProfile(editingVoice.value.id, updateData)
+        message.success('声音更新成功')
+      } catch (error) {
+        console.error('更新失败:', error)
+        message.error('声音更新失败: ' + (error.response?.data?.detail || error.message))
+        return
       }
-      message.success('声音更新成功')
     } else {
-      // 新增声音
-      const newVoice = {
-        ...editingVoice.value,
-        id: voiceLibrary.value.length + 1,
-        audioUrl: '/audio/sample_new.wav',
-        createdAt: new Date().toISOString().split('T')[0],
-        lastUsed: new Date().toISOString().split('T')[0],
-        usageCount: 0
+      // 新增声音 - 分两步：上传文件 + 创建声音档案
+      try {
+        // 1. 先上传文件
+        const formData = new FormData()
+        formData.append('file', editingVoice.value.audioFileList[0].originFileObj)
+        formData.append('latent_file', editingVoice.value.latentFileList[0].originFileObj)
+        
+        const uploadResponse = await voiceAPI.uploadVoice(formData)
+        
+        // 2. 调用clone-voice创建声音档案
+        const cloneData = new FormData()
+        cloneData.append('voice_name', editingVoice.value.name)
+        cloneData.append('reference_file_id', uploadResponse.data.fileId)
+        cloneData.append('description', editingVoice.value.description)
+        cloneData.append('voice_type', editingVoice.value.type)
+        if (uploadResponse.data.latentFileId) {
+          cloneData.append('latent_file_id', uploadResponse.data.latentFileId)
+        }
+        
+        const cloneResponse = await fetch('/api/voice-clone/clone-voice', {
+          method: 'POST',
+          body: cloneData
+        })
+        
+        const cloneResult = await cloneResponse.json()
+        
+        if (cloneResult.success) {
+          message.success('声音添加成功')
+          // 刷新声音库列表
+          await loadVoiceLibrary()
+        } else {
+          message.error('声音添加失败: ' + cloneResult.message)
+          return
+        }
+      } catch (error) {
+        console.error('添加失败:', error)
+        message.error('声音添加失败: ' + (error.response?.data?.detail || error.message))
+        return
       }
-      voiceLibrary.value.push(newVoice)
-      message.success('声音添加成功')
     }
     
     showEditModal.value = false
+    editForm.value?.resetFields()
   } catch (error) {
-    console.error('保存失败:', error)
+    console.error('表单验证失败:', error)
+    
+    // 显示详细的验证错误信息
+    if (error.errorFields && error.errorFields.length > 0) {
+      const missingFields = error.errorFields.map(field => {
+        const fieldName = field.name[0]
+        const fieldMap = {
+          'name': '声音名称',
+          'type': '声音类型', 
+          'audioFile': '音频文件',
+          'latentFile': 'Latent特征文件'
+        }
+        return fieldMap[fieldName] || fieldName
+      })
+      
+      message.error(`请完善以下必填项：${missingFields.join('、')}`)
+    } else {
+      message.error('表单验证失败，请检查所有必填项')
+    }
+  }
+}
+
+// 加载声音库列表
+const loadVoiceLibrary = async () => {
+  try {
+    const response = await charactersAPI.getVoiceProfiles()
+    voiceLibrary.value = response.data
+  } catch (error) {
+    console.error('加载声音库失败:', error)
+    message.error('加载声音库失败')
   }
 }
 
@@ -797,6 +931,58 @@ const cancelEdit = () => {
 
 const handleEditAudioChange = (info) => {
   console.log('音频文件变更:', info)
+}
+
+const beforeAudioUpload = (file) => {
+  const isValidFormat = ['audio/wav', 'audio/mp3', 'audio/mpeg', 'audio/m4a'].includes(file.type)
+  if (!isValidFormat) {
+    message.error('请上传 WAV, MP3, 或 M4A 格式的音频文件！')
+    return false
+  }
+  
+  const isLt50M = file.size / 1024 / 1024 < 50
+  if (!isLt50M) {
+    message.error('音频文件大小不能超过 50MB！')
+    return false
+  }
+  
+  return false // 阻止自动上传
+}
+
+const beforeLatentUpload = (file) => {
+  const isNpy = file.name.endsWith('.npy')
+  if (!isNpy) {
+    message.error('请上传 .npy 格式的文件！')
+    return false
+  }
+  
+  const isLt10M = file.size / 1024 / 1024 < 10
+  if (!isLt10M) {
+    message.error('Latent文件大小不能超过 10MB！')
+    return false
+  }
+  
+  return false // 阻止自动上传
+}
+
+const handleEditLatentChange = (info) => {
+  if (info.fileList.length > 0) {
+    const file = info.fileList[0].originFileObj
+    editingVoice.value.latentFileInfo = {
+      name: file.name,
+      size: formatFileSize(file.size)
+    }
+  } else {
+    editingVoice.value.latentFileInfo = null
+  }
+}
+
+const formatFileSize = (bytes) => {
+  if (bytes === 0) return '0 Bytes'
+  const k = 1024
+  const sizes = ['Bytes', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
 }
 
 const beforeImportUpload = (file) => {

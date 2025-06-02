@@ -18,7 +18,7 @@ export const voiceAPI = {
     }
   }),
   
-  // 语音合成
+  // 语音合成（使用上传的文件）
   synthesize: (data) => {
     const formData = new FormData()
     formData.append('text', data.text)
@@ -31,6 +31,22 @@ export const voiceAPI = {
     }
     
     return apiClient.post('/api/voice-clone/synthesize', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    })
+  },
+  
+  // 声音库合成（使用声音库中的声音）
+  synthesizeFromLibrary: (data) => {
+    const formData = new FormData()
+    formData.append('text', data.text)
+    formData.append('voice_profile_id', data.voice_profile_id)
+    formData.append('time_step', data.time_step || 20)
+    formData.append('p_weight', data.p_weight || 1.0)
+    formData.append('t_weight', data.t_weight || 1.0)
+    
+    return apiClient.post('/api/voice-clone/synthesize-from-library', formData, {
       headers: {
         'Content-Type': 'multipart/form-data'
       }
@@ -56,7 +72,44 @@ export const charactersAPI = {
   updateCharacter: (id, data) => apiClient.put(`/api/characters/${id}`, data),
   
   // 删除角色
-  deleteCharacter: (id) => apiClient.delete(`/api/characters/${id}`)
+  deleteCharacter: (id) => apiClient.delete(`/api/characters/${id}`),
+  
+  // 获取声音库列表
+  getVoiceProfiles: (params = {}) => {
+    const queryParams = new URLSearchParams()
+    if (params.search) queryParams.append('search', params.search)
+    if (params.voice_type) queryParams.append('voice_type', params.voice_type)
+    if (params.quality_filter) queryParams.append('quality_filter', params.quality_filter)
+    
+    return apiClient.get(`/api/characters?${queryParams.toString()}`)
+  },
+  
+  // 获取单个声音档案
+  getVoiceProfile: (id) => apiClient.get(`/api/characters/${id}`),
+  
+  // 创建声音档案
+  createVoiceProfile: (data) => apiClient.post('/api/characters', data),
+  
+  // 更新声音档案
+  updateVoiceProfile: (id, data) => apiClient.put(`/api/characters/${id}`, data),
+  
+  // 删除声音档案
+  deleteVoiceProfile: (id) => apiClient.delete(`/api/characters/${id}`),
+  
+  // 测试声音合成
+  testVoiceSynthesis: (id, data) => {
+    const formData = new FormData()
+    formData.append('text', data.text || '这是声音测试，用于验证合成效果。')
+    formData.append('time_step', data.time_step || 20)
+    formData.append('p_weight', data.p_weight || 1.0)
+    formData.append('t_weight', data.t_weight || 1.0)
+    
+    return apiClient.post(`/api/characters/${id}/test`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    })
+  }
 }
 
 // 小说朗读API
