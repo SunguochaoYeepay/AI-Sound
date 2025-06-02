@@ -47,7 +47,7 @@ app.mount("/uploads", StaticFiles(directory="../data/uploads"), name="uploads")
 @app.on_event("startup")
 async def startup_event():
     """应用启动时执行"""
-    logger.info("🚀 AI-Sound Platform Backend 启动中...")
+    logger.info("[STARTUP] AI-Sound Platform Backend 启动中...")
     
     # 创建必要的目录
     os.makedirs("../data/audio", exist_ok=True)
@@ -63,12 +63,12 @@ async def startup_event():
     from .database import init_db
     init_db()
     
-    logger.info("✅ AI-Sound Platform Backend 启动完成!")
+    logger.info("[SUCCESS] AI-Sound Platform Backend 启动完成!")
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """应用关闭时执行"""
-    logger.info("🛑 AI-Sound Platform Backend 正在关闭...")
+    logger.info("[SHUTDOWN] AI-Sound Platform Backend 正在关闭...")
 
 @app.get("/")
 async def root():

@@ -2,7 +2,7 @@
 SQLite 数据库连接和会话管理
 """
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.engine import Engine
@@ -76,16 +76,16 @@ def init_db():
         # 创建所有表
         Base.metadata.create_all(bind=engine)
         
-        logger.info(f"✅ 数据库初始化完成: {DATABASE_PATH}")
+        logger.info(f"[SUCCESS] 数据库初始化完成: {DATABASE_PATH}")
         
         # 检查数据库连接
         with SessionLocal() as db:
-            result = db.execute("SELECT sqlite_version()")
+            result = db.execute(text("SELECT sqlite_version()"))
             version = result.fetchone()[0]
-            logger.info(f"📊 SQLite版本: {version}")
+            logger.info(f"[INFO] SQLite版本: {version}")
             
     except Exception as e:
-        logger.error(f"❌ 数据库初始化失败: {str(e)}")
+        logger.error(f"[ERROR] 数据库初始化失败: {str(e)}")
         raise
 
 def get_db_info():
@@ -98,11 +98,11 @@ def get_db_info():
             db_size = os.path.getsize(DATABASE_PATH) if os.path.exists(DATABASE_PATH) else 0
             
             # 获取表信息
-            tables_info = db.execute("""
+            tables_info = db.execute(text("""
                 SELECT name, type FROM sqlite_master 
                 WHERE type='table' AND name NOT LIKE 'sqlite_%'
                 ORDER BY name
-            """).fetchall()
+            """)).fetchall()
             
             return {
                 "database_path": DATABASE_PATH,
@@ -127,10 +127,10 @@ def backup_database(backup_path: str = None):
         import shutil
         shutil.copy2(DATABASE_PATH, backup_path)
         
-        logger.info(f"✅ 数据库备份完成: {backup_path}")
+        logger.info(f"[SUCCESS] 数据库备份完成: {backup_path}")
         return backup_path
     except Exception as e:
-        logger.error(f"❌ 数据库备份失败: {str(e)}")
+        logger.error(f"[ERROR] 数据库备份失败: {str(e)}")
         raise
 
 def reset_database():
@@ -141,7 +141,7 @@ def reset_database():
         if os.path.exists(DATABASE_PATH):
             # 先备份
             backup_path = backup_database()
-            logger.info(f"🔄 重置前已备份到: {backup_path}")
+            logger.info(f"[INFO] 重置前已备份到: {backup_path}")
             
             # 删除数据库文件
             os.remove(DATABASE_PATH)
@@ -149,7 +149,7 @@ def reset_database():
         # 重新初始化
         init_db()
         
-        logger.info("✅ 数据库重置完成")
+        logger.info("[SUCCESS] 数据库重置完成")
     except Exception as e:
-        logger.error(f"❌ 数据库重置失败: {str(e)}")
+        logger.error(f"[ERROR] 数据库重置失败: {str(e)}")
         raise 
