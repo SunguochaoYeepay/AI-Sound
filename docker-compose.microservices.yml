@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  gateway:
+    extends:
+      file: services/gateway/docker-compose.yml
+      service: nginx-gateway
+
+  megatts3-api:
+    extends:
+      file: services/tts-services/megatts3/docker-compose.yml
+      service: megatts3-api
+
+  megatts3-webui:
+    extends:
+      file: services/tts-services/megatts3/docker-compose.yml
+      service: megatts3-webui
+
+networks:
+  ai-sound-network:
+    driver: bridge
+    name: ai-sound-microservices
+    external: false 

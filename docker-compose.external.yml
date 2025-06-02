@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  # 只启动网关，连接到外部运行的MegaTTS3服务
+  gateway:
+    image: nginx:alpine
+    container_name: ai-sound-gateway
+    ports:
+      - "7929:7929"
+    volumes:
+      - ./services/gateway/nginx/external.conf:/etc/nginx/conf.d/default.conf:ro
+    extra_hosts:
+      - "megatts3-api:host-gateway"
+      - "megatts3-webui:host-gateway" 
+    networks:
+      - ai-sound-network
+    restart: unless-stopped
+
+networks:
+  ai-sound-network:
+    driver: bridge
+    name: ai-sound-microservices
