@@ -142,6 +142,7 @@ import { ref, computed } from 'vue'
 import BasicTTS from './views/BasicTTS.vue'
 import Characters from './views/Characters.vue'
 import NovelReader from './views/NovelReader.vue'
+import Settings from './views/Settings.vue'
 
 const collapsed = ref(false)
 const selectedKeys = ref(['voice-clone'])
@@ -152,6 +153,7 @@ const currentComponent = computed(() => {
     case 'voice-clone': return BasicTTS
     case 'voice-library': return Characters
     case 'novel-reader': return NovelReader
+    case 'settings': return Settings
     default: return BasicTTS
   }
 })

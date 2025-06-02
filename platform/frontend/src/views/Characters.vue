@@ -19,7 +19,7 @@
           </template>
           批量导入
         </a-button>
-        <a-button size="large" @click="showUploadModal = true" style="background: white; color: #06b6d4; border-color: white;">
+        <a-button size="large" @click="addNewVoice" style="background: white; color: #06b6d4; border-color: white;">
           <template #icon>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z"/>
@@ -348,6 +348,172 @@
         </div>
       </div>
     </a-drawer>
+
+    <!-- 新增/编辑声音模态框 -->
+    <a-modal
+      v-model:open="showEditModal"
+      :title="editingVoice.id ? '编辑声音' : '新增声音'"
+      width="800"
+      :maskClosable="false"
+      @ok="saveVoice"
+      @cancel="cancelEdit"
+    >
+      <a-form
+        ref="editForm"
+        :model="editingVoice"
+        :rules="editRules"
+        layout="vertical"
+        class="voice-edit-form"
+      >
+        <a-row :gutter="16">
+          <a-col :span="12">
+            <a-form-item label="声音名称" name="name" required>
+              <a-input v-model:value="editingVoice.name" placeholder="请输入声音名称" />
+            </a-form-item>
+          </a-col>
+          <a-col :span="12">
+            <a-form-item label="声音类型" name="type" required>
+              <a-select v-model:value="editingVoice.type" placeholder="选择声音类型">
+                <a-select-option value="male">男声</a-select-option>
+                <a-select-option value="female">女声</a-select-option>
+                <a-select-option value="child">童声</a-select-option>
+              </a-select>
+            </a-form-item>
+          </a-col>
+        </a-row>
+
+        <a-form-item label="声音描述" name="description">
+          <a-textarea 
+            v-model:value="editingVoice.description" 
+            placeholder="请输入声音描述信息"
+            :rows="3"
+          />
+        </a-form-item>
+
+        <a-form-item label="参考音频文件" name="audioFile" required>
+          <a-upload-dragger
+            v-model:fileList="editingVoice.audioFileList"
+            :multiple="false"
+            :before-upload="beforeAudioUpload"
+            @change="handleEditAudioChange"
+            accept=".wav,.mp3,.m4a"
+            class="edit-upload"
+          >
+            <div class="upload-content">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="#06b6d4" style="margin-bottom: 12px;">
+                <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+                <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+              </svg>
+              <p style="font-size: 14px; color: #374151; margin: 0;">上传音频文件</p>
+              <p style="font-size: 12px; color: #9ca3af; margin: 4px 0 0 0;">支持 WAV, MP3, M4A 格式</p>
+            </div>
+          </a-upload-dragger>
+        </a-form-item>
+
+        <a-divider>技术参数</a-divider>
+
+        <a-row :gutter="16">
+          <a-col :span="8">
+            <a-form-item label="Time Step">
+              <a-slider
+                v-model:value="editingVoice.params.timeStep"
+                :min="5"
+                :max="100"
+                :step="5"
+              />
+              <div class="param-display">{{ editingVoice.params.timeStep }} steps</div>
+            </a-form-item>
+          </a-col>
+          <a-col :span="8">
+            <a-form-item label="智能权重 (p_w)">
+              <a-slider
+                v-model:value="editingVoice.params.pWeight"
+                :min="0"
+                :max="2"
+                :step="0.1"
+              />
+              <div class="param-display">{{ editingVoice.params.pWeight.toFixed(1) }}</div>
+            </a-form-item>
+          </a-col>
+          <a-col :span="8">
+            <a-form-item label="相似度权重 (t_w)">
+              <a-slider
+                v-model:value="editingVoice.params.tWeight"
+                :min="0"
+                :max="2"
+                :step="0.1"
+              />
+              <div class="param-display">{{ editingVoice.params.tWeight.toFixed(1) }}</div>
+            </a-form-item>
+          </a-col>
+        </a-row>
+
+        <a-form-item label="质量评分">
+          <a-rate v-model:value="editingVoice.quality" allow-half />
+          <span style="margin-left: 12px; color: #6b7280;">{{ editingVoice.quality }} 星</span>
+        </a-form-item>
+
+        <a-form-item label="状态">
+          <a-radio-group v-model:value="editingVoice.status">
+            <a-radio value="active">可用</a-radio>
+            <a-radio value="training">训练中</a-radio>
+            <a-radio value="inactive">未激活</a-radio>
+          </a-radio-group>
+        </a-form-item>
+
+        <a-form-item label="标签颜色">
+          <div class="color-picker">
+            <div 
+              v-for="color in colorOptions" 
+              :key="color"
+              class="color-option"
+              :class="{ 'selected': editingVoice.color === color }"
+              :style="{ background: color }"
+              @click="editingVoice.color = color"
+            ></div>
+          </div>
+        </a-form-item>
+      </a-form>
+    </a-modal>
+
+    <!-- 批量导入模态框 -->
+    <a-modal
+      v-model:open="showImportModal"
+      title="批量导入声音"
+      width="600"
+      @ok="importVoices"
+      @cancel="showImportModal = false"
+    >
+      <div class="import-section">
+        <a-upload-dragger
+          v-model:fileList="importFiles"
+          :multiple="true"
+          :before-upload="beforeImportUpload"
+          accept=".zip,.rar"
+          class="import-upload"
+        >
+          <div class="upload-content">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="#06b6d4" style="margin-bottom: 16px;">
+              <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z"/>
+            </svg>
+            <p style="font-size: 16px; color: #374151; margin: 0;">拖拽或点击上传压缩包</p>
+            <p style="font-size: 14px; color: #9ca3af; margin: 8px 0 0 0;">支持包含音频文件的 ZIP 或 RAR 格式</p>
+          </div>
+        </a-upload-dragger>
+        
+        <a-divider />
+        
+        <div class="import-tips">
+          <h4 style="color: #374151; margin-bottom: 12px;">导入说明：</h4>
+          <ul style="color: #6b7280; line-height: 1.6;">
+            <li>压缩包内应包含音频文件（.wav, .mp3, .m4a）</li>
+            <li>文件名将作为声音名称</li>
+            <li>系统会自动分析并生成默认参数</li>
+            <li>导入后可在声音库中进一步编辑</li>
+          </ul>
+        </div>
+      </div>
+    </a-modal>
   </div>
 </template>
 
@@ -364,6 +530,47 @@ const selectedVoice = ref(null)
 const showDetailDrawer = ref(false)
 const showImportModal = ref(false)
 const showUploadModal = ref(false)
+const showEditModal = ref(false)
+const editForm = ref(null)
+const importFiles = ref([])
+
+// 编辑表单数据
+const editingVoice = ref({
+  id: null,
+  name: '',
+  description: '',
+  type: '',
+  quality: 3.0,
+  status: 'active',
+  color: '#06b6d4',
+  audioFileList: [],
+  params: {
+    timeStep: 20,
+    pWeight: 1.0,
+    tWeight: 1.0
+  }
+})
+
+// 表单验证规则
+const editRules = {
+  name: [
+    { required: true, message: '请输入声音名称', trigger: 'blur' },
+    { min: 2, max: 20, message: '名称长度应在 2-20 字符之间', trigger: 'blur' }
+  ],
+  type: [
+    { required: true, message: '请选择声音类型', trigger: 'change' }
+  ],
+  audioFile: [
+    { required: true, message: '请上传音频文件', trigger: 'change' }
+  ]
+}
+
+// 颜色选项
+const colorOptions = [
+  '#06b6d4', '#f472b6', '#10b981', '#f59e0b', 
+  '#ef4444', '#8b5cf6', '#06d6a0', '#fbbf24',
+  '#3b82f6', '#6b7280', '#f97316', '#84cc16'
+]
 
 // 模拟声音库数据
 const voiceLibrary = ref([
@@ -511,7 +718,106 @@ const playVoice = (voice) => {
 }
 
 const editVoice = (voice) => {
-  message.info(`编辑声音：${voice.name}`)
+  editingVoice.value = {
+    id: voice.id,
+    name: voice.name,
+    description: voice.description,
+    type: voice.type,
+    quality: voice.quality,
+    status: voice.status,
+    color: voice.color,
+    audioFileList: [],
+    params: { ...voice.params }
+  }
+  showEditModal.value = true
+}
+
+const addNewVoice = () => {
+  editingVoice.value = {
+    id: null,
+    name: '',
+    description: '',
+    type: '',
+    quality: 3.0,
+    status: 'active',
+    color: '#06b6d4',
+    audioFileList: [],
+    params: {
+      timeStep: 20,
+      pWeight: 1.0,
+      tWeight: 1.0
+    }
+  }
+  showEditModal.value = true
+  showUploadModal.value = false
+}
+
+const saveVoice = async () => {
+  try {
+    await editForm.value.validate()
+    
+    if (editingVoice.value.id) {
+      // 编辑现有声音
+      const index = voiceLibrary.value.findIndex(v => v.id === editingVoice.value.id)
+      if (index !== -1) {
+        voiceLibrary.value[index] = {
+          ...voiceLibrary.value[index],
+          ...editingVoice.value,
+          audioUrl: '/audio/sample_updated.wav',
+          createdAt: voiceLibrary.value[index].createdAt,
+          lastUsed: new Date().toISOString().split('T')[0],
+          usageCount: voiceLibrary.value[index].usageCount
+        }
+      }
+      message.success('声音更新成功')
+    } else {
+      // 新增声音
+      const newVoice = {
+        ...editingVoice.value,
+        id: voiceLibrary.value.length + 1,
+        audioUrl: '/audio/sample_new.wav',
+        createdAt: new Date().toISOString().split('T')[0],
+        lastUsed: new Date().toISOString().split('T')[0],
+        usageCount: 0
+      }
+      voiceLibrary.value.push(newVoice)
+      message.success('声音添加成功')
+    }
+    
+    showEditModal.value = false
+  } catch (error) {
+    console.error('保存失败:', error)
+  }
+}
+
+const cancelEdit = () => {
+  showEditModal.value = false
+  editForm.value?.resetFields()
+}
+
+const handleEditAudioChange = (info) => {
+  console.log('音频文件变更:', info)
+}
+
+const beforeImportUpload = (file) => {
+  const isValidFormat = ['application/zip', 'application/x-rar-compressed'].includes(file.type)
+  if (!isValidFormat) {
+    message.error('请上传 ZIP 或 RAR 格式的压缩文件！')
+    return false
+  }
+  
+  const isLt50M = file.size / 1024 / 1024 < 50
+  if (!isLt50M) {
+    message.error('文件大小不能超过 50MB！')
+    return false
+  }
+  
+  return false
+}
+
+const importVoices = () => {
+  message.success('批量导入功能开发中...')
+  showImportModal.value = false
 }
 
 const duplicateVoice = (voice) => {
@@ -832,6 +1138,77 @@ const getStatusText = (status) => {
 .detail-actions {
   margin-top: auto;
   padding-top: 24px;
+}
+
+.voice-edit-form .ant-form-item {
+  margin-bottom: 20px;
+}
+
+.edit-upload {
+  border-radius: 8px !important;
+  border-color: #d1d5db !important;
+  background: #f9fafb !important;
+}
+
+.edit-upload .upload-content {
+  padding: 24px;
+  text-align: center;
+}
+
+.param-display {
+  text-align: center;
+  font-weight: 600;
+  color: #06b6d4;
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.color-picker {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.color-option {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: all 0.3s;
+}
+
+.color-option:hover {
+  transform: scale(1.1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.color-option.selected {
+  border-color: #374151;
+  box-shadow: 0 0 0 2px rgba(55, 65, 81, 0.2);
+}
+
+.import-upload {
+  border-radius: 12px !important;
+  border-color: #d1d5db !important;
+  background: #f9fafb !important;
+}
+
+.import-upload .upload-content {
+  padding: 32px;
+  text-align: center;
+}
+
+.import-tips {
+  background: #f8fafc;
+  padding: 16px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+
+.import-tips ul {
+  margin: 0;
+  padding-left: 16px;
 }
 
 @media (max-width: 768px) {
