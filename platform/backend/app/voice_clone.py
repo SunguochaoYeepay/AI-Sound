@@ -31,21 +31,22 @@ VOICE_PROFILES_DIR = "../data/voice_profiles"
 @router.post("/upload-reference")
 async def upload_reference_audio(
     file: UploadFile = File(...),
+    latent_file: UploadFile = File(None),
     db: Session = Depends(get_db)
 ):
     """
-    上传参考音频文件
+    上传参考音频文件和可选的latent文件
     对应前端 BasicTTS.vue 的文件上传功能
     """
     try:
-        # 验证文件类型
+        # 验证音频文件类型
         if not file.content_type or not file.content_type.startswith('audio/'):
             raise HTTPException(status_code=400, detail="只支持音频文件格式")
         
-        # 验证文件大小 (限制为100MB)
-        content = await file.read()
-        if len(content) > 100 * 1024 * 1024:
-            raise HTTPException(status_code=400, detail="文件大小不能超过100MB")
+        # 验证音频文件大小 (限制为100MB)
+        audio_content = await file.read()
+        if len(audio_content) > 100 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="音频文件大小不能超过100MB")
         
         # 生成唯一文件名
         file_ext = os.path.splitext(file.filename)[1].lower()
@@ -58,23 +59,43 @@ async def upload_reference_audio(
         # 确保目录存在
         os.makedirs(UPLOAD_DIR, exist_ok=True)
         
-        # 保存文件
+        # 保存音频文件
         with open(file_path, 'wb') as f:
-            f.write(content)
+            f.write(audio_content)
+        
+        # 处理latent文件（可选）
+        latent_file_path = None
+        latent_filename = None
+        if latent_file:
+            # 验证latent文件
+            if not latent_file.filename.endswith('.npy'):
+                raise HTTPException(status_code=400, detail="Latent文件必须是.npy格式")
+            
+            latent_content = await latent_file.read()
+            if len(latent_content) > 50 * 1024 * 1024:  # 限制50MB
+                raise HTTPException(status_code=400, detail="Latent文件大小不能超过50MB")
+            
+            latent_filename = f"latent_{uuid.uuid4().hex}.npy"
+            latent_file_path = os.path.join(UPLOAD_DIR, latent_filename)
+            
+            with open(latent_file_path, 'wb') as f:
+                f.write(latent_content)
         
         # 获取音频文件信息
-        file_size_mb = len(content) / (1024 * 1024)
+        file_size_mb = len(audio_content) / (1024 * 1024)
         
         # 记录系统日志
         await log_system_event(
             db=db,
             level="info",
-            message=f"参考音频上传成功: {file.filename}",
+            message=f"参考音频上传成功: {file.filename}" + (f" (含latent: {latent_file.filename})" if latent_file else ""),
             module="voice_clone",
             details={
                 "filename": file.filename,
                 "size_mb": round(file_size_mb, 2),
-                "file_path": file_path
+                "file_path": file_path,
+                "latent_file": latent_file.filename if latent_file else None,
+                "latent_path": latent_file_path
             }
         )
         
@@ -85,7 +106,10 @@ async def upload_reference_audio(
             "filePath": file_path,
             "fileName": file.filename,
             "fileSize": round(file_size_mb, 2),
-            "url": f"/uploads/{unique_filename}"
+            "url": f"/uploads/{unique_filename}",
+            "latentFileId": latent_filename,
+            "latentFilePath": latent_file_path,
+            "latentFileName": latent_file.filename if latent_file else None
         }
         
     except HTTPException:
@@ -128,7 +152,7 @@ async def synthesize_speech(
         # 处理潜向量文件（可选）
         latent_file_path = None
         if latent_file_id:
-            latent_file_path = os.path.join(VOICE_PROFILES_DIR, latent_file_id)
+            latent_file_path = os.path.join(UPLOAD_DIR, latent_file_id)
             if not os.path.exists(latent_file_path):
                 logger.warning(f"潜向量文件不存在，将跳过: {latent_file_path}")
                 latent_file_path = None
@@ -234,11 +258,13 @@ async def clone_voice(
     reference_file_id: str = Form(...),
     description: str = Form(""),
     voice_type: str = Form("female"),
+    latent_file_id: Optional[str] = Form(None),
     db: Session = Depends(get_db)
 ):
     """
     声音克隆 - 生成潜向量文件并保存到声音库
     对应前端保存到声音库功能
+    支持用户上传预训练的latent文件来提升克隆质量
     """
     start_time = time.time()
     tts_client = get_tts_client()
@@ -261,6 +287,14 @@ async def clone_voice(
         if not os.path.exists(reference_audio_path):
             raise HTTPException(status_code=404, detail="参考音频文件不存在")
         
+        # 处理用户上传的latent文件（可选）
+        user_latent_file_path = None
+        if latent_file_id:
+            user_latent_file_path = os.path.join(UPLOAD_DIR, latent_file_id)
+            if not os.path.exists(user_latent_file_path):
+                logger.warning(f"用户上传的latent文件不存在，将使用系统生成: {user_latent_file_path}")
+                user_latent_file_path = None
+        
         # 调用MegaTTS3进行声音克隆
         clone_result = await tts_client.clone_voice(reference_audio_path, voice_name)
         
@@ -275,8 +309,18 @@ async def clone_voice(
         import shutil
         shutil.copy2(reference_audio_path, profile_ref_path)
         
-        # 获取潜向量文件路径
-        latent_file_path = clone_result.get("latent_file_path")
+        # 确定最终使用的latent文件路径
+        final_latent_file_path = None
+        if user_latent_file_path:
+            # 使用用户上传的latent文件
+            profile_latent_filename = f"{voice_name}_latent.npy"
+            final_latent_file_path = os.path.join(VOICE_PROFILES_DIR, profile_latent_filename)
+            shutil.copy2(user_latent_file_path, final_latent_file_path)
+            logger.info(f"使用用户上传的latent文件: {final_latent_file_path}")
+        else:
+            # 使用系统生成的latent文件
+            final_latent_file_path = clone_result.get("latent_file_path")
+            logger.info(f"使用系统生成的latent文件: {final_latent_file_path}")
         
         # 生成测试音频（使用固定测试文本）
         test_text = "这是声音克隆的测试音频，用于验证克隆效果。"
@@ -291,7 +335,7 @@ async def clone_voice(
             time_step=20,
             p_weight=1.0,
             t_weight=1.0,
-            latent_file_path=latent_file_path
+            latent_file_path=final_latent_file_path
         )
         
         sample_result = await tts_client.synthesize_speech(test_request)
@@ -312,7 +356,7 @@ async def clone_voice(
             description=description,
             type=voice_type,
             reference_audio_path=profile_ref_path,
-            latent_file_path=latent_file_path,
+            latent_file_path=final_latent_file_path,
             sample_audio_path=sample_path,
             parameters=json.dumps({"timeStep": 20, "pWeight": 1.0, "tWeight": 1.0}),
             quality_score=quality_score,
@@ -329,12 +373,13 @@ async def clone_voice(
         await log_system_event(
             db=db,
             level="info",
-            message=f"声音克隆成功: {voice_name}",
+            message=f"声音克隆成功: {voice_name}" + (f" (使用用户latent文件)" if user_latent_file_path else ""),
             module="voice_clone",
             details={
                 "voice_id": voice_profile.id,
                 "processing_time": processing_time,
-                "quality_score": quality_score
+                "quality_score": quality_score,
+                "user_latent_used": bool(user_latent_file_path)
             }
         )
         
@@ -342,7 +387,8 @@ async def clone_voice(
             "success": True,
             "message": "声音克隆完成",
             "voiceProfile": voice_profile.to_dict(),
-            "processingTime": round(processing_time, 2)
+            "processingTime": round(processing_time, 2),
+            "userLatentUsed": bool(user_latent_file_path)
         }
         
     except HTTPException:

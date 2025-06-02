@@ -437,9 +437,14 @@ const generateSpeech = async () => {
     progress.value = 30
     progressText.value = '上传音频文件...'
     
-    // 2. 上传音频文件
+    // 2. 上传音频文件和latent文件（如果有）
     const formData = new FormData()
     formData.append('file', audioFiles.value[0])
+    
+    // 如果有latent文件，一起上传
+    if (latentFiles.value.length > 0) {
+      formData.append('latent_file', latentFiles.value[0])
+    }
     
     const uploadResponse = await voiceAPI.uploadVoice(formData)
     console.log('上传响应:', uploadResponse.data)
@@ -457,9 +462,8 @@ const generateSpeech = async () => {
     }
     
     // 如果有latent文件，添加latent_file_id
-    if (latentFiles.value.length > 0) {
-      // TODO: 需要先上传latent文件并获取ID
-      // synthesizeData.latent_file_id = latentFileId
+    if (uploadResponse.data.latentFileId) {
+      synthesizeData.latent_file_id = uploadResponse.data.latentFileId
     }
     
     const synthesizeResponse = await voiceAPI.synthesize(synthesizeData)
@@ -479,29 +483,18 @@ const generateSpeech = async () => {
       
       message.success(`语音生成成功！耗时: ${synthesizeResponse.data.processingTime}秒`)
     } else {
-      throw new Error(synthesizeResponse.data.message || '未收到有效的音频响应')
+      throw new Error(synthesizeResponse.data.message || '合成失败')
     }
     
   } catch (error) {
-    console.error('语音生成错误:', error)
-    
-    // 根据错误类型显示不同提示
-    if (error.response?.status === 503) {
-      message.error('后端服务暂不可用，请稍后重试')
-    } else if (error.response?.status === 400) {
-      message.error('请求参数错误：' + (error.response.data?.detail || '请检查输入'))
-    } else if (error.response?.status === 404) {
-      message.error('找不到资源：' + (error.response.data?.detail || '文件不存在'))
-    } else if (error.code === 'NETWORK_ERROR') {
-      message.error('网络连接失败，请检查后端服务是否启动')
-    } else {
-      message.error('生成失败：' + (error.response?.data?.detail || error.message || '未知错误'))
-    }
-    
-    // 重置状态
+    console.error('语音生成失败:', error)
+    const errorMessage = error.response?.data?.detail || error.message || '未知错误'
+    message.error(`语音生成失败: ${errorMessage}`)
     generatedAudio.value = null
   } finally {
     isGenerating.value = false
+    progress.value = 0
+    progressText.value = ''
   }
 }
 

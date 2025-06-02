@@ -11,7 +11,7 @@ export const systemAPI = {
 
 // 语音克隆API - 修正为实际后端路径
 export const voiceAPI = {
-  // 上传参考音频文件
+  // 上传参考音频文件和可选的latent文件
   uploadVoice: (formData) => apiClient.post('/api/voice-clone/upload-reference', formData, {
     headers: {
       'Content-Type': 'multipart/form-data'
