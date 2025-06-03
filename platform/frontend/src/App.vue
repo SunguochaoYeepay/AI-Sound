@@ -130,7 +130,7 @@
       <!-- 页面内容 -->
       <a-layout-content style="margin: 0; background: #faf9f8;">
         <div style="padding: 24px; min-height: calc(100vh - 60px);">
-          <component :is="currentComponent" />
+          <router-view />
         </div>
       </a-layout-content>
     </a-layout>
@@ -138,39 +138,67 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
-import BasicTTS from './views/BasicTTS.vue'
-import Characters from './views/Characters.vue'
-import NovelReader from './views/NovelReader.vue'
-import Settings from './views/Settings.vue'
+import { ref, computed, watch, onMounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
+
+const router = useRouter()
+const route = useRoute()
 
 const collapsed = ref(false)
 const selectedKeys = ref(['voice-clone'])
-const currentView = ref('voice-clone')
 
-const currentComponent = computed(() => {
-  switch (currentView.value) {
-    case 'voice-clone': return BasicTTS
-    case 'voice-library': return Characters
-    case 'novel-reader': return NovelReader
-    case 'settings': return Settings
-    default: return BasicTTS
+// 根据当前路由设置选中的菜单项
+const updateSelectedKeys = () => {
+  const routeToKey = {
+    '/': 'voice-clone',
+    '/basic-tts': 'voice-clone', 
+    '/characters': 'voice-library',
+    '/novel-reader': 'novel-reader',
+    '/settings': 'settings'
   }
+  const key = routeToKey[route.path] || 'voice-clone'
+  selectedKeys.value = [key]
+}
+
+// 监听路由变化
+watch(route, () => {
+  updateSelectedKeys()
+}, { immediate: true })
+
+// 组件挂载时更新选中状态
+onMounted(() => {
+  updateSelectedKeys()
 })
 
+// 导航函数 - 使用Vue Router
 const navigateTo = (view) => {
-  currentView.value = view
+  const viewToRoute = {
+    'voice-clone': '/basic-tts',
+    'voice-library': '/characters', 
+    'novel-reader': '/novel-reader',
+    'settings': '/settings'
+  }
+  
+  const targetRoute = viewToRoute[view] || '/basic-tts'
+  
+  // 只有在路由真正改变时才跳转
+  if (route.path !== targetRoute) {
+    router.push(targetRoute)
+  }
+  
   selectedKeys.value = [view]
 }
 
+// 根据当前路由获取页面标题
 const getPageTitle = () => {
   const titles = {
-    'voice-clone': '声音克隆测试平台',
-    'voice-library': '声音库管理',
-    'novel-reader': '智能多角色朗读',
-    'settings': '系统设置'
+    '/basic-tts': '声音克隆测试平台',
+    '/': '声音克隆测试平台',
+    '/characters': '声音库管理',
+    '/novel-reader': '智能多角色朗读',
+    '/settings': '系统设置'
   }
-  return titles[currentView.value] || '声音克隆测试平台'
+  return titles[route.path] || '声音克隆测试平台'
 }
 </script>
 

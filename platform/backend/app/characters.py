@@ -422,6 +422,8 @@ async def update_voice_profile(
     name: str = Form(...),
     description: str = Form(""),
     voice_type: str = Form(...),
+    reference_audio: UploadFile = File(None),
+    latent_file: UploadFile = File(None),
     tags: str = Form(""),
     color: str = Form("#06b6d4"),
     parameters: str = Form("{}"),
@@ -451,6 +453,69 @@ async def update_voice_profile(
         
         if existing:
             raise HTTPException(status_code=400, detail="声音名称已存在")
+        
+        # 处理新上传的参考音频文件（可选）
+        if reference_audio and reference_audio.filename:
+            # 验证音频文件
+            if not reference_audio.content_type or not reference_audio.content_type.startswith('audio/'):
+                raise HTTPException(status_code=400, detail="参考音频必须是音频文件格式")
+            
+            # 保存新的参考音频文件
+            audio_content = await reference_audio.read()
+            if len(audio_content) > 100 * 1024 * 1024:  # 100MB限制
+                raise HTTPException(status_code=400, detail="音频文件大小不能超过100MB")
+            
+            # 删除旧的参考音频文件
+            if voice.reference_audio_path and os.path.exists(voice.reference_audio_path):
+                try:
+                    os.remove(voice.reference_audio_path)
+                except Exception as e:
+                    logger.warning(f"删除旧参考音频文件失败: {str(e)}")
+            
+            # 生成新文件路径
+            import uuid
+            file_ext = os.path.splitext(reference_audio.filename)[1].lower()
+            if file_ext not in ['.wav', '.mp3', '.flac', '.m4a', '.ogg']:
+                raise HTTPException(status_code=400, detail="不支持的音频格式")
+            
+            profile_ref_filename = f"{name}_{uuid.uuid4().hex}{file_ext}"
+            profile_ref_path = os.path.join(VOICE_PROFILES_DIR, profile_ref_filename)
+            
+            # 确保目录存在
+            os.makedirs(VOICE_PROFILES_DIR, exist_ok=True)
+            
+            # 保存新参考音频文件
+            with open(profile_ref_path, 'wb') as f:
+                f.write(audio_content)
+            
+            voice.reference_audio_path = profile_ref_path
+
+        # 处理新上传的latent文件（可选）
+        if latent_file and latent_file.filename:
+            if not latent_file.filename.endswith('.npy'):
+                raise HTTPException(status_code=400, detail="Latent文件必须是.npy格式")
+            
+            latent_content = await latent_file.read()
+            if len(latent_content) > 50 * 1024 * 1024:  # 50MB限制
+                raise HTTPException(status_code=400, detail="Latent文件大小不能超过50MB")
+            
+            # 删除旧的latent文件
+            if voice.latent_file_path and os.path.exists(voice.latent_file_path):
+                try:
+                    os.remove(voice.latent_file_path)
+                except Exception as e:
+                    logger.warning(f"删除旧Latent文件失败: {str(e)}")
+            
+            # 生成新文件路径
+            import uuid
+            latent_filename = f"{name}_{uuid.uuid4().hex}.npy"
+            latent_path = os.path.join(VOICE_PROFILES_DIR, latent_filename)
+            
+            # 保存新latent文件
+            with open(latent_path, 'wb') as f:
+                f.write(latent_content)
+            
+            voice.latent_file_path = latent_path
         
         # 处理标签
         tag_list = []
@@ -493,7 +558,11 @@ async def update_voice_profile(
                     "type": voice_type,
                     "tags": tag_list,
                     "color": color,
-                    "parameters": params_dict
+                    "parameters": params_dict,
+                    "files_updated": {
+                        "reference_audio": bool(reference_audio and reference_audio.filename),
+                        "latent_file": bool(latent_file and latent_file.filename)
+                    }
                 }
             }
         )

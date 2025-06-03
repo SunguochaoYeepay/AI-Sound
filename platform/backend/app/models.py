@@ -10,6 +10,7 @@ from database import Base
 import json
 from datetime import datetime
 from typing import Dict, List, Any, Optional
+import os
 
 class VoiceProfile(Base):
     """
@@ -50,14 +51,23 @@ class VoiceProfile(Base):
     
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典格式"""
+        
+        # 将文件路径转换为HTTP URL
+        def path_to_url(file_path):
+            if not file_path:
+                return None
+            # 将 ../data/voice_profiles/xxx.wav 转换为 /voice_profiles/xxx.wav
+            filename = os.path.basename(file_path)
+            return f"/voice_profiles/{filename}"
+        
         return {
             "id": self.id,
             "name": self.name,
             "description": self.description,
             "type": self.type,
-            "referenceAudioUrl": self.reference_audio_path,
-            "latentFileUrl": self.latent_file_path,
-            "sampleAudioUrl": self.sample_audio_path,
+            "referenceAudioUrl": path_to_url(self.reference_audio_path),
+            "latentFileUrl": path_to_url(self.latent_file_path),
+            "sampleAudioUrl": path_to_url(self.sample_audio_path),
             "params": json.loads(self.parameters) if self.parameters else {},
             "quality": self.quality_score,
             "usageCount": self.usage_count,

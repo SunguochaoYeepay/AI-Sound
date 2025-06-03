@@ -43,6 +43,7 @@ app.add_middleware(
 # 静态文件服务
 app.mount("/audio", StaticFiles(directory="../data/audio"), name="audio")
 app.mount("/uploads", StaticFiles(directory="../data/uploads"), name="uploads")
+app.mount("/voice_profiles", StaticFiles(directory="../data/voice_profiles"), name="voice_profiles")
 
 @app.on_event("startup")
 async def startup_event():

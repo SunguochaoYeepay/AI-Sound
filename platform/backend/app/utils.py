@@ -239,6 +239,10 @@ def get_audio_duration(file_path: str) -> Optional[float]:
     Returns:
         音频时长(秒)，失败返回None
     """
+    # 添加环境变量控制开关
+    if os.getenv('DISABLE_AUDIO_DURATION', 'false').lower() == 'true':
+        return None
+        
     try:
         # 尝试使用 librosa
         try:
@@ -256,7 +260,10 @@ def get_audio_duration(file_path: str) -> Optional[float]:
         except ImportError:
             pass
         
-        logger.warning("无法获取音频时长：未安装 librosa 或 pydub")
+        # 只在第一次导入失败时显示警告
+        if not hasattr(get_audio_duration, '_warning_shown'):
+            logger.warning("无法获取音频时长：未安装 librosa 或 pydub")
+            get_audio_duration._warning_shown = True
         return None
         
     except Exception as e:

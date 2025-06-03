@@ -294,9 +294,21 @@
         <div class="detail-section">
           <h3>音频样本</h3>
           <div class="audio-sample">
-            <audio controls style="width: 100%;">
-              <source :src="selectedVoice.audioUrl" type="audio/wav">
-            </audio>
+            <div v-if="selectedVoice.audioUrl">
+              <audio controls style="width: 100%;">
+                <source :src="`http://localhost:8000${selectedVoice.audioUrl}`" type="audio/wav">
+                您的浏览器不支持音频播放
+              </audio>
+            </div>
+            <div v-else class="no-audio-message">
+              <div style="text-align: center; padding: 20px; color: #6b7280;">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="#d1d5db" style="margin-bottom: 12px;">
+                  <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+                  <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+                </svg>
+                <p>暂无音频样本</p>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -349,15 +361,22 @@
       </div>
     </a-drawer>
 
-    <!-- 新增/编辑声音模态框 -->
-    <a-modal
+    <!-- 新增/编辑声音抽屉 -->
+    <a-drawer
       v-model:open="showEditModal"
       :title="editingVoice.id ? '编辑声音' : '新增声音'"
-      width="800"
+      width="600"
+      placement="right"
       :maskClosable="false"
-      @ok="saveVoice"
-      @cancel="cancelEdit"
+      @close="cancelEdit"
     >
+      <template #extra>
+        <a-space>
+          <a-button @click="cancelEdit">取消</a-button>
+          <a-button type="primary" @click="saveVoice">保存</a-button>
+        </a-space>
+      </template>
+      
       <a-form
         ref="editForm"
         :model="editingVoice"
@@ -365,22 +384,17 @@
         layout="vertical"
         class="voice-edit-form"
       >
-        <a-row :gutter="16">
-          <a-col :span="12">
-            <a-form-item label="声音名称" name="name" required>
-              <a-input v-model:value="editingVoice.name" placeholder="请输入声音名称" />
-            </a-form-item>
-          </a-col>
-          <a-col :span="12">
-            <a-form-item label="声音类型" name="type" required>
-              <a-select v-model:value="editingVoice.type" placeholder="选择声音类型">
-                <a-select-option value="male">男声</a-select-option>
-                <a-select-option value="female">女声</a-select-option>
-                <a-select-option value="child">童声</a-select-option>
-              </a-select>
-            </a-form-item>
-          </a-col>
-        </a-row>
+        <a-form-item label="声音名称" name="name" required>
+          <a-input v-model:value="editingVoice.name" placeholder="请输入声音名称" />
+        </a-form-item>
+
+        <a-form-item label="声音类型" name="type" required>
+          <a-select v-model:value="editingVoice.type" placeholder="选择声音类型">
+            <a-select-option value="male">男声</a-select-option>
+            <a-select-option value="female">女声</a-select-option>
+            <a-select-option value="child">童声</a-select-option>
+          </a-select>
+        </a-form-item>
 
         <a-form-item label="声音描述" name="description">
           <a-textarea 
@@ -390,7 +404,47 @@
           />
         </a-form-item>
 
-        <a-form-item label="参考音频文件" required>
+        <!-- 当前文件显示样式 -->
+        <div v-if="editingVoice.id && (editingVoice.referenceAudioUrl || editingVoice.latentFileUrl)" class="current-files-section">
+          <a-divider>当前文件</a-divider>
+          
+          <!-- 当前音频文件 -->
+          <div v-if="editingVoice.referenceAudioUrl" class="current-file-item">
+            <div class="file-info">
+              <div class="file-header">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="#10b981">
+                  <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+                  <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+                </svg>
+                <span class="file-label">当前音频文件</span>
+              </div>
+              <div class="file-actions">
+                <a-button size="small" type="text" @click="playCurrentAudio">
+                  <template #icon>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M8,5.14V19.14L19,12.14L8,5.14Z"/>
+                    </svg>
+                  </template>
+                  播放
+                </a-button>
+              </div>
+            </div>
+          </div>
+          
+          <!-- 当前Latent文件 -->
+          <div v-if="editingVoice.latentFileUrl" class="current-file-item">
+            <div class="file-info">
+              <div class="file-header">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="#10b981">
+                  <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                </svg>
+                <span class="file-label">当前Latent文件</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <a-form-item label="参考音频文件" :required="!editingVoice.id">
           <a-upload-dragger
             v-model:fileList="editingVoice.audioFileList"
             :multiple="false"
@@ -404,13 +458,15 @@
                 <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
                 <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
               </svg>
-              <p style="font-size: 14px; color: #374151; margin: 0;">上传音频文件</p>
+              <p style="font-size: 14px; color: #374151; margin: 0;">
+                {{ editingVoice.id ? '更换音频文件（可选）' : '上传音频文件' }}
+              </p>
               <p style="font-size: 12px; color: #9ca3af; margin: 4px 0 0 0;">支持 WAV, MP3, M4A 格式</p>
             </div>
           </a-upload-dragger>
         </a-form-item>
 
-        <a-form-item label="Latent特征文件" required>
+        <a-form-item label="Latent特征文件" :required="!editingVoice.id">
           <div style="margin-bottom: 8px; padding: 8px 12px; background: #fef3cd; border: 1px solid #fde68a; border-radius: 6px; color: #92400e; font-size: 13px;">
             ⚠️ MegaTTS3必需文件：需要与音频文件配对的.npy特征文件
           </div>
@@ -428,7 +484,7 @@
                   <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
                 </svg>
               </template>
-              选择 .npy 文件
+              {{ editingVoice.id ? '更换 .npy 文件（可选）' : '选择 .npy 文件' }}
             </a-button>
           </a-upload>
           
@@ -447,41 +503,35 @@
 
         <a-divider>技术参数</a-divider>
 
-        <a-row :gutter="16">
-          <a-col :span="8">
-            <a-form-item label="Time Step">
-              <a-slider
-                v-model:value="editingVoice.params.timeStep"
-                :min="5"
-                :max="100"
-                :step="5"
-              />
-              <div class="param-display">{{ editingVoice.params.timeStep }} steps</div>
-            </a-form-item>
-          </a-col>
-          <a-col :span="8">
-            <a-form-item label="智能权重 (p_w)">
-              <a-slider
-                v-model:value="editingVoice.params.pWeight"
-                :min="0"
-                :max="2"
-                :step="0.1"
-              />
-              <div class="param-display">{{ editingVoice.params.pWeight.toFixed(1) }}</div>
-            </a-form-item>
-          </a-col>
-          <a-col :span="8">
-            <a-form-item label="相似度权重 (t_w)">
-              <a-slider
-                v-model:value="editingVoice.params.tWeight"
-                :min="0"
-                :max="2"
-                :step="0.1"
-              />
-              <div class="param-display">{{ editingVoice.params.tWeight.toFixed(1) }}</div>
-            </a-form-item>
-          </a-col>
-        </a-row>
+        <a-form-item label="Time Step">
+          <a-slider
+            v-model:value="editingVoice.params.timeStep"
+            :min="5"
+            :max="100"
+            :step="5"
+          />
+          <div class="param-display">{{ editingVoice.params.timeStep }} steps</div>
+        </a-form-item>
+        
+        <a-form-item label="智能权重 (p_w)">
+          <a-slider
+            v-model:value="editingVoice.params.pWeight"
+            :min="0"
+            :max="2"
+            :step="0.1"
+          />
+          <div class="param-display">{{ editingVoice.params.pWeight.toFixed(1) }}</div>
+        </a-form-item>
+        
+        <a-form-item label="相似度权重 (t_w)">
+          <a-slider
+            v-model:value="editingVoice.params.tWeight"
+            :min="0"
+            :max="2"
+            :step="0.1"
+          />
+          <div class="param-display">{{ editingVoice.params.tWeight.toFixed(1) }}</div>
+        </a-form-item>
 
         <a-form-item label="质量评分">
           <a-rate v-model:value="editingVoice.quality" allow-half />
@@ -509,7 +559,7 @@
           </div>
         </a-form-item>
       </a-form>
-    </a-modal>
+    </a-drawer>
 
     <!-- 批量导入模态框 -->
     <a-modal
@@ -666,7 +716,10 @@ const loadVoiceLibrary = async () => {
         status: voice.status || 'active',
         color: voice.color || '#06b6d4',
         usageCount: voice.usageCount || 0,
-        audioUrl: voice.sampleAudioUrl || '',
+        audioUrl: voice.sampleAudioUrl || voice.referenceAudioUrl || '',
+        referenceAudioUrl: voice.referenceAudioUrl || '',
+        sampleAudioUrl: voice.sampleAudioUrl || '',
+        latentFileUrl: voice.latentFileUrl || '',
         createdAt: voice.createdAt ? voice.createdAt.split('T')[0] : '',
         lastUsed: voice.lastUsed ? voice.lastUsed.split('T')[0] : '',
         params: voice.params || {
@@ -701,6 +754,22 @@ const saveVoiceToBackend = async (voiceData) => {
     formData.append('color', voiceData.color || '#06b6d4')
     formData.append('parameters', JSON.stringify(voiceData.params || {}))
     formData.append('tags', '') // 暂时为空，后续可添加标签功能
+    
+    // 添加音频文件（如果有新上传的）
+    if (voiceData.audioFileList && voiceData.audioFileList.length > 0) {
+      const audioFile = voiceData.audioFileList[0].originFileObj
+      if (audioFile) {
+        formData.append('reference_audio', audioFile)
+      }
+    }
+    
+    // 添加latent文件（如果有新上传的）
+    if (voiceData.latentFileList && voiceData.latentFileList.length > 0) {
+      const latentFile = voiceData.latentFileList[0].originFileObj
+      if (latentFile) {
+        formData.append('latent_file', latentFile)
+      }
+    }
     
     let response
     if (voiceData.id) {
@@ -808,7 +877,19 @@ const selectVoice = (voice) => {
 }
 
 const playVoice = (voice) => {
-  message.success(`播放声音：${voice.name}`)
+  if (voice.audioUrl || voice.sampleAudioUrl || voice.referenceAudioUrl) {
+    // 优先使用样本音频，然后是参考音频
+    const audioUrl = voice.sampleAudioUrl || voice.audioUrl || voice.referenceAudioUrl
+    const audio = new Audio(`http://localhost:8000${audioUrl}`)
+    audio.play().then(() => {
+      message.success(`正在播放：${voice.name}`)
+    }).catch(error => {
+      console.error('播放音频失败:', error)
+      message.error('播放音频失败，请检查音频文件是否存在')
+    })
+  } else {
+    message.warning('该声音暂无可播放的音频样本')
+  }
 }
 
 const editVoice = (voice) => {
@@ -820,6 +901,8 @@ const editVoice = (voice) => {
     quality: voice.quality,
     status: voice.status,
     color: voice.color,
+    referenceAudioUrl: voice.audioUrl || voice.referenceAudioUrl,
+    latentFileUrl: voice.latentFileUrl,
     audioFileList: [],
     latentFileList: [],
     audioFileInfo: null,
@@ -992,6 +1075,19 @@ const getStatusText = (status) => {
     'inactive': '未激活'
   }
   return texts[status] || '未知'
+}
+
+// 添加播放当前音频的功能
+const playCurrentAudio = () => {
+  if (editingVoice.value.referenceAudioUrl) {
+    const audio = new Audio(`http://localhost:8000${editingVoice.value.referenceAudioUrl}`)
+    audio.play().catch(error => {
+      console.error('播放音频失败:', error)
+      message.error('播放音频失败')
+    })
+  } else {
+    message.warning('没有可播放的音频文件')
+  }
 }
 
 // 组件挂载时加载数据
@@ -1284,6 +1380,10 @@ onMounted(() => {
   padding-top: 24px;
 }
 
+.voice-edit-form {
+  padding-bottom: 80px;
+}
+
 .voice-edit-form .ant-form-item {
   margin-bottom: 20px;
 }
@@ -1301,8 +1401,7 @@ onMounted(() => {
 
 .param-display {
   text-align: center;
-  font-weight: 600;
-  color: #06b6d4;
+  color: #6b7280;
   font-size: 12px;
   margin-top: 4px;
 }
@@ -1314,22 +1413,43 @@ onMounted(() => {
 }
 
 .color-option {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
   cursor: pointer;
   border: 2px solid transparent;
   transition: all 0.3s;
 }
 
-.color-option:hover {
-  transform: scale(1.1);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-}
-
+.color-option:hover,
 .color-option.selected {
   border-color: #374151;
-  box-shadow: 0 0 0 2px rgba(55, 65, 81, 0.2);
+  transform: scale(1.1);
+}
+
+.file-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  background: #f0f9ff;
+  border-radius: 6px;
+  border: 1px solid #e0f2fe;
+}
+
+.file-details {
+  flex: 1;
+}
+
+.file-name {
+  font-size: 14px;
+  color: #374151;
+  font-weight: 500;
+}
+
+.file-meta {
+  font-size: 12px;
+  color: #6b7280;
 }
 
 .import-upload {
@@ -1355,6 +1475,62 @@ onMounted(() => {
   padding-left: 16px;
 }
 
+/* 当前文件显示样式 */
+.current-files-section {
+  margin-bottom: 24px;
+}
+
+.current-file-item {
+  margin-bottom: 12px;
+  padding: 12px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e9ecef;
+}
+
+.file-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.file-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.file-label {
+  font-size: 14px;
+  color: #374151;
+  font-weight: 500;
+}
+
+.file-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* 音频样本样式 */
+.audio-sample {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.audio-sample audio {
+  border-radius: 4px;
+  background: white;
+}
+
+.no-audio-message {
+  background: #f9fafb;
+  border: 2px dashed #d1d5db;
+  border-radius: 8px;
+}
+
+/* 响应式设计 */
 @media (max-width: 768px) {
   .stats-grid {
     grid-template-columns: 1fr;
@@ -1372,6 +1548,22 @@ onMounted(() => {
   
   .grid-view {
     grid-template-columns: 1fr;
+  }
+  
+  .ant-layout-sider {
+    position: fixed !important;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 1000;
+  }
+  
+  .ant-layout-content {
+    margin-left: 0 !important;
+  }
+  
+  .logo-text h3 {
+    font-size: 14px !important;
   }
 }
 </style>
