@@ -71,7 +71,7 @@ def init_db():
         os.makedirs(DATABASE_DIR, exist_ok=True)
         
         # 导入所有模型以确保表被创建
-        from . import models
+        import models
         
         # 创建所有表
         Base.metadata.create_all(bind=engine)

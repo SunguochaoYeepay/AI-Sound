@@ -60,7 +60,7 @@ async def startup_event():
     os.makedirs("../data/backups", exist_ok=True)
     
     # 初始化数据库
-    from .database import init_db
+    from database import init_db
     init_db()
     
     logger.info("[SUCCESS] AI-Sound Platform Backend 启动完成!")
@@ -87,12 +87,12 @@ async def health_check():
     """健康检查接口"""
     try:
         # 检查MegaTTS3服务状态
-        from .tts_client import MegaTTS3Client
+        from tts_client import MegaTTS3Client
         tts_client = MegaTTS3Client()
         megatts3_status = await tts_client.health_check()
         
         # 检查数据库连接
-        from .database import get_db
+        from database import get_db
         next(get_db())  # 测试数据库连接
         
         return {
@@ -109,10 +109,10 @@ async def health_check():
         raise HTTPException(status_code=503, detail=f"服务不健康: {str(e)}")
 
 # 路由注册
-from .voice_clone import router as voice_router
-from .characters import router as characters_router
-from .novel_reader import router as reader_router
-from .monitor import router as monitor_router
+from voice_clone import router as voice_router
+from characters import router as characters_router
+from novel_reader import router as reader_router
+from monitor import router as monitor_router
 
 app.include_router(voice_router)
 app.include_router(characters_router)

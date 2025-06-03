@@ -14,10 +14,10 @@ import time
 import logging
 from datetime import datetime, timedelta
 
-from .database import get_db
-from .models import VoiceProfile, SystemLog, UsageStats
-from .tts_client import MegaTTS3Client, TTSRequest, get_tts_client
-from .utils import log_system_event, update_usage_stats, validate_audio_file, get_audio_duration
+from database import get_db
+from models import VoiceProfile, SystemLog, UsageStats
+from tts_client import MegaTTS3Client, TTSRequest, get_tts_client
+from utils import log_system_event, update_usage_stats, validate_audio_file, get_audio_duration
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/characters", tags=["声音库管理"])
@@ -129,6 +129,142 @@ async def get_voice_profiles(
     except Exception as e:
         logger.error(f"获取声音档案列表失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"获取列表失败: {str(e)}")
+
+@router.post("/")
+async def create_voice_profile(
+    name: str = Form(...),
+    description: str = Form(""),
+    voice_type: str = Form(...),
+    reference_audio: UploadFile = File(None),
+    latent_file: UploadFile = File(None),
+    tags: str = Form(""),
+    color: str = Form("#06b6d4"),
+    parameters: str = Form("{}"),
+    db: Session = Depends(get_db)
+):
+    """
+    创建新的声音档案
+    对应前端 Characters.vue 的创建功能
+    """
+    try:
+        # 验证输入
+        if not name or len(name.strip()) == 0:
+            raise HTTPException(status_code=400, detail="声音名称不能为空")
+        
+        if voice_type not in ['male', 'female', 'child']:
+            raise HTTPException(status_code=400, detail="声音类型必须是 male、female 或 child")
+        
+        # 检查名称是否已存在
+        existing_voice = db.query(VoiceProfile).filter(VoiceProfile.name == name).first()
+        if existing_voice:
+            raise HTTPException(status_code=400, detail="声音名称已存在")
+        
+        profile_ref_path = None
+        
+        # 处理参考音频文件（可选）
+        if reference_audio and reference_audio.filename:
+            # 验证音频文件
+            if not reference_audio.content_type or not reference_audio.content_type.startswith('audio/'):
+                raise HTTPException(status_code=400, detail="参考音频必须是音频文件格式")
+            
+            # 保存参考音频文件
+            audio_content = await reference_audio.read()
+            if len(audio_content) > 100 * 1024 * 1024:  # 100MB限制
+                raise HTTPException(status_code=400, detail="音频文件大小不能超过100MB")
+            
+            # 生成文件路径
+            import uuid
+            file_ext = os.path.splitext(reference_audio.filename)[1].lower()
+            if file_ext not in ['.wav', '.mp3', '.flac', '.m4a', '.ogg']:
+                raise HTTPException(status_code=400, detail="不支持的音频格式")
+            
+            profile_ref_filename = f"{name}_{uuid.uuid4().hex}{file_ext}"
+            profile_ref_path = os.path.join(VOICE_PROFILES_DIR, profile_ref_filename)
+            
+            # 确保目录存在
+            os.makedirs(VOICE_PROFILES_DIR, exist_ok=True)
+            
+            # 保存参考音频文件
+            with open(profile_ref_path, 'wb') as f:
+                f.write(audio_content)
+        
+        # 处理latent文件（可选）
+        latent_file_path = None
+        if latent_file and latent_file.filename:
+            if not latent_file.filename.endswith('.npy'):
+                raise HTTPException(status_code=400, detail="Latent文件必须是.npy格式")
+            
+            latent_content = await latent_file.read()
+            if len(latent_content) > 50 * 1024 * 1024:  # 50MB限制
+                raise HTTPException(status_code=400, detail="Latent文件大小不能超过50MB")
+            
+            import uuid
+            latent_filename = f"{name}_latent_{uuid.uuid4().hex}.npy"
+            latent_file_path = os.path.join(VOICE_PROFILES_DIR, latent_filename)
+            
+            # 确保目录存在
+            os.makedirs(VOICE_PROFILES_DIR, exist_ok=True)
+            
+            with open(latent_file_path, 'wb') as f:
+                f.write(latent_content)
+        
+        # 处理标签
+        tag_list = []
+        if tags:
+            tag_list = [tag.strip() for tag in tags.split(',') if tag.strip()]
+        
+        # 处理参数
+        params_dict = {"timeStep": 20, "pWeight": 1.0, "tWeight": 1.0}
+        if parameters:
+            try:
+                params_dict.update(json.loads(parameters))
+            except json.JSONDecodeError:
+                raise HTTPException(status_code=400, detail="参数格式错误")
+        
+        # 创建声音档案记录
+        voice_profile = VoiceProfile(
+            name=name,
+            description=description,
+            type=voice_type,
+            reference_audio_path=profile_ref_path,
+            latent_file_path=latent_file_path,
+            color=color,
+            status='active'
+        )
+        
+        voice_profile.set_tags(tag_list)
+        voice_profile.set_parameters(params_dict)
+        
+        db.add(voice_profile)
+        db.commit()
+        db.refresh(voice_profile)
+        
+        # 记录创建日志
+        await log_system_event(
+            db=db,
+            level="info",
+            message=f"声音档案创建: {name}",
+            module="characters",
+            details={
+                "voice_id": voice_profile.id,
+                "voice_type": voice_type,
+                "has_audio": reference_audio is not None and reference_audio.filename is not None,
+                "has_latent": latent_file is not None and latent_file.filename is not None,
+                "tags": tag_list
+            }
+        )
+        
+        return {
+            "success": True,
+            "message": "声音档案创建成功",
+            "data": voice_profile.to_dict()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"创建声音档案失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"创建失败: {str(e)}")
 
 @router.get("/statistics")
 async def get_voice_statistics(

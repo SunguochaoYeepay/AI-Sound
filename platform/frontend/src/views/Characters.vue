@@ -553,42 +553,26 @@
 </template>
 
 <script setup>
-import { ref, computed, reactive } from 'vue'
+import { ref, computed, reactive, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
-import { voiceAPI, charactersAPI } from '../api/index.js'
+import { voiceAPI } from '../api/index.js'
 
 // 响应式数据
+const voiceLibrary = ref([])
+const loading = ref(true)
+const selectedVoice = ref(null)
 const searchQuery = ref('')
 const qualityFilter = ref('')
 const typeFilter = ref('')
 const viewMode = ref('grid')
-const selectedVoice = ref(null)
 const showDetailDrawer = ref(false)
+const showEditModal = ref(false)
 const showImportModal = ref(false)
 const showUploadModal = ref(false)
-const showEditModal = ref(false)
-const editForm = ref(null)
-const importFiles = ref([])
 
-// 编辑表单数据
-const editingVoice = ref({
-  id: null,
-  name: '',
-  description: '',
-  type: '',
-  quality: 3.0,
-  status: 'active',
-  color: '#06b6d4',
-  audioFileList: [],
-  latentFileList: [],
-  audioFileInfo: null,
-  latentFileInfo: null,
-  params: {
-    timeStep: 20,
-    pWeight: 1.0,
-    tWeight: 1.0
-  }
-})
+// 编辑状态
+const editingVoice = ref({})
+const editForm = ref(null)
 
 // 表单验证规则
 const editRules = {
@@ -608,89 +592,161 @@ const colorOptions = [
   '#3b82f6', '#6b7280', '#f97316', '#84cc16'
 ]
 
-// 模拟声音库数据
-const voiceLibrary = ref([
-  {
-    id: 1,
-    name: '温柔女声',
-    description: '柔和亲切的女性声音，适合儿童故事',
-    type: 'female',
-    quality: 4.5,
-    status: 'active',
-    color: '#06b6d4',
-    usageCount: 156,
-    audioUrl: '/audio/sample1.wav',
-    createdAt: '2024-01-15',
-    lastUsed: '2024-01-20',
-    params: { timeStep: 20, pWeight: 1.2, tWeight: 0.8 }
-  },
-  {
-    id: 2,
-    name: '磁性男声',
-    description: '低沉有磁性的男性声音，适合朗读',
-    type: 'male',
-    quality: 4.8,
-    status: 'active',
-    color: '#ff7b54',
-    usageCount: 203,
-    audioUrl: '/audio/sample2.wav',
-    createdAt: '2024-01-10',
-    lastUsed: '2024-01-19',
-    params: { timeStep: 25, pWeight: 1.0, tWeight: 1.2 }
-  },
-  {
-    id: 3,
-    name: '童声',
-    description: '活泼可爱的儿童声音',
-    type: 'child',
-    quality: 3.8,
-    status: 'training',
-    color: '#10b981',
-    usageCount: 89,
-    audioUrl: '/audio/sample3.wav',
-    createdAt: '2024-01-18',
-    lastUsed: '2024-01-18',
-    params: { timeStep: 15, pWeight: 0.8, tWeight: 1.0 }
-  },
-  {
-    id: 4,
-    name: '专业主播',
-    description: '专业新闻播音员声音',
-    type: 'female',
-    quality: 4.9,
-    status: 'active',
-    color: '#f59e0b',
-    usageCount: 312,
-    audioUrl: '/audio/sample4.wav',
-    createdAt: '2024-01-05',
-    lastUsed: '2024-01-20',
-    params: { timeStep: 30, pWeight: 1.5, tWeight: 1.1 }
-  },
-  {
-    id: 5,
-    name: '老者声音',
-    description: '慈祥的老年男性声音',
-    type: 'male',
-    quality: 3.5,
-    status: 'inactive',
-    color: '#6b7280',
-    usageCount: 45,
-    audioUrl: '/audio/sample5.wav',
-    createdAt: '2024-01-12',
-    lastUsed: '2024-01-15',
-    params: { timeStep: 20, pWeight: 0.9, tWeight: 1.3 }
-  }
-])
-
 // 表格列定义
 const tableColumns = [
-  { title: '名称', dataIndex: 'name', key: 'name', width: 200 },
-  { title: '类型', dataIndex: 'type', key: 'type', width: 100 },
-  { title: '质量', dataIndex: 'quality', key: 'quality', width: 150 },
-  { title: '使用次数', dataIndex: 'usageCount', key: 'usageCount', width: 120 },
-  { title: '状态', dataIndex: 'status', key: 'status', width: 100 },
-  { title: '操作', key: 'actions', width: 150 }
+  {
+    title: '声音名称',
+    dataIndex: 'name',
+    key: 'name',
+    width: 200,
+    fixed: 'left'
+  },
+  {
+    title: '类型',
+    dataIndex: 'type',
+    key: 'type',
+    width: 80,
+    filters: [
+      { text: '男声', value: 'male' },
+      { text: '女声', value: 'female' },
+      { text: '童声', value: 'child' }
+    ]
+  },
+  {
+    title: '质量评分',
+    dataIndex: 'quality',
+    key: 'quality',
+    width: 120,
+    sorter: (a, b) => a.quality - b.quality
+  },
+  {
+    title: '使用次数',
+    dataIndex: 'usageCount',
+    key: 'usageCount',
+    width: 100,
+    sorter: (a, b) => a.usageCount - b.usageCount
+  },
+  {
+    title: '状态',
+    dataIndex: 'status',
+    key: 'status',
+    width: 100
+  },
+  {
+    title: '创建时间',
+    dataIndex: 'createdAt',
+    key: 'createdAt',
+    width: 120
+  },
+  {
+    title: '操作',
+    key: 'actions',
+    width: 150,
+    fixed: 'right'
+  }
 ]
+
+// 从后端API加载声音库数据
+const loadVoiceLibrary = async () => {
+  try {
+    loading.value = true
+    const response = await voiceAPI.getCharacters()
+    
+    // axios响应的实际数据在response.data中
+    const responseData = response.data
+    
+    if (responseData && responseData.success) {
+      // 转换后端数据格式到前端格式
+      voiceLibrary.value = responseData.data.map(voice => ({
+        id: voice.id,
+        name: voice.name,
+        description: voice.description || '暂无描述',
+        type: voice.type || 'female',
+        quality: voice.quality || 3.0,
+        status: voice.status || 'active',
+        color: voice.color || '#06b6d4',
+        usageCount: voice.usageCount || 0,
+        audioUrl: voice.sampleAudioUrl || '',
+        createdAt: voice.createdAt ? voice.createdAt.split('T')[0] : '',
+        lastUsed: voice.lastUsed ? voice.lastUsed.split('T')[0] : '',
+        params: voice.params || {
+          timeStep: 20,
+          pWeight: 1.0,
+          tWeight: 1.0
+        }
+      }))
+    } else {
+      const errorMsg = responseData?.message || '未知错误'
+      message.error('加载声音库失败：' + errorMsg)
+      voiceLibrary.value = []
+    }
+  } catch (error) {
+    console.error('加载声音库错误:', error)
+    const errorMsg = error.response?.data?.message || error.message || '网络连接错误'
+    message.error('加载声音库失败：' + errorMsg)
+    voiceLibrary.value = []
+  } finally {
+    loading.value = false
+  }
+}
+
+// 保存声音到后端
+const saveVoiceToBackend = async (voiceData) => {
+  try {
+    // 构建FormData格式数据（后端期望Form格式）
+    const formData = new FormData()
+    formData.append('name', voiceData.name)
+    formData.append('description', voiceData.description || '')
+    formData.append('voice_type', voiceData.type) // 注意：后端期望voice_type字段
+    formData.append('color', voiceData.color || '#06b6d4')
+    formData.append('parameters', JSON.stringify(voiceData.params || {}))
+    formData.append('tags', '') // 暂时为空，后续可添加标签功能
+    
+    let response
+    if (voiceData.id) {
+      // 更新现有声音
+      response = await voiceAPI.updateCharacter(voiceData.id, formData)
+    } else {
+      // 创建新声音
+      response = await voiceAPI.createCharacter(formData)
+    }
+    
+    // axios响应处理
+    const responseData = response.data
+    if (responseData && responseData.success) {
+      await loadVoiceLibrary() // 重新加载数据
+      return true
+    } else {
+      const errorMsg = responseData?.message || '未知错误'
+      message.error('保存失败：' + errorMsg)
+      return false
+    }
+  } catch (error) {
+    console.error('保存声音错误:', error)
+    const errorMsg = error.response?.data?.detail || error.response?.data?.message || error.message || '网络连接错误'
+    message.error('保存失败：' + errorMsg)
+    return false
+  }
+}
+
+// 删除声音
+const deleteVoiceFromBackend = async (voiceId) => {
+  try {
+    const response = await voiceAPI.deleteCharacter(voiceId)
+    if (response.success) {
+      await loadVoiceLibrary() // 重新加载数据
+      message.success('删除成功')
+      return true
+    } else {
+      message.error('删除失败：' + response.message)
+      return false
+    }
+  } catch (error) {
+    console.error('删除声音错误:', error)
+    message.error('删除失败：' + error.message)
+    return false
+  }
+}
 
 // 计算属性
 const filteredVoices = computed(() => {
@@ -731,8 +787,10 @@ const todayUsage = computed(() =>
 )
 
 const averageQuality = computed(() => {
+  if (voiceLibrary.value.length === 0) return 0
   const total = voiceLibrary.value.reduce((sum, v) => sum + v.quality, 0)
-  return total / voiceLibrary.value.length
+  const average = total / voiceLibrary.value.length
+  return average || 0
 })
 
 // 方法
@@ -798,118 +856,16 @@ const saveVoice = async () => {
   try {
     await editForm.value.validate()
     
-    // 验证文件上传
-    if (!editingVoice.value.audioFileList.length) {
-      message.error('请上传音频文件')
-      return
-    }
+    // 调用后端API保存
+    const success = await saveVoiceToBackend(editingVoice.value)
     
-    if (!editingVoice.value.latentFileList.length) {
-      message.error('请上传Latent特征文件')
-      return
+    if (success) {
+      showEditModal.value = false
+      message.success(editingVoice.value.id ? '声音更新成功' : '声音创建成功')
+      // 数据已在saveVoiceToBackend中重新加载
     }
-    
-    if (editingVoice.value.id) {
-      // 编辑现有声音 - 使用实际API
-      try {
-        // 如果有新文件，先上传
-        let uploadResponse = null
-        if (editingVoice.value.audioFileList.length > 0) {
-          const formData = new FormData()
-          formData.append('file', editingVoice.value.audioFileList[0].originFileObj)
-          if (editingVoice.value.latentFileList.length > 0) {
-            formData.append('latent_file', editingVoice.value.latentFileList[0].originFileObj)
-          }
-          
-          uploadResponse = await voiceAPI.uploadVoice(formData)
-        }
-        
-        // 更新声音档案数据 - 使用正确的字段名
-        const updateData = new FormData()
-        updateData.append('name', editingVoice.value.name)
-        updateData.append('description', editingVoice.value.description)
-        updateData.append('voice_type', editingVoice.value.type)
-        updateData.append('color', editingVoice.value.color)
-        updateData.append('parameters', JSON.stringify(editingVoice.value.params))
-        updateData.append('tags', '') // 暂时为空
-        
-        await charactersAPI.updateVoiceProfile(editingVoice.value.id, updateData)
-        message.success('声音更新成功')
-      } catch (error) {
-        console.error('更新失败:', error)
-        message.error('声音更新失败: ' + (error.response?.data?.detail || error.message))
-        return
-      }
-    } else {
-      // 新增声音 - 使用voice-clone/clone-voice API
-      try {
-        // 1. 先上传文件
-        const formData = new FormData()
-        formData.append('file', editingVoice.value.audioFileList[0].originFileObj)
-        formData.append('latent_file', editingVoice.value.latentFileList[0].originFileObj)
-        
-        const uploadResponse = await voiceAPI.uploadVoice(formData)
-        
-        // 2. 调用clone-voice创建声音档案
-        const cloneData = new FormData()
-        cloneData.append('voice_name', editingVoice.value.name)
-        cloneData.append('reference_file_id', uploadResponse.data.fileId)
-        cloneData.append('description', editingVoice.value.description)
-        cloneData.append('voice_type', editingVoice.value.type)
-        if (uploadResponse.data.latentFileId) {
-          cloneData.append('latent_file_id', uploadResponse.data.latentFileId)
-        }
-        
-        const cloneResponse = await voiceAPI.cloneVoice(cloneData)
-        
-        if (cloneResponse.data.success) {
-          message.success('声音添加成功')
-          // 刷新声音库列表
-          await loadVoiceLibrary()
-        } else {
-          message.error('声音添加失败: ' + cloneResponse.data.message)
-          return
-        }
-      } catch (error) {
-        console.error('添加失败:', error)
-        message.error('声音添加失败: ' + (error.response?.data?.detail || error.message))
-        return
-      }
-    }
-    
-    showEditModal.value = false
-    editForm.value?.resetFields()
   } catch (error) {
-    console.error('表单验证失败:', error)
-    
-    // 显示详细的验证错误信息
-    if (error.errorFields && error.errorFields.length > 0) {
-      const missingFields = error.errorFields.map(field => {
-        const fieldName = field.name[0]
-        const fieldMap = {
-          'name': '声音名称',
-          'type': '声音类型', 
-          'audioFile': '音频文件',
-          'latentFile': 'Latent特征文件'
-        }
-        return fieldMap[fieldName] || fieldName
-      })
-      
-      message.error(`请完善以下必填项：${missingFields.join('、')}`)
-    } else {
-      message.error('表单验证失败，请检查所有必填项')
-    }
-  }
-}
-
-// 加载声音库列表
-const loadVoiceLibrary = async () => {
-  try {
-    const response = await charactersAPI.getVoiceProfiles()
-    voiceLibrary.value = response.data
-  } catch (error) {
-    console.error('加载声音库失败:', error)
-    message.error('加载声音库失败')
+    console.error('保存声音失败:', error)
   }
 }
 
@@ -1003,8 +959,16 @@ const exportVoice = (voice) => {
   message.success(`导出声音：${voice.name}`)
 }
 
-const deleteVoice = (voice) => {
-  message.success(`已删除声音：${voice.name}`)
+const deleteVoice = async (voice) => {
+  try {
+    const success = await deleteVoiceFromBackend(voice.id)
+    if (success && selectedVoice.value?.id === voice.id) {
+      showDetailDrawer.value = false
+      selectedVoice.value = null
+    }
+  } catch (error) {
+    console.error('删除声音失败:', error)
+  }
 }
 
 const useVoiceForTTS = () => {
@@ -1029,6 +993,11 @@ const getStatusText = (status) => {
   }
   return texts[status] || '未知'
 }
+
+// 组件挂载时加载数据
+onMounted(() => {
+  loadVoiceLibrary()
+})
 </script>
 
 <style scoped>

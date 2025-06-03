@@ -16,10 +16,10 @@ import asyncio
 import re
 from datetime import datetime, timedelta
 
-from .database import get_db
-from .models import NovelProject, TextSegment, VoiceProfile, SystemLog
-from .tts_client import MegaTTS3Client, TTSRequest, get_tts_client
-from .utils import log_system_event, update_usage_stats, save_upload_file
+from database import get_db
+from models import NovelProject, TextSegment, VoiceProfile, SystemLog
+from tts_client import MegaTTS3Client, TTSRequest, get_tts_client
+from utils import log_system_event, update_usage_stats, save_upload_file
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/novel-reader", tags=["小说朗读"])
@@ -936,7 +936,7 @@ async def update_segments_voice_mapping(project_id: int, char_mapping: Dict[str,
 async def process_audio_generation(project_id: int, parallel_tasks: int = 2):
     """后台音频生成任务"""
     try:
-        from .database import SessionLocal
+        from database import SessionLocal
         db = SessionLocal()
         
         try:

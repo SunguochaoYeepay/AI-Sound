@@ -6,7 +6,7 @@ SQLAlchemy 数据模型
 from sqlalchemy import Column, Integer, String, Text, Float, DateTime, ForeignKey, Index
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-from .database import Base
+from database import Base
 import json
 from datetime import datetime
 from typing import Dict, List, Any, Optional
@@ -24,7 +24,7 @@ class VoiceProfile(Base):
     type = Column(String(20), nullable=False, index=True)  # 'male' | 'female' | 'child'
     
     # 音频文件路径
-    reference_audio_path = Column(String(500), nullable=False)
+    reference_audio_path = Column(String(500), nullable=True)
     latent_file_path = Column(String(500))
     sample_audio_path = Column(String(500))
     

@@ -12,7 +12,7 @@ from typing import Dict, List, Any, Optional
 from fastapi import UploadFile
 from sqlalchemy.orm import Session
 
-from .models import SystemLog, UsageStats
+from models import SystemLog, UsageStats
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +95,11 @@ async def log_system_event(
         details: 详细信息字典
     """
     try:
+        # 检查数据库会话状态
+        if not db or not hasattr(db, 'add'):
+            logger.warning("无效的数据库会话，跳过日志记录")
+            return
+        
         # 创建系统日志记录
         log_entry = SystemLog(
             level=level,
@@ -104,8 +109,16 @@ async def log_system_event(
             timestamp=datetime.utcnow()
         )
         
-        db.add(log_entry)
-        db.commit()
+        # 使用事务保护
+        try:
+            db.add(log_entry)
+            db.commit()
+        except Exception as commit_error:
+            logger.warning(f"数据库提交失败，尝试回滚: {str(commit_error)}")
+            try:
+                db.rollback()
+            except Exception as rollback_error:
+                logger.error(f"数据库回滚也失败: {str(rollback_error)}")
         
         # 同时记录到应用日志
         if level == "info":
@@ -136,35 +149,44 @@ async def update_usage_stats(
         audio_generated: 是否生成了音频文件
     """
     try:
+        # 检查数据库会话状态
+        if not db or not hasattr(db, 'query'):
+            logger.warning("无效的数据库会话，跳过统计更新")
+            return
+        
         today = date.today().strftime("%Y-%m-%d")
         
         # 查找或创建今天的统计记录
-        stats = db.query(UsageStats).filter(UsageStats.date == today).first()
-        if not stats:
-            stats = UsageStats(date=today)
-            db.add(stats)
-            db.flush()  # 确保对象有默认值
-        
-        # 更新统计数据，确保处理None值
-        stats.total_requests = (stats.total_requests or 0) + 1
-        
-        if success:
-            stats.successful_requests = (stats.successful_requests or 0) + 1
-            stats.total_processing_time = (stats.total_processing_time or 0.0) + processing_time
-        else:
-            stats.failed_requests = (stats.failed_requests or 0) + 1
-        
-        if audio_generated:
-            stats.audio_files_generated = (stats.audio_files_generated or 0) + 1
-        
-        db.commit()
+        try:
+            stats = db.query(UsageStats).filter(UsageStats.date == today).first()
+            if not stats:
+                stats = UsageStats(date=today)
+                db.add(stats)
+                db.flush()  # 确保对象有默认值
+            
+            # 更新统计数据，确保处理None值
+            stats.total_requests = (stats.total_requests or 0) + 1
+            
+            if success:
+                stats.successful_requests = (stats.successful_requests or 0) + 1
+                stats.total_processing_time = (stats.total_processing_time or 0.0) + processing_time
+            else:
+                stats.failed_requests = (stats.failed_requests or 0) + 1
+            
+            if audio_generated:
+                stats.audio_files_generated = (stats.audio_files_generated or 0) + 1
+            
+            db.commit()
+            
+        except Exception as db_error:
+            logger.warning(f"数据库操作失败: {str(db_error)}")
+            try:
+                db.rollback()
+            except Exception as rollback_error:
+                logger.error(f"数据库回滚失败: {str(rollback_error)}")
         
     except Exception as e:
         logger.error(f"更新使用统计失败: {str(e)}")
-        try:
-            db.rollback()
-        except Exception:
-            pass
         # 统计更新失败不应该影响主要业务逻辑
         pass
 

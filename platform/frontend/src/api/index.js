@@ -57,7 +57,51 @@ export const voiceAPI = {
   getTemplates: () => apiClient.get('/api/voice-clone/templates'),
   
   // 获取最近合成记录
-  getRecentSynthesis: (limit = 10) => apiClient.get(`/api/voice-clone/recent-synthesis?limit=${limit}`)
+  getRecentSynthesis: (limit = 10) => apiClient.get(`/api/voice-clone/recent-synthesis?limit=${limit}`),
+  
+  // 声音克隆
+  cloneVoice: (formData) => apiClient.post('/api/voice-clone/clone-voice', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data'
+    }
+  }),
+  
+  // 声音库管理 - 添加这些方法
+  // 获取声音库列表
+  getCharacters: (params = {}) => {
+    const queryParams = new URLSearchParams()
+    if (params.search) queryParams.append('search', params.search)
+    if (params.voice_type) queryParams.append('voice_type', params.voice_type)
+    if (params.quality_filter) queryParams.append('quality_filter', params.quality_filter)
+    
+    const queryString = queryParams.toString()
+    const url = queryString ? `/api/characters/?${queryString}` : '/api/characters/'
+    
+    return apiClient.get(url)
+  },
+  
+  // 创建声音库
+  createCharacter: (data) => {
+    // 确保发送FormData格式，设置正确的Content-Type
+    return apiClient.post('/api/characters/', data, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    })
+  },
+  
+  // 更新声音库
+  updateCharacter: (id, data) => {
+    // 确保发送FormData格式，设置正确的Content-Type
+    return apiClient.put(`/api/characters/${id}`, data, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    })
+  },
+  
+  // 删除声音库
+  deleteCharacter: (id) => apiClient.delete(`/api/characters/${id}`)
 }
 
 // 角色管理API
@@ -91,7 +135,22 @@ export const charactersAPI = {
   createVoiceProfile: (data) => apiClient.post('/api/characters', data),
   
   // 更新声音档案
-  updateVoiceProfile: (id, data) => apiClient.put(`/api/characters/${id}`, data),
+  updateVoiceProfile: (id, data) => {
+    // 如果data是FormData，直接使用；否则转换为FormData
+    const formData = data instanceof FormData ? data : (() => {
+      const fd = new FormData()
+      Object.keys(data).forEach(key => {
+        fd.append(key, data[key])
+      })
+      return fd
+    })()
+    
+    return apiClient.put(`/api/characters/${id}`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    })
+  },
   
   // 删除声音档案
   deleteVoiceProfile: (id) => apiClient.delete(`/api/characters/${id}`),
