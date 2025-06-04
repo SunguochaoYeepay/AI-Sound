@@ -109,16 +109,9 @@ async def log_system_event(
             timestamp=datetime.utcnow()
         )
         
-        # 使用事务保护
-        try:
-            db.add(log_entry)
-            db.commit()
-        except Exception as commit_error:
-            logger.warning(f"数据库提交失败，尝试回滚: {str(commit_error)}")
-            try:
-                db.rollback()
-            except Exception as rollback_error:
-                logger.error(f"数据库回滚也失败: {str(rollback_error)}")
+        # 只添加到会话，不进行commit/rollback操作
+        # 让调用者决定何时提交事务
+        db.add(log_entry)
         
         # 同时记录到应用日志
         if level == "info":
@@ -157,33 +150,24 @@ async def update_usage_stats(
         today = date.today().strftime("%Y-%m-%d")
         
         # 查找或创建今天的统计记录
-        try:
-            stats = db.query(UsageStats).filter(UsageStats.date == today).first()
-            if not stats:
-                stats = UsageStats(date=today)
-                db.add(stats)
-                db.flush()  # 确保对象有默认值
-            
-            # 更新统计数据，确保处理None值
-            stats.total_requests = (stats.total_requests or 0) + 1
-            
-            if success:
-                stats.successful_requests = (stats.successful_requests or 0) + 1
-                stats.total_processing_time = (stats.total_processing_time or 0.0) + processing_time
-            else:
-                stats.failed_requests = (stats.failed_requests or 0) + 1
-            
-            if audio_generated:
-                stats.audio_files_generated = (stats.audio_files_generated or 0) + 1
-            
-            db.commit()
-            
-        except Exception as db_error:
-            logger.warning(f"数据库操作失败: {str(db_error)}")
-            try:
-                db.rollback()
-            except Exception as rollback_error:
-                logger.error(f"数据库回滚失败: {str(rollback_error)}")
+        stats = db.query(UsageStats).filter(UsageStats.date == today).first()
+        if not stats:
+            stats = UsageStats(date=today)
+            db.add(stats)
+            # 使用flush而不是commit，让调用者决定何时提交
+            db.flush()
+        
+        # 更新统计数据，确保处理None值
+        stats.total_requests = (stats.total_requests or 0) + 1
+        
+        if success:
+            stats.successful_requests = (stats.successful_requests or 0) + 1
+            stats.total_processing_time = (stats.total_processing_time or 0.0) + processing_time
+        else:
+            stats.failed_requests = (stats.failed_requests or 0) + 1
+        
+        if audio_generated:
+            stats.audio_files_generated = (stats.audio_files_generated or 0) + 1
         
     except Exception as e:
         logger.error(f"更新使用统计失败: {str(e)}")

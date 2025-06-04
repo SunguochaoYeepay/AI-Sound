@@ -95,25 +95,50 @@ async def create_project(
         project.set_character_mapping(char_mapping)
         
         db.add(project)
+        logger.info(f"[DEBUG] 项目添加到会话: {project.name}")
+        
         db.commit()
+        logger.info(f"[DEBUG] 项目提交到数据库: {project.id}")
+        
         db.refresh(project)
+        logger.info(f"[DEBUG] 项目刷新完成: {project.id}")
         
         # 自动进行文本分段
-        await auto_segment_text(project.id, db)
+        try:
+            logger.info(f"[DEBUG] 开始文本分段: {project.id}")
+            segments_count = await auto_segment_text(project.id, db)
+            logger.info(f"项目 {project.id} 创建完成，分段数量: {segments_count}")
+        except Exception as seg_error:
+            logger.error(f"项目分段失败: {str(seg_error)}")
+            # 分段失败不影响项目创建，可以后续手动分段
         
         # 记录创建日志
-        await log_system_event(
-            db=db,
-            level="info",
-            message=f"朗读项目创建: {name}",
-            module="novel_reader",
-            details={
-                "project_id": project.id,
-                "text_length": len(final_text),
-                "has_file": text_file is not None,
-                "character_count": len(char_mapping)
-            }
-        )
+        try:
+            logger.info(f"[DEBUG] 开始记录创建日志: {project.id}")
+            await log_system_event(
+                db=db,
+                level="info",
+                message=f"朗读项目创建: {name}",
+                module="novel_reader",
+                details={
+                    "project_id": project.id,
+                    "text_length": len(final_text),
+                    "has_file": text_file is not None,
+                    "character_count": len(char_mapping)
+                }
+            )
+            logger.info(f"[DEBUG] 创建日志记录完成: {project.id}")
+        except Exception as log_error:
+            logger.error(f"创建日志记录失败: {str(log_error)}")
+            # 日志失败不影响项目创建
+        
+        # 最终提交所有更改（包括日志）
+        try:
+            db.commit()
+            logger.info(f"[DEBUG] 最终提交完成: {project.id}")
+        except Exception as final_commit_error:
+            logger.error(f"最终提交失败: {str(final_commit_error)}")
+            # 如果最终提交失败，至少项目已经保存了
         
         return {
             "success": True,

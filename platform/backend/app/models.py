@@ -26,8 +26,8 @@ class VoiceProfile(Base):
     
     # 音频文件路径
     reference_audio_path = Column(String(500), nullable=True)
-    latent_file_path = Column(String(500))
-    sample_audio_path = Column(String(500))
+    latent_file_path = Column(String(500), nullable=True)
+    sample_audio_path = Column(String(500), nullable=True)
     
     # 技术参数 (JSON格式存储)
     parameters = Column(Text, nullable=False, default='{"timeStep": 20, "pWeight": 1.0, "tWeight": 1.0}')

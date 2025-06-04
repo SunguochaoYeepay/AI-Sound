@@ -57,6 +57,23 @@
               show-count
               class="direct-input"
             />
+            
+            <!-- 分析文本按钮 -->
+            <div v-if="directText.trim()" style="margin-top: 16px; text-align: center;">
+              <a-button 
+                type="primary" 
+                @click="analyzeDirectText"
+                :loading="analysisCompleted === false && progressStatus !== '等待开始'"
+                :disabled="!directText.trim()"
+              >
+                <template #icon>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/>
+                  </svg>
+                </template>
+                分析文本内容
+              </a-button>
+            </div>
           </div>
         </a-card>
 
@@ -291,8 +308,9 @@
 </template>
 
 <script setup>
-import { ref, computed, reactive } from 'vue'
+import { ref, computed, reactive, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
+import { readerAPI, charactersAPI } from '@/api'
 
 // 响应式数据
 const novelFiles = ref([])
@@ -310,14 +328,12 @@ const analysisCompleted = ref(false)
 const characterDetected = ref(false)
 const voiceGenerated = ref(false)
 
-// 模拟数据
-const availableVoices = ref([
-  { id: 1, name: '温柔女声', type: 'female' },
-  { id: 2, name: '磁性男声', type: 'male' },
-  { id: 3, name: '童声', type: 'child' },
-  { id: 4, name: '专业主播', type: 'female' },
-  { id: 5, name: '老者声音', type: 'male' }
-])
+// 项目相关数据
+const currentProject = ref(null)
+const projectId = ref(null)
+
+// 声音库数据
+const availableVoices = ref([])
 
 const generatedAudios = ref([])
 const processingQueue = ref([])
@@ -331,6 +347,35 @@ const canProcess = computed(() => {
   const hasAssignments = detectedCharacters.value.every(char => char.voiceId)
   return hasText && hasAssignments && !isProcessing.value
 })
+
+// 初始化加载声音库
+onMounted(async () => {
+  await loadVoiceProfiles()
+})
+
+// 加载声音库列表
+const loadVoiceProfiles = async () => {
+  try {
+    const response = await charactersAPI.getVoiceProfiles()
+    if (response.data.success) {
+      availableVoices.value = response.data.data.map(profile => ({
+        id: profile.id,
+        name: profile.name,
+        type: profile.voice_type || 'neutral'
+      }))
+    }
+  } catch (error) {
+    console.error('加载声音库失败:', error)
+    // 使用默认声音库作为后备
+    availableVoices.value = [
+      { id: 1, name: '温柔女声', type: 'female' },
+      { id: 2, name: '磁性男声', type: 'male' },
+      { id: 3, name: '童声', type: 'child' },
+      { id: 4, name: '专业主播', type: 'female' },
+      { id: 5, name: '老者声音', type: 'male' }
+    ]
+  }
+}
 
 // 方法
 const beforeNovelUpload = (file) => {
@@ -352,7 +397,6 @@ const beforeNovelUpload = (file) => {
 const handleNovelChange = async (info) => {
   if (info.fileList.length > 0) {
     const file = info.fileList[0].originFileObj
-    // 模拟文件读取和角色识别
     await analyzeNovel(file)
   }
 }
@@ -360,43 +404,143 @@ const handleNovelChange = async (info) => {
 const analyzeNovel = async (file) => {
   analysisCompleted.value = false
   characterDetected.value = false
+  progressStatus.value = '正在分析小说内容...'
   
-  message.loading('正在分析小说内容...', 2)
-  
-  // 模拟分析过程
-  await new Promise(resolve => setTimeout(resolve, 2000))
-  analysisCompleted.value = true
-  
-  // 模拟角色识别
-  detectedCharacters.value = [
-    {
-      id: 1,
-      name: '林清雅',
-      lineCount: 45,
-      color: '#06b6d4',
-      voiceId: null,
-      gender: 'female'
-    },
-    {
-      id: 2,
-      name: '张浩然',
-      lineCount: 38,
-      color: '#06b6d4',
-      voiceId: null,
-      gender: 'male'
-    },
-    {
-      id: 3,
-      name: '旁白',
-      lineCount: 120,
-      color: '#6b7280',
-      voiceId: null,
-      gender: 'neutral'
+  try {
+    message.loading('正在分析小说内容...', 2)
+    
+    // 创建项目 - 添加时间戳避免重复名称
+    const timestamp = new Date().toLocaleString('zh-CN', {
+      month: '2-digit',
+      day: '2-digit', 
+      hour: '2-digit',
+      minute: '2-digit'
+    }).replace(/\//g, '').replace(/:/g, '').replace(' ', '-')
+    
+    const baseName = file.name.replace(/\.[^/.]+$/, '') // 移除文件扩展名
+    const projectName = `${baseName}_${timestamp}`
+    
+    const projectData = {
+      name: projectName,
+      description: '智能多角色朗读项目',
+      text_file: file,
+      character_mapping: {}
     }
-  ]
+    
+    const response = await readerAPI.createProject(projectData)
+    
+    if (response.data.success) {
+      currentProject.value = response.data.data
+      projectId.value = response.data.data.id
+      analysisCompleted.value = true
+      
+      // 获取项目详情，包含分段和角色信息
+      await loadProjectDetail()
+      
+      message.success('文本分析完成')
+    } else {
+      throw new Error(response.data.message || '项目创建失败')
+    }
+    
+  } catch (error) {
+    console.error('分析小说失败:', error)
+    
+    // 改善错误处理
+    let errorMessage = '未知错误'
+    if (error.response?.data?.detail) {
+      errorMessage = error.response.data.detail
+      
+      // 特殊处理重复名称错误
+      if (errorMessage.includes('项目名称已存在')) {
+        errorMessage = '项目名称重复，请稍后再试或换个文件名'
+      }
+    } else if (error.message) {
+      errorMessage = error.message
+    }
+    
+    message.error('分析失败: ' + errorMessage)
+    
+    // 重置状态
+    analysisCompleted.value = false
+    characterDetected.value = false
+    progressStatus.value = '等待开始'
+  }
+}
+
+const loadProjectDetail = async () => {
+  if (!projectId.value) return
   
-  characterDetected.value = true
-  message.success('角色识别完成，发现 ' + detectedCharacters.value.length + ' 个角色')
+  try {
+    const response = await readerAPI.getProjectDetail(projectId.value)
+    
+    if (response.data.success) {
+      const project = response.data.data
+      currentProject.value = project
+      
+      // 提取角色信息
+      const characterMapping = project.character_mapping || {}
+      const segments = project.segments || []
+      
+      // 从文本段落中识别角色
+      const characterSet = new Set()
+      segments.forEach(segment => {
+        if (segment.speaker && segment.speaker !== 'narrator') {
+          characterSet.add(segment.speaker)
+        }
+      })
+      
+      // 构建角色列表
+      detectedCharacters.value = Array.from(characterSet).map((charName, index) => ({
+        id: index + 1,
+        name: charName,
+        lineCount: segments.filter(s => s.speaker === charName).length,
+        color: getCharacterColor(index),
+        voiceId: characterMapping[charName] || null,
+        gender: inferGender(charName)
+      }))
+      
+      // 添加旁白角色
+      const narratorCount = segments.filter(s => s.speaker === 'narrator').length
+      if (narratorCount > 0) {
+        detectedCharacters.value.unshift({
+          id: 0,
+          name: '旁白',
+          lineCount: narratorCount,
+          color: '#6b7280',
+          voiceId: characterMapping['narrator'] || null,
+          gender: 'neutral'
+        })
+      }
+      
+      characterDetected.value = true
+      message.success(`角色识别完成，发现 ${detectedCharacters.value.length} 个角色`)
+    }
+    
+  } catch (error) {
+    console.error('获取项目详情失败:', error)
+    message.error('获取项目详情失败: ' + (error.response?.data?.detail || error.message))
+  }
+}
+
+// 辅助函数
+const getCharacterColor = (index) => {
+  const colors = ['#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#f97316']
+  return colors[index % colors.length]
+}
+
+const inferGender = (name) => {
+  // 简单的性别推断逻辑
+  const femaleIndicators = ['雅', '柔', '婷', '娜', '丽', '美', '小姐', '女士']
+  const maleIndicators = ['浩', '强', '明', '军', '刚', '先生', '男士', '少爷']
+  
+  const lowerName = name.toLowerCase()
+  if (femaleIndicators.some(indicator => lowerName.includes(indicator))) {
+    return 'female'
+  }
+  if (maleIndicators.some(indicator => lowerName.includes(indicator))) {
+    return 'male'
+  }
+  return 'neutral'
 }
 
 const autoAssignVoices = async () => {
@@ -404,92 +548,229 @@ const autoAssignVoices = async () => {
   
   try {
     // 智能分配逻辑
+    const femaleVoices = availableVoices.value.filter(v => v.type === 'female')
+    const maleVoices = availableVoices.value.filter(v => v.type === 'male')
+    const neutralVoices = availableVoices.value.filter(v => v.type === 'neutral' || v.type === 'child')
+    
+    let femaleIndex = 0, maleIndex = 0, neutralIndex = 0
+    
     detectedCharacters.value.forEach(character => {
-      if (character.gender === 'female') {
-        character.voiceId = availableVoices.value.find(v => v.type === 'female')?.id
-      } else if (character.gender === 'male') {
-        character.voiceId = availableVoices.value.find(v => v.type === 'male')?.id
+      if (character.gender === 'female' && femaleVoices.length > 0) {
+        character.voiceId = femaleVoices[femaleIndex % femaleVoices.length].id
+        femaleIndex++
+      } else if (character.gender === 'male' && maleVoices.length > 0) {
+        character.voiceId = maleVoices[maleIndex % maleVoices.length].id
+        maleIndex++
+      } else if (neutralVoices.length > 0) {
+        character.voiceId = neutralVoices[neutralIndex % neutralVoices.length].id
+        neutralIndex++
       } else {
         character.voiceId = availableVoices.value[0]?.id
       }
     })
     
+    // 更新项目的角色映射
+    await updateCharacterMapping()
+    
     await new Promise(resolve => setTimeout(resolve, 1000))
     message.success('智能分配完成')
+  } catch (error) {
+    console.error('智能分配失败:', error)
+    message.error('智能分配失败: ' + (error.message || '未知错误'))
   } finally {
     autoAssigning.value = false
   }
 }
 
-const updateCharacterVoice = (characterId, voiceId) => {
-  const character = detectedCharacters.value.find(c => c.id === characterId)
-  if (character) {
-    character.voiceId = voiceId
+const updateCharacterMapping = async () => {
+  if (!projectId.value) return
+  
+  try {
+    const characterMapping = {}
+    detectedCharacters.value.forEach(character => {
+      if (character.voiceId) {
+        const voiceName = character.name === '旁白' ? 'narrator' : character.name
+        characterMapping[voiceName] = character.voiceId
+      }
+    })
+    
+    await readerAPI.updateProject(projectId.value, {
+      name: currentProject.value.name,
+      description: currentProject.value.description,
+      character_mapping: characterMapping
+    })
+    
+  } catch (error) {
+    console.error('更新角色映射失败:', error)
   }
 }
 
-const testCharacterVoice = (character) => {
+const updateCharacterVoice = async (characterId, voiceId) => {
+  const character = detectedCharacters.value.find(c => c.id === characterId)
+  if (character) {
+    character.voiceId = voiceId
+    await updateCharacterMapping()
+  }
+}
+
+const testCharacterVoice = async (character) => {
   const voice = availableVoices.value.find(v => v.id === character.voiceId)
-  message.success(`试听 ${character.name} 的声音：${voice?.name}`)
+  if (!voice) {
+    message.error('请先选择声音')
+    return
+  }
+  
+  try {
+    message.loading('正在生成测试音频...')
+    
+    // 使用声音库进行测试合成
+    const testData = {
+      text: `你好，我是${character.name}，这是声音测试。`,
+      voice_profile_id: character.voiceId,
+      time_step: 20,
+      p_weight: 1.0,
+      t_weight: 1.0
+    }
+    
+    const response = await charactersAPI.testVoiceSynthesis(character.voiceId, testData)
+    
+    if (response.data.success) {
+      // 播放测试音频
+      const audio = new Audio(response.data.audio_url)
+      audio.play()
+      message.success(`试听 ${character.name} 的声音：${voice.name}`)
+    } else {
+      throw new Error(response.data.message || '测试失败')
+    }
+    
+  } catch (error) {
+    console.error('测试声音失败:', error)
+    message.error('测试失败: ' + (error.response?.data?.detail || error.message))
+  }
 }
 
 const startProcessing = async () => {
+  if (!projectId.value) {
+    message.error('请先上传小说文件')
+    return
+  }
+  
+  if (!canProcess.value) {
+    message.error('请确保已上传文件并分配所有角色声音')
+    return
+  }
+  
   isProcessing.value = true
   voiceGenerated.value = false
   overallProgress.value = 0
   progressStatus.value = '开始处理...'
   
   try {
-    // 模拟处理过程
-    const segments = [
-      { text: '林清雅看着远山，心中有些忧虑...', character: '旁白' },
-      { text: '浩然，你真的要离开吗？', character: '林清雅' },
-      { text: '清雅，我必须去完成这个任务...', character: '张浩然' }
-    ]
+    // 开始音频生成
+    const response = await readerAPI.startGeneration(projectId.value, 2)
     
-    // 创建处理队列
-    processingQueue.value = segments.map((seg, index) => ({
-      id: index + 1,
-      text: seg.text,
-      character: seg.character,
-      status: 'waiting'
-    }))
-    
-    // 逐个处理
-    for (let i = 0; i < segments.length; i++) {
-      processingQueue.value[i].status = 'processing'
-      progressStatus.value = `处理第 ${i + 1} 段...`
+    if (response.data.success) {
+      message.success('开始生成多角色朗读音频')
       
-      await new Promise(resolve => setTimeout(resolve, 3000))
-      
-      processingQueue.value[i].status = 'completed'
-      overallProgress.value = ((i + 1) / segments.length) * 100
-      
-      // 添加到生成的音频列表
-      generatedAudios.value.push({
-        id: i + 1,
-        duration: '00:' + String(15 + i * 5).padStart(2, '0'),
-        characters: [segments[i].character],
-        url: '/audio/generated_' + (i + 1) + '.wav'
-      })
+      // 启动进度监控
+      monitorProgress()
+    } else {
+      throw new Error(response.data.message || '启动失败')
     }
     
-    voiceGenerated.value = true
-    progressStatus.value = '处理完成'
-    message.success('多角色朗读生成完成！')
-    
   } catch (error) {
-    message.error('处理失败：' + error.message)
-  } finally {
+    console.error('启动处理失败:', error)
+    message.error('启动失败: ' + (error.response?.data?.detail || error.message))
     isProcessing.value = false
   }
 }
 
-const pauseProcessing = () => {
-  message.info('已暂停处理')
+const monitorProgress = async () => {
+  if (!projectId.value || !isProcessing.value) return
+  
+  try {
+    const response = await readerAPI.getProgress(projectId.value)
+    
+    if (response.data.success) {
+      const progress = response.data.data
+      
+      overallProgress.value = progress.progress_percent || 0
+      progressStatus.value = getProgressStatusText(progress)
+      
+      // 更新处理队列
+      if (progress.recent_completed) {
+        processingQueue.value = progress.recent_completed.map(segment => ({
+          id: segment.id,
+          text: segment.text.substring(0, 30) + '...',
+          character: segment.speaker,
+          status: 'completed'
+        }))
+      }
+      
+      // 检查是否完成
+      if (progress.project_status === 'completed') {
+        voiceGenerated.value = true
+        progressStatus.value = '处理完成'
+        isProcessing.value = false
+        message.success('多角色朗读生成完成！')
+        
+        // 加载生成的音频列表
+        await loadGeneratedAudios()
+      } else if (progress.project_status === 'failed') {
+        isProcessing.value = false
+        progressStatus.value = '处理失败'
+        message.error('处理失败，请检查日志')
+      } else {
+        // 继续监控
+        setTimeout(monitorProgress, 2000)
+      }
+    }
+    
+  } catch (error) {
+    console.error('获取进度失败:', error)
+    setTimeout(monitorProgress, 5000) // 出错时延长间隔
+  }
 }
 
-const stopProcessing = () => {
+const getProgressStatusText = (progress) => {
+  const total = progress.statistics?.total || 0
+  const completed = progress.statistics?.completed || 0
+  const processing = progress.statistics?.processing || 0
+  
+  if (processing > 0) {
+    return `处理中... (${completed}/${total})`
+  } else if (completed === total && total > 0) {
+    return '处理完成'
+  } else {
+    return `等待处理... (${completed}/${total})`
+  }
+}
+
+const loadGeneratedAudios = async () => {
+  // 这里可以添加获取生成音频列表的逻辑
+  // 暂时使用模拟数据
+  generatedAudios.value = [
+    {
+      id: 1,
+      duration: '03:45',
+      characters: ['旁白', '林清雅'],
+      url: '/audio/segment_1.wav'
+    }
+  ]
+}
+
+const pauseProcessing = async () => {
+  if (!projectId.value) return
+  
+  try {
+    await readerAPI.pauseGeneration(projectId.value)
+    message.info('已暂停处理')
+  } catch (error) {
+    message.error('暂停失败: ' + (error.response?.data?.detail || error.message))
+  }
+}
+
+const stopProcessing = async () => {
   isProcessing.value = false
   processingQueue.value = []
   overallProgress.value = 0
@@ -511,8 +792,30 @@ const downloadAudio = (audio) => {
   message.success(`下载音频：第${audio.id}段`)
 }
 
-const downloadAll = () => {
-  message.success('开始下载全部音频文件')
+const downloadAll = async () => {
+  if (!projectId.value) {
+    message.error('没有可下载的项目')
+    return
+  }
+  
+  try {
+    const response = await readerAPI.downloadAudio(projectId.value)
+    
+    // 创建下载链接
+    const url = window.URL.createObjectURL(new Blob([response.data]))
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', `${currentProject.value?.name || '朗读项目'}_final.wav`)
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.URL.revokeObjectURL(url)
+    
+    message.success('开始下载全部音频文件')
+  } catch (error) {
+    console.error('下载失败:', error)
+    message.error('下载失败: ' + (error.response?.data?.detail || error.message))
+  }
 }
 
 const getQueueStatusColor = (status) => {
@@ -533,6 +836,76 @@ const getQueueStatusText = (status) => {
     'error': '错误'
   }
   return texts[status] || '未知'
+}
+
+const analyzeDirectText = async () => {
+  if (!directText.value.trim()) {
+    message.error('请先输入文本内容')
+    return
+  }
+  
+  analysisCompleted.value = false
+  characterDetected.value = false
+  progressStatus.value = '正在分析小说内容...'
+  
+  try {
+    message.loading('正在分析文本内容...', 2)
+    
+    // 创建项目 - 添加时间戳避免重复名称
+    const timestamp = new Date().toLocaleString('zh-CN', {
+      month: '2-digit',
+      day: '2-digit', 
+      hour: '2-digit',
+      minute: '2-digit'
+    }).replace(/\//g, '').replace(/:/g, '').replace(' ', '-')
+    
+    const projectName = `直接输入文本_${timestamp}`
+    
+    const projectData = {
+      name: projectName,
+      description: '智能多角色朗读项目',
+      text_content: directText.value.trim(),
+      character_mapping: {}
+    }
+    
+    const response = await readerAPI.createProject(projectData)
+    
+    if (response.data.success) {
+      currentProject.value = response.data.data
+      projectId.value = response.data.data.id
+      analysisCompleted.value = true
+      
+      // 获取项目详情，包含分段和角色信息
+      await loadProjectDetail()
+      
+      message.success('文本分析完成')
+    } else {
+      throw new Error(response.data.message || '项目创建失败')
+    }
+    
+  } catch (error) {
+    console.error('分析文本失败:', error)
+    
+    // 改善错误处理
+    let errorMessage = '未知错误'
+    if (error.response?.data?.detail) {
+      errorMessage = error.response.data.detail
+      
+      // 特殊处理重复名称错误
+      if (errorMessage.includes('项目名称已存在')) {
+        errorMessage = '项目名称重复，请稍后再试'
+      }
+    } else if (error.message) {
+      errorMessage = error.message
+    }
+    
+    message.error('分析失败: ' + errorMessage)
+    
+    // 重置状态
+    analysisCompleted.value = false
+    characterDetected.value = false
+    progressStatus.value = '等待开始'
+  }
 }
 </script>
 

@@ -173,7 +173,112 @@ export const charactersAPI = {
 
 // 小说朗读API
 export const readerAPI = {
-  // 上传文本文件
+  // 创建朗读项目
+  createProject: (data) => {
+    const formData = new FormData()
+    formData.append('name', data.name)
+    formData.append('description', data.description || '')
+    formData.append('text_content', data.text_content || '')
+    formData.append('character_mapping', JSON.stringify(data.character_mapping || {}))
+    
+    if (data.text_file) {
+      formData.append('text_file', data.text_file)
+    }
+    
+    return apiClient.post('/api/novel-reader/projects', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    })
+  },
+  
+  // 获取项目列表
+  getProjects: (params = {}) => {
+    const queryParams = new URLSearchParams()
+    if (params.page) queryParams.append('page', params.page)
+    if (params.page_size) queryParams.append('page_size', params.page_size)
+    if (params.search) queryParams.append('search', params.search)
+    if (params.status) queryParams.append('status', params.status)
+    if (params.sort_by) queryParams.append('sort_by', params.sort_by)
+    if (params.sort_order) queryParams.append('sort_order', params.sort_order)
+    
+    const queryString = queryParams.toString()
+    const url = queryString ? `/api/novel-reader/projects?${queryString}` : '/api/novel-reader/projects'
+    
+    return apiClient.get(url)
+  },
+  
+  // 获取项目详情
+  getProjectDetail: (projectId) => apiClient.get(`/api/novel-reader/projects/${projectId}`),
+  
+  // 更新项目
+  updateProject: (projectId, data) => {
+    const formData = new FormData()
+    formData.append('name', data.name)
+    formData.append('description', data.description || '')
+    formData.append('character_mapping', JSON.stringify(data.character_mapping || {}))
+    
+    return apiClient.put(`/api/novel-reader/projects/${projectId}`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    })
+  },
+  
+  // 删除项目
+  deleteProject: (projectId, force = false) => 
+    apiClient.delete(`/api/novel-reader/projects/${projectId}?force=${force}`),
+  
+  // 重新生成文本分段
+  regenerateSegments: (projectId, data) => {
+    const formData = new FormData()
+    formData.append('strategy', data.strategy || 'auto')
+    formData.append('custom_rules', data.custom_rules || '')
+    
+    return apiClient.post(`/api/novel-reader/projects/${projectId}/segments`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    })
+  },
+  
+  // 开始音频生成
+  startGeneration: (projectId, parallelTasks = 2) => {
+    const formData = new FormData()
+    formData.append('parallel_tasks', parallelTasks.toString())
+    
+    return apiClient.post(`/api/novel-reader/projects/${projectId}/start-generation`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    })
+  },
+  
+  // 暂停生成
+  pauseGeneration: (projectId) => apiClient.post(`/api/novel-reader/projects/${projectId}/pause`),
+  
+  // 恢复生成
+  resumeGeneration: (projectId, parallelTasks = 2) => {
+    const formData = new FormData()
+    formData.append('parallel_tasks', parallelTasks.toString())
+    
+    return apiClient.post(`/api/novel-reader/projects/${projectId}/resume`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    })
+  },
+  
+  // 获取生成进度
+  getProgress: (projectId) => apiClient.get(`/api/novel-reader/projects/${projectId}/progress`),
+  
+  // 下载最终音频
+  downloadAudio: (projectId) => apiClient.get(`/api/novel-reader/projects/${projectId}/download`, {
+    responseType: 'blob'
+  }),
+  
+  // 以下保留兼容旧API的方法
+  // 上传文本文件  
   uploadText: (formData) => apiClient.post('/api/reader/upload', formData, {
     headers: {
       'Content-Type': 'multipart/form-data'
