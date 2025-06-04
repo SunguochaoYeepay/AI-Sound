@@ -709,19 +709,77 @@ const testCharacterVoice = async (character) => {
     // 使用声音库进行测试合成
     const testData = {
       text: `你好，我是${character.name}，这是声音测试。`,
-      voice_profile_id: character.voiceId,
-      time_step: 20,
-      p_weight: 1.0,
-      t_weight: 1.0
+      time_step: 32,
+      p_weight: 1.4,
+      t_weight: 3.0
     }
     
     const response = await charactersAPI.testVoiceSynthesis(character.voiceId, testData)
     
     if (response.data.success) {
-      // 播放测试音频
-      const audio = new Audio(response.data.audio_url)
-      audio.play()
-      message.success(`试听 ${character.name} 的声音：${voice.name}`)
+      // 播放测试音频 - 修复：使用blob方式
+      console.log('[DEBUG] 音频URL:', response.data.audioUrl)
+      
+      try {
+        // 尝试直接播放
+        const audio = new Audio(response.data.audioUrl)
+        
+        // 添加错误处理
+        audio.addEventListener('error', async (e) => {
+          console.error('[DEBUG] 直接播放失败，尝试fetch方式:', e)
+          
+          // 如果直接播放失败，尝试fetch + blob方式
+          try {
+            const audioResponse = await fetch(response.data.audioUrl)
+            if (!audioResponse.ok) {
+              throw new Error(`HTTP ${audioResponse.status}: ${audioResponse.statusText}`)
+            }
+            
+            const blob = await audioResponse.blob()
+            console.log('[DEBUG] Blob信息:', blob.type, blob.size, 'bytes')
+            
+            const blobUrl = URL.createObjectURL(blob)
+            const blobAudio = new Audio(blobUrl)
+            
+            blobAudio.addEventListener('error', (blobError) => {
+              console.error('[DEBUG] Blob播放也失败:', blobError)
+              message.error('音频格式不支持，可能是编码问题')
+              URL.revokeObjectURL(blobUrl)
+            })
+            
+            blobAudio.addEventListener('canplay', () => {
+              console.log('[DEBUG] Blob音频可以播放')
+              message.success(`试听 ${character.name} 的声音：${voice.name}`)
+            })
+            
+            blobAudio.addEventListener('ended', () => {
+              URL.revokeObjectURL(blobUrl)
+            })
+            
+            await blobAudio.play()
+            
+          } catch (fetchError) {
+            console.error('[DEBUG] Fetch失败:', fetchError)
+            message.error('音频加载失败: ' + fetchError.message)
+          }
+        })
+        
+        audio.addEventListener('loadstart', () => {
+          console.log('[DEBUG] 开始加载音频')
+        })
+        
+        audio.addEventListener('canplay', () => {
+          console.log('[DEBUG] 音频可以播放')
+          message.success(`试听 ${character.name} 的声音：${voice.name}`)
+        })
+        
+        // 尝试播放
+        await audio.play()
+        
+      } catch (error) {
+        console.error('[DEBUG] 播放失败:', error)
+        message.error('播放失败: ' + error.message)
+      }
     } else {
       throw new Error(response.data.message || '测试失败')
     }
@@ -776,8 +834,9 @@ const monitorProgress = async () => {
     
     if (response.data.success) {
       const progress = response.data.data
+      console.log('[DEBUG] 进度数据:', progress) // 添加调试信息
       
-      overallProgress.value = progress.progress_percent || 0
+      overallProgress.value = progress.progressPercent || progress.progress_percent || 0
       progressStatus.value = getProgressStatusText(progress)
       
       // 更新处理队列

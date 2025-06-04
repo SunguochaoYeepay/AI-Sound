@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse
 import os
 import logging
 from datetime import datetime
+import mimetypes
 
 # 配置日志
 logging.basicConfig(
@@ -34,11 +35,23 @@ app = FastAPI(
 # CORS中间件配置
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001"],  # Vue前端地址
+    allow_origins=[
+        "http://localhost:3000", 
+        "http://localhost:3001",
+        "https://4924bf6a.r35.cpolar.top",  # 添加外网域名
+        "http://4924bf6a.r35.cpolar.top",   # HTTP版本
+        "https://*.cpolar.top",             # 支持所有cpolar域名
+        "http://*.cpolar.top"               # HTTP版本
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 确保音频文件类型正确
+mimetypes.add_type('audio/wav', '.wav')
+mimetypes.add_type('audio/mpeg', '.mp3')
+mimetypes.add_type('audio/ogg', '.ogg')
 
 # 静态文件服务
 app.mount("/audio", StaticFiles(directory="../data/audio"), name="audio")

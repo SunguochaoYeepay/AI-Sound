@@ -22,9 +22,9 @@ class TTSRequest:
     text: str
     reference_audio_path: str
     output_audio_path: str
-    time_step: int = 20
-    p_weight: float = 1.0
-    t_weight: float = 1.0
+    time_step: int = 32
+    p_weight: float = 1.4
+    t_weight: float = 3.0
     latent_file_path: Optional[str] = None
 
 @dataclass
@@ -116,6 +116,21 @@ class MegaTTS3Client:
             form_data.add_field('p_w', str(request.p_weight))
             form_data.add_field('t_w', str(request.t_weight))
             
+            # 🚨 详细请求参数日志
+            logger.info(f"=== TTS请求参数详情 ===")
+            logger.info(f"目标URL: {self.base_url}/api/v1/tts/synthesize_file")
+            logger.info(f"文本内容: '{clean_text}' (长度: {len(clean_text)})")
+            logger.info(f"time_step: {request.time_step} (类型: {type(request.time_step)})")
+            logger.info(f"p_w: {request.p_weight} (类型: {type(request.p_weight)})")
+            logger.info(f"t_w: {request.t_weight} (类型: {type(request.t_weight)})")
+            logger.info(f"参考音频: {audio_filename} (大小: {len(audio_content)} bytes)")
+            if latent_content:
+                logger.info(f"Latent文件: {latent_filename} (大小: {len(latent_content)} bytes)")
+            else:
+                logger.info(f"Latent文件: 无")
+            logger.info(f"输出路径: {request.output_audio_path}")
+            logger.info(f"=== 请求参数结束 ===")
+            
             # 添加音频文件内容
             form_data.add_field(
                 'audio_file',
@@ -142,13 +157,37 @@ class MegaTTS3Client:
                     
                     processing_time = time.time() - start_time
                     
+                    # 🚨 详细响应日志
+                    logger.info(f"=== TTS响应详情 ===")
+                    logger.info(f"HTTP状态码: {response.status}")
+                    logger.info(f"响应头: {dict(response.headers)}")
+                    logger.info(f"处理时间: {processing_time:.2f}秒")
+                    
                     if response.status == 200:
                         # 成功 - 保存音频
                         audio_content = await response.read()
+                        
+                        # 🚨 详细音频调试信息
+                        logger.info(f"=== 音频文件调试 ===")
+                        logger.info(f"音频内容大小: {len(audio_content)} bytes")
+                        logger.info(f"音频内容前16字节: {audio_content[:16] if len(audio_content) >= 16 else audio_content}")
+                        logger.info(f"是否以RIFF开头: {audio_content.startswith(b'RIFF')}")
+                        logger.info(f"输出路径: {request.output_audio_path}")
+                        
                         os.makedirs(os.path.dirname(request.output_audio_path), exist_ok=True)
                         
                         with open(request.output_audio_path, 'wb') as output_f:
                             output_f.write(audio_content)
+                        
+                        # 验证保存后的文件
+                        if os.path.exists(request.output_audio_path):
+                            saved_size = os.path.getsize(request.output_audio_path)
+                            logger.info(f"保存后文件大小: {saved_size} bytes")
+                            logger.info(f"文件保存成功: {saved_size == len(audio_content)}")
+                        else:
+                            logger.error(f"文件保存失败: {request.output_audio_path}")
+                        
+                        logger.info(f"=== 音频调试结束 ===")
                         
                         logger.info(f"TTS合成成功: {request.output_audio_path} (耗时: {processing_time:.2f}s)")
                         
@@ -161,7 +200,17 @@ class MegaTTS3Client:
                     else:
                         # 失败
                         error_text = await response.text()
-                        logger.error(f"TTS合成失败: HTTP {response.status} - {error_text}")
+                        logger.error(f"=== TTS合成失败详情 ===")
+                        logger.error(f"HTTP状态码: {response.status}")
+                        logger.error(f"错误响应: {error_text}")
+                        logger.error(f"请求URL: {self.base_url}/api/v1/tts/synthesize_file")
+                        logger.error(f"发送的参数:")
+                        logger.error(f"  - text: '{clean_text[:50]}...' (长度: {len(clean_text)})")
+                        logger.error(f"  - time_step: {request.time_step}")
+                        logger.error(f"  - p_w: {request.p_weight}")
+                        logger.error(f"  - t_w: {request.t_weight}")
+                        logger.error(f"  - audio_file: {audio_filename}")
+                        logger.error(f"=== 失败详情结束 ===")
                         
                         return TTSResponse(
                             success=False,

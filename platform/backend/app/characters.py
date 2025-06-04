@@ -3,7 +3,7 @@
 对应 Characters.vue 功能
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form, Request
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, asc, func, or_, and_
@@ -13,6 +13,7 @@ import json
 import time
 import logging
 from datetime import datetime, timedelta
+from uuid import uuid4
 
 from database import get_db
 from models import VoiceProfile, SystemLog, UsageStats
@@ -657,128 +658,63 @@ async def delete_voice_profile(
 @router.post("/{voice_id}/test")
 async def test_voice_synthesis(
     voice_id: int,
-    text: str = Form("这是声音测试，用于验证合成效果。"),
-    time_step: int = Form(20),
-    p_weight: float = Form(1.0),
-    t_weight: float = Form(1.0),
+    request: Request,  # 移到前面避免语法错误
+    text: str = Form("你好，这是声音测试。"),
+    time_step: int = Form(32),
+    p_weight: float = Form(1.4),
+    t_weight: float = Form(3.0),
     db: Session = Depends(get_db)
 ):
-    """
-    测试声音合成
-    对应前端试听功能
-    """
-    start_time = time.time()
-    tts_client = get_tts_client()
-    
+    """测试声音合成"""
     try:
-        # 获取声音档案
-        voice = db.query(VoiceProfile).filter(VoiceProfile.id == voice_id).first()
-        
-        if not voice:
+        voice_profile = db.query(VoiceProfile).filter(VoiceProfile.id == voice_id).first()
+        if not voice_profile:
             raise HTTPException(status_code=404, detail="声音档案不存在")
         
-        if not voice.reference_audio_path or not os.path.exists(voice.reference_audio_path):
-            raise HTTPException(status_code=400, detail="参考音频文件不存在")
+        # 检查音频文件是否存在
+        if not voice_profile.reference_audio_path or not os.path.exists(voice_profile.reference_audio_path):
+            raise HTTPException(status_code=400, detail="声音文件不存在，请重新上传")
         
-        # 生成测试音频文件名
-        import uuid
-        test_filename = f"test_{voice_id}_{uuid.uuid4().hex}.wav"
-        test_path = os.path.join(AUDIO_DIR, test_filename)
+        # 生成唯一的音频文件名
+        audio_id = f"test_{voice_id}_{uuid4().hex[:32]}"
+        output_path = os.path.join("../data/audio", f"{audio_id}.wav")  # 修复：使用os.path.join确保跨平台兼容
         
-        # 确保输出目录存在
-        os.makedirs(AUDIO_DIR, exist_ok=True)
-        
-        # 构建TTS请求
+        # 创建TTS请求
         tts_request = TTSRequest(
             text=text,
-            reference_audio_path=voice.reference_audio_path,
-            output_audio_path=test_path,
-            time_step=time_step,
-            p_weight=p_weight,
-            t_weight=t_weight,
-            latent_file_path=voice.latent_file_path
+            reference_audio_path=voice_profile.reference_audio_path,  # 修复：使用正确字段名
+            output_audio_path=output_path,
+            time_step=time_step,     # 修复：使用新默认值
+            p_weight=p_weight,       # 修复：使用新默认值
+            t_weight=t_weight,       # 修复：使用新默认值
+            latent_file_path=voice_profile.latent_file_path
         )
         
-        # 调用MegaTTS3进行合成
+        # 执行合成
+        tts_client = get_tts_client()
         response = await tts_client.synthesize_speech(tts_request)
         
-        processing_time = time.time() - start_time
-        
         if response.success:
-            # 更新使用统计
-            voice.usage_count += 1
-            voice.last_used = datetime.utcnow()
-            db.commit()
+            log_system_event(db, "声音测试", f"声音测试成功: {voice_profile.name}", "characters")
             
-            # 记录测试日志
-            await log_system_event(
-                db=db,
-                level="info",
-                message=f"声音测试成功: {voice.name}",
-                module="characters",
-                details={
-                    "voice_id": voice_id,
-                    "text_length": len(text),
-                    "processing_time": processing_time,
-                    "parameters": {
-                        "time_step": time_step,
-                        "p_weight": p_weight,
-                        "t_weight": t_weight
-                    }
-                }
-            )
-            
-            # 更新系统使用统计
-            await update_usage_stats(db, success=True, processing_time=processing_time, audio_generated=True)
+            # 动态生成音频URL，支持外网访问
+            host = request.headers.get("host", "localhost:8000")
+            scheme = "https" if request.headers.get("x-forwarded-proto") == "https" else "http"
+            audio_url = f"{scheme}://{host}/audio/{audio_id}.wav"
             
             return {
                 "success": True,
                 "message": "测试合成完成",
-                "audioUrl": f"/audio/{test_filename}",
-                "processingTime": round(processing_time, 2),
-                "audioId": test_filename
+                "audioUrl": audio_url,  # 使用动态URL
+                "processingTime": response.processing_time,
+                "audioId": f"{audio_id}.wav"
             }
         else:
-            # 记录失败日志
-            await log_system_event(
-                db=db,
-                level="error",
-                message=f"声音测试失败: {voice.name} - {response.message}",
-                module="characters",
-                details={
-                    "voice_id": voice_id,
-                    "error_code": response.error_code,
-                    "processing_time": processing_time
-                }
-            )
+            raise HTTPException(status_code=500, detail=f"合成失败: {response.message}")
             
-            # 更新系统使用统计
-            await update_usage_stats(db, success=False, processing_time=processing_time)
-            
-            raise HTTPException(status_code=500, detail=response.message)
-    
-    except HTTPException:
-        raise
     except Exception as e:
-        processing_time = time.time() - start_time
-        logger.error(f"声音测试异常: {str(e)}")
-        
-        # 记录异常日志
-        await log_system_event(
-            db=db,
-            level="error",
-            message=f"声音测试异常: {str(e)}",
-            module="characters",
-            details={
-                "voice_id": voice_id,
-                "processing_time": processing_time
-            }
-        )
-        
-        # 更新系统使用统计
-        await update_usage_stats(db, success=False, processing_time=processing_time)
-        
-        raise HTTPException(status_code=500, detail=f"测试异常: {str(e)}")
+        logger.error(f"声音测试失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/{voice_id}/evaluate-quality")
 async def evaluate_voice_quality(
