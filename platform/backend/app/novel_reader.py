@@ -115,6 +115,16 @@ async def create_project(
             # 分段失败不影响项目创建，可以后续手动分段
             segments_count = 0
         
+        # 如果有角色映射，立即应用到段落
+        if char_mapping and segments_count > 0:
+            try:
+                logger.info(f"[DEBUG] 应用角色映射到段落: {project.id}")
+                await update_segments_voice_mapping_no_commit(project.id, char_mapping, db)
+                logger.info(f"项目 {project.id} 角色映射应用完成")
+            except Exception as mapping_error:
+                logger.error(f"应用角色映射失败: {str(mapping_error)}")
+                # 映射失败不影响项目创建，可以后续手动设置
+        
         # 记录创建日志
         try:
             logger.info(f"[DEBUG] 开始记录创建日志: {project.id}")
@@ -1421,27 +1431,61 @@ async def update_segments_voice_mapping_no_commit(project_id: int, char_mapping:
         segments = db.query(TextSegment).filter(TextSegment.project_id == project_id).all()
         logger.info(f"[DEBUG] 找到 {len(segments)} 个段落")
         
+        # 增加narrator/旁白的兼容性映射
+        enhanced_mapping = dict(char_mapping)
+        if 'narrator' in enhanced_mapping and '旁白' not in enhanced_mapping:
+            enhanced_mapping['旁白'] = enhanced_mapping['narrator']
+        if '旁白' in enhanced_mapping and 'narrator' not in enhanced_mapping:
+            enhanced_mapping['narrator'] = enhanced_mapping['旁白']
+        
+        logger.info(f"[DEBUG] 增强后的角色映射: {enhanced_mapping}")
+        
         updated_count = 0
+        unmapped_speakers = set()
+        
         for segment in segments:
             logger.info(f"[DEBUG] 段落{segment.segment_order}: detected_speaker='{segment.detected_speaker}'")
             
-            if segment.detected_speaker in char_mapping:
-                voice_id = char_mapping[segment.detected_speaker]
+            speaker = segment.detected_speaker
+            if not speaker:
+                logger.warning(f"[DEBUG] 段落{segment.segment_order}: detected_speaker为空，跳过")
+                continue
+            
+            if speaker in enhanced_mapping:
+                voice_id = enhanced_mapping[speaker]
                 # 验证声音ID是否有效
                 voice = db.query(VoiceProfile).filter(VoiceProfile.id == voice_id).first()
                 if voice and voice.status == 'active':
                     old_voice_id = segment.voice_profile_id
                     segment.voice_profile_id = voice_id
                     updated_count += 1
-                    logger.info(f"[DEBUG] 段落{segment.segment_order}: {segment.detected_speaker} -> 声音ID {voice_id} (原:{old_voice_id})")
+                    logger.info(f"[DEBUG] 段落{segment.segment_order}: {speaker} -> 声音ID {voice_id} ({voice.name}) (原:{old_voice_id})")
                 else:
-                    logger.warning(f"[DEBUG] 段落{segment.segment_order}: 声音ID {voice_id} 无效")
+                    logger.warning(f"[DEBUG] 段落{segment.segment_order}: 声音ID {voice_id} 无效或声音档案不存在")
+                    unmapped_speakers.add(f"{speaker}(无效声音ID:{voice_id})")
             else:
-                logger.warning(f"[DEBUG] 段落{segment.segment_order}: 角色'{segment.detected_speaker}'未在映射中找到")
+                logger.warning(f"[DEBUG] 段落{segment.segment_order}: 角色'{speaker}'未在映射中找到")
+                unmapped_speakers.add(speaker)
+        
+        if unmapped_speakers:
+            logger.warning(f"[DEBUG] 未映射的角色: {list(unmapped_speakers)}")
         
         logger.info(f"[DEBUG] 更新完成，共更新 {updated_count} 个段落")
+        
+        # 返回统计信息
+        return {
+            "updated_count": updated_count,
+            "total_segments": len(segments),
+            "unmapped_speakers": list(unmapped_speakers)
+        }
         
     except Exception as e:
         logger.error(f"更新声音映射失败: {str(e)}")
         import traceback
-        logger.error(f"详细错误: {traceback.format_exc()}") 
+        logger.error(f"详细错误: {traceback.format_exc()}")
+        return {
+            "updated_count": 0,
+            "total_segments": 0,
+            "unmapped_speakers": [],
+            "error": str(e)
+        } 

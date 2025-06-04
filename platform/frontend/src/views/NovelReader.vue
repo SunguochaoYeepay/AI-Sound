@@ -22,6 +22,83 @@
       </div>
     </div>
 
+    <!-- 项目选择器 -->
+    <div class="project-selector-container">
+      <a-card title="项目管理" :bordered="false" class="project-selector-card">
+        <div class="project-selector">
+          <div class="selector-left">
+            <a-select
+              v-model:value="selectedProjectId"
+              placeholder="选择已有项目或创建新项目"
+              style="width: 300px;"
+              show-search
+              :filter-option="filterProjects"
+              @change="onProjectSelect"
+              allow-clear
+            >
+              <a-select-option value="new">
+                <div style="display: flex; align-items: center; color: #1890ff;">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 8px;">
+                    <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+                  </svg>
+                  创建新项目
+                </div>
+              </a-select-option>
+              <a-select-option
+                v-for="project in projectList"
+                :key="project.id"
+                :value="project.id"
+              >
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <div>
+                    <div style="font-weight: 500;">{{ project.name }}</div>
+                    <div style="font-size: 12px; color: #999;">
+                      {{ formatDate(project.created_at) }} · {{ getStatusText(project.status) }}
+                    </div>
+                  </div>
+                  <a-tag :color="getStatusColor(project.status)" size="small">
+                    {{ getStatusText(project.status) }}
+                  </a-tag>
+                </div>
+              </a-select-option>
+            </a-select>
+            
+            <div v-if="currentProject" class="current-project-info">
+              <div class="project-name">{{ currentProject.name }}</div>
+              <div class="project-details">
+                <span>创建时间: {{ formatDate(currentProject.created_at) }}</span>
+                <span>状态: {{ getStatusText(currentProject.status) }}</span>
+              </div>
+            </div>
+          </div>
+          
+          <div class="selector-right">
+            <a-button @click="refreshProjectList" :loading="loadingProjects">
+              <template #icon>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+                </svg>
+              </template>
+              刷新
+            </a-button>
+            
+            <a-button 
+              v-if="currentProject && currentProject.id" 
+              @click="showProjectManageModal = true"
+              type="text"
+            >
+              <template #icon>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
+                </svg>
+              </template>
+              管理
+            </a-button>
+          </div>
+        </div>
+      </a-card>
+    </div>
+
     <!-- 主内容区域 -->
     <div class="main-content">
       <!-- 左侧：小说上传和配置 -->
@@ -304,6 +381,83 @@
         </a-card>
       </div>
     </div>
+
+    <!-- 项目管理弹窗 -->
+    <a-modal
+      v-model:open="showProjectManageModal"
+      title="项目管理"
+      width="800px"
+      :footer="null"
+    >
+      <div v-if="currentProject" class="project-manage-content">
+        <a-descriptions :column="2" bordered>
+          <a-descriptions-item label="项目名称">
+            <a-input 
+              v-model:value="editingProject.name" 
+              :disabled="!isEditing"
+              placeholder="请输入项目名称"
+            />
+          </a-descriptions-item>
+          <a-descriptions-item label="状态">
+            <a-tag :color="getStatusColor(currentProject.status)">
+              {{ getStatusText(currentProject.status) }}
+            </a-tag>
+          </a-descriptions-item>
+          <a-descriptions-item label="描述" :span="2">
+            <a-textarea 
+              v-model:value="editingProject.description" 
+              :disabled="!isEditing"
+              :rows="3"
+              placeholder="请输入项目描述"
+            />
+          </a-descriptions-item>
+          <a-descriptions-item label="创建时间">
+            {{ formatDate(currentProject.created_at) }}
+          </a-descriptions-item>
+          <a-descriptions-item label="更新时间">
+            {{ formatDate(currentProject.updated_at) }}
+          </a-descriptions-item>
+          <a-descriptions-item label="文本长度">
+            {{ currentProject.original_text?.length || 0 }} 字符
+          </a-descriptions-item>
+          <a-descriptions-item label="分段数量">
+            {{ currentProject.segments?.length || 0 }} 个
+          </a-descriptions-item>
+        </a-descriptions>
+
+        <div class="project-actions">
+          <a-space>
+            <a-button 
+              v-if="!isEditing" 
+              type="primary" 
+              @click="startEditing"
+            >
+              编辑项目
+            </a-button>
+            <template v-else>
+              <a-button type="primary" @click="saveProject" :loading="savingProject">
+                保存修改
+              </a-button>
+              <a-button @click="cancelEditing">
+                取消
+              </a-button>
+            </template>
+            
+            <a-popconfirm
+              title="确定要删除这个项目吗？"
+              ok-text="删除"
+              cancel-text="取消"
+              @confirm="deleteProject"
+              placement="topRight"
+            >
+              <a-button danger>删除项目</a-button>
+            </a-popconfirm>
+            
+            <a-button @click="exportProject">导出项目</a-button>
+          </a-space>
+        </div>
+      </div>
+    </a-modal>
   </div>
 </template>
 
@@ -332,6 +486,18 @@ const voiceGenerated = ref(false)
 const currentProject = ref(null)
 const projectId = ref(null)
 
+// 项目管理相关数据
+const projectList = ref([])
+const selectedProjectId = ref(null)
+const loadingProjects = ref(false)
+const showProjectManageModal = ref(false)
+const isEditing = ref(false)
+const savingProject = ref(false)
+const editingProject = ref({
+  name: '',
+  description: ''
+})
+
 // 声音库数据
 const availableVoices = ref([])
 
@@ -351,6 +517,7 @@ const canProcess = computed(() => {
 // 初始化加载声音库
 onMounted(async () => {
   await loadVoiceProfiles()
+  await refreshProjectList()
 })
 
 // 加载声音库列表
@@ -833,24 +1000,24 @@ const monitorProgress = async () => {
     const response = await readerAPI.getProgress(projectId.value)
     
     if (response.data.success) {
-      const progress = response.data.data
+      const progress = response.data.progress
       console.log('[DEBUG] 进度数据:', progress) // 添加调试信息
       
       overallProgress.value = progress.progressPercent || progress.progress_percent || 0
       progressStatus.value = getProgressStatusText(progress)
       
       // 更新处理队列
-      if (progress.recent_completed) {
-        processingQueue.value = progress.recent_completed.map(segment => ({
+      if (progress.recentCompleted) {
+        processingQueue.value = progress.recentCompleted.map(segment => ({
           id: segment.id,
-          text: segment.text.substring(0, 30) + '...',
+          text: (segment.text || '未知文本').substring(0, 30) + '...',
           character: segment.speaker,
           status: 'completed'
         }))
       }
       
       // 检查是否完成
-      if (progress.project_status === 'completed') {
+      if (progress.status === 'completed') {
         voiceGenerated.value = true
         progressStatus.value = '处理完成'
         isProcessing.value = false
@@ -858,7 +1025,7 @@ const monitorProgress = async () => {
         
         // 加载生成的音频列表
         await loadGeneratedAudios()
-      } else if (progress.project_status === 'failed') {
+      } else if (progress.status === 'failed') {
         isProcessing.value = false
         progressStatus.value = '处理失败'
         message.error('处理失败，请检查日志')
@@ -1048,6 +1215,206 @@ const analyzeDirectText = async () => {
     characterDetected.value = false
     progressStatus.value = '等待开始'
   }
+}
+
+// ========== 项目管理相关方法 ==========
+
+// 刷新项目列表
+const refreshProjectList = async () => {
+  loadingProjects.value = true
+  try {
+    const response = await readerAPI.getProjects({
+      page: 1,
+      page_size: 50,
+      sort_by: 'created_at',
+      sort_order: 'desc'
+    })
+    
+    if (response.data.success) {
+      projectList.value = response.data.data || []
+    } else {
+      message.error('获取项目列表失败: ' + response.data.message)
+    }
+  } catch (error) {
+    console.error('获取项目列表失败:', error)
+    message.error('获取项目列表失败: ' + (error.response?.data?.detail || error.message))
+  } finally {
+    loadingProjects.value = false
+  }
+}
+
+// 项目选择处理
+const onProjectSelect = async (selectedId) => {
+  if (selectedId === 'new') {
+    // 清空当前项目，允许创建新项目
+    selectedProjectId.value = null
+    currentProject.value = null
+    projectId.value = null
+    detectedCharacters.value = []
+    novelFiles.value = []
+    directText.value = ''
+    
+    // 重置状态
+    analysisCompleted.value = false
+    characterDetected.value = false
+    voiceGenerated.value = false
+    progressStatus.value = '等待开始'
+    overallProgress.value = 0
+    
+    message.info('已切换到新建项目模式')
+    return
+  }
+  
+  if (selectedId) {
+    // 加载选中的项目
+    selectedProjectId.value = selectedId
+    projectId.value = selectedId
+    await loadProjectDetail()
+    message.success('项目加载成功')
+  }
+}
+
+// 项目筛选
+const filterProjects = (input, option) => {
+  const text = option.children?.[0]?.children?.find(child => 
+    typeof child === 'string' || child?.children?.[0]
+  )
+  if (typeof text === 'string') {
+    return text.toLowerCase().includes(input.toLowerCase())
+  }
+  return false
+}
+
+// 获取状态颜色
+const getStatusColor = (status) => {
+  const colors = {
+    'pending': 'orange',
+    'processing': 'blue', 
+    'paused': 'yellow',
+    'completed': 'green',
+    'failed': 'red'
+  }
+  return colors[status] || 'default'
+}
+
+// 获取状态文本
+const getStatusText = (status) => {
+  const texts = {
+    'pending': '待处理',
+    'processing': '处理中',
+    'paused': '已暂停', 
+    'completed': '已完成',
+    'failed': '失败'
+  }
+  return texts[status] || '未知'
+}
+
+// 格式化日期
+const formatDate = (dateString) => {
+  if (!dateString) return '-'
+  const date = new Date(dateString)
+  return date.toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
+
+// 开始编辑项目
+const startEditing = () => {
+  isEditing.value = true
+  editingProject.value = {
+    name: currentProject.value.name,
+    description: currentProject.value.description || ''
+  }
+}
+
+// 取消编辑
+const cancelEditing = () => {
+  isEditing.value = false
+  editingProject.value = {
+    name: '',
+    description: ''
+  }
+}
+
+// 保存项目修改
+const saveProject = async () => {
+  if (!editingProject.value.name.trim()) {
+    message.error('项目名称不能为空')
+    return
+  }
+  
+  savingProject.value = true
+  try {
+    const response = await readerAPI.updateProject(currentProject.value.id, {
+      name: editingProject.value.name,
+      description: editingProject.value.description,
+      character_mapping: currentProject.value.character_mapping || {}
+    })
+    
+    if (response.data.success) {
+      currentProject.value = response.data.data
+      isEditing.value = false
+      await refreshProjectList()
+      message.success('项目修改成功')
+    } else {
+      message.error('修改失败: ' + response.data.message)
+    }
+  } catch (error) {
+    console.error('保存项目失败:', error)
+    message.error('保存失败: ' + (error.response?.data?.detail || error.message))
+  } finally {
+    savingProject.value = false
+  }
+}
+
+// 删除项目
+const deleteProject = async () => {
+  try {
+    const response = await readerAPI.deleteProject(currentProject.value.id)
+    
+    if (response.data.success) {
+      showProjectManageModal.value = false
+      selectedProjectId.value = null
+      currentProject.value = null
+      projectId.value = null
+      
+      await refreshProjectList()
+      message.success('项目删除成功')
+    } else {
+      message.error('删除失败: ' + response.data.message)
+    }
+  } catch (error) {
+    console.error('删除项目失败:', error)
+    message.error('删除失败: ' + (error.response?.data?.detail || error.message))
+  }
+}
+
+// 导出项目
+const exportProject = () => {
+  const projectData = {
+    ...currentProject.value,
+    export_time: new Date().toISOString(),
+    version: '1.0'
+  }
+  
+  const blob = new Blob([JSON.stringify(projectData, null, 2)], {
+    type: 'application/json'
+  })
+  
+  const url = window.URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `${currentProject.value.name}_export.json`
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  window.URL.revokeObjectURL(url)
+  
+  message.success('项目导出成功')
 }
 </script>
 
@@ -1341,6 +1708,68 @@ const analyzeDirectText = async () => {
 .queue-character {
   font-size: 11px;
   color: #6b7280;
+}
+
+/* ========== 项目管理样式 ========== */
+.project-selector-container {
+  margin-bottom: 24px;
+}
+
+.project-selector-card {
+  border-radius: 12px !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08) !important;
+  border: none !important;
+}
+
+.project-selector {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+}
+
+.selector-left {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.current-project-info {
+  padding: 16px;
+  background: #f8fafc;
+  border-radius: 8px;
+  border-left: 4px solid #06b6d4;
+}
+
+.project-name {
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 8px;
+}
+
+.project-details {
+  display: flex;
+  gap: 16px;
+  font-size: 14px;
+  color: #6b7280;
+}
+
+.selector-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.project-manage-content {
+  padding: 16px 0;
+}
+
+.project-actions {
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid #e5e7eb;
+  text-align: right;
 }
 
 @media (max-width: 1200px) {

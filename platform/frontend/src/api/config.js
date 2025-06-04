@@ -1,7 +1,7 @@
 import axios from 'axios'
 
 // API基础配置 - 使用固定的外网域名
-const API_BASE_URL = 'http://soundapi.cpolar.top'
+const API_BASE_URL = 'http://localhost:8000'
 
 // 创建axios实例
 const apiClient = axios.create({
