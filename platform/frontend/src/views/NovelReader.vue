@@ -481,39 +481,87 @@ const loadProjectDetail = async () => {
       const characterMapping = project.character_mapping || {}
       const segments = project.segments || []
       
-      // 从文本段落中识别角色
+      console.log('[DEBUG] 项目段落数据:', segments)
+      console.log('[DEBUG] 角色映射数据:', characterMapping)
+      
+      // 添加详细的段落调试信息
+      console.log('[DEBUG] 段落详细信息:')
+      segments.forEach((segment, index) => {
+        console.log(`  段落${index + 1}:`, {
+          segmentOrder: segment.segmentOrder || segment.segment_order,
+          textContent: segment.textContent || segment.text_content,
+          speaker: segment.speaker,
+          detectedSpeaker: segment.detectedSpeaker || segment.detected_speaker,
+          originalSegment: segment
+        })
+      })
+      
+      // 从文本段落中识别角色 - 兼容多种字段名
       const characterSet = new Set()
+      const allSpeakers = new Set() // 记录所有说话人，包括旁白
+      
       segments.forEach(segment => {
-        if (segment.speaker && segment.speaker !== 'narrator') {
-          characterSet.add(segment.speaker)
+        // 兼容多种字段名格式
+        const speaker = segment.speaker || segment.detectedSpeaker || segment.detected_speaker
+        
+        console.log(`[DEBUG] 段落${segment.segmentOrder || segment.segment_order}: speaker='${speaker}'`)
+        
+        if (speaker) {
+          allSpeakers.add(speaker)
+          // 只有非旁白角色才加入角色集合
+          if (speaker !== 'narrator' && speaker !== '旁白') {
+            characterSet.add(speaker)
+          }
         }
       })
+      
+      console.log('[DEBUG] 所有说话人（包括旁白）:', Array.from(allSpeakers))
+      console.log('[DEBUG] 识别出的角色（排除旁白）:', Array.from(characterSet))
       
       // 构建角色列表
       detectedCharacters.value = Array.from(characterSet).map((charName, index) => ({
         id: index + 1,
         name: charName,
-        lineCount: segments.filter(s => s.speaker === charName).length,
+        lineCount: segments.filter(s => {
+          const speaker = s.speaker || s.detectedSpeaker || s.detected_speaker
+          return speaker === charName
+        }).length,
         color: getCharacterColor(index),
         voiceId: characterMapping[charName] || null,
         gender: inferGender(charName)
       }))
       
-      // 添加旁白角色
-      const narratorCount = segments.filter(s => s.speaker === 'narrator').length
+      // 添加旁白角色（如果存在旁白段落）
+      const narratorCount = segments.filter(s => {
+        const speaker = s.speaker || s.detectedSpeaker || s.detected_speaker
+        return speaker === 'narrator' || speaker === '旁白'
+      }).length
+      
+      console.log('[DEBUG] 旁白段落数量:', narratorCount)
+      
       if (narratorCount > 0) {
         detectedCharacters.value.unshift({
           id: 0,
           name: '旁白',
           lineCount: narratorCount,
           color: '#6b7280',
-          voiceId: characterMapping['narrator'] || null,
+          voiceId: characterMapping['旁白'] || characterMapping['narrator'] || null,
           gender: 'neutral'
         })
       }
       
       characterDetected.value = true
-      message.success(`角色识别完成，发现 ${detectedCharacters.value.length} 个角色`)
+      console.log('[DEBUG] 最终角色列表:', detectedCharacters.value)
+      
+      // 改进提示信息
+      if (detectedCharacters.value.length === 0) {
+        console.warn('[DEBUG] 没有识别出任何角色')
+        message.warning('未识别出任何角色。可能原因：\n1. 文本内容太简单，没有明显的对话\n2. 缺少对话标记（如：小明说："..."）\n3. 建议使用包含角色对话的文本')
+      } else if (detectedCharacters.value.length === 1 && detectedCharacters.value[0].name === '旁白') {
+        message.info(`只识别出旁白角色。如果文本包含对话，请确保使用以下格式：\n• 小明说："你好"\n• 小红："很高兴见到你"\n• "真不错！"张老师说`)
+      } else {
+        message.success(`角色识别完成，发现 ${detectedCharacters.value.length} 个角色`)
+      }
     }
     
   } catch (error) {
@@ -547,33 +595,68 @@ const autoAssignVoices = async () => {
   autoAssigning.value = true
   
   try {
+    // 检查是否有角色
+    if (detectedCharacters.value.length === 0) {
+      message.warning('没有识别出任何角色，请先上传包含对话的文本')
+      return
+    }
+    
+    // 检查是否有可用声音
+    if (availableVoices.value.length === 0) {
+      message.error('没有可用的声音档案，请先在声音库管理中上传声音文件')
+      return
+    }
+    
+    console.log('[DEBUG] 开始智能分配')
+    console.log('[DEBUG] 检测到的角色:', detectedCharacters.value)
+    console.log('[DEBUG] 可用声音:', availableVoices.value)
+    
     // 智能分配逻辑
     const femaleVoices = availableVoices.value.filter(v => v.type === 'female')
     const maleVoices = availableVoices.value.filter(v => v.type === 'male')
     const neutralVoices = availableVoices.value.filter(v => v.type === 'neutral' || v.type === 'child')
     
+    console.log('[DEBUG] 声音分类 - 女声:', femaleVoices.length, '男声:', maleVoices.length, '中性:', neutralVoices.length)
+    
     let femaleIndex = 0, maleIndex = 0, neutralIndex = 0
+    let assignedCount = 0
     
     detectedCharacters.value.forEach(character => {
       if (character.gender === 'female' && femaleVoices.length > 0) {
         character.voiceId = femaleVoices[femaleIndex % femaleVoices.length].id
         femaleIndex++
+        assignedCount++
+        console.log(`[DEBUG] ${character.name} (女性) -> ${femaleVoices[(femaleIndex - 1) % femaleVoices.length].name}`)
       } else if (character.gender === 'male' && maleVoices.length > 0) {
         character.voiceId = maleVoices[maleIndex % maleVoices.length].id
         maleIndex++
+        assignedCount++
+        console.log(`[DEBUG] ${character.name} (男性) -> ${maleVoices[(maleIndex - 1) % maleVoices.length].name}`)
       } else if (neutralVoices.length > 0) {
         character.voiceId = neutralVoices[neutralIndex % neutralVoices.length].id
         neutralIndex++
-      } else {
+        assignedCount++
+        console.log(`[DEBUG] ${character.name} (中性) -> ${neutralVoices[(neutralIndex - 1) % neutralVoices.length].name}`)
+      } else if (availableVoices.value.length > 0) {
         character.voiceId = availableVoices.value[0]?.id
+        assignedCount++
+        console.log(`[DEBUG] ${character.name} (兜底) -> ${availableVoices.value[0]?.name}`)
       }
     })
+    
+    console.log(`[DEBUG] 分配完成，共分配 ${assignedCount} 个角色`)
     
     // 更新项目的角色映射
     await updateCharacterMapping()
     
     await new Promise(resolve => setTimeout(resolve, 1000))
-    message.success('智能分配完成')
+    
+    if (assignedCount > 0) {
+      message.success(`智能分配完成，已为 ${assignedCount} 个角色分配声音`)
+    } else {
+      message.warning('智能分配失败，请手动为角色选择声音')
+    }
+    
   } catch (error) {
     console.error('智能分配失败:', error)
     message.error('智能分配失败: ' + (error.message || '未知错误'))

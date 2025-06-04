@@ -50,13 +50,10 @@ class MegaTTS3Client:
         if not text:
             return ""
         
-        # 移除换行符和回车符
-        text = re.sub(r'[\r\n]+', ' ', text.strip())
-        # 移除多余空格
-        text = re.sub(r'\s+', ' ', text)
-        # 限制长度
-        if len(text) > 500:
-            text = text[:500]
+        # 简单清理，避免复杂的正则表达式
+        text = text.strip()
+        # 只移除明显的控制字符
+        text = text.replace('\r', '').replace('\n', ' ')
         
         return text
         

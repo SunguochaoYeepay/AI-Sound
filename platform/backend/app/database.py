@@ -13,7 +13,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 # 数据库配置
-DATABASE_DIR = "../data"
+DATABASE_DIR = "./data"
 DATABASE_PATH = os.path.join(DATABASE_DIR, "database.db")
 DATABASE_URL = f"sqlite:///{DATABASE_PATH}"
 

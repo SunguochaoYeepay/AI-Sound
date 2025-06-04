@@ -80,7 +80,11 @@ async def create_project(
         # 解析角色映射
         try:
             char_mapping = json.loads(character_mapping) if character_mapping else {}
-        except json.JSONDecodeError:
+            logger.info(f"[DEBUG] 解析角色映射 - 原始: {character_mapping}")
+            logger.info(f"[DEBUG] 解析角色映射 - 结果: {char_mapping}")
+            logger.info(f"[DEBUG] 解析角色映射 - 类型: {type(char_mapping)}")
+        except json.JSONDecodeError as e:
+            logger.error(f"[DEBUG] 角色映射JSON解析失败: {e}")
             raise HTTPException(status_code=400, detail="角色映射格式错误")
         
         # 创建项目记录
@@ -97,20 +101,19 @@ async def create_project(
         db.add(project)
         logger.info(f"[DEBUG] 项目添加到会话: {project.name}")
         
-        db.commit()
-        logger.info(f"[DEBUG] 项目提交到数据库: {project.id}")
-        
-        db.refresh(project)
-        logger.info(f"[DEBUG] 项目刷新完成: {project.id}")
+        # 不在这里提交，等待所有操作完成后一起提交
+        db.flush()  # 刷新以获取项目ID
+        logger.info(f"[DEBUG] 项目刷新获取ID: {project.id}")
         
         # 自动进行文本分段
         try:
             logger.info(f"[DEBUG] 开始文本分段: {project.id}")
-            segments_count = await auto_segment_text(project.id, db)
-            logger.info(f"项目 {project.id} 创建完成，分段数量: {segments_count}")
+            segments_count = await auto_segment_text_no_commit(project.id, final_text, db)
+            logger.info(f"项目 {project.id} 分段完成，分段数量: {segments_count}")
         except Exception as seg_error:
             logger.error(f"项目分段失败: {str(seg_error)}")
             # 分段失败不影响项目创建，可以后续手动分段
+            segments_count = 0
         
         # 记录创建日志
         try:
@@ -124,7 +127,8 @@ async def create_project(
                     "project_id": project.id,
                     "text_length": len(final_text),
                     "has_file": text_file is not None,
-                    "character_count": len(char_mapping)
+                    "character_count": len(char_mapping),
+                    "segments_count": segments_count
                 }
             )
             logger.info(f"[DEBUG] 创建日志记录完成: {project.id}")
@@ -132,13 +136,14 @@ async def create_project(
             logger.error(f"创建日志记录失败: {str(log_error)}")
             # 日志失败不影响项目创建
         
-        # 最终提交所有更改（包括日志）
+        # 最终一次性提交所有更改
         try:
             db.commit()
             logger.info(f"[DEBUG] 最终提交完成: {project.id}")
         except Exception as final_commit_error:
             logger.error(f"最终提交失败: {str(final_commit_error)}")
-            # 如果最终提交失败，至少项目已经保存了
+            db.rollback()
+            raise HTTPException(status_code=500, detail=f"保存项目失败: {str(final_commit_error)}")
         
         return {
             "success": True,
@@ -301,7 +306,11 @@ async def update_project(
         # 解析角色映射
         try:
             char_mapping = json.loads(character_mapping) if character_mapping else {}
-        except json.JSONDecodeError:
+            logger.info(f"[DEBUG] 解析角色映射 - 原始: {character_mapping}")
+            logger.info(f"[DEBUG] 解析角色映射 - 结果: {char_mapping}")
+            logger.info(f"[DEBUG] 解析角色映射 - 类型: {type(char_mapping)}")
+        except json.JSONDecodeError as e:
+            logger.error(f"[DEBUG] 角色映射JSON解析失败: {e}")
             raise HTTPException(status_code=400, detail="角色映射格式错误")
         
         # 更新项目信息
@@ -310,26 +319,37 @@ async def update_project(
         project.description = description
         project.set_character_mapping(char_mapping)
         
-        db.commit()
-        db.refresh(project)
-        
-        # 更新相关段落的声音分配
+        # 更新相关段落的声音分配（不自动提交）
         if char_mapping:
-            await update_segments_voice_mapping(project_id, char_mapping, db)
+            await update_segments_voice_mapping_no_commit(project_id, char_mapping, db)
         
-        # 记录更新日志
-        await log_system_event(
-            db=db,
-            level="info",
-            message=f"项目更新: {old_name} -> {name}",
-            module="novel_reader",
-            details={
-                "project_id": project_id,
-                "old_name": old_name,
-                "new_name": name,
-                "character_mapping": char_mapping
-            }
-        )
+        # 记录更新日志（不自动提交）
+        try:
+            await log_system_event(
+                db=db,
+                level="info",
+                message=f"项目更新: {old_name} -> {name}",
+                module="novel_reader",
+                details={
+                    "project_id": project_id,
+                    "old_name": old_name,
+                    "new_name": name,
+                    "character_mapping": char_mapping
+                }
+            )
+        except Exception as log_error:
+            logger.error(f"记录更新日志失败: {str(log_error)}")
+            # 日志失败不影响项目更新
+        
+        # 最终一次性提交所有更改
+        try:
+            db.commit()
+            db.refresh(project)
+            logger.info(f"[DEBUG] 项目更新提交成功: {project_id}")
+        except Exception as commit_error:
+            logger.error(f"项目更新提交失败: {str(commit_error)}")
+            db.rollback()
+            raise HTTPException(status_code=500, detail=f"更新失败: {str(commit_error)}")
         
         return {
             "success": True,
@@ -497,29 +517,60 @@ async def start_audio_generation(
     开始音频生成
     对应前端开始生成功能
     """
+    logger.info(f"[DEBUG] 开始音频生成请求: project_id={project_id}, parallel_tasks={parallel_tasks}")
+    
     try:
+        # 查询项目
+        logger.info(f"[DEBUG] 查询项目 {project_id}...")
         project = db.query(NovelProject).filter(NovelProject.id == project_id).first()
         
         if not project:
+            logger.error(f"[DEBUG] 项目 {project_id} 不存在")
             raise HTTPException(status_code=404, detail="项目不存在")
         
+        logger.info(f"[DEBUG] 找到项目: {project.name}, 状态: {project.status}")
+        
         if project.status == 'processing':
+            logger.warning(f"[DEBUG] 项目已在处理中: {project.id}")
             raise HTTPException(status_code=400, detail="项目已在处理中")
         
-        # 检查是否有段落和角色映射
+        # 检查段落
+        logger.info(f"[DEBUG] 检查项目段落...")
         segments = db.query(TextSegment).filter(TextSegment.project_id == project_id).all()
+        logger.info(f"[DEBUG] 找到 {len(segments)} 个段落")
+        
         if not segments:
+            logger.error(f"[DEBUG] 项目 {project_id} 没有段落")
             raise HTTPException(status_code=400, detail="项目没有文本段落，请先进行分段")
         
+        # 检查角色映射 - 增加详细日志
+        logger.info(f"[DEBUG] 检查角色映射...")
+        logger.info(f"[DEBUG] 原始 character_mapping 字段: {project.character_mapping}")
+        logger.info(f"[DEBUG] character_mapping 类型: {type(project.character_mapping)}")
+        
         char_mapping = project.get_character_mapping()
+        logger.info(f"[DEBUG] 解析后的角色映射: {char_mapping}")
+        logger.info(f"[DEBUG] 角色映射类型: {type(char_mapping)}")
+        logger.info(f"[DEBUG] 角色映射是否为空: {not char_mapping}")
+        
         if not char_mapping:
+            logger.error(f"[DEBUG] 角色映射为空，拒绝请求")
+            # 详细显示段落信息
+            for segment in segments[:3]:  # 只显示前3个段落
+                logger.error(f"[DEBUG] 段落 {segment.segment_order}: speaker='{segment.detected_speaker}', voice_id={segment.voice_profile_id}")
             raise HTTPException(status_code=400, detail="请先设置角色声音映射")
         
         # 验证声音映射的有效性
+        logger.info(f"[DEBUG] 验证声音映射有效性...")
         for character, voice_id in char_mapping.items():
+            logger.info(f"[DEBUG] 验证角色 '{character}' -> 声音ID {voice_id}")
             voice = db.query(VoiceProfile).filter(VoiceProfile.id == voice_id).first()
             if not voice or voice.status != 'active':
+                logger.error(f"[DEBUG] 角色 '{character}' 的声音档案无效: voice={voice}, status={voice.status if voice else None}")
                 raise HTTPException(status_code=400, detail=f"角色 '{character}' 的声音档案无效")
+            logger.info(f"[DEBUG] 声音档案验证通过: {voice.name}")
+        
+        logger.info(f"[DEBUG] 所有验证通过，开始更新项目状态...")
         
         # 更新项目状态
         project.status = 'processing'
@@ -528,13 +579,16 @@ async def start_audio_generation(
         project.processed_segments = 0
         
         # 重置所有段落状态
+        logger.info(f"[DEBUG] 重置段落状态...")
         for segment in segments:
             if segment.status in ['completed', 'failed']:
                 segment.status = 'pending'
                 segment.error_message = None
         
+        logger.info(f"[DEBUG] 提交数据库更改...")
         db.commit()
         
+        logger.info(f"[DEBUG] 启动后台任务...")
         # 启动后台任务
         background_tasks.add_task(
             process_audio_generation,
@@ -556,6 +610,8 @@ async def start_audio_generation(
             }
         )
         
+        logger.info(f"[DEBUG] 音频生成启动成功")
+        
         return {
             "success": True,
             "message": "音频生成已开始",
@@ -566,7 +622,9 @@ async def start_audio_generation(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"开始音频生成失败: {str(e)}")
+        logger.error(f"[DEBUG] 开始音频生成异常: {str(e)}")
+        import traceback
+        logger.error(f"[DEBUG] 详细错误信息: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"启动失败: {str(e)}")
 
 @router.post("/projects/{project_id}/pause")
@@ -797,6 +855,85 @@ async def auto_segment_text(project_id: int, db: Session):
     """自动分段"""
     return await segment_text_by_strategy("", project_id, "auto", "", db)
 
+async def auto_segment_text_no_commit(project_id: int, text: str, db: Session):
+    """自动分段 - 不提交版本，用于项目创建流程"""
+    return await segment_text_by_strategy_no_commit(text, project_id, "auto", "", db)
+
+async def segment_text_by_strategy_no_commit(
+    text: str, 
+    project_id: int, 
+    strategy: str, 
+    custom_rules: str,
+    db: Session
+) -> int:
+    """根据策略分段文本 - 不提交版本"""
+    try:
+        if not text:
+            logger.warning("分段文本为空")
+            return 0
+        
+        segments = []
+        
+        if strategy == "auto":
+            # 自动分段：基于句号、感叹号、问号分段
+            sentences = re.split(r'[。！？]', text)
+            for i, sentence in enumerate(sentences):
+                sentence = sentence.strip()
+                if sentence:
+                    segments.append({
+                        "order": i + 1,
+                        "text": sentence + ("。" if i < len(sentences) - 1 else ""),
+                        "speaker": detect_speaker(sentence)
+                    })
+        
+        elif strategy == "paragraph":
+            # 段落分段：基于换行符分段
+            paragraphs = text.split('\n')
+            order = 1
+            for paragraph in paragraphs:
+                paragraph = paragraph.strip()
+                if paragraph:
+                    segments.append({
+                        "order": order,
+                        "text": paragraph,
+                        "speaker": detect_speaker(paragraph)
+                    })
+                    order += 1
+        
+        elif strategy == "dialogue":
+            # 对话分段：识别对话和叙述分开
+            lines = text.split('\n')
+            order = 1
+            for line in lines:
+                line = line.strip()
+                if line:
+                    segments.append({
+                        "order": order,
+                        "text": line,
+                        "speaker": detect_speaker(line)
+                    })
+                    order += 1
+        
+        # 保存段落到数据库（不提交）
+        for segment_data in segments:
+            segment = TextSegment(
+                project_id=project_id,
+                segment_order=segment_data["order"],
+                text_content=segment_data["text"],
+                detected_speaker=segment_data["speaker"],
+                status='pending'
+            )
+            db.add(segment)
+        
+        # 只刷新，不提交
+        db.flush()
+        logger.info(f"[DEBUG] 段落添加到会话，数量: {len(segments)}")
+        return len(segments)
+        
+    except Exception as e:
+        logger.error(f"文本分段失败: {str(e)}")
+        return 0
+
 async def segment_text_by_strategy(
     text: str, 
     project_id: int, 
@@ -917,22 +1054,87 @@ async def segment_text_by_strategy(
 def detect_speaker(text: str) -> str:
     """检测说话人"""
     try:
-        # 简单的说话人检测逻辑
-        if '"' in text or '"' in text or '「' in text or '『' in text:
-            # 包含引号，可能是对话
-            # 尝试提取说话人名字
-            patterns = [
-                r'([^"]+)[说道]',
-                r'([^"]+)[:：]',
-                r'([一-龯]+)[说道]',
+        # 清理文本
+        text = text.strip()
+        if not text:
+            return "旁白"
+        
+        # 1. 检测直接引语模式："小明说：'你好'"
+        direct_quote_patterns = [
+            r'^([^""''「」『』：:，。！？\s]{1,6})[说道讲叫喊问答回复表示][:：][""''「」『』]',
+            r'^([^""''「」『』：:，。！？\s]{1,6})[说道讲叫喊问答回复表示]，[""''「」『』]',
+            r'^([^""''「」『』：:，。！？\s]{1,6})[:：][""''「」『』]',
+        ]
+        
+        for pattern in direct_quote_patterns:
+            match = re.search(pattern, text)
+            if match:
+                speaker = match.group(1).strip()
+                if len(speaker) <= 6 and speaker and not any(char in speaker for char in '。，！？；'):
+                    # 验证是否像人名
+                    if re.match(r'^[一-龯]{2,4}$', speaker) or re.match(r'^[A-Za-z\s]{2,8}$', speaker):
+                        return speaker
+        
+        # 2. 检测对话标记："小明："
+        speaker_mark_patterns = [
+            r'^([^：:，。！？\s]{2,6})[:：]',
+        ]
+        
+        for pattern in speaker_mark_patterns:
+            match = re.search(pattern, text)
+            if match:
+                speaker = match.group(1).strip()
+                if len(speaker) <= 6 and speaker and not any(char in speaker for char in '。，！？；'):
+                    # 验证是否像人名
+                    if re.match(r'^[一-龯]{2,4}$', speaker) or re.match(r'^[A-Za-z\s]{2,8}$', speaker):
+                        return speaker
+        
+        # 3. 检测包含引号的对话
+        if any(quote in text for quote in ['"', '"', '"', '「', '」', '『', '』', "'", "'"]):
+            # 尝试提取说话人 - 更严格的模式
+            quote_patterns = [
+                r'^([^""''「」『』，。！？\s]{2,6})[^""''「」『』]{0,10}[""''「」『』]',
+                r'[""''「」『』][^""''「」『』]+[""''「」『』][^，。！？]*?([^，。！？\s]{2,6})[说道]',
             ]
             
-            for pattern in patterns:
-                match = re.search(pattern, text)
-                if match:
-                    speaker = match.group(1).strip()
-                    if len(speaker) <= 10:  # 合理的名字长度
+            for pattern in quote_patterns:
+                matches = re.findall(pattern, text)
+                if matches:
+                    for speaker in matches:
+                        speaker = speaker.strip()
+                        if len(speaker) <= 6 and speaker and not any(char in speaker for char in '。，！？；'):
+                            # 严格验证是否像人名
+                            if re.match(r'^[一-龯]{2,4}$', speaker) or re.match(r'^[A-Za-z\s]{2,8}$', speaker):
+                                return speaker
+        
+        # 4. 检测常见对话动词后的内容 - 更严格
+        dialogue_patterns = [
+            r'^([^，。！？\s]{2,6})[说道讲叫喊问答回复表示]',
+        ]
+        
+        for pattern in dialogue_patterns:
+            match = re.search(pattern, text)
+            if match:
+                speaker = match.group(1).strip()
+                if len(speaker) <= 6 and speaker and not any(char in speaker for char in '。，！？；'):
+                    # 严格验证是否像人名
+                    if re.match(r'^[一-龯]{2,4}$', speaker) or re.match(r'^[A-Za-z\s]{2,8}$', speaker):
                         return speaker
+        
+        # 5. 检测姓名模式 - 更保守
+        name_patterns = [
+            r'^([一-龯]{2,4})[^一-龯]',  # 开头的中文姓名
+            r'^([A-Z][a-z]+)[^a-z]',   # 开头的英文名
+        ]
+        
+        for pattern in name_patterns:
+            match = re.search(pattern, text)
+            if match:
+                speaker = match.group(1).strip()
+                # 排除常见的非人名词汇
+                excluded_words = ['这个', '那个', '什么', '哪里', '为什么', '怎么', '可是', '但是', '所以', '因为', '如果', '虽然']
+                if speaker not in excluded_words and len(speaker) <= 4:
+                    return speaker
         
         # 默认返回旁白
         return "旁白"
@@ -1178,4 +1380,38 @@ async def merge_audio_files(project: NovelProject, segments: List[TextSegment], 
             logger.warning("未安装 pydub，跳过音频合并")
             
     except Exception as e:
-        logger.error(f"合并音频文件失败: {str(e)}") 
+        logger.error(f"合并音频文件失败: {str(e)}")
+
+async def update_segments_voice_mapping_no_commit(project_id: int, char_mapping: Dict[str, str], db: Session):
+    """更新段落的声音映射 - 不自动提交"""
+    try:
+        logger.info(f"[DEBUG] 更新段落声音映射 - 项目ID: {project_id}")
+        logger.info(f"[DEBUG] 角色映射: {char_mapping}")
+        
+        segments = db.query(TextSegment).filter(TextSegment.project_id == project_id).all()
+        logger.info(f"[DEBUG] 找到 {len(segments)} 个段落")
+        
+        updated_count = 0
+        for segment in segments:
+            logger.info(f"[DEBUG] 段落{segment.segment_order}: detected_speaker='{segment.detected_speaker}'")
+            
+            if segment.detected_speaker in char_mapping:
+                voice_id = char_mapping[segment.detected_speaker]
+                # 验证声音ID是否有效
+                voice = db.query(VoiceProfile).filter(VoiceProfile.id == voice_id).first()
+                if voice and voice.status == 'active':
+                    old_voice_id = segment.voice_profile_id
+                    segment.voice_profile_id = voice_id
+                    updated_count += 1
+                    logger.info(f"[DEBUG] 段落{segment.segment_order}: {segment.detected_speaker} -> 声音ID {voice_id} (原:{old_voice_id})")
+                else:
+                    logger.warning(f"[DEBUG] 段落{segment.segment_order}: 声音ID {voice_id} 无效")
+            else:
+                logger.warning(f"[DEBUG] 段落{segment.segment_order}: 角色'{segment.detected_speaker}'未在映射中找到")
+        
+        logger.info(f"[DEBUG] 更新完成，共更新 {updated_count} 个段落")
+        
+    except Exception as e:
+        logger.error(f"更新声音映射失败: {str(e)}")
+        import traceback
+        logger.error(f"详细错误: {traceback.format_exc()}") 
