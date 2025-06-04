@@ -296,7 +296,7 @@
           <div class="audio-sample">
             <div v-if="selectedVoice.audioUrl">
               <audio controls style="width: 100%;">
-                <source :src="`http://localhost:8000${selectedVoice.audioUrl}`" type="audio/wav">
+                <source :src="`${API_BASE_URL}${selectedVoice.audioUrl}`" type="audio/wav">
                 您的浏览器不支持音频播放
               </audio>
             </div>
@@ -605,7 +605,8 @@
 <script setup>
 import { ref, computed, reactive, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
-import { voiceAPI } from '../api/index.js'
+import { charactersAPI } from '@/api'
+import { API_BASE_URL } from '@/api/config'
 
 // 响应式数据
 const voiceLibrary = ref([])
@@ -700,7 +701,7 @@ const tableColumns = [
 const loadVoiceLibrary = async () => {
   try {
     loading.value = true
-    const response = await voiceAPI.getCharacters()
+    const response = await charactersAPI.getCharacters()
     
     // axios响应的实际数据在response.data中
     const responseData = response.data
@@ -774,10 +775,10 @@ const saveVoiceToBackend = async (voiceData) => {
     let response
     if (voiceData.id) {
       // 更新现有声音
-      response = await voiceAPI.updateCharacter(voiceData.id, formData)
+      response = await charactersAPI.updateCharacter(voiceData.id, formData)
     } else {
       // 创建新声音
-      response = await voiceAPI.createCharacter(formData)
+      response = await charactersAPI.createCharacter(formData)
     }
     
     // axios响应处理
@@ -801,7 +802,7 @@ const saveVoiceToBackend = async (voiceData) => {
 // 删除声音
 const deleteVoiceFromBackend = async (voiceId) => {
   try {
-    const response = await voiceAPI.deleteCharacter(voiceId)
+    const response = await charactersAPI.deleteCharacter(voiceId)
     if (response.success) {
       await loadVoiceLibrary() // 重新加载数据
       message.success('删除成功')
@@ -880,7 +881,7 @@ const playVoice = (voice) => {
   if (voice.audioUrl || voice.sampleAudioUrl || voice.referenceAudioUrl) {
     // 优先使用样本音频，然后是参考音频
     const audioUrl = voice.sampleAudioUrl || voice.audioUrl || voice.referenceAudioUrl
-    const audio = new Audio(`http://localhost:8000${audioUrl}`)
+    const audio = new Audio(`${API_BASE_URL}${audioUrl}`)
     audio.play().then(() => {
       message.success(`正在播放：${voice.name}`)
     }).catch(error => {
@@ -1080,7 +1081,7 @@ const getStatusText = (status) => {
 // 添加播放当前音频的功能
 const playCurrentAudio = () => {
   if (editingVoice.value.referenceAudioUrl) {
-    const audio = new Audio(`http://localhost:8000${editingVoice.value.referenceAudioUrl}`)
+    const audio = new Audio(`${API_BASE_URL}${editingVoice.value.referenceAudioUrl}`)
     audio.play().catch(error => {
       console.error('播放音频失败:', error)
       message.error('播放音频失败')

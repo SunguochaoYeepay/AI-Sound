@@ -679,6 +679,9 @@ async def test_voice_synthesis(
         audio_id = f"test_{voice_id}_{uuid4().hex[:32]}"
         output_path = os.path.join("../data/audio", f"{audio_id}.wav")  # 修复：使用os.path.join确保跨平台兼容
         
+        # 确保音频输出目录存在
+        os.makedirs("../data/audio", exist_ok=True)
+        
         # 创建TTS请求
         tts_request = TTSRequest(
             text=text,
@@ -695,7 +698,21 @@ async def test_voice_synthesis(
         response = await tts_client.synthesize_speech(tts_request)
         
         if response.success:
-            log_system_event(db, "声音测试", f"声音测试成功: {voice_profile.name}", "characters")
+            # 修复：使用正确的log_system_event调用方式
+            try:
+                await log_system_event(
+                    db=db,
+                    level="info",
+                    message=f"声音测试成功: {voice_profile.name}",
+                    module="characters",
+                    details={
+                        "voice_id": voice_id,
+                        "text": text,
+                        "processing_time": response.processing_time
+                    }
+                )
+            except Exception as log_error:
+                logger.warning(f"记录日志失败: {str(log_error)}")
             
             # 动态生成音频URL，支持外网访问
             host = request.headers.get("host", "localhost:8000")
@@ -712,9 +729,13 @@ async def test_voice_synthesis(
         else:
             raise HTTPException(status_code=500, detail=f"合成失败: {response.message}")
             
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"声音测试失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        import traceback
+        logger.error(f"详细错误: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"声音测试失败: {str(e)}")
 
 @router.post("/{voice_id}/evaluate-quality")
 async def evaluate_voice_quality(

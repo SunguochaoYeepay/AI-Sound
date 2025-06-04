@@ -25,175 +25,195 @@
         <a-tag color="#06b6d4" size="large">GPU 加速</a-tag>
       </div>
     </div>
-
+    
     <!-- 主要内容区域 -->
     <div class="main-content">
       <!-- 左侧：参数配置区 -->
       <div class="config-panel">
         <a-card title="声音克隆配置" :bordered="false" class="config-card">
-          <template #extra>
-            <a-tooltip title="重置所有参数到默认值">
-              <a-button type="text" @click="resetParams">
-                <template #icon>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
-                  </svg>
-                </template>
-              </a-button>
-            </a-tooltip>
-          </template>
+          <!-- 参考音频上传表单 -->
+          <a-card title="1. 上传参考音频" class="config-card">
+            <template #extra>
+              <a-tooltip title="重置所有参数到默认值">
+                <a-button type="text" @click="resetParams">
+                  <template #icon>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+                    </svg>
+                  </template>
+                </a-button>
+              </a-tooltip>
+            </template>
 
-          <!-- 参考音频上传 -->
-          <div class="form-section">
-            <label class="form-label">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 8px;">
-                <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
-                <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
-              </svg>
-              参考音频文件 <span style="color: #ef4444;">*</span>
-            </label>
-            <p class="form-desc">上传清晰的音频文件（.wav格式，建议10-60秒），AI将学习其声音特征</p>
-            
-            <a-upload-dragger
-              v-model:fileList="audioFiles"
-              :multiple="false"
-              :before-upload="beforeAudioUpload"
-              @change="handleAudioChange"
-              accept=".wav,.mp3,.m4a"
-              class="upload-area"
-            >
-              <div class="upload-content">
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="#06b6d4" style="margin-bottom: 16px;">
-                  <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z"/>
+            <!-- 参考音频上传 -->
+            <div class="form-section">
+              <label class="form-label">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 8px;">
+                  <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+                  <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
                 </svg>
-                <p style="font-size: 16px; color: #374151; margin: 0;">点击或拖拽音频文件到此区域</p>
-                <p style="font-size: 14px; color: #9ca3af; margin: 8px 0 0 0;">支持 WAV, MP3, M4A 格式</p>
-              </div>
-            </a-upload-dragger>
-
-            <!-- 音频文件信息 -->
-            <div v-if="audioFileInfo" class="file-info">
-              <div class="file-item">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="#10b981">
-                  <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
-                </svg>
-                <div class="file-details">
-                  <div class="file-name">{{ audioFileInfo.name }}</div>
-                  <div class="file-meta">{{ audioFileInfo.size }} | {{ audioFileInfo.duration }}</div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Latent文件上传（必需） -->
-          <div class="form-section">
-            <label class="form-label">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 8px;">
-                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-              </svg>
-              Latent特征文件 <span style="color: #ef4444;">*</span>
-            </label>
-            <p class="form-desc">MegaTTS3必需的声音特征文件（.npy格式），与音频文件配对使用</p>
-            
-            <a-upload
-              v-model:fileList="latentFiles"
-              :multiple="false"
-              :before-upload="beforeLatentUpload"
-              @change="handleLatentChange"
-              accept=".npy"
-              :show-upload-list="false"
-            >
-              <a-button>
-                <template #icon>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                参考音频文件 <span style="color: #ef4444;">*</span>
+              </label>
+              <p class="form-desc">上传清晰的音频文件（.wav格式，建议10-60秒），AI将学习其声音特征</p>
+              
+              <a-upload-dragger
+                v-model:fileList="audioFiles"
+                :multiple="false"
+                :before-upload="beforeAudioUpload"
+                @change="handleAudioChange"
+                accept=".wav,.mp3,.m4a"
+                class="upload-area"
+              >
+                <div class="upload-content">
+                  <svg width="48" height="48" viewBox="0 0 24 24" fill="#06b6d4" style="margin-bottom: 16px;">
                     <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z"/>
                   </svg>
-                </template>
-                选择 .npy 文件
-              </a-button>
-            </a-upload>
-            
-            <div v-if="latentFileInfo" class="file-info">
-              <div class="file-item">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="#10b981">
-                  <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
-                </svg>
-                <div class="file-details">
-                  <div class="file-name">{{ latentFileInfo.name }}</div>
-                  <div class="file-meta">{{ latentFileInfo.size }}</div>
+                  <p style="font-size: 16px; color: #374151; margin: 0;">点击或拖拽音频文件到此区域</p>
+                  <p style="font-size: 14px; color: #9ca3af; margin: 8px 0 0 0;">支持 WAV, MP3, M4A 格式</p>
+                </div>
+              </a-upload-dragger>
+
+              <!-- 音频文件信息 -->
+              <div v-if="audioFileInfo" class="file-info">
+                <div class="file-item">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="#10b981">
+                    <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                  </svg>
+                  <div class="file-details">
+                    <div class="file-name">{{ audioFileInfo.name }}</div>
+                    <div class="file-meta">{{ audioFileInfo.size }} | {{ audioFileInfo.duration }}</div>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
 
-          <!-- 高级参数 -->
-          <div class="form-section">
-            <label class="form-label">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 8px;">
-                <path d="M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.34 19.43,11.03L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.96 19.05,5.05L16.56,6.05C16.04,5.66 15.5,5.32 14.87,5.07L14.5,2.42C14.46,2.18 14.25,2 14,2H10C9.75,2 9.54,2.18 9.5,2.42L9.13,5.07C8.5,5.32 7.96,5.66 7.44,6.05L4.95,5.05C4.73,4.96 4.46,5.05 4.34,5.27L2.34,8.73C2.22,8.95 2.27,9.22 2.46,9.37L4.57,11.03C4.53,11.34 4.5,11.67 4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.22,15.05 2.34,15.27L4.34,18.73C4.46,18.95 4.73,19.03 4.95,18.95L7.44,17.94C7.96,18.34 8.5,18.68 9.13,18.93L9.5,21.58C9.54,21.82 9.75,22 10,22H14C14.25,22 14.46,21.82 14.5,21.58L14.87,18.93C15.5,18.68 16.04,18.34 16.56,17.94L19.05,18.95C19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z"/>
-              </svg>
-              高级参数调节
-            </label>
-
-            <div class="params-grid">
-              <div class="param-item">
-                <label class="param-label">Time Step</label>
-                <a-slider
-                  v-model:value="params.timeStep"
-                  :min="5"
-                  :max="100"
-                  :step="5"
-                  :tooltip-formatter="(value) => `${value} steps`"
-                />
-                <div class="param-value">{{ params.timeStep }} steps</div>
-              </div>
-
-              <div class="param-item">
-                <label class="param-label">智能权重 (p_w)</label>
-                <a-slider
-                  v-model:value="params.pWeight"
-                  :min="0"
-                  :max="2"
-                  :step="0.1"
-                  :tooltip-formatter="(value) => value.toFixed(1)"
-                />
-                <div class="param-value">{{ params.pWeight.toFixed(1) }}</div>
-              </div>
-
-              <div class="param-item">
-                <label class="param-label">相似度权重 (t_w)</label>
-                <a-slider
-                  v-model:value="params.tWeight"
-                  :min="0"
-                  :max="2"
-                  :step="0.1"
-                  :tooltip-formatter="(value) => value.toFixed(1)"
-                />
-                <div class="param-value">{{ params.tWeight.toFixed(1) }}</div>
+            <!-- Latent文件上传（必需） -->
+            <div class="form-section">
+              <label class="form-label">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 8px;">
+                  <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                </svg>
+                Latent特征文件 <span style="color: #ef4444;">*</span>
+              </label>
+              <p class="form-desc">MegaTTS3必需的声音特征文件（.npy格式），与音频文件配对使用</p>
+              
+              <a-upload
+                v-model:fileList="latentFiles"
+                :multiple="false"
+                :before-upload="beforeLatentUpload"
+                @change="handleLatentChange"
+                accept=".npy"
+                :show-upload-list="false"
+              >
+                <a-button>
+                  <template #icon>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z"/>
+                    </svg>
+                  </template>
+                  选择 .npy 文件
+                </a-button>
+              </a-upload>
+              
+              <div v-if="latentFileInfo" class="file-info">
+                <div class="file-item">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="#10b981">
+                    <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                  </svg>
+                  <div class="file-details">
+                    <div class="file-name">{{ latentFileInfo.name }}</div>
+                    <div class="file-meta">{{ latentFileInfo.size }}</div>
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
 
-          <!-- 待合成文本 -->
-          <div class="form-section">
-            <label class="form-label">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 8px;">
-                <path d="M5,3C3.89,3 3,3.89 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V12H19V19H5V5H12V3H5M17.78,4C17.61,4 17.43,4.07 17.3,4.2L16.08,5.41L18.58,7.91L19.8,6.7C20.06,6.44 20.06,6 19.8,5.75L18.25,4.2C18.12,4.07 17.95,4 17.78,4M15.37,6.12L8,13.5V16H10.5L17.87,8.62L15.37,6.12Z"/>
-              </svg>
-              待合成文本 <span style="color: #ef4444;">*</span>
-            </label>
-            <a-textarea
-              v-model:value="text"
-              placeholder="请输入要合成的文本内容..."
-              :rows="4"
-              :maxlength="500"
-              show-count
-              class="text-input"
-            />
-          </div>
+            <!-- 高级参数 -->
+            <div class="form-section">
+              <label class="form-label">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 8px;">
+                  <path d="M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.34 19.43,11.03L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.96 19.05,5.05L16.56,6.05C16.04,5.66 15.5,5.32 14.87,5.07L14.5,2.42C14.46,2.18 14.25,2 14,2H10C9.75,2 9.54,2.18 9.5,2.42L9.13,5.07C8.5,5.32 7.96,5.66 7.44,6.05L4.95,5.05C4.73,4.96 4.46,5.05 4.34,5.27L2.34,8.73C2.22,8.95 2.27,9.22 2.46,9.37L4.57,11.03C4.53,11.34 4.5,11.67 4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.22,15.05 2.34,15.27L4.34,18.73C4.46,18.95 4.73,19.03 4.95,18.95L7.44,17.94C7.96,18.34 8.5,18.68 9.13,18.93L9.5,21.58C9.54,21.82 9.75,22 10,22H14C14.25,22 14.46,21.82 14.5,21.58L14.87,18.93C15.5,18.68 16.04,18.34 16.56,17.94L19.05,18.95C19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z"/>
+                </svg>
+                高级参数调节
+              </label>
+
+              <div class="params-grid">
+                <div class="param-item">
+                  <label class="param-label">Time Step</label>
+                  <a-slider
+                    v-model:value="params.timeStep"
+                    :min="5"
+                    :max="100"
+                    :step="5"
+                    :tooltip-formatter="(value) => `${value} steps`"
+                  />
+                  <div class="param-value">{{ params.timeStep }} steps</div>
+                </div>
+
+                <div class="param-item">
+                  <label class="param-label">智能权重 (p_w)</label>
+                  <a-slider
+                    v-model:value="params.pWeight"
+                    :min="0"
+                    :max="2"
+                    :step="0.1"
+                    :tooltip-formatter="(value) => value.toFixed(1)"
+                  />
+                  <div class="param-value">{{ params.pWeight.toFixed(1) }}</div>
+                </div>
+
+                <div class="param-item">
+                  <label class="param-label">相似度权重 (t_w)</label>
+                  <a-slider
+                    v-model:value="params.tWeight"
+                    :min="0"
+                    :max="2"
+                    :step="0.1"
+                    :tooltip-formatter="(value) => value.toFixed(1)"
+                  />
+                  <div class="param-value">{{ params.tWeight.toFixed(1) }}</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 待合成文本 -->
+            <div class="form-section">
+              <label class="form-label">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 8px;">
+                  <path d="M5,3C3.89,3 3,3.89 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V12H19V19H5V5H12V3H5M17.78,4C17.61,4 17.43,4.07 17.3,4.2L16.08,5.41L18.58,7.91L19.8,6.7C20.06,6.44 20.06,6 19.8,5.75L18.25,4.2C18.12,4.07 17.95,4 17.78,4M15.37,6.12L8,13.5V16H10.5L17.87,8.62L15.37,6.12Z"/>
+                </svg>
+                待合成文本 <span style="color: #ef4444;">*</span>
+              </label>
+              <a-textarea
+                v-model:value="text"
+                placeholder="请输入要合成的文本内容..."
+                :rows="4"
+                :maxlength="500"
+                show-count
+                class="text-input"
+              />
+            </div>
+          </a-card>
+          
+          <!-- 音频测试组件 -->
+          <a-card title="音频播放测试" class="test-card" v-if="showAudioTester">
+            <audio-tester />
+            <div class="card-footer">
+              <a-button type="text" @click="showAudioTester = false">隐藏测试工具</a-button>
+            </div>
+          </a-card>
+          <a-button 
+            v-else 
+            type="dashed" 
+            block 
+            @click="showAudioTester = true" 
+            style="margin-top: 16px;"
+          >
+            <sound-outlined /> 显示音频测试工具
+          </a-button>
         </a-card>
       </div>
-
+      
       <!-- 右侧：结果展示区 -->
       <div class="result-panel">
         <!-- 快速测试模板 -->
@@ -299,6 +319,9 @@
 import { ref, computed, reactive } from 'vue'
 import { message } from 'ant-design-vue'
 import { systemAPI, voiceAPI } from '../api/index.js'
+import { API_BASE_URL } from '../api/config.js'
+import { SoundOutlined } from '@ant-design/icons-vue'
+import AudioTester from '../components/AudioTester.vue'
 
 // 响应式数据
 const audioFiles = ref([])
@@ -345,6 +368,9 @@ const templates = ref([
     text: '你好，很高兴见到你！今天天气真不错，我们一起出去走走吧。'
   }
 ])
+
+// 音频测试工具状态
+const showAudioTester = ref(false)
 
 // 计算属性
 const canGenerate = computed(() => {
@@ -482,12 +508,64 @@ const generateSpeech = async () => {
     
     // 4. 处理生成结果
     if (synthesizeResponse.data.success && synthesizeResponse.data.audioUrl) {
-      generatedAudio.value = {
-        url: `http://localhost:8000${synthesizeResponse.data.audioUrl}`, // 完整URL
-        size: '未知', // 后端暂时没有返回文件大小
-        duration: '未知', // 后端暂时没有返回时长
-        quality: 4.0, // 默认质量评分
-        processingTime: synthesizeResponse.data.processingTime
+      // 构建两种可能的URL
+      const directUrl = `${API_BASE_URL}${synthesizeResponse.data.audioUrl}`
+      const proxyUrl = synthesizeResponse.data.audioUrl // 相对路径，通过Vite代理访问
+      
+      try {
+        // 尝试预加载音频文件
+        progressText.value = '正在验证音频文件...'
+        
+        // 先尝试通过相对路径访问（使用Vite代理）
+        const audioCheck = await new Promise((resolve, reject) => {
+          const audio = new Audio(proxyUrl)
+          
+          // 成功加载
+          audio.onloadeddata = () => resolve({
+            duration: audio.duration,
+            success: true,
+            url: proxyUrl // 使用代理URL
+          })
+          
+          // 加载失败，尝试直接URL
+          audio.onerror = () => {
+            console.warn('代理URL加载失败，尝试直接URL')
+            const directAudio = new Audio(directUrl)
+            
+            directAudio.onloadeddata = () => resolve({
+              duration: directAudio.duration,
+              success: true,
+              url: directUrl
+            })
+            
+            directAudio.onerror = () => reject(new Error('所有URL均加载失败'))
+            directAudio.load()
+          }
+          
+          audio.load()
+          
+          // 10秒超时
+          setTimeout(() => reject(new Error('音频加载超时')), 10000)
+        })
+        
+        generatedAudio.value = {
+          url: audioCheck.url,
+          size: '未知', // 后端暂时没有返回文件大小
+          duration: audioCheck.duration ? `${audioCheck.duration.toFixed(1)}秒` : '未知',
+          quality: 4.0, // 默认质量评分
+          processingTime: synthesizeResponse.data.processingTime
+        }
+      } catch (audioError) {
+        console.warn('音频预加载警告:', audioError)
+        // 即使预加载失败，也创建音频对象
+        generatedAudio.value = {
+          url: proxyUrl, // 默认使用代理URL
+          fallbackUrl: directUrl, // 保存备用URL
+          size: '未知',
+          duration: '未知',
+          quality: 4.0,
+          processingTime: synthesizeResponse.data.processingTime
+        }
       }
       
       message.success(`语音生成成功！耗时: ${synthesizeResponse.data.processingTime}秒`)
@@ -507,17 +585,88 @@ const generateSpeech = async () => {
   }
 }
 
-const downloadAudio = () => {
-  if (generatedAudio.value?.url) {
-    const link = document.createElement('a')
-    link.href = generatedAudio.value.url
-    link.download = `generated_audio_${Date.now()}.wav`
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    message.success('开始下载音频文件')
-  } else {
+const downloadAudio = async () => {
+  if (!generatedAudio.value?.url) {
     message.error('没有可下载的音频文件')
+    return
+  }
+  
+  try {
+    message.loading('正在准备音频文件...')
+    
+    // 使用专门的下载客户端
+    const { downloadClient } = require('@/api/config')
+    
+    // 首先尝试主URL
+    try {
+      const response = await downloadClient.get(generatedAudio.value.url, {
+        responseType: 'blob',
+        timeout: 15000  // 15秒超时
+      })
+      
+      // 创建一个临时链接并触发下载
+      const blob = new Blob([response.data], { type: 'audio/wav' })
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `AI_Voice_${Date.now()}.wav`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+      
+      message.success('音频文件下载完成')
+      return
+    } catch (primaryError) {
+      console.warn('主URL下载失败，尝试备用URL', primaryError)
+      
+      // 如果主URL失败且有备用URL，尝试备用URL
+      if (generatedAudio.value.fallbackUrl) {
+        try {
+          const fallbackResponse = await downloadClient.get(generatedAudio.value.fallbackUrl, {
+            responseType: 'blob',
+            timeout: 15000
+          })
+          
+          const blob = new Blob([fallbackResponse.data], { type: 'audio/wav' })
+          const url = window.URL.createObjectURL(blob)
+          const link = document.createElement('a')
+          link.href = url
+          link.download = `AI_Voice_${Date.now()}.wav`
+          document.body.appendChild(link)
+          link.click()
+          document.body.removeChild(link)
+          window.URL.revokeObjectURL(url)
+          
+          message.success('使用备用URL下载音频文件完成')
+          return
+        } catch (fallbackError) {
+          console.error('备用URL也下载失败', fallbackError)
+          throw new Error('所有下载尝试均失败')
+        }
+      } else {
+        throw primaryError
+      }
+    }
+  } catch (error) {
+    console.error('下载音频失败:', error)
+    message.error('下载失败，请稍后重试')
+    
+    // 最后尝试浏览器自带下载方式
+    try {
+      const link = document.createElement('a')
+      // 如果主URL是相对路径，优先使用它
+      const isRelativePath = !generatedAudio.value.url.startsWith('http')
+      link.href = isRelativePath ? generatedAudio.value.url : (generatedAudio.value.fallbackUrl || generatedAudio.value.url)
+      link.download = `AI_Voice_${Date.now()}.wav`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      message.info('正在尝试备用下载方式')
+    } catch (e) {
+      console.error('备用下载方式也失败', e)
+      message.error('所有下载方式均失败，请联系管理员')
+    }
   }
 }
 

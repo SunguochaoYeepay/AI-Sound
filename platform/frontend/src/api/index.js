@@ -101,21 +101,6 @@ export const voiceAPI = {
   },
   
   // 删除声音库
-  deleteCharacter: (id) => apiClient.delete(`/api/characters/${id}`)
-}
-
-// 角色管理API
-export const charactersAPI = {
-  // 获取角色列表
-  getCharacters: () => apiClient.get('/api/characters'),
-  
-  // 创建角色
-  createCharacter: (data) => apiClient.post('/api/characters', data),
-  
-  // 更新角色
-  updateCharacter: (id, data) => apiClient.put(`/api/characters/${id}`, data),
-  
-  // 删除角色
   deleteCharacter: (id) => apiClient.delete(`/api/characters/${id}`),
   
   // 获取声音库列表
@@ -125,7 +110,69 @@ export const charactersAPI = {
     if (params.voice_type) queryParams.append('voice_type', params.voice_type)
     if (params.quality_filter) queryParams.append('quality_filter', params.quality_filter)
     
-    return apiClient.get(`/api/characters?${queryParams.toString()}`)
+    const queryString = queryParams.toString()
+    const url = queryString ? `/api/characters/?${queryString}` : '/api/characters/'
+    
+    return apiClient.get(url)
+  },
+  
+  // 创建声音库
+  createCharacter: (data) => {
+    // 确保发送FormData格式，设置正确的Content-Type
+    return apiClient.post('/api/characters/', data, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    })
+  },
+  
+  // 更新声音库
+  updateCharacter: (id, data) => {
+    // 确保发送FormData格式，设置正确的Content-Type
+    return apiClient.put(`/api/characters/${id}`, data, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    })
+  },
+  
+  // 删除声音库
+  deleteCharacter: (id) => apiClient.delete(`/api/characters/${id}`)
+}
+
+// 角色管理API
+export const charactersAPI = {
+  // 获取角色列表
+  getCharacters: () => apiClient.get('/api/characters/'),
+  
+  // 创建角色
+  createCharacter: (data) => apiClient.post('/api/characters/', data, {
+    headers: {
+      'Content-Type': 'multipart/form-data'
+    }
+  }),
+  
+  // 更新角色
+  updateCharacter: (id, data) => apiClient.put(`/api/characters/${id}/`, data, {
+    headers: {
+      'Content-Type': 'multipart/form-data'
+    }
+  }),
+  
+  // 删除角色
+  deleteCharacter: (id) => apiClient.delete(`/api/characters/${id}/`),
+  
+  // 获取声音库列表
+  getVoiceProfiles: (params = {}) => {
+    const queryParams = new URLSearchParams()
+    if (params.search) queryParams.append('search', params.search)
+    if (params.voice_type) queryParams.append('voice_type', params.voice_type)
+    if (params.quality_filter) queryParams.append('quality_filter', params.quality_filter)
+    
+    const queryString = queryParams.toString()
+    const url = queryString ? `/api/characters/?${queryString}` : '/api/characters/'
+    
+    return apiClient.get(url)
   },
   
   // 获取单个声音档案

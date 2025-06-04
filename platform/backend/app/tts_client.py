@@ -43,7 +43,11 @@ class MegaTTS3Client:
     
     def __init__(self, base_url: str = "http://localhost:7929"):
         self.base_url = base_url.rstrip('/')
-        self.timeout = aiohttp.ClientTimeout(total=300)
+        self.timeout = aiohttp.ClientTimeout(
+            total=300,    # 总超时5分钟
+            connect=30,   # 连接超时30秒
+            sock_read=180 # 读取超时3分钟
+        )
         
     def _sanitize_text(self, text: str) -> str:
         """清理文本，移除可能导致Header问题的字符"""
@@ -72,162 +76,194 @@ class MegaTTS3Client:
             return {"status": "error", "error": str(e)}
     
     async def synthesize_speech(self, request: TTSRequest) -> TTSResponse:
-        """语音合成 - 唯一的核心功能"""
-        start_time = time.time()
+        """语音合成 - 唯一的核心功能，带重试机制"""
+        max_retries = 2  # 最多重试2次
         
-        try:
-            # 验证文件
-            if not os.path.exists(request.reference_audio_path):
-                return TTSResponse(
-                    success=False,
-                    message=f"参考音频不存在: {request.reference_audio_path}",
-                    error_code="FILE_NOT_FOUND"
-                )
+        for attempt in range(max_retries + 1):
+            start_time = time.time()
             
-            # 清理文本
-            clean_text = self._sanitize_text(request.text)
-            if not clean_text:
-                return TTSResponse(
-                    success=False,
-                    message="文本为空或无效",
-                    error_code="INVALID_TEXT"
-                )
-            
-            # 🚨 修复：先读取所有文件内容，避免嵌套with问题
-            audio_content = None
-            latent_content = None
-            audio_filename = os.path.basename(request.reference_audio_path)
-            latent_filename = None
-            
-            # 读取音频文件
-            with open(request.reference_audio_path, 'rb') as f:
-                audio_content = f.read()
-            
-            # 读取latent文件（如果有）
-            if request.latent_file_path and os.path.exists(request.latent_file_path):
-                with open(request.latent_file_path, 'rb') as f:
-                    latent_content = f.read()
-                    latent_filename = os.path.basename(request.latent_file_path)
-            
-            # 构建表单数据 - 使用已读取的内容
-            form_data = aiohttp.FormData()
-            form_data.add_field('text', clean_text)
-            form_data.add_field('time_step', str(request.time_step))
-            form_data.add_field('p_w', str(request.p_weight))
-            form_data.add_field('t_w', str(request.t_weight))
-            
-            # 🚨 详细请求参数日志
-            logger.info(f"=== TTS请求参数详情 ===")
-            logger.info(f"目标URL: {self.base_url}/api/v1/tts/synthesize_file")
-            logger.info(f"文本内容: '{clean_text}' (长度: {len(clean_text)})")
-            logger.info(f"time_step: {request.time_step} (类型: {type(request.time_step)})")
-            logger.info(f"p_w: {request.p_weight} (类型: {type(request.p_weight)})")
-            logger.info(f"t_w: {request.t_weight} (类型: {type(request.t_weight)})")
-            logger.info(f"参考音频: {audio_filename} (大小: {len(audio_content)} bytes)")
-            if latent_content:
-                logger.info(f"Latent文件: {latent_filename} (大小: {len(latent_content)} bytes)")
-            else:
-                logger.info(f"Latent文件: 无")
-            logger.info(f"输出路径: {request.output_audio_path}")
-            logger.info(f"=== 请求参数结束 ===")
-            
-            # 添加音频文件内容
-            form_data.add_field(
-                'audio_file',
-                audio_content,
-                filename=audio_filename,
-                content_type='audio/wav'
-            )
-            
-            # 添加latent文件内容（如果有）
-            if latent_content and latent_filename:
+            try:
+                if attempt > 0:
+                    logger.info(f"[RETRY] TTS合成重试第 {attempt} 次: {request.text[:30]}...")
+                    # 重试前等待一下
+                    await asyncio.sleep(2 * attempt)
+                
+                # 验证文件
+                if not os.path.exists(request.reference_audio_path):
+                    return TTSResponse(
+                        success=False,
+                        message=f"参考音频不存在: {request.reference_audio_path}",
+                        error_code="FILE_NOT_FOUND"
+                    )
+                
+                # 清理文本
+                clean_text = self._sanitize_text(request.text)
+                if not clean_text:
+                    return TTSResponse(
+                        success=False,
+                        message="文本为空或无效",
+                        error_code="INVALID_TEXT"
+                    )
+                
+                # 🚨 修复：先读取所有文件内容，避免嵌套with问题
+                audio_content = None
+                latent_content = None
+                audio_filename = os.path.basename(request.reference_audio_path)
+                latent_filename = None
+                
+                # 读取音频文件
+                with open(request.reference_audio_path, 'rb') as f:
+                    audio_content = f.read()
+                
+                # 读取latent文件（如果有）
+                if request.latent_file_path and os.path.exists(request.latent_file_path):
+                    with open(request.latent_file_path, 'rb') as f:
+                        latent_content = f.read()
+                        latent_filename = os.path.basename(request.latent_file_path)
+                
+                # 构建表单数据 - 使用已读取的内容
+                form_data = aiohttp.FormData()
+                form_data.add_field('text', clean_text)
+                form_data.add_field('time_step', str(request.time_step))
+                form_data.add_field('p_w', str(request.p_weight))
+                form_data.add_field('t_w', str(request.t_weight))
+                
+                # 🚨 详细请求参数日志
+                logger.info(f"=== TTS请求参数详情 ===")
+                logger.info(f"目标URL: {self.base_url}/api/v1/tts/synthesize_file")
+                logger.info(f"文本内容: '{clean_text}' (长度: {len(clean_text)})")
+                logger.info(f"time_step: {request.time_step} (类型: {type(request.time_step)})")
+                logger.info(f"p_w: {request.p_weight} (类型: {type(request.p_weight)})")
+                logger.info(f"t_w: {request.t_weight} (类型: {type(request.t_weight)})")
+                logger.info(f"参考音频: {audio_filename} (大小: {len(audio_content)} bytes)")
+                if latent_content:
+                    logger.info(f"Latent文件: {latent_filename} (大小: {len(latent_content)} bytes)")
+                else:
+                    logger.info(f"Latent文件: 无")
+                logger.info(f"输出路径: {request.output_audio_path}")
+                logger.info(f"=== 请求参数结束 ===")
+                
+                # 添加音频文件内容
                 form_data.add_field(
-                    'latent_file',
-                    latent_content,
-                    filename=latent_filename,
-                    content_type='application/octet-stream'
+                    'audio_file',
+                    audio_content,
+                    filename=audio_filename,
+                    content_type='audio/wav'
                 )
-            
-            # 发送请求
-            async with aiohttp.ClientSession(timeout=self.timeout) as session:
-                async with session.post(
-                    f"{self.base_url}/api/v1/tts/synthesize_file",
-                    data=form_data
-                ) as response:
-                    
-                    processing_time = time.time() - start_time
-                    
-                    # 🚨 详细响应日志
-                    logger.info(f"=== TTS响应详情 ===")
-                    logger.info(f"HTTP状态码: {response.status}")
-                    logger.info(f"响应头: {dict(response.headers)}")
-                    logger.info(f"处理时间: {processing_time:.2f}秒")
-                    
-                    if response.status == 200:
-                        # 成功 - 保存音频
-                        audio_content = await response.read()
+                
+                # 添加latent文件内容（如果有）
+                if latent_content and latent_filename:
+                    form_data.add_field(
+                        'latent_file',
+                        latent_content,
+                        filename=latent_filename,
+                        content_type='application/octet-stream'
+                    )
+                
+                # 发送请求
+                async with aiohttp.ClientSession(timeout=self.timeout) as session:
+                    async with session.post(
+                        f"{self.base_url}/api/v1/tts/synthesize_file",
+                        data=form_data
+                    ) as response:
                         
-                        # 🚨 详细音频调试信息
-                        logger.info(f"=== 音频文件调试 ===")
-                        logger.info(f"音频内容大小: {len(audio_content)} bytes")
-                        logger.info(f"音频内容前16字节: {audio_content[:16] if len(audio_content) >= 16 else audio_content}")
-                        logger.info(f"是否以RIFF开头: {audio_content.startswith(b'RIFF')}")
-                        logger.info(f"输出路径: {request.output_audio_path}")
+                        processing_time = time.time() - start_time
                         
-                        os.makedirs(os.path.dirname(request.output_audio_path), exist_ok=True)
+                        # 🚨 详细响应日志
+                        logger.info(f"=== TTS响应详情 ===")
+                        logger.info(f"HTTP状态码: {response.status}")
+                        logger.info(f"响应头: {dict(response.headers)}")
+                        logger.info(f"处理时间: {processing_time:.2f}秒")
                         
-                        with open(request.output_audio_path, 'wb') as output_f:
-                            output_f.write(audio_content)
-                        
-                        # 验证保存后的文件
-                        if os.path.exists(request.output_audio_path):
-                            saved_size = os.path.getsize(request.output_audio_path)
-                            logger.info(f"保存后文件大小: {saved_size} bytes")
-                            logger.info(f"文件保存成功: {saved_size == len(audio_content)}")
+                        if response.status == 200:
+                            # 成功 - 保存音频
+                            audio_content = await response.read()
+                            
+                            # 🚨 详细音频调试信息
+                            logger.info(f"=== 音频文件调试 ===")
+                            logger.info(f"音频内容大小: {len(audio_content)} bytes")
+                            logger.info(f"音频内容前16字节: {audio_content[:16] if len(audio_content) >= 16 else audio_content}")
+                            logger.info(f"是否以RIFF开头: {audio_content.startswith(b'RIFF')}")
+                            logger.info(f"输出路径: {request.output_audio_path}")
+                            
+                            os.makedirs(os.path.dirname(request.output_audio_path), exist_ok=True)
+                            
+                            with open(request.output_audio_path, 'wb') as output_f:
+                                output_f.write(audio_content)
+                            
+                            # 验证保存后的文件
+                            if os.path.exists(request.output_audio_path):
+                                saved_size = os.path.getsize(request.output_audio_path)
+                                logger.info(f"保存后文件大小: {saved_size} bytes")
+                                logger.info(f"文件保存成功: {saved_size == len(audio_content)}")
+                            else:
+                                logger.error(f"文件保存失败: {request.output_audio_path}")
+                            
+                            logger.info(f"=== 音频调试结束 ===")
+                            
+                            logger.info(f"TTS合成成功: {request.output_audio_path} (耗时: {processing_time:.2f}s)")
+                            
+                            return TTSResponse(
+                                success=True,
+                                message="合成完成",
+                                audio_path=request.output_audio_path,
+                                processing_time=processing_time
+                            )
                         else:
-                            logger.error(f"文件保存失败: {request.output_audio_path}")
-                        
-                        logger.info(f"=== 音频调试结束 ===")
-                        
-                        logger.info(f"TTS合成成功: {request.output_audio_path} (耗时: {processing_time:.2f}s)")
-                        
-                        return TTSResponse(
-                            success=True,
-                            message="合成完成",
-                            audio_path=request.output_audio_path,
-                            processing_time=processing_time
-                        )
-                    else:
-                        # 失败
-                        error_text = await response.text()
-                        logger.error(f"=== TTS合成失败详情 ===")
-                        logger.error(f"HTTP状态码: {response.status}")
-                        logger.error(f"错误响应: {error_text}")
-                        logger.error(f"请求URL: {self.base_url}/api/v1/tts/synthesize_file")
-                        logger.error(f"发送的参数:")
-                        logger.error(f"  - text: '{clean_text[:50]}...' (长度: {len(clean_text)})")
-                        logger.error(f"  - time_step: {request.time_step}")
-                        logger.error(f"  - p_w: {request.p_weight}")
-                        logger.error(f"  - t_w: {request.t_weight}")
-                        logger.error(f"  - audio_file: {audio_filename}")
-                        logger.error(f"=== 失败详情结束 ===")
-                        
-                        return TTSResponse(
-                            success=False,
-                            message=f"合成失败: {error_text}",
-                            processing_time=processing_time,
-                            error_code=f"HTTP_{response.status}"
-                        )
-        
-        except Exception as e:
-            processing_time = time.time() - start_time
-            logger.error(f"TTS合成异常: {str(e)}")
-            return TTSResponse(
-                success=False,
-                message=f"合成异常: {str(e)}",
-                processing_time=processing_time,
-                error_code="EXCEPTION"
-            )
+                            # 失败
+                            error_text = await response.text()
+                            logger.error(f"=== TTS合成失败详情 ===")
+                            logger.error(f"HTTP状态码: {response.status}")
+                            logger.error(f"错误响应: {error_text}")
+                            logger.error(f"请求URL: {self.base_url}/api/v1/tts/synthesize_file")
+                            logger.error(f"发送的参数:")
+                            logger.error(f"  - text: '{clean_text[:50]}...' (长度: {len(clean_text)})")
+                            logger.error(f"  - time_step: {request.time_step}")
+                            logger.error(f"  - p_w: {request.p_weight}")
+                            logger.error(f"  - t_w: {request.t_weight}")
+                            logger.error(f"  - audio_file: {audio_filename}")
+                            logger.error(f"=== 失败详情结束 ===")
+                            
+                            return TTSResponse(
+                                success=False,
+                                message=f"合成失败: {error_text}",
+                                processing_time=processing_time,
+                                error_code=f"HTTP_{response.status}"
+                            )
+            
+            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                processing_time = time.time() - start_time
+                logger.warning(f"[RETRY] TTS合成网络错误 (尝试 {attempt + 1}/{max_retries + 1}): {str(e)}")
+                
+                # 如果还有重试机会，继续重试
+                if attempt < max_retries:
+                    continue
+                    
+                # 最后一次重试也失败了
+                logger.error(f"TTS合成网络错误，重试 {max_retries} 次后仍失败: {str(e)}")
+                return TTSResponse(
+                    success=False,
+                    message=f"网络错误，重试 {max_retries} 次后仍失败: {str(e)}",
+                    processing_time=processing_time,
+                    error_code="NETWORK_ERROR"
+                )
+                
+            except Exception as e:
+                processing_time = time.time() - start_time
+                logger.warning(f"[RETRY] TTS合成异常 (尝试 {attempt + 1}/{max_retries + 1}): {str(e)}")
+                
+                # 如果还有重试机会，继续重试
+                if attempt < max_retries:
+                    continue
+                    
+                # 最后一次重试也失败了
+                logger.error(f"TTS合成异常，重试 {max_retries} 次后仍失败: {str(e)}")
+                return TTSResponse(
+                    success=False,
+                    message=f"合成异常，重试 {max_retries} 次后仍失败: {str(e)}",
+                    processing_time=processing_time,
+                    error_code="EXCEPTION"
+                )
     
     async def validate_reference_audio(self, audio_path: str, voice_name: str) -> Dict[str, Any]:
         """

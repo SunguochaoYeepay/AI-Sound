@@ -1161,7 +1161,7 @@ async def update_segments_voice_mapping(project_id: int, char_mapping: Dict[str,
         logger.error(f"更新声音映射失败: {str(e)}")
 
 async def process_audio_generation(project_id: int, parallel_tasks: int = 2):
-    """后台音频生成任务"""
+    """后台音频生成任务 - 修改为真正的逐个处理"""
     try:
         from database import SessionLocal
         db = SessionLocal()
@@ -1171,52 +1171,74 @@ async def process_audio_generation(project_id: int, parallel_tasks: int = 2):
             if not project:
                 return
             
-            # 获取待处理的段落
-            pending_segments = db.query(TextSegment).filter(
-                and_(
-                    TextSegment.project_id == project_id,
-                    TextSegment.status == 'pending'
-                )
-            ).order_by(TextSegment.segment_order).all()
-            
-            if not pending_segments:
-                # 检查是否全部完成
-                await check_project_completion(project_id, db)
-                return
+            logger.info(f"[GENERATION] 开始音频生成: 项目 {project_id}, 并行数: {parallel_tasks}")
             
             # 获取TTS客户端
             tts_client = get_tts_client()
             
-            # 处理段落（限制并发数）
-            semaphore = asyncio.Semaphore(parallel_tasks)
-            tasks = []
-            
-            for segment in pending_segments:
-                if project.status != 'processing':  # 检查是否被暂停
+            # 处理逻辑：不再并发所有任务，而是分批处理
+            while True:
+                # 检查项目状态
+                project = db.query(NovelProject).filter(NovelProject.id == project_id).first()
+                if not project or project.status != 'processing':
+                    logger.info(f"[GENERATION] 项目状态变更，停止处理: {project.status if project else 'None'}")
                     break
                 
-                task = asyncio.create_task(
-                    process_single_segment(segment, tts_client, semaphore, db)
-                )
-                tasks.append(task)
+                # 获取下一批待处理的段落（限制数量）
+                pending_segments = db.query(TextSegment).filter(
+                    and_(
+                        TextSegment.project_id == project_id,
+                        TextSegment.status == 'pending'
+                    )
+                ).order_by(TextSegment.segment_order).limit(parallel_tasks).all()
+                
+                if not pending_segments:
+                    logger.info(f"[GENERATION] 没有待处理段落，检查完成状态")
+                    # 检查是否全部完成
+                    await check_project_completion(project_id, db)
+                    break
+                
+                logger.info(f"[GENERATION] 处理批次: {len(pending_segments)} 个段落")
+                
+                # 处理这一批段落（真正的并发控制）
+                semaphore = asyncio.Semaphore(parallel_tasks)
+                tasks = []
+                
+                for segment in pending_segments:
+                    task = asyncio.create_task(
+                        process_single_segment(segment, tts_client, semaphore, db)
+                    )
+                    tasks.append(task)
+                
+                # 等待这一批完成
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                
+                # 检查结果
+                for i, result in enumerate(results):
+                    if isinstance(result, Exception):
+                        logger.error(f"[GENERATION] 段落 {pending_segments[i].id} 处理失败: {result}")
+                
+                # 短暂休息，避免过度占用资源
+                await asyncio.sleep(0.5)
             
-            # 等待所有任务完成
-            if tasks:
-                await asyncio.gather(*tasks, return_exceptions=True)
-            
-            # 检查项目完成状态
+            # 最终检查项目完成状态
             await check_project_completion(project_id, db)
+            logger.info(f"[GENERATION] 音频生成完成: 项目 {project_id}")
             
         finally:
             db.close()
             
     except Exception as e:
-        logger.error(f"音频生成后台任务失败: {str(e)}")
+        logger.error(f"[GENERATION] 音频生成后台任务失败: {str(e)}")
+        import traceback
+        logger.error(f"[GENERATION] 详细错误: {traceback.format_exc()}")
 
 async def process_single_segment(segment: TextSegment, tts_client, semaphore, db: Session):
-    """处理单个段落"""
+    """处理单个段落 - 增加更多错误处理"""
     async with semaphore:
         try:
+            logger.info(f"[SEGMENT] 开始处理段落 {segment.id}: {segment.text_content[:30]}...")
+            
             # 更新段落状态
             segment.status = 'processing'
             db.commit()
@@ -1224,8 +1246,17 @@ async def process_single_segment(segment: TextSegment, tts_client, semaphore, db
             # 获取声音档案
             voice = db.query(VoiceProfile).filter(VoiceProfile.id == segment.voice_profile_id).first()
             if not voice:
+                logger.error(f"[SEGMENT] 段落 {segment.id} 声音档案不存在: {segment.voice_profile_id}")
                 segment.status = 'failed'
                 segment.error_message = "声音档案不存在"
+                db.commit()
+                return
+            
+            # 检查声音文件
+            if not voice.reference_audio_path or not os.path.exists(voice.reference_audio_path):
+                logger.error(f"[SEGMENT] 段落 {segment.id} 声音文件不存在: {voice.reference_audio_path}")
+                segment.status = 'failed'
+                segment.error_message = "声音文件不存在"
                 db.commit()
                 return
             
@@ -1243,59 +1274,58 @@ async def process_single_segment(segment: TextSegment, tts_client, semaphore, db
                 text=segment.text_content,
                 reference_audio_path=voice.reference_audio_path,
                 output_audio_path=audio_path,
-                time_step=20,  # 使用默认参数
+                time_step=20,  # 使用稳定的参数
                 p_weight=1.0,
                 t_weight=1.0,
                 latent_file_path=voice.latent_file_path
             )
+            
+            logger.info(f"[SEGMENT] 调用TTS服务处理段落 {segment.id}")
             
             # 调用TTS服务
             response = await tts_client.synthesize_speech(tts_request)
             processing_time = time.time() - start_time
             
             if response.success:
-                # 更新段落状态
-                segment.status = 'completed'
-                segment.audio_file_path = audio_path
-                segment.processing_time = processing_time
-                segment.error_message = None
+                logger.info(f"[SEGMENT] 段落 {segment.id} TTS合成成功，耗时 {processing_time:.2f}s")
                 
-                # 更新项目进度
-                project = db.query(NovelProject).filter(NovelProject.id == segment.project_id).first()
-                if project:
-                    project.processed_segments += 1
-                    project.current_segment = segment.segment_order
-                
+                # 验证生成的音频文件
+                if os.path.exists(audio_path):
+                    file_size = os.path.getsize(audio_path)
+                    logger.info(f"[SEGMENT] 音频文件生成: {audio_path} ({file_size} bytes)")
+                    
+                    # 更新段落记录
+                    segment.audio_file_path = audio_path
+                    segment.status = 'completed'
+                    segment.processing_time = processing_time
+                    segment.completed_at = datetime.utcnow()
+                    segment.error_message = None
+                    
+                    # 更新声音档案使用计数
+                    voice.usage_count += 1
+                    
+                    db.commit()
+                    logger.info(f"[SEGMENT] 段落 {segment.id} 处理完成")
+                    
+                else:
+                    logger.error(f"[SEGMENT] 段落 {segment.id} 音频文件未生成: {audio_path}")
+                    segment.status = 'failed'
+                    segment.error_message = f"音频文件未生成: {response.message}"
+                    db.commit()
             else:
-                # 标记为失败
+                logger.error(f"[SEGMENT] 段落 {segment.id} TTS合成失败: {response.message}")
                 segment.status = 'failed'
-                segment.error_message = response.message
-                segment.processing_time = processing_time
-            
-            db.commit()
-            
-            # 记录处理日志
-            await log_system_event(
-                db=db,
-                level="info" if response.success else "error",
-                message=f"段落处理{'成功' if response.success else '失败'}: 段落{segment.segment_order}",
-                module="novel_reader",
-                details={
-                    "segment_id": segment.id,
-                    "project_id": segment.project_id,
-                    "processing_time": processing_time,
-                    "success": response.success,
-                    "error": response.message if not response.success else None
-                }
-            )
-            
+                segment.error_message = f"TTS合成失败: {response.message}"
+                db.commit()
+                
         except Exception as e:
-            # 标记为失败
-            segment.status = 'failed'
-            segment.error_message = str(e)
-            db.commit()
+            logger.error(f"[SEGMENT] 段落 {segment.id} 处理异常: {str(e)}")
+            import traceback
+            logger.error(f"[SEGMENT] 详细错误: {traceback.format_exc()}")
             
-            logger.error(f"处理段落失败: {str(e)}")
+            segment.status = 'failed'
+            segment.error_message = f"处理异常: {str(e)}"
+            db.commit()
 
 async def check_project_completion(project_id: int, db: Session):
     """检查项目是否完成"""

@@ -807,8 +807,8 @@ const startProcessing = async () => {
   progressStatus.value = '开始处理...'
   
   try {
-    // 开始音频生成
-    const response = await readerAPI.startGeneration(projectId.value, 2)
+    // 开始音频生成 - 改为单任务处理，避免CUDA内存溢出
+    const response = await readerAPI.startGeneration(projectId.value, 1)
     
     if (response.data.success) {
       message.success('开始生成多角色朗读音频')

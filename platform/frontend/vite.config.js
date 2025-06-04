@@ -17,10 +17,30 @@ export default defineConfig({
       'localhost',
       '127.0.0.1',
       '4924bf6a.r35.cpolar.top',
-      '.cpolar.top'
+      '.cpolar.top',
+      'aisound.cpolar.top'
     ],
     hmr: {
-      host: 'localhost'
+      host: 'aisound.cpolar.top',
+      clientPort: 443,
+      protocol: 'wss'
+    },
+    proxy: {
+      '/audio': {
+        target: 'http://soundapi.cpolar.top',
+        changeOrigin: true,
+        secure: false
+      },
+      '/voice_profiles': {
+        target: 'http://soundapi.cpolar.top',
+        changeOrigin: true,
+        secure: false
+      },
+      '/api': {
+        target: 'http://soundapi.cpolar.top',
+        changeOrigin: true,
+        secure: false
+      }
     }
   }
 })
