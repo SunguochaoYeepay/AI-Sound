@@ -3,28 +3,46 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CORS测试</title>
+    <title>CORS 测试页面</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 40px; }
-        .result { margin: 20px 0; padding: 15px; border-radius: 5px; }
-        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
-        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
-        button { padding: 10px 20px; margin: 10px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        body { font-family: 'Microsoft YaHei', sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .success { background-color: #d4edda; color: #155724; }
+        .error { background-color: #f8d7da; color: #721c24; }
+        .info { background-color: #d1ecf1; color: #0c5460; }
+        button { padding: 10px 20px; margin: 5px; background: #007bff; color: white; border: none; border-radius: 3px; cursor: pointer; }
         button:hover { background: #0056b3; }
     </style>
 </head>
 <body>
-    <h1>🌐 CORS跨域测试</h1>
-    <p>测试前端是否能正常访问外网API: <code>http://soundapi.cpolar.top</code></p>
+    <h1>🌐 CORS 跨域测试页面</h1>
+    <p>测试前端是否能正常访问后端API</p>
     
-    <button onclick="testBasicAPI()">测试基础API</button>
-    <button onclick="testCharactersAPI()">测试声音库API</button>
-    <button onclick="testHealthAPI()">测试健康检查</button>
-    
+    <div class="test-section info">
+        <h3>📋 测试配置</h3>
+        <p id="api-config">正在获取API配置...</p>
+    </div>
+
+    <div class="test-section">
+        <h3>测试项目</h3>
+        <button onclick="testBasicAPI()">测试基础API连接</button>
+        <button onclick="testCharactersAPI()">测试角色API</button>
+        <button onclick="testHealthAPI()">测试健康检查</button>
+        <button onclick="clearResults()">清空结果</button>
+    </div>
+
     <div id="results"></div>
 
     <script>
-        const API_BASE = 'http://soundapi.cpolar.top';
+        // 环境配置
+        const isDevelopment = window.location.hostname === 'localhost'
+        const API_BASE = isDevelopment ? 'http://localhost:8000' : 'http://soundapi.cpolar.top'
+        
+        console.log(`[CORS测试] 当前环境: ${isDevelopment ? '开发' : '生产'}, API地址: ${API_BASE}`)
+        document.getElementById('api-config').innerHTML = `
+            <strong>当前环境:</strong> ${isDevelopment ? '开发环境' : '生产环境'}<br>
+            <strong>API地址:</strong> <code>${API_BASE}</code>
+        `
         
         function addResult(title, success, message) {
             const results = document.getElementById('results');

@@ -1,9 +1,13 @@
 /**
- * 静态文件服务器检查脚本
- * 检查音频静态文件服务器是否正常工作
+ * 静态服务器检查脚本
+ * 检查音频文件等静态资源的服务状态
  */
 
-const API_BASE_URL = 'http://soundapi.cpolar.top';
+// 使用环境配置
+const isDevelopment = true // 测试环境默认为开发环境
+const API_BASE_URL = isDevelopment ? 'http://localhost:8000' : 'http://soundapi.cpolar.top'
+
+console.log('[测试配置] API地址:', API_BASE_URL)
 
 async function checkStaticServer() {
   console.log('开始检查静态文件服务器...');
@@ -77,8 +81,9 @@ async function checkStaticServer() {
   try {
     console.log('\n4. 检查跨域资源共享(CORS)配置');
     
-    // 从两个不同来源发送请求
-    const origins = ['http://localhost:3000', 'http://aisound.cpolar.top'];
+    // 测试CORS配置
+    console.log('\n=== CORS配置测试 ===');
+    const origins = ['http://localhost:3000', isDevelopment ? 'http://localhost:3000' : 'http://aisound.cpolar.top'];
     
     for (const origin of origins) {
       console.log(`\n检查来源: ${origin}`);

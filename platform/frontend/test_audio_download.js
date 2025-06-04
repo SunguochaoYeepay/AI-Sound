@@ -3,6 +3,12 @@
  * 用于验证对音频文件的访问是否正常
  */
 
+// 使用环境配置
+const isDevelopment = true // 测试环境默认为开发环境
+const API_BASE_URL = isDevelopment ? 'http://localhost:8000' : 'http://soundapi.cpolar.top'
+
+console.log('[测试配置] API地址:', API_BASE_URL)
+
 async function testAudioDownload() {
   console.log('开始测试音频文件下载...');
   
@@ -10,7 +16,7 @@ async function testAudioDownload() {
   try {
     console.log('测试1: 直接获取音频文件');
     // 使用一个测试音频文件路径
-    const audioUrl = 'http://soundapi.cpolar.top/audio/tts_2fb418d7d49144f7be0fd0e8dd2bc0a0.wav';
+    const audioUrl = `${API_BASE_URL}/audio/tts_2fb418d7d49144f7be0fd0e8dd2bc0a0.wav`;
     console.log('请求URL:', audioUrl);
     
     const response = await fetch(audioUrl, {

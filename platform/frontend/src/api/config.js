@@ -1,7 +1,12 @@
 import axios from 'axios'
 
-// API基础配置 - 使用固定的外网域名
-const API_BASE_URL = 'http://localhost:8000'
+// 环境配置 - 支持开发和生产环境
+const isDevelopment = import.meta.env.DEV
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (isDevelopment 
+  ? 'http://localhost:8000'  // 开发环境：本地后端
+  : 'http://soundapi.cpolar.top')  // 生产环境：外网域名
+
+console.log(`[API配置] 当前环境: ${isDevelopment ? '开发' : '生产'}, API地址: ${API_BASE_URL}`)
 
 // 创建axios实例
 const apiClient = axios.create({

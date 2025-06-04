@@ -6,7 +6,11 @@
 
 const axios = require('axios')
 
-const API_BASE_URL = 'http://soundapi.cpolar.top'
+// 使用环境配置而不是硬编码
+const isDevelopment = true // 测试环境默认为开发环境
+const API_BASE_URL = isDevelopment ? 'http://localhost:8000' : 'http://soundapi.cpolar.top'
+
+console.log('[测试配置] API地址:', API_BASE_URL)
 
 async function testCharactersAPI() {
     console.log('🧪 开始测试 Characters API...')
