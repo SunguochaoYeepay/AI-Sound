@@ -1,781 +1,550 @@
-# AI-Sound Platform 容器化部署指南
+# 🚀 AI-Sound 部署指南
 
-## 📋 概述
+本文档提供 AI-Sound 平台的完整部署指南，包括生产环境和开发环境的部署方式。
 
-AI-Sound Platform 是基于 MegaTTS3 的语音克隆和多角色朗读平台，支持完整的容器化部署。本文档提供详细的 Docker 部署方案。
+## 📋 目录
 
-## 🏗️ 系统架构
+- [系统要求](#系统要求)
+- [快速部署](#快速部署)
+- [生产环境部署](#生产环境部署)
+- [开发环境部署](#开发环境部署)
+- [配置说明](#配置说明)
+- [监控与维护](#监控与维护)
+- [故障排查](#故障排查)
 
-### 服务组件
+## 🔧 系统要求
 
-```mermaid
-graph TB
-    User[用户] --> Nginx[Nginx 反向代理]
-    Nginx --> Frontend[前端服务]
-    Nginx --> Backend[后端API服务]
-    Backend --> Database[数据库服务]
-    Backend --> Redis[Redis缓存]
-    Backend --> MegaTTS3[MegaTTS3引擎]
-    
-    subgraph "Docker Network"
-        Frontend
-        Backend
-        Database
-        Redis
-        Nginx
-    end
-    
-    subgraph "MegaTTS3 引擎"
-        MegaTTS3
-        ModelStorage[模型存储]
-        VoiceStorage[声音样本库]
-        GPU[GPU加速]
-    end
-    
-    MegaTTS3 --> ModelStorage
-    MegaTTS3 --> VoiceStorage
-    MegaTTS3 --> GPU
-```
+### 硬件要求
 
-### 技术栈
+| 项目 | 最低配置 | 推荐配置 |
+|------|----------|----------|
+| CPU | 2核心 | 4核心+ |
+| 内存 | 4GB | 8GB+ |
+| 存储 | 20GB | 50GB+ |
+| 网络 | 10Mbps | 100Mbps+ |
 
-| 组件 | 技术 | 版本 | 说明 |
-|------|------|------|------|
-| 前端 | Vue 3 + Ant Design Vue | 4.x | 响应式用户界面 |
-| 后端 | FastAPI + Python | 3.11 | RESTful API服务 |
-| 数据库 | SQLite/PostgreSQL | 15 | 数据持久化 |
-| 缓存 | Redis | 7 | 性能优化 |
-| 代理 | Nginx | Alpine | 负载均衡与静态资源 |
-| **TTS引擎** | **MegaTTS3** | **1.0.0** | **核心语音合成引擎** |
-| **GPU加速** | **CUDA** | **12.1+** | **深度学习推理加速** |
-| 容器 | Docker + Docker Compose | Latest | 容器编排 |
+### 软件要求
 
-## 🚀 快速开始
+| 软件 | 版本要求 | 用途 |
+|------|----------|------|
+| Docker | 20.0+ | 容器运行时 |
+| Docker Compose | 2.0+ | 容器编排 |
+| Node.js | 18+ | 前端构建 |
+| Git | 2.0+ | 代码管理 |
 
-### 前置要求
+### 可选组件
 
-- Docker 20.0+
-- Docker Compose 2.0+
-- **NVIDIA Container Toolkit** (GPU支持)
-- 系统内存 ≥ 8GB (含MegaTTS3)
-- 磁盘空间 ≥ 20GB (含模型文件)
-- **NVIDIA GPU** (推荐GTX 1080Ti或更高)
+| 组件 | 描述 | 用途 |
+|------|------|------|
+| NVIDIA Docker | GPU支持 | MegaTTS3加速 |
+| Let's Encrypt | SSL证书 | HTTPS支持 |
+| Prometheus | 监控系统 | 性能监控 |
 
-### 一键部署
+## ⚡ 快速部署
+
+### 一键部署脚本
 
 ```bash
 # 1. 克隆项目
-git clone <repository-url>
+git clone https://github.com/your-org/AI-Sound.git
 cd AI-Sound
 
-# 2. 创建数据目录（包含MegaTTS3）
-mkdir -p data/{audio,database,logs,uploads,voice_profiles,cache,config}
-mkdir -p MegaTTS/MegaTTS3/{checkpoints,storage/voices,storage/cache,logs}
+# 2. 执行自动化部署
+chmod +x scripts/deploy.sh
+./scripts/deploy.sh
 
-# 3. 配置环境变量
-cp .env.example .env
-# 编辑 .env 文件，设置必要的配置
-
-# 4. 启动服务（包含MegaTTS3）
-docker-compose -f docker-compose.yml -f docker-compose.megatts3.yml up -d
-
-# 5. 查看服务状态
-docker-compose ps
-
-# 6. 查看日志
-docker-compose logs -f
+# 3. 访问服务
+# 前端界面: http://localhost:3001
+# API文档: http://localhost:3001/docs
 ```
 
-### 访问地址
-
-- **前端界面**: http://localhost
-- **API文档**: http://localhost/docs
-- **健康检查**: http://localhost/health
-- **MegaTTS3 API**: http://localhost:9000/health
-
-## 📁 目录结构
-
-```
-AI-Sound/
-├── docker-compose.yml          # 主要服务编排
-├── docker-compose.megatts3.yml # MegaTTS3服务编排 🔥
-├── .env.example               # 环境变量模板
-├── .env                       # 环境变量配置
-├── docs/                      # 文档目录
-│   ├── deployment.md          # 部署文档
-│   ├── api.md                 # API文档
-│   ├── megatts3-integration.md # MegaTTS3集成文档 🔥
-│   └── troubleshooting.md     # 故障排查
-├── docker/                    # Docker配置
-│   ├── nginx/
-│   │   ├── nginx.conf         # Nginx配置
-│   │   └── ssl/               # SSL证书
-│   ├── database/
-│   │   └── init.sql           # 数据库初始化
-│   └── megatts3/              # MegaTTS3配置 🔥
-│       ├── Dockerfile         # MegaTTS3镜像
-│       ├── docker-compose.yml # 独立编排文件
-│       └── configs/           # 配置文件
-├── MegaTTS/                   # MegaTTS3引擎 🔥
-│   └── MegaTTS3/
-│       ├── api_server.py      # API服务器
-│       ├── requirements.txt   # Python依赖
-│       ├── checkpoints/       # 模型权重文件
-│       │   ├── dit_base/
-│       │   └── dit_large/
-│       ├── storage/           # 声音样本存储
-│       │   ├── voices/
-│       │   └── cache/
-│       ├── configs/           # 引擎配置
-│       │   ├── model_config.yaml
-│       │   └── api_config.yaml
-│       └── logs/              # 引擎日志
-├── platform/                 # 应用代码
-│   ├── frontend/
-│   │   ├── Dockerfile         # 前端镜像
-│   │   └── ...
-│   └── backend/
-│       ├── Dockerfile         # 后端镜像
-│       ├── requirements.txt   # Python依赖
-│       ├── app/
-│       │   ├── megatts3_client.py # MegaTTS3客户端 🔥
-│       │   └── ...
-│       └── ...
-├── scripts/                   # 自动化脚本
-│   ├── start.sh              # 一键启动脚本
-│   ├── megatts3_health.sh    # MegaTTS3健康检查 🔥
-│   └── backup.sh             # 备份脚本
-└── data/                      # 数据持久化 🔥
-    ├── audio/                 # 音频文件
-    ├── database/              # 数据库文件
-    ├── logs/                  # 日志文件
-    ├── uploads/               # 上传文件
-    ├── voice_profiles/        # 声音配置
-    ├── cache/                 # 缓存数据
-    └── config/                # 配置文件
-```
-
-## ⚙️ 配置详解
-
-### 环境变量配置
-
-创建 `.env` 文件：
+### 手动快速部署
 
 ```bash
-# 基础配置
-COMPOSE_PROJECT_NAME=ai-sound
+# 1. 创建必要目录
+mkdir -p data/{audio,database,logs,uploads,voice_profiles,cache,config,backups,temp}
+mkdir -p nginx-dist
+
+# 2. 构建前端
+cd platform/frontend
+npm install && npm run build
+cp -r dist/* ../../nginx-dist/
+cd ../..
+
+# 3. 启动服务
+docker-compose up -d
+
+# 4. 检查状态
+docker-compose ps
+curl http://localhost:3001/health
+```
+
+## 🏭 生产环境部署
+
+### 1. 环境准备
+
+```bash
+# 创建专用用户
+sudo useradd -m -s /bin/bash aisound
+sudo usermod -aG docker aisound
+su - aisound
+
+# 创建项目目录
+mkdir -p /home/aisound/AI-Sound
+cd /home/aisound/AI-Sound
+```
+
+### 2. 项目配置
+
+```bash
+# 克隆代码
+git clone https://github.com/your-org/AI-Sound.git .
+
+# 创建环境变量文件
+cp .env.example .env
+
+# 编辑配置文件
+nano .env
+```
+
+环境变量配置：
+```bash
+# .env
 NODE_ENV=production
 DEBUG=false
 
 # 数据库配置
-DATABASE_TYPE=sqlite  # sqlite | postgres
-DATABASE_URL=sqlite:////app/data/database/ai_sound.db
-
-# PostgreSQL配置（如果使用）
-POSTGRES_DB=ai_sound
-POSTGRES_USER=ai_sound_user
+DATABASE_URL=postgresql://ai_sound_user:your_secure_password@database:5432/ai_sound
 POSTGRES_PASSWORD=your_secure_password
 
-# MegaTTS3引擎配置 🔥
+# MegaTTS3配置
 MEGATTS3_URL=http://host.docker.internal:9000
-MEGATTS3_API_KEY=your_api_key
-MEGATTS3_MODEL_PATH=/app/checkpoints/dit_base
-MEGATTS3_GPU_DEVICE=0
-MEGATTS3_WORKERS=2
-MEGATTS3_BATCH_SIZE=1
-MEGATTS3_CACHE_SIZE=2GB
 
 # 安全配置
-SECRET_KEY=your_secret_key_here
-CORS_ORIGINS=http://localhost,https://yourdomain.com
+CORS_ORIGINS=https://yourdomain.com,https://www.yourdomain.com
 
-# 服务端口
-NGINX_HTTP_PORT=80
-NGINX_HTTPS_PORT=443
-BACKEND_PORT=8000
-REDIS_PORT=6379
-MEGATTS3_PORT=9000
+# 文件路径配置
+AUDIO_DIR=/app/data/audio
+UPLOADS_DIR=/app/data/uploads
+VOICE_PROFILES_DIR=/app/data/voice_profiles
 ```
 
-### MegaTTS3 专用配置
+### 3. SSL证书配置
 
-**创建 `docker-compose.megatts3.yml`**:
+```bash
+# 使用Let's Encrypt
+sudo apt install certbot
+sudo certbot certonly --standalone -d yourdomain.com
+
+# 复制证书到项目目录
+sudo cp /etc/letsencrypt/live/yourdomain.com/fullchain.pem docker/nginx/ssl/
+sudo cp /etc/letsencrypt/live/yourdomain.com/privkey.pem docker/nginx/ssl/
+sudo chown aisound:aisound docker/nginx/ssl/*
+```
+
+### 4. 生产配置文件
+
+创建 `docker-compose.override.yml`：
 
 ```yaml
 version: '3.8'
 
 services:
-  megatts3:
-    build:
-      context: ./MegaTTS/MegaTTS3
-      dockerfile: Dockerfile
-    container_name: ai-sound-megatts3
-    environment:
-      - CUDA_VISIBLE_DEVICES=${MEGATTS3_GPU_DEVICE:-0}
-      - API_HOST=0.0.0.0
-      - API_PORT=9000
-      - MODEL_PATH=${MEGATTS3_MODEL_PATH}
-      - WORKERS=${MEGATTS3_WORKERS:-2}
-      - BATCH_SIZE=${MEGATTS3_BATCH_SIZE:-1}
-      - CACHE_SIZE=${MEGATTS3_CACHE_SIZE:-2GB}
-      - LOG_LEVEL=INFO
-    volumes:
-      - ./MegaTTS/MegaTTS3/checkpoints:/app/checkpoints:ro
-      - ./MegaTTS/MegaTTS3/storage:/app/storage
-      - ./MegaTTS/MegaTTS3/logs:/app/logs
-      - ./data/voice_profiles:/app/voice_profiles
+  nginx:
     ports:
-      - "${MEGATTS3_PORT:-9000}:9000"
-    restart: unless-stopped
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-        limits:
-          memory: 8G
-          cpus: '4'
-    networks:
-      - ai-sound-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/health"]
-      interval: 30s
-      timeout: 15s
-      retries: 3
-      start_period: 120s
-    depends_on:
-      - redis
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/nginx/ssl:/etc/nginx/ssl:ro
+    environment:
+      - NGINX_HOST=yourdomain.com
 
-networks:
-  ai-sound-network:
-    driver: bridge
+  backend:
+    environment:
+      - DATABASE_URL=postgresql://ai_sound_user:${POSTGRES_PASSWORD}@database:5432/ai_sound
+      - DEBUG=false
+      - LOG_LEVEL=info
+
+  database:
+    environment:
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
+    driver: local
 ```
 
-### Nginx配置更新
-
-在 `docker/nginx/nginx.conf` 中添加 MegaTTS3 代理：
-
-```nginx
-worker_processes auto;
-error_log /var/log/nginx/error.log warn;
-pid /var/run/nginx.pid;
-
-events {
-    worker_connections 1024;
-    use epoll;
-    multi_accept on;
-}
-
-http {
-    include /etc/nginx/mime.types;
-    default_type application/octet-stream;
-    
-    # 日志格式
-    log_format main '$remote_addr - $remote_user [$time_local] "$request" '
-                    '$status $body_bytes_sent "$http_referer" '
-                    '"$http_user_agent" "$http_x_forwarded_for"';
-    
-    access_log /var/log/nginx/access.log main;
-    
-    # 基础配置
-    sendfile on;
-    tcp_nopush on;
-    tcp_nodelay on;
-    keepalive_timeout 65;
-    types_hash_max_size 2048;
-    client_max_body_size 100M;
-    
-    # Gzip压缩
-    gzip on;
-    gzip_vary on;
-    gzip_min_length 1024;
-    gzip_types text/plain text/css text/xml text/javascript 
-               application/javascript application/xml+rss 
-               application/json;
-    
-    # 上游服务定义
-    upstream frontend {
-        server frontend:80;
-        keepalive 32;
-    }
-    
-    upstream backend {
-        server backend:8000;
-        keepalive 32;
-    }
-    
-    # 主服务器配置
-    server {
-        listen 80;
-        server_name _;
-        
-        # 安全头
-        add_header X-Frame-Options DENY;
-        add_header X-Content-Type-Options nosniff;
-        add_header X-XSS-Protection "1; mode=block";
-        
-        # 前端静态资源
-        location / {
-            proxy_pass http://frontend;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-        }
-        
-        # API接口代理
-        location /api/ {
-            proxy_pass http://backend;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-            proxy_buffering off;
-            proxy_request_buffering off;
-        }
-        
-        # 音频文件直接服务
-        location /audio/ {
-            alias /usr/share/nginx/audio/;
-            expires 1d;
-            add_header Cache-Control "public, immutable";
-            add_header Access-Control-Allow-Origin "*";
-        }
-        
-        # 健康检查
-        location /health {
-            access_log off;
-            return 200 "healthy\n";
-            add_header Content-Type text/plain;
-        }
-
-        # MegaTTS3 API代理
-        location /tts/ {
-            proxy_pass http://megatts3:9000/;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-            proxy_buffering off;
-            proxy_request_buffering off;
-            proxy_connect_timeout 30s;
-            proxy_send_timeout 600s;  # 语音合成可能需要较长时间
-            proxy_read_timeout 600s;
-            client_max_body_size 100M;  # 支持大文件上传
-        }
-
-        # MegaTTS3 健康检查
-        location /tts/health {
-            proxy_pass http://megatts3:9000/health;
-            access_log off;
-        }
-    }
-}
-```
-
-## 🔧 MegaTTS3 集成
-
-### 后端集成
-
-**创建 `platform/backend/app/megatts3_client.py`**:
-
-```python
-import httpx
-import asyncio
-from typing import Optional, Dict, Any
-import logging
-
-logger = logging.getLogger(__name__)
-
-class MegaTTS3Client:
-    def __init__(self, base_url: str = "http://megatts3:9000"):
-        self.base_url = base_url
-        self.client = httpx.AsyncClient(timeout=600.0)
-    
-    async def health_check(self) -> Dict[str, Any]:
-        """检查MegaTTS3服务健康状态"""
-        try:
-            response = await self.client.get(f"{self.base_url}/health")
-            response.raise_for_status()
-            return response.json()
-        except Exception as e:
-            logger.error(f"MegaTTS3健康检查失败: {e}")
-            return {"status": "unhealthy", "error": str(e)}
-    
-    async def synthesize_speech(
-        self,
-        text: str,
-        voice_id: Optional[str] = None,
-        voice_file: Optional[bytes] = None,
-        **params
-    ) -> bytes:
-        """语音合成"""
-        try:
-            if voice_file:
-                # 使用上传的声音文件
-                files = {
-                    "voice_file": voice_file,
-                    "text": text
-                }
-                for key, value in params.items():
-                    files[key] = str(value)
-                
-                response = await self.client.post(
-                    f"{self.base_url}/api/v1/tts/synthesize_file",
-                    files=files
-                )
-            else:
-                # 使用预定义的声音ID
-                data = {
-                    "text": text,
-                    "voice_id": voice_id,
-                    "parameters": params
-                }
-                response = await self.client.post(
-                    f"{self.base_url}/api/v1/tts/synthesize",
-                    json=data
-                )
-            
-            response.raise_for_status()
-            return response.content
-            
-        except Exception as e:
-            logger.error(f"语音合成失败: {e}")
-            raise
-    
-    async def close(self):
-        """关闭客户端连接"""
-        await self.client.aclose()
-
-# 全局客户端实例
-megatts3_client = MegaTTS3Client()
-```
-
-### 服务启动顺序
-
-修改启动脚本以确保正确的服务依赖关系：
+### 5. 部署启动
 
 ```bash
-#!/bin/bash
-# scripts/start_with_megatts3.sh
+# 构建并启动服务
+docker-compose -f docker-compose.yml -f docker-compose.override.yml up -d
 
-echo "🚀 启动AI-Sound Platform (包含MegaTTS3)"
+# 验证部署
+curl https://yourdomain.com/health
+```
 
-# 1. 启动基础服务
-echo "📂 启动数据库和缓存..."
+## 🛠️ 开发环境部署
+
+### 方式一：完整容器化开发
+
+```bash
+# 使用开发配置
+docker-compose -f docker-compose.dev.yml up -d
+
+# 访问服务
+# 前端: http://localhost:3000
+# 后端: http://localhost:8000
+# 网关: http://localhost:80
+```
+
+### 方式二：本地开发
+
+```bash
+# 启动基础服务（数据库、Redis）
 docker-compose up -d database redis
 
-# 2. 等待基础服务就绪
-echo "⏳ 等待基础服务启动..."
-sleep 10
+# 本地启动后端
+cd platform/backend
+pip install -r requirements.txt
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
-# 3. 启动MegaTTS3引擎
-echo "🎤 启动MegaTTS3引擎..."
-docker-compose -f docker-compose.megatts3.yml up -d
-
-# 4. 等待MegaTTS3就绪
-echo "⏳ 等待MegaTTS3引擎启动..."
-sleep 30
-
-# 5. 检查MegaTTS3健康状态
-echo "🔍 检查MegaTTS3健康状态..."
-max_attempts=10
-attempt=0
-while [ $attempt -lt $max_attempts ]; do
-    if curl -f http://localhost:9000/health &> /dev/null; then
-        echo "✅ MegaTTS3引擎就绪"
-        break
-    fi
-    
-    attempt=$((attempt + 1))
-    echo "⏳ 等待MegaTTS3引擎... ($attempt/$max_attempts)"
-    sleep 10
-done
-
-if [ $attempt -eq $max_attempts ]; then
-    echo "❌ MegaTTS3引擎启动超时"
-    exit 1
-fi
-
-# 6. 启动Platform服务
-echo "🌐 启动Platform服务..."
-docker-compose up -d backend frontend nginx
-
-echo "🎉 所有服务启动完成！"
-echo "访问地址:"
-echo "  - 前端界面: http://localhost"
-echo "  - API文档: http://localhost/docs" 
-echo "  - MegaTTS3: http://localhost:9000/health"
+# 本地启动前端（新终端）
+cd platform/frontend
+npm install
+npm run dev
 ```
 
-## 🔧 服务管理
+### 开发工具配置
 
-### 常用命令
+#### VS Code配置
+
+`.vscode/settings.json`:
+```json
+{
+  "python.defaultInterpreterPath": "./platform/backend/venv/bin/python",
+  "python.formatting.provider": "black",
+  "python.linting.enabled": true,
+  "python.linting.pylintEnabled": true,
+  "eslint.workingDirectories": ["platform/frontend"]
+}
+```
+
+#### Git hooks配置
 
 ```bash
-# 启动所有服务（包含MegaTTS3）
-docker-compose -f docker-compose.yml -f docker-compose.megatts3.yml up -d
+# 安装pre-commit
+pip install pre-commit
+pre-commit install
 
-# 启动特定服务
-docker-compose up -d nginx backend
-docker-compose -f docker-compose.megatts3.yml up -d megatts3
-
-# 停止服务
-docker-compose down
-docker-compose -f docker-compose.megatts3.yml down
-
-# 重启服务
-docker-compose restart
-docker-compose -f docker-compose.megatts3.yml restart megatts3
-
-# 查看服务状态
-docker-compose ps
-docker-compose -f docker-compose.megatts3.yml ps
-
-# 查看实时日志
-docker-compose logs -f
-docker-compose -f docker-compose.megatts3.yml logs -f megatts3
-
-# 进入容器调试
-docker-compose exec backend bash
-docker-compose -f docker-compose.megatts3.yml exec megatts3 bash
-
-# MegaTTS3专用命令
-./scripts/megatts3_health.sh          # 健康检查
-docker-compose -f docker-compose.megatts3.yml exec megatts3 nvidia-smi  # GPU状态
+# 创建配置文件
+cat > .pre-commit-config.yaml << EOF
+repos:
+  - repo: https://github.com/psf/black
+    rev: 22.3.0
+    hooks:
+      - id: black
+        language_version: python3
+  - repo: https://github.com/pre-commit/mirrors-eslint
+    rev: v8.0.0
+    hooks:
+      - id: eslint
+        files: \.js$
+        types: [file]
+EOF
 ```
 
-### MegaTTS3 扩容配置
+## ⚙️ 配置说明
 
-```yaml
-# docker-compose.megatts3-scale.yml
-version: '3.8'
+### Docker Compose配置文件
 
-services:
-  megatts3:
-    deploy:
-      replicas: 2
-    environment:
-      - CUDA_VISIBLE_DEVICES=0,1  # 使用多个GPU
-    
-  megatts3-lb:
-    image: nginx:alpine
-    volumes:
-      - ./docker/nginx/megatts3-lb.conf:/etc/nginx/nginx.conf:ro
-    ports:
-      - "9000:80"
-    depends_on:
-      - megatts3
-```
+| 文件 | 用途 | 说明 |
+|------|------|------|
+| `docker-compose.yml` | 生产部署 | 标准生产配置 |
+| `docker-compose.dev.yml` | 开发部署 | 微服务开发配置 |
+| `docker-compose.prod.yml` | 生产模板 | 完整生产配置模板 |
+| `docker-compose.override.yml` | 环境覆盖 | 本地环境特殊配置 |
 
-## 📊 监控与日志
+### 环境变量
+
+#### 后端环境变量
+
+| 变量名 | 默认值 | 描述 |
+|--------|--------|------|
+| `DATABASE_URL` | sqlite:///... | 数据库连接字符串 |
+| `MEGATTS3_URL` | http://host.docker.internal:9000 | MegaTTS3服务地址 |
+| `DEBUG` | false | 调试模式 |
+| `LOG_LEVEL` | info | 日志级别 |
+| `CORS_ORIGINS` | http://localhost | 允许的跨域源 |
+| `AUDIO_DIR` | /app/data/audio | 音频文件目录 |
+| `UPLOADS_DIR` | /app/data/uploads | 上传文件目录 |
+| `VOICE_PROFILES_DIR` | /app/data/voice_profiles | 声音配置目录 |
+
+#### 数据库环境变量
+
+| 变量名 | 默认值 | 描述 |
+|--------|--------|------|
+| `POSTGRES_DB` | ai_sound | 数据库名 |
+| `POSTGRES_USER` | ai_sound_user | 数据库用户 |
+| `POSTGRES_PASSWORD` | ai_sound_password | 数据库密码 |
+
+### Nginx配置
+
+主要配置项：
+- 反向代理到后端API
+- 静态文件服务
+- 音频文件访问
+- SSL终端
+- 文件上传限制（100MB）
+
+## 📊 监控与维护
 
 ### 健康检查
 
-所有服务都配置了健康检查：
-
 ```bash
-# 检查所有服务健康状态
+# 检查所有容器状态
 docker-compose ps
 
-# 检查特定服务
-curl -f http://localhost/health          # Platform
-curl -f http://localhost/api/health      # Backend
-curl -f http://localhost:9000/health     # MegaTTS3
+# 检查服务健康状态
+curl http://localhost:3001/health
+curl http://localhost:3001/api/health
 
-# MegaTTS3专用健康检查
-curl -f http://localhost:9000/api/v1/info
+# 检查资源使用
+docker stats
 ```
 
 ### 日志管理
 
 ```bash
-# 日志位置
-data/logs/
-├── nginx/          # Nginx日志
-├── backend/        # 后端日志
-├── frontend/       # 前端日志
-└── megatts3/       # MegaTTS3日志 🔥
+# 查看所有服务日志
+docker-compose logs -f
 
-MegaTTS/MegaTTS3/logs/
-├── api.log         # API日志
-├── inference.log   # 推理日志
-└── error.log       # 错误日志
+# 查看特定服务日志
+docker-compose logs -f backend
+docker-compose logs -f nginx
 
-# 实时日志监控
-tail -f data/logs/megatts3/api.log
-tail -f MegaTTS/MegaTTS3/logs/inference.log
+# 查看错误日志
+docker-compose logs --tail=50 backend | grep ERROR
+
+# 日志轮转配置
+echo "*/10 * * * * root docker system prune -f" >> /etc/crontab
 ```
 
-### GPU监控
+### 备份策略
+
+#### 自动备份脚本
+
+`scripts/backup.sh`:
+```bash
+#!/bin/bash
+BACKUP_DIR="/backup/ai-sound"
+DATE=$(date +%Y%m%d_%H%M%S)
+
+# 创建备份目录
+mkdir -p $BACKUP_DIR
+
+# 备份数据文件
+tar -czf $BACKUP_DIR/data_$DATE.tar.gz data/
+
+# 备份数据库
+docker exec ai-sound-db pg_dump -U ai_sound_user ai_sound > $BACKUP_DIR/database_$DATE.sql
+
+# 清理旧备份（保留30天）
+find $BACKUP_DIR -name "*.tar.gz" -mtime +30 -delete
+find $BACKUP_DIR -name "*.sql" -mtime +30 -delete
+```
+
+#### 定时备份
 
 ```bash
-# GPU使用情况
-nvidia-smi
-
-# 容器内GPU监控
-docker-compose -f docker-compose.megatts3.yml exec megatts3 nvidia-smi
-
-# GPU温度监控
-watch -n 1 nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader,nounits
+# 添加到crontab
+0 2 * * * /home/aisound/AI-Sound/scripts/backup.sh
 ```
 
-## 🔒 安全配置
+### 更新升级
 
-### MegaTTS3 安全设置
-
-```yaml
-# 在 docker-compose.megatts3.yml 中添加安全配置
-services:
-  megatts3:
-    environment:
-      - API_KEY=${MEGATTS3_API_KEY}
-      - RATE_LIMIT_ENABLED=true
-      - RATE_LIMIT_REQUESTS_PER_MINUTE=30
-      - MAX_FILE_SIZE=50MB
-      - ALLOWED_ORIGINS=${CORS_ORIGINS}
-    
-    # 只暴露必要的端口到内网
-    expose:
-      - "9000"
-    # ports:  # 注释掉外部端口映射，只通过Nginx代理访问
-    #   - "9000:9000"
-```
-
-### API密钥配置
+#### 服务更新流程
 
 ```bash
-# 生成MegaTTS3 API密钥
-export MEGATTS3_API_KEY=$(openssl rand -hex 32)
+# 1. 备份数据
+./scripts/backup.sh
 
-# 在请求头中使用
-curl -H "Authorization: Bearer $MEGATTS3_API_KEY" \
-  http://localhost:9000/api/v1/tts/synthesize
+# 2. 拉取最新代码
+git pull origin main
+
+# 3. 重新构建前端
+cd platform/frontend
+npm run build
+cp -r dist/* ../../nginx-dist/
+cd ../..
+
+# 4. 更新容器
+docker-compose build --no-cache
+docker-compose up -d
+
+# 5. 验证更新
+curl http://localhost:3001/health
 ```
 
-## 📈 性能优化
+#### 回滚策略
 
-### MegaTTS3 性能调优
+```bash
+# 停止服务
+docker-compose down
 
-1. **GPU内存优化**:
-```yaml
-environment:
-  - TORCH_CUDA_ARCH_LIST="8.0"  # 根据GPU架构调整
-  - CUDA_LAUNCH_BLOCKING=0
-  - CUDA_CACHE_DISABLE=0
-  - GPU_MEMORY_FRACTION=0.8
+# 回滚代码
+git checkout HEAD~1
+
+# 恢复数据备份
+tar -xzf /backup/ai-sound/data_YYYYMMDD_HHMMSS.tar.gz
+
+# 重新启动
+docker-compose up -d
 ```
 
-2. **模型缓存策略**:
-```python
-# 在 MegaTTS3 配置中
-cache_config = {
-    "model_cache_size": "2GB",
-    "voice_cache_size": "1GB", 
-    "inference_cache_ttl": 3600,
-    "preload_models": ["dit_base"]
+## 🐛 故障排查
+
+### 常见问题
+
+#### 1. 502 Bad Gateway
+
+**原因分析**：
+- 后端容器未正常启动
+- Nginx配置错误
+- 网络连接问题
+
+**解决步骤**：
+```bash
+# 检查后端容器状态
+docker logs ai-sound-backend
+
+# 检查网络连通性
+docker exec ai-sound-nginx ping ai-sound-backend
+
+# 检查Nginx配置
+docker exec ai-sound-nginx nginx -t
+```
+
+#### 2. 数据库连接失败
+
+**原因分析**：
+- 数据库容器未启动
+- 连接字符串错误
+- 权限问题
+
+**解决步骤**：
+```bash
+# 检查数据库状态
+docker logs ai-sound-db
+
+# 测试连接
+docker exec ai-sound-backend python -c "
+import psycopg2
+conn = psycopg2.connect('postgresql://ai_sound_user:ai_sound_password@database:5432/ai_sound')
+print('连接成功')
+"
+```
+
+#### 3. 前端文件404
+
+**原因分析**：
+- 前端未正确构建
+- Nginx配置路径错误
+- 文件权限问题
+
+**解决步骤**：
+```bash
+# 检查前端文件
+ls -la nginx-dist/
+
+# 重新构建前端
+cd platform/frontend
+npm run build
+cp -r dist/* ../../nginx-dist/
+```
+
+#### 4. 音频文件无法访问
+
+**原因分析**：
+- 文件路径配置错误
+- 文件不存在
+- Nginx路径映射问题
+
+**解决步骤**：
+```bash
+# 检查文件是否存在
+ls -la data/audio/
+ls -la data/voice_profiles/
+
+# 检查Nginx配置
+docker exec ai-sound-nginx cat /etc/nginx/nginx.conf | grep -A 5 voice_profiles
+```
+
+### 性能调优
+
+#### 数据库优化
+
+```sql
+-- 创建索引
+CREATE INDEX idx_audio_files_project_id ON audio_files(project_id);
+CREATE INDEX idx_voice_profiles_type ON voice_profiles(type);
+
+-- 配置参数
+ALTER SYSTEM SET shared_buffers = '256MB';
+ALTER SYSTEM SET effective_cache_size = '1GB';
+```
+
+#### Nginx优化
+
+```nginx
+# 启用gzip压缩
+gzip on;
+gzip_types text/plain text/css application/json application/javascript;
+
+# 设置缓存
+location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg)$ {
+    expires 1y;
+    add_header Cache-Control "public, immutable";
 }
 ```
 
-3. **批处理优化**:
-```yaml
-environment:
-  - BATCH_SIZE=4              # 增加批处理大小
-  - MAX_SEQUENCE_LENGTH=512   # 限制序列长度
-  - WORKERS=2                 # 推理worker数量
-```
+### 安全配置
 
-## 🔄 备份与恢复
-
-### MegaTTS3 数据备份
+#### 防火墙设置
 
 ```bash
-#!/bin/bash
-# scripts/backup_megatts3.sh
-
-BACKUP_DIR="./backups/megatts3/$(date +%Y-%m-%d_%H-%M-%S)"
-mkdir -p "$BACKUP_DIR"
-
-# 备份模型文件
-echo "备份模型文件..."
-tar -czf "$BACKUP_DIR/checkpoints.tar.gz" MegaTTS/MegaTTS3/checkpoints/
-
-# 备份声音样本
-echo "备份声音样本..."
-tar -czf "$BACKUP_DIR/voices.tar.gz" MegaTTS/MegaTTS3/storage/voices/
-
-# 备份配置文件
-echo "备份配置文件..."
-cp -r MegaTTS/MegaTTS3/configs "$BACKUP_DIR/"
-
-# 备份数据库中的声音配置
-echo "备份声音配置..."
-docker-compose exec -T backend python scripts/export_voice_configs.py > "$BACKUP_DIR/voice_configs.json"
-
-echo "MegaTTS3备份完成: $BACKUP_DIR"
+# 只开放必要端口
+sudo ufw allow 22/tcp    # SSH
+sudo ufw allow 80/tcp    # HTTP
+sudo ufw allow 443/tcp   # HTTPS
+sudo ufw enable
 ```
 
-## 🚨 故障排查
-
-### MegaTTS3 特定问题
-
-1. **GPU内存不足**
-```bash
-# 清理GPU缓存
-docker-compose -f docker-compose.megatts3.yml exec megatts3 python -c "import torch; torch.cuda.empty_cache()"
-
-# 降低批处理大小
-docker-compose -f docker-compose.megatts3.yml exec megatts3 \
-  bash -c "export BATCH_SIZE=1 && supervisorctl restart megatts3-api"
-```
-
-2. **模型加载失败**
-```bash
-# 检查模型文件完整性
-docker-compose -f docker-compose.megatts3.yml exec megatts3 \
-  python -c "import torch; print(torch.load('/app/checkpoints/dit_base/model.pt', map_location='cpu').keys())"
-
-# 重新下载模型
-./scripts/download_models.sh
-```
-
-3. **API连接超时**
-```bash
-# 检查MegaTTS3服务状态
-curl -v http://localhost:9000/health
-
-# 增加超时时间
-export MEGATTS3_TIMEOUT=600
-docker-compose -f docker-compose.megatts3.yml restart
-```
-
-### 性能问题诊断
+#### Docker安全
 
 ```bash
-# MegaTTS3资源使用
-docker stats ai-sound-megatts3
-
-# GPU使用率监控
-watch -n 1 "docker-compose -f docker-compose.megatts3.yml exec megatts3 nvidia-smi"
-
-# 推理延迟统计
-docker-compose -f docker-compose.megatts3.yml logs megatts3 | grep "synthesis_time" | tail -20
+# 限制容器资源
+docker-compose.yml 添加：
+services:
+  backend:
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '1.0'
 ```
 
 ## 📞 技术支持
 
-- 📚 文档：`/docs`
-- 🎤 **MegaTTS3集成文档**: `docs/megatts3-integration.md`
-- 🐛 问题反馈：GitHub Issues
-- 💬 技术交流：参见README联系方式
+如果在部署过程中遇到问题，请参考：
+
+1. 📋 [故障排查文档](troubleshooting.md)
+2. 📡 [API文档](api.md)
+3. 🐛 [GitHub Issues](https://github.com/your-org/AI-Sound/issues)
+4. 💬 [讨论区](https://github.com/your-org/AI-Sound/discussions)
 
 ---
 
-**⚠️ 重要提醒：**
-- 生产环境请务必配置GPU支持
-- MegaTTS3模型文件需要足够的存储空间
-- 定期监控GPU温度和内存使用
-- 建议使用SSD存储提升模型加载速度
-- 设置定期备份计划（包含模型文件） 
+**🎉 部署成功后，享受 AI-Sound 带来的高质量语音合成体验吧！** 
