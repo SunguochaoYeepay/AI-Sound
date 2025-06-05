@@ -1,167 +1,234 @@
-# 🚀 Scripts 目录说明
+# 🚀 AI-Sound 自动化脚本工具集
 
-AI-Sound项目的自动化脚本和工具集。
+本目录包含 AI-Sound 项目的各种自动化脚本，提供完整的开发、部署和维护工具链。
 
-## 📁 目录结构
+## 📁 脚本概览
 
+### 🔨 部署脚本
+- **`frontend-deploy.bat`** - Windows前端自动构建部署脚本
+- **`frontend-deploy.sh`** - Linux/macOS前端自动构建部署脚本
+- **`deploy.sh`** - 完整项目一键部署脚本（Linux/macOS）
+- **`deploy.bat`** - 完整项目一键部署脚本（Windows）
+
+### 🔍 监控脚本
+- **`megatts3_health.sh`** - MegaTTS3服务健康检查脚本
+
+### 📊 分析工具
+- **`analysis/`** - 语音分析工具目录
+  - `analyze_voice_features.py` - 语音特征分析
+  - `check_npy_shape.py` - NPY文件检查
+  - `check_model_load.py` - 模型加载测试
+
+## 🎯 前端部署脚本使用指南
+
+### Windows用户
+
+#### 基本使用
+```batch
+# 生产模式部署（默认）
+.\scripts\frontend-deploy.bat
+
+# 开发模式部署
+.\scripts\frontend-deploy.bat dev
+
+# 明确指定生产模式
+.\scripts\frontend-deploy.bat prod
 ```
-scripts/
-├── deploy.sh                    # Linux/macOS自动化部署脚本
-├── deploy.bat                   # Windows自动化部署脚本  
-├── megatts3_health.sh          # MegaTTS3健康检查脚本
-├── analysis/                    # 语音分析工具集
-│   ├── analyze_voice_features.py   # 语音特征分析工具
-│   ├── check_npy_shape.py          # NPY文件格式检查
-│   └── check_model_load.py         # 模型加载测试
-└── README.md                    # 本文档
-```
 
-## 🛠️ 部署脚本
+#### 脚本功能
+1. **🏗️ 自动构建** - 执行 `npm run build` 构建前端代码
+2. **🧹 清理目录** - 清空 `nginx-dist` 目录
+3. **📂 文件拷贝** - 将构建结果复制到nginx目录
+4. **🔄 容器重启** - 重启nginx容器加载新代码
+5. **📊 状态检查** - 显示容器运行状态
 
-### 自动化部署
-**一键部署生产环境：**
+### Linux/macOS用户
+
+#### 基本使用
 ```bash
-# Linux/macOS
+# 生产模式部署（默认）
+./scripts/frontend-deploy.sh
+
+# 开发模式部署  
+./scripts/frontend-deploy.sh dev
+
+# 明确指定生产模式
+./scripts/frontend-deploy.sh prod
+```
+
+#### 脚本功能
+- **智能依赖检查** - 自动检测npm、docker-compose是否可用
+- **自动安装依赖** - 如果node_modules不存在，自动执行npm install
+- **彩色输出** - 友好的终端界面，带状态提示
+- **错误处理** - 完善的错误处理和提示信息
+
+## 🛠️ 完整部署脚本
+
+### 一键部署（推荐）
+
+#### Linux/macOS
+```bash
+# 生产部署
 ./scripts/deploy.sh
 
-# Windows
-.\scripts\deploy.bat
-```
-
-**开发环境部署：**
-```bash
-# 使用开发模式（热重载）
+# 开发部署
 ./scripts/deploy.sh dev
 
 # 清理环境
 ./scripts/deploy.sh clean
 ```
 
-**功能特性：**
-- ✅ 系统要求检查（Docker、Node.js等）
-- ✅ 自动创建数据目录结构
-- ✅ 前端构建和部署
-- ✅ Docker服务启动
-- ✅ 健康检查和状态监控
-- ✅ 错误处理和日志记录
+#### Windows
+```batch
+# 生产部署
+.\scripts\deploy.bat
+
+# 开发部署
+.\scripts\deploy.bat dev
+
+# 清理环境
+.\scripts\deploy.bat clean
+```
+
+### 功能特性
+- **环境检查** - 检查Docker、Docker Compose、Node.js等依赖
+- **自动构建** - 前端代码构建和优化
+- **容器管理** - Docker容器的启动、停止、重建
+- **健康检查** - 服务启动后的健康状态验证
+- **日志输出** - 详细的部署过程日志
+
+## 🔍 监控工具
 
 ### MegaTTS3健康检查
-**全面的系统健康监控：**
 ```bash
+# 执行健康检查
 ./scripts/megatts3_health.sh
+
+# 检查内容：
+# - GPU状态和显存使用
+# - 系统资源（CPU、内存、磁盘）
+# - 网络连接状态
+# - MegaTTS3服务响应
 ```
 
-**检查项目：**
-- 🔍 **服务状态检查** - 容器运行状态、HTTP服务响应
-- 💾 **GPU状态检查** - GPU驱动、内存使用、温度监控
-- 📊 **系统资源检查** - CPU、内存、磁盘使用情况
-- 🌐 **网络连接检查** - 端口监听、API响应时间
-- 🧠 **模型状态检查** - 模型加载状态、预测性能
-- 📋 **日志分析** - 错误日志检测和分析
-
-## 🔬 分析工具
+## 📊 分析工具使用
 
 ### 语音特征分析
-**全面的语音样本分析：**
 ```bash
-python scripts/analysis/analyze_voice_features.py [文件路径或目录]
+# 分析音频文件特征
+python scripts/analysis/analyze_voice_features.py [audio_file]
+
+# 批量分析目录下的音频文件
+python scripts/analysis/analyze_voice_features.py [directory]
 ```
 
-**功能特性：**
-- 📈 **支持多种格式** - NPY特征文件、WAV/MP3音频文件
-- 📊 **可视化分析** - 热图、统计图、趋势图、频谱图
-- 📄 **HTML报告** - 自动生成完整的分析报告
-- 🎯 **特征提取** - MFCC、梅尔频谱、色度特征等
-
-**输出文件：**
-- `*_heatmap.png` - 特征热图
-- `*_stats.png` - 统计图表
-- `*_trend.png` - 时间趋势图
-- `*_melspectrogram.png` - 梅尔频谱图
-- `analysis_report.html` - 完整分析报告
-
 ### NPY文件检查
-**检查NPY特征文件格式：**
 ```bash
-python scripts/analysis/check_npy_shape.py [NPY文件路径]
+# 检查NPY文件的形状和内容
+python scripts/analysis/check_npy_shape.py [npy_file]
 ```
 
 ### 模型加载测试
-**验证模型文件完整性：**
 ```bash
-python scripts/analysis/check_model_load.py [模型文件路径]
+# 测试模型是否能正常加载
+python scripts/analysis/check_model_load.py [model_path]
 ```
 
-## 📝 使用示例
+## 🚨 故障排查
 
-### 完整部署流程
+### 常见问题
+
+#### 1. 前端构建失败
 ```bash
-# 1. 克隆项目
-git clone <repository>
-cd AI-Sound
-
-# 2. 一键部署
-./scripts/deploy.sh
-
-# 3. 健康检查
-./scripts/megatts3_health.sh
-
-# 4. 访问应用
-# 前端: http://localhost:3001
-# API: http://localhost:3001/api
+# 清理node_modules重新安装
+cd platform/frontend
+rm -rf node_modules package-lock.json
+npm install
+npm run build
 ```
 
-### 语音分析流程
+#### 2. Docker容器无法启动
 ```bash
-# 分析单个音频文件
-python scripts/analysis/analyze_voice_features.py data/voices/sample.wav
+# 检查容器状态
+docker-compose ps
 
-# 批量分析目录下所有文件
-python scripts/analysis/analyze_voice_features.py data/voices/
+# 查看容器日志
+docker-compose logs nginx
+docker-compose logs backend
 
-# 检查特征文件
-python scripts/analysis/check_npy_shape.py data/features/voice_001.npy
+# 重启所有服务
+docker-compose restart
 ```
 
-## 🆘 故障排查
-
-### 部署失败
+#### 3. 文件拷贝权限错误
 ```bash
-# 查看详细日志
-docker-compose logs -f
+# Linux/macOS - 检查文件权限
+ls -la nginx-dist/
+chmod -R 755 nginx-dist/
 
-# 重新部署
-./scripts/deploy.sh clean
-./scripts/deploy.sh
+# Windows - 以管理员身份运行脚本
 ```
 
-### MegaTTS3问题
+#### 4. 端口占用问题
 ```bash
-# 运行完整健康检查
-./scripts/megatts3_health.sh
+# 检查端口占用
+netstat -tulpn | grep :3001
+netstat -tulpn | grep :8000
 
-# 检查GPU状态
-nvidia-smi
-
-# 重启MegaTTS3服务
-docker-compose restart ai-sound-megatts3
+# Windows
+netstat -ano | findstr :3001
 ```
 
-### 分析工具问题
-```bash
-# 检查Python环境
-python --version
+### 诊断命令
 
-# 安装依赖
-pip install librosa soundfile matplotlib numpy scipy
+```bash
+# 检查Docker状态
+docker --version
+docker-compose --version
+docker ps -a
+
+# 检查磁盘空间
+df -h
+
+# 检查系统资源
+htop  # Linux
+top   # macOS
+
+# Windows系统信息
+systeminfo
 ```
 
-## 📚 相关文档
+## 📝 开发建议
 
-- [部署指南](../docs/deployment.md)
-- [项目文档](../README.md)
-- [配置说明](../DEPLOYMENT.md)
+### 修改脚本后的测试流程
+1. **备份原脚本** - 修改前备份工作版本
+2. **小步测试** - 每次修改后立即测试
+3. **错误处理** - 添加详细的错误提示
+4. **兼容性** - 考虑不同操作系统的兼容性
+
+### 添加新脚本的规范
+1. **命名规范** - 使用kebab-case命名（如：new-feature-deploy.sh）
+2. **文档说明** - 在脚本头部添加功能说明
+3. **参数支持** - 支持 `--help` 参数显示使用说明
+4. **日志输出** - 使用统一的日志格式和颜色
+
+## 🔗 相关文档
+
+- [项目部署文档](../docs/deployment.md)
+- [故障排查指南](../docs/troubleshooting.md)
+- [API文档](../docs/api.md)
+- [主项目README](../README.md)
 
 ---
 
-💡 **提示**: 所有脚本都包含详细的错误处理和日志输出，遇到问题时请查看控制台输出信息。 
+## 💡 快速参考
+
+| 操作 | Windows | Linux/macOS |
+|------|---------|-------------|
+| 前端部署 | `.\scripts\frontend-deploy.bat` | `./scripts/frontend-deploy.sh` |
+| 完整部署 | `.\scripts\deploy.bat` | `./scripts/deploy.sh` |
+| 健康检查 | `.\scripts\megatts3_health.bat` | `./scripts/megatts3_health.sh` |
+| 查看日志 | `docker-compose logs -f` | `docker-compose logs -f` |
+| 重启服务 | `docker-compose restart` | `docker-compose restart` |
+
+**记住：所有脚本都需要在项目根目录（AI-Sound/）下运行！**

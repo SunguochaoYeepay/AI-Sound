@@ -42,7 +42,8 @@ class MegaTTS3Client:
     """
     
     def __init__(self, base_url: str = "http://localhost:7929"):
-        self.base_url = base_url.rstrip('/')
+        # MegaTTS3 实际运行在7930端口上（Gradio API）
+        self.base_url = base_url.replace(':7929', ':7930').rstrip('/')
         self.timeout = aiohttp.ClientTimeout(
             total=300,    # 总超时5分钟
             connect=30,   # 连接超时30秒
@@ -64,8 +65,10 @@ class MegaTTS3Client:
     async def health_check(self) -> Dict[str, Any]:
         """检查MegaTTS3服务健康状态"""
         try:
+            # 检查7929端口的健康状态（原始健康检查端点）
+            health_url = self.base_url.replace(':7930', ':7929')
             async with aiohttp.ClientSession(timeout=self.timeout) as session:
-                async with session.get(f"{self.base_url}/health") as response:
+                async with session.get(f"{health_url}/health") as response:
                     if response.status == 200:
                         data = await response.json()
                         return {"status": "healthy", "data": data}
@@ -130,7 +133,7 @@ class MegaTTS3Client:
                 
                 # 🚨 详细请求参数日志
                 logger.info(f"=== TTS请求参数详情 ===")
-                logger.info(f"目标URL: {self.base_url}/api/v1/tts/synthesize_file")
+                logger.info(f"目标URL: {self.base_url}/gradio_api/partial")
                 logger.info(f"文本内容: '{clean_text}' (长度: {len(clean_text)})")
                 logger.info(f"time_step: {request.time_step} (类型: {type(request.time_step)})")
                 logger.info(f"p_w: {request.p_weight} (类型: {type(request.p_weight)})")
@@ -143,28 +146,29 @@ class MegaTTS3Client:
                 logger.info(f"输出路径: {request.output_audio_path}")
                 logger.info(f"=== 请求参数结束 ===")
                 
-                # 添加音频文件内容
-                form_data.add_field(
-                    'audio_file',
-                    audio_content,
-                    filename=audio_filename,
-                    content_type='audio/wav'
-                )
+                # 构建Gradio API数据格式
+                gradio_data = [
+                    {
+                        "path": f"/tmp/{audio_filename}",
+                        "meta": {"_type": "gradio.FileData"},
+                        "orig_name": audio_filename
+                    },
+                    {
+                        "path": f"/tmp/{latent_filename}" if latent_filename else None,
+                        "meta": {"_type": "gradio.FileData"},
+                        "orig_name": latent_filename
+                    } if latent_content else None,
+                    clean_text,
+                    request.time_step,
+                    request.p_weight,
+                    request.t_weight
+                ]
                 
-                # 添加latent文件内容（如果有）
-                if latent_content and latent_filename:
-                    form_data.add_field(
-                        'latent_file',
-                        latent_content,
-                        filename=latent_filename,
-                        content_type='application/octet-stream'
-                    )
-                
-                # 发送请求
+                # 发送请求到Gradio API
                 async with aiohttp.ClientSession(timeout=self.timeout) as session:
                     async with session.post(
-                        f"{self.base_url}/api/v1/tts/synthesize_file",
-                        data=form_data
+                        f"{self.base_url}/gradio_api/partial",
+                        json={"data": gradio_data}
                     ) as response:
                         
                         processing_time = time.time() - start_time
@@ -319,5 +323,15 @@ def get_tts_client() -> MegaTTS3Client:
     """获取TTS客户端单例"""
     global _tts_client
     if _tts_client is None:
-        _tts_client = MegaTTS3Client()
+        import os
+        megatts3_url = os.getenv("MEGATTS3_URL", "http://localhost:7929")
+        logger.info(f"创建TTS客户端，URL: {megatts3_url}，当前实例ID: {id(_tts_client)}")
+        _tts_client = MegaTTS3Client(base_url=megatts3_url)
+    else:
+        logger.debug(f"复用TTS客户端，实例ID: {id(_tts_client)}")
     return _tts_client 
+
+def reset_tts_client():
+    """重置TTS客户端单例"""
+    global _tts_client
+    _tts_client = None 

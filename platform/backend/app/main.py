@@ -10,20 +10,19 @@ import mimetypes
 from pathlib import Path
 from datetime import datetime
 
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
-from fastapi.staticfiles import StaticFiles
-
-# 配置日志
+# 配置日志（临时只使用控制台输出）
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('../data/logs/app.log'),
         logging.StreamHandler()
     ]
 )
+
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
+from fastapi.staticfiles import StaticFiles
 logger = logging.getLogger(__name__)
 
 # 创建FastAPI应用
@@ -99,8 +98,8 @@ async def health_check():
     """健康检查接口"""
     try:
         # 检查MegaTTS3服务状态
-        from tts_client import MegaTTS3Client
-        tts_client = MegaTTS3Client()
+        from tts_client import get_tts_client
+        tts_client = get_tts_client()
         megatts3_status = await tts_client.health_check()
         
         # 检查数据库连接

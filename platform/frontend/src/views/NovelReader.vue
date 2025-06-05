@@ -523,12 +523,12 @@ onMounted(async () => {
 // 加载声音库列表
 const loadVoiceProfiles = async () => {
   try {
-    const response = await charactersAPI.getVoiceProfiles()
+    const response = await charactersAPI.getCharacters()
     if (response.data.success) {
       availableVoices.value = response.data.data.map(profile => ({
         id: profile.id,
         name: profile.name,
-        type: profile.voice_type || 'neutral'
+        type: profile.type || 'neutral'
       }))
     }
   } catch (error) {
