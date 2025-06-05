@@ -373,7 +373,7 @@ const refreshAudioList = async () => {
       }
     })
     
-    const response = await apiClient.get('/api/audio-library/files', { params })
+    const response = await apiClient.get('/audio-library/files', { params })
     
     if (response.data.success) {
       audioList.value = response.data.data
@@ -392,7 +392,7 @@ const refreshAudioList = async () => {
 
 const loadStats = async () => {
   try {
-    const response = await apiClient.get('/api/audio-library/stats')
+    const response = await apiClient.get('/audio-library/stats')
     if (response.data.success) {
       stats.value = response.data.data
     }
@@ -403,7 +403,7 @@ const loadStats = async () => {
 
 const loadProjectList = async () => {
   try {
-    const response = await apiClient.get('/api/novel-reader/projects')
+    const response = await apiClient.get('/novel-reader/projects')
     if (response.data.success) {
       projectList.value = response.data.data
     }
@@ -415,7 +415,7 @@ const loadProjectList = async () => {
 const syncAudioFiles = async () => {
   syncing.value = true
   try {
-    const response = await apiClient.post('/api/audio-library/sync')
+    const response = await apiClient.post('/audio-library/sync')
     if (response.data.success) {
       message.success(`同步完成: 新增${response.data.synced_count}个文件`)
       await Promise.all([refreshAudioList(), loadStats()])
@@ -435,7 +435,7 @@ const playAudio = (record) => {
 
 const downloadSingle = async (record) => {
   try {
-    const response = await apiClient.get(`/api/audio-library/download/${record.id}`, {
+    const response = await apiClient.get(`/audio-library/download/${record.id}`, {
       responseType: 'blob'
     })
     
@@ -464,7 +464,7 @@ const batchDownload = async () => {
   
   downloading.value = true
   try {
-    const response = await apiClient.post('/api/audio-library/batch-download', 
+    const response = await apiClient.post('/audio-library/batch-download', 
       selectedRowKeys.value,
       { responseType: 'blob' }
     )
@@ -498,7 +498,7 @@ const deleteSingle = (record) => {
     okType: 'danger',
     onOk: async () => {
       try {
-        const response = await apiClient.delete(`/api/audio-library/files/${record.id}`)
+        const response = await apiClient.delete(`/audio-library/files/${record.id}`)
         if (response.data.success) {
           message.success('删除成功')
           await Promise.all([refreshAudioList(), loadStats()])
@@ -526,7 +526,7 @@ const batchDelete = () => {
     onOk: async () => {
       deleting.value = true
       try {
-        const response = await apiClient.post('/api/audio-library/batch-delete', 
+        const response = await apiClient.post('/audio-library/batch-delete', 
           selectedRowKeys.value
         )
         if (response.data.success) {
@@ -549,7 +549,7 @@ const toggleFavorite = async (record) => {
     const formData = new FormData()
     formData.append('is_favorite', !record.isFavorite)
     
-    const response = await apiClient.put(`/api/audio-library/files/${record.id}/favorite`, formData)
+    const response = await apiClient.put(`/audio-library/files/${record.id}/favorite`, formData)
     if (response.data.success) {
       record.isFavorite = !record.isFavorite
       message.success(record.isFavorite ? '已收藏' : '已取消收藏')
