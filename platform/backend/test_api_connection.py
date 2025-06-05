@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
 测试外网API连接
-验证 soundapi.cpolar.top 是否可用
+验证 localhost:3000 是否可用
 """
 import requests
 import json
 
 def test_api_connection():
-    base_url = "http://soundapi.cpolar.top"
+    base_url = "http://localhost:3000"
     
     print("🌐 === 测试外网API连接 ===")
     print(f"目标地址: {base_url}")

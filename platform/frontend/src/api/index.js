@@ -9,10 +9,10 @@ export const systemAPI = {
   getSystemInfo: () => apiClient.get('/')
 }
 
-// 语音克隆API - 修正为实际后端路径
+// 语音克隆API
 export const voiceAPI = {
   // 上传参考音频文件和可选的latent文件
-  uploadVoice: (formData) => apiClient.post('/api/voice-clone/upload-reference', formData, {
+  uploadVoice: (formData) => apiClient.post('/voice-clone/upload-reference', formData, {
     headers: {
       'Content-Type': 'multipart/form-data'
     }
@@ -30,7 +30,7 @@ export const voiceAPI = {
       formData.append('latent_file_id', data.latent_file_id)
     }
     
-    return apiClient.post('/api/voice-clone/synthesize', formData, {
+    return apiClient.post('/voice-clone/synthesize', formData, {
       headers: {
         'Content-Type': 'multipart/form-data'
       }
@@ -46,7 +46,7 @@ export const voiceAPI = {
     formData.append('p_weight', data.p_weight || 1.0)
     formData.append('t_weight', data.t_weight || 1.0)
     
-    return apiClient.post('/api/voice-clone/synthesize-from-library', formData, {
+    return apiClient.post('/voice-clone/synthesize-from-library', formData, {
       headers: {
         'Content-Type': 'multipart/form-data'
       }
@@ -54,20 +54,22 @@ export const voiceAPI = {
   },
   
   // 获取声音模板
-  getTemplates: () => apiClient.get('/api/voice-clone/templates'),
+  getTemplates: () => apiClient.get('/voice-clone/templates'),
   
   // 获取最近合成记录
-  getRecentSynthesis: (limit = 10) => apiClient.get(`/api/voice-clone/recent-synthesis?limit=${limit}`),
+  getRecentSynthesis: (limit = 10) => apiClient.get(`/voice-clone/recent-synthesis?limit=${limit}`),
   
   // 声音克隆
-  cloneVoice: (formData) => apiClient.post('/api/voice-clone/clone-voice', formData, {
+  cloneVoice: (formData) => apiClient.post('/voice-clone/clone-voice', formData, {
     headers: {
       'Content-Type': 'multipart/form-data'
     }
-  }),
-  
-  // 声音库管理 - 添加这些方法
-  // 获取声音库列表
+  })
+}
+
+// 角色管理API
+export const charactersAPI = {
+  // 获取角色列表
   getCharacters: (params = {}) => {
     const queryParams = new URLSearchParams()
     if (params.search) queryParams.append('search', params.search)
@@ -75,115 +77,36 @@ export const voiceAPI = {
     if (params.quality_filter) queryParams.append('quality_filter', params.quality_filter)
     
     const queryString = queryParams.toString()
-    const url = queryString ? `/api/characters/?${queryString}` : '/api/characters/'
-    
+    const url = queryString ? `/characters/?${queryString}` : '/characters/'
+    console.log('[API请求] GET', url, params)
     return apiClient.get(url)
   },
-  
-  // 创建声音库
-  createCharacter: (data) => {
-    // 确保发送FormData格式，设置正确的Content-Type
-    return apiClient.post('/api/characters/', data, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
-      }
-    })
-  },
-  
-  // 更新声音库
-  updateCharacter: (id, data) => {
-    // 确保发送FormData格式，设置正确的Content-Type
-    return apiClient.put(`/api/characters/${id}`, data, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
-      }
-    })
-  },
-  
-  // 删除声音库
-  deleteCharacter: (id) => apiClient.delete(`/api/characters/${id}`),
-  
-  // 获取声音库列表
-  getVoiceProfiles: (params = {}) => {
-    const queryParams = new URLSearchParams()
-    if (params.search) queryParams.append('search', params.search)
-    if (params.voice_type) queryParams.append('voice_type', params.voice_type)
-    if (params.quality_filter) queryParams.append('quality_filter', params.quality_filter)
-    
-    const queryString = queryParams.toString()
-    const url = queryString ? `/api/characters/?${queryString}` : '/api/characters/'
-    
-    return apiClient.get(url)
-  },
-  
-  // 创建声音库
-  createCharacter: (data) => {
-    // 确保发送FormData格式，设置正确的Content-Type
-    return apiClient.post('/api/characters/', data, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
-      }
-    })
-  },
-  
-  // 更新声音库
-  updateCharacter: (id, data) => {
-    // 确保发送FormData格式，设置正确的Content-Type
-    return apiClient.put(`/api/characters/${id}`, data, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
-      }
-    })
-  },
-  
-  // 删除声音库
-  deleteCharacter: (id) => apiClient.delete(`/api/characters/${id}`)
-}
-
-// 角色管理API
-export const charactersAPI = {
-  // 获取角色列表
-  getCharacters: () => apiClient.get('/api/characters/'),
   
   // 创建角色
-  createCharacter: (data) => apiClient.post('/api/characters/', data, {
+  createCharacter: (data) => apiClient.post('/characters/', data, {
     headers: {
       'Content-Type': 'multipart/form-data'
     }
   }),
   
   // 更新角色
-  updateCharacter: (id, data) => apiClient.put(`/api/characters/${id}/`, data, {
+  updateCharacter: (id, data) => apiClient.put(`/characters/${id}/`, data, {
     headers: {
       'Content-Type': 'multipart/form-data'
     }
   }),
   
   // 删除角色
-  deleteCharacter: (id) => apiClient.delete(`/api/characters/${id}/`),
-  
-  // 获取声音库列表
-  getVoiceProfiles: (params = {}) => {
-    const queryParams = new URLSearchParams()
-    if (params.search) queryParams.append('search', params.search)
-    if (params.voice_type) queryParams.append('voice_type', params.voice_type)
-    if (params.quality_filter) queryParams.append('quality_filter', params.quality_filter)
-    
-    const queryString = queryParams.toString()
-    const url = queryString ? `/api/characters/?${queryString}` : '/api/characters/'
-    
-    return apiClient.get(url)
-  },
+  deleteCharacter: (id) => apiClient.delete(`/characters/${id}/`),
   
   // 获取单个声音档案
-  getVoiceProfile: (id) => apiClient.get(`/api/characters/${id}`),
+  getVoiceProfile: (id) => apiClient.get(`/characters/${id}`),
   
   // 创建声音档案
-  createVoiceProfile: (data) => apiClient.post('/api/characters', data),
+  createVoiceProfile: (data) => apiClient.post('/characters', data),
   
   // 更新声音档案
   updateVoiceProfile: (id, data) => {
-    // 如果data是FormData，直接使用；否则转换为FormData
     const formData = data instanceof FormData ? data : (() => {
       const fd = new FormData()
       Object.keys(data).forEach(key => {
@@ -192,7 +115,7 @@ export const charactersAPI = {
       return fd
     })()
     
-    return apiClient.put(`/api/characters/${id}`, formData, {
+    return apiClient.put(`/characters/${id}`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data'
       }
@@ -200,7 +123,7 @@ export const charactersAPI = {
   },
   
   // 删除声音档案
-  deleteVoiceProfile: (id) => apiClient.delete(`/api/characters/${id}`),
+  deleteVoiceProfile: (id) => apiClient.delete(`/characters/${id}`),
   
   // 测试声音合成
   testVoiceSynthesis: (id, data) => {
@@ -210,7 +133,7 @@ export const charactersAPI = {
     formData.append('p_weight', data.p_weight || 1.0)
     formData.append('t_weight', data.t_weight || 1.0)
     
-    return apiClient.post(`/api/characters/${id}/test`, formData, {
+    return apiClient.post(`/characters/${id}/test`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data'
       }
@@ -232,7 +155,7 @@ export const readerAPI = {
       formData.append('text_file', data.text_file)
     }
     
-    return apiClient.post('/api/novel-reader/projects', formData, {
+    return apiClient.post('/novel-reader/projects', formData, {
       headers: {
         'Content-Type': 'multipart/form-data'
       }
@@ -250,13 +173,13 @@ export const readerAPI = {
     if (params.sort_order) queryParams.append('sort_order', params.sort_order)
     
     const queryString = queryParams.toString()
-    const url = queryString ? `/api/novel-reader/projects?${queryString}` : '/api/novel-reader/projects'
+    const url = queryString ? `/novel-reader/projects?${queryString}` : '/novel-reader/projects'
     
     return apiClient.get(url)
   },
   
   // 获取项目详情
-  getProjectDetail: (projectId) => apiClient.get(`/api/novel-reader/projects/${projectId}`),
+  getProjectDetail: (projectId) => apiClient.get(`/novel-reader/projects/${projectId}`),
   
   // 更新项目
   updateProject: (projectId, data) => {
@@ -265,7 +188,7 @@ export const readerAPI = {
     formData.append('description', data.description || '')
     formData.append('character_mapping', JSON.stringify(data.character_mapping || {}))
     
-    return apiClient.put(`/api/novel-reader/projects/${projectId}`, formData, {
+    return apiClient.put(`/novel-reader/projects/${projectId}`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data'
       }
@@ -274,76 +197,45 @@ export const readerAPI = {
   
   // 删除项目
   deleteProject: (projectId, force = false) => 
-    apiClient.delete(`/api/novel-reader/projects/${projectId}?force=${force}`),
+    apiClient.delete(`/novel-reader/projects/${projectId}?force=${force}`),
   
-  // 重新生成文本分段
-  regenerateSegments: (projectId, data) => {
-    const formData = new FormData()
-    formData.append('strategy', data.strategy || 'auto')
-    formData.append('custom_rules', data.custom_rules || '')
-    
-    return apiClient.post(`/api/novel-reader/projects/${projectId}/segments`, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
-      }
-    })
-  },
-  
-  // 开始音频生成
-  startGeneration: (projectId, parallelTasks = 2) => {
-    const formData = new FormData()
-    formData.append('parallel_tasks', parallelTasks.toString())
-    
-    return apiClient.post(`/api/novel-reader/projects/${projectId}/start-generation`, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
-      }
-    })
-  },
-  
-  // 暂停生成
-  pauseGeneration: (projectId) => apiClient.post(`/api/novel-reader/projects/${projectId}/pause`),
-  
-  // 恢复生成
-  resumeGeneration: (projectId, parallelTasks = 2) => {
-    const formData = new FormData()
-    formData.append('parallel_tasks', parallelTasks.toString())
-    
-    return apiClient.post(`/api/novel-reader/projects/${projectId}/resume`, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
-      }
-    })
-  },
-  
-  // 获取生成进度
-  getProgress: (projectId) => apiClient.get(`/api/novel-reader/projects/${projectId}/progress`),
-  
-  // 下载最终音频
-  downloadAudio: (projectId) => apiClient.get(`/api/novel-reader/projects/${projectId}/download`, {
-    responseType: 'blob'
-  }),
-  
-  // 以下保留兼容旧API的方法
-  // 上传文本文件  
-  uploadText: (formData) => apiClient.post('/api/reader/upload', formData, {
+  // 兼容旧API
+  uploadText: (formData) => apiClient.post('/reader/upload', formData, {
     headers: {
       'Content-Type': 'multipart/form-data'
     }
   }),
   
-  // 开始朗读
-  startReading: (data) => apiClient.post('/api/reader/start', data),
+  startReading: (data) => apiClient.post('/reader/start', data),
   
-  // 获取朗读状态
-  getStatus: (taskId) => apiClient.get(`/api/reader/status/${taskId}`)
+  getStatus: (taskId) => apiClient.get(`/reader/status/${taskId}`)
+}
+
+// 音频库API
+export const audioAPI = {
+  // 获取音频文件列表
+  getFiles: (params = {}) => {
+    const queryParams = new URLSearchParams()
+    if (params.page) queryParams.append('page', params.page)
+    if (params.page_size) queryParams.append('page_size', params.page_size)
+    if (params.search) queryParams.append('search', params.search)
+    if (params.character) queryParams.append('character', params.character)
+    
+    const queryString = queryParams.toString()
+    const url = queryString ? `/audio-library/files?${queryString}` : '/audio-library/files'
+    
+    return apiClient.get(url)
+  },
+  
+  // 获取统计信息
+  getStats: () => apiClient.get('/audio-library/stats')
 }
 
 // 监控API
 export const monitorAPI = {
   // 获取系统状态
-  getSystemStatus: () => apiClient.get('/api/monitor/system'),
+  getSystemStatus: () => apiClient.get('/monitor/system'),
   
   // 获取服务状态
-  getServiceStatus: () => apiClient.get('/api/monitor/services')
-} 
+  getServiceStatus: () => apiClient.get('/monitor/services')
+}

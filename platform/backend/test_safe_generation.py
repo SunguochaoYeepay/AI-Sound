@@ -8,7 +8,7 @@ import json
 import time
 
 # 使用固定的外网API地址
-BASE_URL = "http://soundapi.cpolar.top"
+BASE_URL = "http://localhost:3000"
 
 def test_safe_generation():
     project_id = 19  # 使用你的项目ID

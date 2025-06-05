@@ -2,16 +2,16 @@ import axios from 'axios'
 
 // 环境配置 - 支持开发和生产环境
 const isDevelopment = import.meta.env.DEV
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (isDevelopment 
-  ? 'http://localhost:8000'  // 开发环境：本地后端
-  : 'http://soundapi.cpolar.top')  // 生产环境：外网域名
+const API_BASE_URL = isDevelopment 
+  ? 'http://localhost:3001/api'  // 开发环境：通过nginx代理
+  : '/api'                       // 生产环境：相对路径，由nginx服务
 
 console.log(`[API配置] 当前环境: ${isDevelopment ? '开发' : '生产'}, API地址: ${API_BASE_URL}`)
 
 // 创建axios实例
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 60000, // 增加超时时间到60秒
+  timeout: 60000, // 增加超时时间60秒
   headers: {
     'Content-Type': 'application/json'
   },

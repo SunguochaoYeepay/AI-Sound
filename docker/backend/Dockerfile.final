@@ -1,0 +1,37 @@
+# AI-Sound 后端服务 (最终修正版)
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# 安装系统依赖
+RUN apt-get update && apt-get install -y \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# 复制修正版requirements文件
+COPY platform/backend/requirements_fixed.txt ./requirements.txt
+
+# 配置pip使用阿里云镜像源
+RUN pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/ && \
+    pip config set global.trusted-host mirrors.aliyun.com && \
+    pip install --no-cache-dir -r requirements.txt
+
+# 复制应用代码
+COPY platform/backend/ .
+
+# 修正日志路径（在复制代码后）
+RUN sed -i "s|../data/logs/app.log|/app/data/logs/app.log|g" app/main.py
+
+# 创建必要的目录
+RUN mkdir -p storage/audio storage/uploads storage/voice_profiles \
+    storage/projects storage/database storage/logs storage/config storage/backups
+
+# 暴露端口
+EXPOSE 8000
+
+# 健康检查
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# 启动命令
+CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -173,7 +173,7 @@ def test_static_files(base_url, test_file=None):
 
 def main():
     parser = argparse.ArgumentParser(description="测试静态文件服务配置")
-    parser.add_argument("--url", default="http://soundapi.cpolar.top",
+    parser.add_argument("--url", default="http://localhost:3000",
                         help="API服务器基础URL")
     parser.add_argument("--file", help="要测试的音频文件路径")
     

@@ -3,15 +3,17 @@ AI-Sound Platform Backend
 FastAPI 主应用入口文件
 """
 
+import os
+import sys
+import logging
+import mimetypes
+from pathlib import Path
+from datetime import datetime
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, Response
-from starlette.requests import Request
-import os
-import logging
-from datetime import datetime
-import mimetypes
 
 # 配置日志
 logging.basicConfig(
@@ -33,81 +35,24 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
-# CORS中间件配置 - 更宽松的设置解决跨域问题
+# CORS中间件配置 - 简化版，只允许必要的源
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:3000", 
-        "http://localhost:3001",
-        "http://localhost:5173",            # Vite默认端口
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:3001", 
-        "http://127.0.0.1:5173",
-        "http://soundapi.cpolar.top",       # 添加固定的API域名
-        "https://soundapi.cpolar.top",      # HTTPS版本
-        "https://4924bf6a.r35.cpolar.top",  # 添加外网域名
-        "http://4924bf6a.r35.cpolar.top",   # HTTP版本
-        "https://*.cpolar.top",             # 支持所有cpolar域名
-        "http://*.cpolar.top",              # HTTP版本
-        "*"                                 # 临时允许所有源，调试用
+        "http://localhost:3001",           # 生产环境nginx端口
+        "http://localhost:5173"            # 开发环境Vite端口
     ],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-    allow_headers=[
-        "Accept",
-        "Accept-Language", 
-        "Content-Language",
-        "Content-Type",
-        "Authorization",
-        "X-Requested-With",
-        "Origin",
-        "Access-Control-Request-Method",
-        "Access-Control-Request-Headers"
-    ],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["*"]
 )
 
-# 确保音频文件类型正确
+# 确保音频文件类型正确（如果需要后端处理文件的话）
 mimetypes.add_type('audio/wav', '.wav')
 mimetypes.add_type('audio/mpeg', '.mp3')
 mimetypes.add_type('audio/ogg', '.ogg')
 
-class CORSStaticFiles(StaticFiles):
-    """支持CORS的静态文件服务"""
-    async def __call__(self, scope, receive, send):
-        """处理请求并添加CORS头"""
-        if scope["type"] == "http":
-            # 对OPTIONS请求直接返回CORS头
-            if scope["method"] == "OPTIONS":
-                response = Response(
-                    status_code=200,
-                    headers={
-                        "Access-Control-Allow-Origin": "*",
-                        "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
-                        "Access-Control-Allow-Headers": "*",
-                        "Access-Control-Max-Age": "86400",  # 24小时
-                        "Content-Length": "0",
-                    },
-                )
-                await response(scope, receive, send)
-                return
-                
-        # 对其他请求调用父类方法
-        response = await super().__call__(scope, receive, send)
-        return response
-        
-    def file_response(self, *args, **kwargs) -> Response:
-        """添加CORS头到文件响应"""
-        response = super().file_response(*args, **kwargs)
-        response.headers["Access-Control-Allow-Origin"] = "*"
-        response.headers["Access-Control-Allow-Methods"] = "GET, HEAD, OPTIONS"
-        response.headers["Access-Control-Allow-Headers"] = "*"
-        response.headers["Cache-Control"] = "public, max-age=3600"  # 一小时缓存
-        return response
-
-# 静态文件服务 - 使用支持CORS的版本
-app.mount("/audio", CORSStaticFiles(directory="../data/audio"), name="audio")
-app.mount("/uploads", CORSStaticFiles(directory="../data/uploads"), name="uploads")
-app.mount("/voice_profiles", CORSStaticFiles(directory="../data/voice_profiles"), name="voice_profiles")
+# 注意：静态文件由nginx处理，后端不再挂载静态文件路径
 
 @app.on_event("startup")
 async def startup_event():
@@ -147,12 +92,7 @@ async def root():
         "health": "/health"
     }
 
-@app.options("/{full_path:path}")
-async def options_handler(full_path: str):
-    """处理所有OPTIONS预检请求"""
-    return {
-        "message": "CORS preflight successful"
-    }
+# OPTIONS请求由CORS中间件自动处理，无需手动定义
 
 @app.get("/health")
 async def health_check():
@@ -192,6 +132,8 @@ app.include_router(characters_router)
 app.include_router(reader_router)
 app.include_router(monitor_router)
 app.include_router(audio_library_router)
+
+# API路由已通过nginx代理 /api/* 到后端，无需重复定义
 
 if __name__ == "__main__":
     import uvicorn

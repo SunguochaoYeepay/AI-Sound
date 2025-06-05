@@ -6,7 +6,7 @@
 import requests
 
 def verify_cors():
-    base_url = "http://soundapi.cpolar.top"
+    base_url = "http://localhost:3000"
     
     print("🔍 === 验证CORS配置 ===")
     

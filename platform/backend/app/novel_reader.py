@@ -1482,7 +1482,7 @@ async def update_segments_voice_mapping_no_commit(project_id: int, char_mapping:
     except Exception as e:
         logger.error(f"更新声音映射失败: {str(e)}")
         import traceback
-        logger.error(f"详细错误: {traceback.format_exc()}")
+        logger.error(f"详细错误: {traceback.format_exc()}") 
         return {
             "updated_count": 0,
             "total_segments": 0,

@@ -36,7 +36,7 @@
     <script>
         // 环境配置
         const isDevelopment = window.location.hostname === 'localhost'
-        const API_BASE = isDevelopment ? 'http://localhost:8000' : 'http://soundapi.cpolar.top'
+        const API_BASE = isDevelopment ? 'http://localhost:3000' : 'http://localhost:3000'
         
         console.log(`[CORS测试] 当前环境: ${isDevelopment ? '开发' : '生产'}, API地址: ${API_BASE}`)
         document.getElementById('api-config').innerHTML = `

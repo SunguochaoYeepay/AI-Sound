@@ -3,9 +3,9 @@
  * 测试前端是否能正常连接到后端API
  */
 
-// 使用环境配置
+// 使用环境配置 - 统一通过nginx
 const isDevelopment = true // 测试环境默认为开发环境
-const API_BASE_URL = isDevelopment ? 'http://localhost:8000' : 'http://soundapi.cpolar.top'
+const API_BASE_URL = isDevelopment ? 'http://localhost:3000' : 'http://localhost:3000'
 
 console.log('[测试配置] API地址:', API_BASE_URL)
 

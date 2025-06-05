@@ -3,15 +3,17 @@
 # FastAPI Core
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
-pydantic==2.5.0
+pydantic==2.5.1
 
 # Database
 sqlalchemy==2.0.23
+sqlite3
 alembic==1.13.0
 
 # HTTP Client
 aiohttp==3.9.0
-aiofiles==23.2.1
+aiofiles==23.2.0
+requests==2.31.0
 
 # File Upload
 python-multipart==0.0.6
@@ -26,6 +28,7 @@ psutil==5.9.6
 # Audio Processing (Optional)
 pydub==0.25.1
 librosa==0.10.1
+soundfile==0.12.1
 
 # Audio Processing for Novel Reader
 ffmpeg-python==0.2.0
@@ -33,4 +36,11 @@ ffmpeg-python==0.2.0
 # Development
 pytest==7.4.3
 pytest-asyncio==0.21.1
-httpx==0.25.2 
+httpx==0.25.2
+
+# Additional Dependencies
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+numpy==1.24.3
+scipy==1.11.4
+python-dotenv==1.0.0 

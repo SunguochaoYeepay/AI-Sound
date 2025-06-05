@@ -7,7 +7,7 @@ import requests
 import json
 
 def test_voice_api():
-    base_url = "http://soundapi.cpolar.top"
+    base_url = "http://localhost:3000"
     
     print("🎤 === 测试声音API ===")
     
