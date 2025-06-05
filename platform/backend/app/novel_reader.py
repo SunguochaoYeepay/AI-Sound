@@ -25,9 +25,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/novel-reader", tags=["小说朗读"])
 
 # 文件存储路径
-PROJECTS_DIR = "../data/projects"
-TEXTS_DIR = "../data/texts"
-AUDIO_DIR = "../data/audio"
+PROJECTS_DIR = "/app/data/projects"
+TEXTS_DIR = "/app/data/texts"
+AUDIO_DIR = "/app/data/audio"
 
 @router.post("/projects")
 async def create_project(

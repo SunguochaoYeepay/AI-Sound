@@ -296,7 +296,7 @@
           <div class="audio-sample">
             <div v-if="selectedVoice.audioUrl">
               <audio controls style="width: 100%;">
-                <source :src="`${API_BASE_URL}${selectedVoice.audioUrl}`" type="audio/wav">
+                <source :src="selectedVoice.audioUrl" type="audio/wav">
                 您的浏览器不支持音频播放
               </audio>
             </div>
@@ -881,7 +881,7 @@ const playVoice = (voice) => {
   if (voice.audioUrl || voice.sampleAudioUrl || voice.referenceAudioUrl) {
     // 优先使用样本音频，然后是参考音频
     const audioUrl = voice.sampleAudioUrl || voice.audioUrl || voice.referenceAudioUrl
-    const audio = new Audio(`${API_BASE_URL}${audioUrl}`)
+    const audio = new Audio(audioUrl)
     audio.play().then(() => {
       message.success(`正在播放：${voice.name}`)
     }).catch(error => {
@@ -1081,7 +1081,7 @@ const getStatusText = (status) => {
 // 添加播放当前音频的功能
 const playCurrentAudio = () => {
   if (editingVoice.value.referenceAudioUrl) {
-    const audio = new Audio(`${API_BASE_URL}${editingVoice.value.referenceAudioUrl}`)
+    const audio = new Audio(editingVoice.value.referenceAudioUrl)
     audio.play().catch(error => {
       console.error('播放音频失败:', error)
       message.error('播放音频失败')

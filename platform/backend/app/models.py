@@ -56,8 +56,14 @@ class VoiceProfile(Base):
         def path_to_url(file_path):
             if not file_path:
                 return None
-            # 将 ../data/voice_profiles/xxx.wav 转换为 /voice_profiles/xxx.wav
-            filename = os.path.basename(file_path)
+            
+            # 智能提取纯文件名，处理各种路径格式
+            # 统一替换路径分隔符，然后分割取最后一部分
+            normalized_path = file_path.replace("\\", "/")
+            parts = normalized_path.split("/")
+            filename = parts[-1]  # 取最后一部分作为文件名
+            
+            # 统一返回标准的nginx路径格式
             return f"/voice_profiles/{filename}"
         
         return {

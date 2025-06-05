@@ -24,8 +24,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/characters", tags=["声音库管理"])
 
 # 音频文件存储路径
-VOICE_PROFILES_DIR = "../data/voice_profiles"
-AUDIO_DIR = "../data/audio"
+VOICE_PROFILES_DIR = "/app/data/voice_profiles"
+AUDIO_DIR = "/app/data/audio"
 
 @router.get("/")
 async def get_voice_profiles(
@@ -677,10 +677,10 @@ async def test_voice_synthesis(
         
         # 生成唯一的音频文件名
         audio_id = f"test_{voice_id}_{uuid4().hex[:32]}"
-        output_path = os.path.join("../data/audio", f"{audio_id}.wav")  # 修复：使用os.path.join确保跨平台兼容
+        output_path = os.path.join("/app/data/audio", f"{audio_id}.wav")  # 修复：使用os.path.join确保跨平台兼容
         
         # 确保音频输出目录存在
-        os.makedirs("../data/audio", exist_ok=True)
+        os.makedirs("/app/data/audio", exist_ok=True)
         
         # 创建TTS请求
         tts_request = TTSRequest(

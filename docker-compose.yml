@@ -12,6 +12,7 @@ services:
       - ./docker/nginx/ssl:/etc/nginx/ssl:ro
       - ./nginx-dist:/usr/share/nginx/html:ro
       - ./data/audio:/usr/share/nginx/audio:ro
+      - ./data/voice_profiles:/usr/share/nginx/voice_profiles:ro
       - ./data/logs/nginx:/var/log/nginx
     depends_on:
       - backend
