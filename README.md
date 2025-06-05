@@ -73,9 +73,30 @@ graph TB
 - 磁盘空间 ≥ 10GB
 - NVIDIA GPU（可选，用于MegaTTS3加速）
 
-### 方式一：生产部署（推荐）
+### 方式一：自动化部署（推荐）⭐
 
-适用于生产环境，前端编译为静态文件，性能最优。
+使用内置脚本一键部署，包含完整的检查、构建和启动流程。
+
+```bash
+# Linux/macOS - 一键部署
+./scripts/deploy.sh
+
+# Windows - 一键部署  
+.\scripts\deploy.bat
+
+# 开发模式部署（支持热重载）
+./scripts/deploy.sh dev
+
+# 清理环境
+./scripts/deploy.sh clean
+
+# 健康检查
+./scripts/megatts3_health.sh
+```
+
+### 方式二：手动生产部署
+
+适用于需要自定义配置的生产环境。
 
 ```bash
 # 1. 克隆项目
@@ -99,7 +120,7 @@ docker-compose up -d
 docker-compose ps
 ```
 
-### 方式二：开发部署
+### 方式三：容器化开发部署
 
 适用于开发环境，前端作为独立容器运行，支持热重载。
 
@@ -111,7 +132,7 @@ docker-compose -f docker-compose.full.yml up -d
 docker-compose -f docker-compose.full.yml ps
 ```
 
-### 方式三：本地开发
+### 方式四：本地开发
 
 ```bash
 # 后端服务
@@ -133,6 +154,15 @@ AI-Sound/
 ├── 📄 docker-compose.full.yml     # 开发/微服务配置
 ├── 📄 .env.example               # 环境变量模板
 ├── 📂 docs/                      # 📚 文档目录
+├── 📂 scripts/                   # 🚀 自动化脚本和工具
+│   ├── deploy.sh                 # Linux/macOS部署脚本
+│   ├── deploy.bat                # Windows部署脚本
+│   ├── megatts3_health.sh        # MegaTTS3健康检查
+│   ├── analysis/                 # 语音分析工具
+│   │   ├── analyze_voice_features.py  # 语音特征分析
+│   │   ├── check_npy_shape.py         # NPY文件检查
+│   │   └── check_model_load.py        # 模型加载测试
+│   └── README.md                 # 脚本使用文档
 ├── 📂 docker/                    # 🐳 Docker配置
 │   ├── nginx/
 │   │   ├── nginx.conf            # 生产Nginx配置
@@ -185,6 +215,16 @@ AI-Sound/
 └── 📂 MegaTTS/                   # 🔥 MegaTTS3引擎（外部）
     └── MegaTTS3/                 # TTS引擎目录
 ```
+
+## 🚀 自动化脚本
+
+`scripts/`目录提供完整的自动化工具链：
+
+- **🛠️ 一键部署**: `deploy.sh`/`deploy.bat` - 自动检查环境、构建前端、启动服务
+- **🔍 健康监控**: `megatts3_health.sh` - GPU状态、系统资源、网络连接检查
+- **🔬 分析工具**: `analysis/` - 语音特征分析、NPY文件检查、模型测试
+
+详细使用方法请参考 [scripts/README.md](scripts/README.md)
 
 ## 🎯 核心功能
 
