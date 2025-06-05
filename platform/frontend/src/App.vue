@@ -63,6 +63,15 @@
           <span style="font-weight: 500;">智能多角色朗读</span>
         </a-menu-item>
 
+        <a-menu-item key="audio-library" @click="navigateTo('audio-library')">
+          <template #icon>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 3v9.28c-.47-.17-.97-.28-1.5-.28C8.01 12 6 14.01 6 16.5S8.01 21 10.5 21s4.5-2.01 4.5-4.5V7h4V3h-7z"/>
+            </svg>
+          </template>
+          <span style="font-weight: 500;">音频资源库</span>
+        </a-menu-item>
+
         <a-menu-divider style="background-color: rgba(255,255,255,0.1); margin: 16px 0;" />
 
         <a-menu-item key="settings" @click="navigateTo('settings')">
@@ -154,6 +163,7 @@ const updateSelectedKeys = () => {
     '/basic-tts': 'voice-clone', 
     '/characters': 'voice-library',
     '/novel-reader': 'novel-reader',
+    '/audio-library': 'audio-library',
     '/settings': 'settings'
   }
   const key = routeToKey[route.path] || 'voice-clone'
@@ -176,6 +186,7 @@ const navigateTo = (view) => {
     'voice-clone': '/basic-tts',
     'voice-library': '/characters', 
     'novel-reader': '/novel-reader',
+    'audio-library': '/audio-library',
     'settings': '/settings'
   }
   
@@ -196,6 +207,7 @@ const getPageTitle = () => {
     '/': '声音克隆测试平台',
     '/characters': '声音库管理',
     '/novel-reader': '智能多角色朗读',
+    '/audio-library': '音频资源库',
     '/settings': '系统设置'
   }
   return titles[route.path] || '声音克隆测试平台'

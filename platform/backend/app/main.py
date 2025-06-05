@@ -185,11 +185,13 @@ from voice_clone import router as voice_router
 from characters import router as characters_router
 from novel_reader import router as reader_router
 from monitor import router as monitor_router
+from audio_library import router as audio_library_router
 
 app.include_router(voice_router)
 app.include_router(characters_router)
 app.include_router(reader_router)
 app.include_router(monitor_router)
+app.include_router(audio_library_router)
 
 if __name__ == "__main__":
     import uvicorn

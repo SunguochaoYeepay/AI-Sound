@@ -3,7 +3,7 @@ SQLAlchemy 数据模型
 定义所有数据库表结构
 """
 
-from sqlalchemy import Column, Integer, String, Text, Float, DateTime, ForeignKey, Index
+from sqlalchemy import Column, Integer, String, Text, Float, DateTime, ForeignKey, Index, Boolean
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from database import Base
@@ -221,6 +221,131 @@ class TextSegment(Base):
             "errorMessage": self.error_message,
             "createdAt": self.created_at.isoformat() if self.created_at else None
         }
+
+class AudioFile(Base):
+    """
+    音频文件表 - 统一管理所有生成的音频文件
+    """
+    __tablename__ = "audio_files"
+    
+    # 基础字段
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    filename = Column(String(255), nullable=False, unique=True, index=True)  # 实际文件名
+    original_name = Column(String(255))  # 原始显示名称
+    file_path = Column(String(500), nullable=False)  # 完整文件路径
+    
+    # 文件信息
+    file_size = Column(Integer, default=0)  # 文件大小(字节)
+    duration = Column(Float, default=0.0)  # 音频时长(秒)
+    sample_rate = Column(Integer, default=22050)  # 采样率
+    channels = Column(Integer, default=1)  # 声道数
+    
+    # 关联信息
+    project_id = Column(Integer, ForeignKey("novel_projects.id"), nullable=True, index=True)
+    segment_id = Column(Integer, ForeignKey("text_segments.id"), nullable=True, index=True)
+    voice_profile_id = Column(Integer, ForeignKey("voice_profiles.id"), nullable=True, index=True)
+    
+    # 文本内容
+    text_content = Column(Text)  # 对应的文本内容
+    
+    # 音频类型
+    audio_type = Column(String(20), default='segment', index=True)  # 'segment' | 'project' | 'single' | 'test'
+    
+    # 处理信息
+    processing_time = Column(Float)  # 生成耗时
+    model_used = Column(String(50))  # 使用的模型
+    parameters = Column(Text)  # 生成参数(JSON格式)
+    
+    # 状态和标签
+    status = Column(String(20), default='active', index=True)  # 'active' | 'archived' | 'deleted'
+    tags = Column(Text, default='[]')  # 标签(JSON数组)
+    is_favorite = Column(Boolean, default=False)  # 是否收藏
+    
+    # 时间戳
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # 关系
+    project = relationship("NovelProject", backref="audio_files")
+    segment = relationship("TextSegment", backref="audio_files")
+    voice_profile = relationship("VoiceProfile", backref="audio_files")
+    
+    # 索引
+    __table_args__ = (
+        Index('idx_audio_project_type', 'project_id', 'audio_type'),
+        Index('idx_audio_created', 'created_at'),
+        Index('idx_audio_status_type', 'status', 'audio_type'),
+    )
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """转换为字典格式"""
+        return {
+            "id": self.id,
+            "filename": self.filename,
+            "originalName": self.original_name or self.filename,
+            "filePath": self.file_path,
+            "audioUrl": f"/audio/{self.filename}",
+            "fileSize": self.file_size,
+            "fileSizeMB": round(self.file_size / 1024 / 1024, 2) if self.file_size else 0,
+            "duration": self.duration,
+            "durationFormatted": self.format_duration(),
+            "sampleRate": self.sample_rate,
+            "channels": self.channels,
+            "projectId": self.project_id,
+            "projectName": self.project.name if self.project else None,
+            "segmentId": self.segment_id,
+            "segmentOrder": self.segment.segment_order if self.segment else None,
+            "voiceProfileId": self.voice_profile_id,
+            "voiceProfileName": self.voice_profile.name if self.voice_profile else None,
+            "textContent": self.text_content,
+            "audioType": self.audio_type,
+            "processingTime": self.processing_time,
+            "modelUsed": self.model_used,
+            "parameters": json.loads(self.parameters) if self.parameters else {},
+            "status": self.status,
+            "tags": json.loads(self.tags) if self.tags else [],
+            "isFavorite": self.is_favorite,
+            "createdAt": self.created_at.isoformat() if self.created_at else None,
+            "updatedAt": self.updated_at.isoformat() if self.updated_at else None
+        }
+    
+    def format_duration(self) -> str:
+        """格式化时长显示"""
+        if not self.duration:
+            return "00:00"
+        
+        total_seconds = int(self.duration)
+        minutes = total_seconds // 60
+        seconds = total_seconds % 60
+        
+        if minutes >= 60:
+            hours = minutes // 60
+            minutes = minutes % 60
+            return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+        else:
+            return f"{minutes:02d}:{seconds:02d}"
+    
+    def get_tags(self) -> List[str]:
+        """获取标签列表"""
+        try:
+            return json.loads(self.tags) if self.tags else []
+        except (json.JSONDecodeError, TypeError):
+            return []
+    
+    def set_tags(self, tags: List[str]):
+        """设置标签列表"""
+        self.tags = json.dumps(tags)
+    
+    def get_parameters(self) -> Dict[str, Any]:
+        """获取生成参数"""
+        try:
+            return json.loads(self.parameters) if self.parameters else {}
+        except (json.JSONDecodeError, TypeError):
+            return {}
+    
+    def set_parameters(self, params: Dict[str, Any]):
+        """设置生成参数"""
+        self.parameters = json.dumps(params)
 
 class SystemLog(Base):
     """
