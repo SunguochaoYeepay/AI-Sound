@@ -157,30 +157,40 @@ const testApiAudio = async () => {
   testLogs.value.unshift(`[${new Date().toLocaleTimeString()}] 测试API音频...`)
   
   try {
-    // 构建测试URL（测试的健康检查接口返回的音频文件或其他测试音频）
-    const testUrl = `${API_BASE_URL}/audio/test_static_service.wav`
+    // 构建测试URL – 优先使用相对路径（通过nginx代理）
+    const relativeUrl = '/audio/test_static_service.wav'
+    const absoluteUrl = `${API_BASE_URL}/audio/test_static_service.wav`
     
-    // 先用fetch检查文件是否存在
-    const checkResponse = await fetch(testUrl, { method: 'HEAD' })
-    
-    if (checkResponse.ok) {
-      // 文件存在，创建音频元素
-      apiAudioUrl.value = testUrl
-      testLogs.value.unshift(`[${new Date().toLocaleTimeString()}] API音频加载成功: ${testUrl}`)
-      apiResult.value = 'success'
-    } else {
-      // 文件不存在，尝试相对路径
-      const relativeUrl = '/audio/test_static_service.wav'
+    // 优先尝试相对路径（nginx代理）
+    try {
       const relativeCheck = await fetch(relativeUrl, { method: 'HEAD' })
       
       if (relativeCheck.ok) {
         apiAudioUrl.value = relativeUrl
-        testLogs.value.unshift(`[${new Date().toLocaleTimeString()}] 相对路径API音频加载成功: ${relativeUrl}`)
+        testLogs.value.unshift(`[${new Date().toLocaleTimeString()}] API音频加载成功: ${relativeUrl}`)
         apiResult.value = 'success'
-      } else {
-        throw new Error(`API音频不可访问 (${checkResponse.status})`)
+        return
       }
+    } catch (e) {
+      console.warn('相对路径检查失败', e)
     }
+    
+    // 如果相对路径失败，尝试绝对路径
+    try {
+      const absoluteCheck = await fetch(absoluteUrl, { method: 'HEAD' })
+      
+      if (absoluteCheck.ok) {
+        apiAudioUrl.value = absoluteUrl
+        testLogs.value.unshift(`[${new Date().toLocaleTimeString()}] API音频加载成功: ${absoluteUrl}`)
+        apiResult.value = 'success'
+        return
+      }
+    } catch (e) {
+      console.warn('绝对路径检查失败', e)
+    }
+    
+    // 都失败了，抛出错误
+    throw new Error('API音频文件不可访问')
   } catch (error) {
     console.error('API音频测试失败:', error)
     testLogs.value.unshift(`[${new Date().toLocaleTimeString()}] API音频测试失败: ${error.message}`)

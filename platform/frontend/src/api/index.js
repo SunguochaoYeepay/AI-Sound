@@ -199,6 +199,27 @@ export const readerAPI = {
   deleteProject: (projectId, force = false) => 
     apiClient.delete(`/novel-reader/projects/${projectId}?force=${force}`),
   
+  // 开始音频生成
+  startGeneration: (projectId, parallelTasks = 2) => {
+    const formData = new FormData()
+    formData.append('parallel_tasks', parallelTasks)
+    
+    return apiClient.post(`/novel-reader/projects/${projectId}/start-generation`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    })
+  },
+  
+  // 暂停生成
+  pauseGeneration: (projectId) => apiClient.post(`/novel-reader/projects/${projectId}/pause`),
+  
+  // 获取生成进度
+  getProgress: (projectId) => apiClient.get(`/novel-reader/projects/${projectId}/progress`),
+  
+  // 下载音频
+  downloadAudio: (projectId) => apiClient.get(`/novel-reader/projects/${projectId}/download`),
+  
   // 兼容旧API
   uploadText: (formData) => apiClient.post('/reader/upload', formData, {
     headers: {

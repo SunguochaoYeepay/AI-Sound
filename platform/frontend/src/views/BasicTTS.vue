@@ -538,7 +538,10 @@ const generateSpeech = async () => {
               url: directUrl
             })
             
-            directAudio.onerror = () => reject(new Error('所有URL均加载失败'))
+            directAudio.onerror = () => {
+              console.error('直接URL也加载失败')
+              reject(new Error('所有URL均加载失败'))
+            }
             directAudio.load()
           }
           

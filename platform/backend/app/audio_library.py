@@ -257,7 +257,7 @@ async def get_audio_stats(
                 ],
                 "dailyStats": [
                     {
-                        "date": stat.date.isoformat(),
+                        "date": str(stat.date) if stat.date else "",
                         "count": stat.count,
                         "size": stat.size,
                         "sizeMB": round(stat.size / 1024 / 1024, 2)

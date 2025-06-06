@@ -23,7 +23,7 @@ const apiClient = axios.create({
 // 请求拦截器
 apiClient.interceptors.request.use(
   (config) => {
-    console.log(`[API请求] ${config.method?.toUpperCase()} ${config.url}`, config.data)
+    console.log(`[API请求] ${config.method?.toUpperCase()} ${config.url}`, config.data || '')
     return config
   },
   (error) => {
