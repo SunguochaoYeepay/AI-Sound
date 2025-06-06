@@ -54,14 +54,34 @@
           <span style="font-weight: 500;">声音库管理</span>
         </a-menu-item>
 
-        <a-menu-item key="novel-reader" @click="navigateTo('novel-reader')">
+        <a-sub-menu key="novel-reader-group" style="background: transparent;">
           <template #icon>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
               <path d="M21 5c-1.11-.35-2.33-.5-3.5-.5-1.95 0-4.05.4-5.5 1.5-1.45-1.1-3.55-1.5-5.5-1.5S2.45 4.9 1 6v14.65c0 .25.25.5.5.5.1 0 .15-.05.25-.05C3.1 20.45 5.05 20 6.5 20c1.95 0 4.05.4 5.5 1.5 1.35-.85 3.8-1.5 5.5-1.5 1.65 0 3.35.3 4.75 1.05.1.05.15.05.25.05.25 0 .5-.25.5-.5V6c-.6-.45-1.25-.75-2-1zm0 13.5c-1.1-.35-2.3-.5-3.5-.5-1.7 0-4.15.65-5.5 1.5V8c1.35-.85 3.8-1.5 5.5-1.5 1.2 0 2.4.15 3.5.5v11.5z"/>
             </svg>
           </template>
-          <span style="font-weight: 500;">智能多角色朗读</span>
-        </a-menu-item>
+          <template #title>
+            <span style="font-weight: 500;">多角色朗读</span>
+          </template>
+          
+          <a-menu-item key="novel-projects" @click="navigateTo('novel-projects')">
+            <template #icon>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-1 9H9V9h10v2zm-4 4H9v-2h6v2zm4-8H9V5h10v2z"/>
+              </svg>
+            </template>
+            <span style="font-weight: 500;">项目列表</span>
+          </a-menu-item>
+          
+          <a-menu-item key="novel-create" @click="navigateTo('novel-create')">
+            <template #icon>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+              </svg>
+            </template>
+            <span style="font-weight: 500;">新建项目</span>
+          </a-menu-item>
+        </a-sub-menu>
 
         <a-menu-item key="audio-library" @click="navigateTo('audio-library')">
           <template #icon>
@@ -162,11 +182,23 @@ const updateSelectedKeys = () => {
     '/': 'voice-clone',
     '/basic-tts': 'voice-clone', 
     '/characters': 'voice-library',
-    '/novel-reader': 'novel-reader',
+    '/novel-reader': 'novel-projects',
+    '/novel-reader/create': 'novel-create',
+    '/novel-reader/edit': 'novel-projects',
+    '/novel-reader/detail': 'novel-projects',
     '/audio-library': 'audio-library',
     '/settings': 'settings'
   }
-  const key = routeToKey[route.path] || 'voice-clone'
+  
+  let key = 'voice-clone'
+  // 检查路由路径匹配
+  for (const [path, menuKey] of Object.entries(routeToKey)) {
+    if (route.path === path || route.path.startsWith(path + '/')) {
+      key = menuKey
+      break
+    }
+  }
+  
   selectedKeys.value = [key]
 }
 
@@ -185,7 +217,8 @@ const navigateTo = (view) => {
   const viewToRoute = {
     'voice-clone': '/basic-tts',
     'voice-library': '/characters', 
-    'novel-reader': '/novel-reader',
+    'novel-projects': '/novel-reader',
+    'novel-create': '/novel-reader/create',
     'audio-library': '/audio-library',
     'settings': '/settings'
   }
@@ -206,11 +239,22 @@ const getPageTitle = () => {
     '/basic-tts': '声音克隆测试平台',
     '/': '声音克隆测试平台',
     '/characters': '声音库管理',
-    '/novel-reader': '智能多角色朗读',
+    '/novel-reader': '项目列表',
+    '/novel-reader/create': '新建项目',
+    '/novel-reader/edit': '编辑项目',
+    '/novel-reader/detail': '项目详情',
     '/audio-library': '音频资源库',
     '/settings': '系统设置'
   }
-  return titles[route.path] || '声音克隆测试平台'
+  
+  // 支持动态路由匹配
+  for (const [path, title] of Object.entries(titles)) {
+    if (route.path === path || route.path.startsWith(path + '/')) {
+      return title
+    }
+  }
+  
+  return '声音克隆测试平台'
 }
 </script>
 

@@ -22,78 +22,25 @@
       </div>
     </div>
 
-    <!-- 项目选择器 -->
-    <div class="project-selector-container">
-      <a-card title="项目管理" :bordered="false" class="project-selector-card">
-        <div class="project-selector">
-          <div class="selector-left">
-            <a-select
-              v-model:value="selectedProjectId"
-              placeholder="选择已有项目或创建新项目"
-              style="width: 300px;"
-              show-search
-              :filter-option="filterProjects"
-              @change="onProjectSelect"
-              allow-clear
-            >
-              <a-select-option value="new">
-                <div style="display: flex; align-items: center; color: #1890ff;">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 8px;">
-                    <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
-                  </svg>
-                  创建新项目
-                </div>
-              </a-select-option>
-              <a-select-option
-                v-for="project in projectList"
-                :key="project.id"
-                :value="project.id"
-              >
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                  <div>
-                    <div style="font-weight: 500;">{{ project.name }}</div>
-                    <div style="font-size: 12px; color: #999;">
-                      {{ formatDate(project.created_at) }} · {{ getStatusText(project.status) }}
-                    </div>
-                  </div>
-                  <a-tag :color="getStatusColor(project.status)" size="small">
-                    {{ getStatusText(project.status) }}
-                  </a-tag>
-                </div>
-              </a-select-option>
-            </a-select>
-            
-            <div v-if="currentProject" class="current-project-info">
-              <div class="project-name">{{ currentProject.name }}</div>
-              <div class="project-details">
-                <span>创建时间: {{ formatDate(currentProject.created_at) }}</span>
-                <span>状态: {{ getStatusText(currentProject.status) }}</span>
-              </div>
+    <!-- 项目信息显示 -->
+    <div v-if="currentProject" class="project-info-container">
+      <a-card title="当前项目" :bordered="false" class="project-info-card">
+        <div class="project-info">
+          <div class="project-main">
+            <h2 class="project-name">{{ currentProject.name }}</h2>
+            <p class="project-description">{{ currentProject.description || '暂无描述' }}</p>
+            <div class="project-meta">
+              <span>📅 {{ formatDate(currentProject.created_at) }}</span>
+              <span>📝 {{ getSegmentCount(currentProject) }} 个段落</span>
+              <span>👥 {{ getCharacterCount(currentProject) }} 个角色</span>
             </div>
           </div>
-          
-          <div class="selector-right">
-            <a-button @click="refreshProjectList" :loading="loadingProjects">
-              <template #icon>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
-                </svg>
-              </template>
-              刷新
-            </a-button>
-            
-            <a-button 
-              v-if="currentProject && currentProject.id" 
-              @click="showProjectManageModal = true"
-              type="text"
-            >
-              <template #icon>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
-                </svg>
-              </template>
-              管理
-            </a-button>
+          <div class="project-actions">
+            <a-button @click="goBackToList">← 返回项目列表</a-button>
+            <a-button @click="editProject">编辑项目</a-button>
+            <a-tag :color="getStatusColor(currentProject.status)">
+              {{ getStatusText(currentProject.status) }}
+            </a-tag>
           </div>
         </div>
       </a-card>
@@ -463,8 +410,12 @@
 
 <script setup>
 import { ref, computed, reactive, onMounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { readerAPI, charactersAPI } from '@/api'
+
+const router = useRouter()
+const route = useRoute()
 
 // 响应式数据
 const novelFiles = ref([])
@@ -487,9 +438,6 @@ const currentProject = ref(null)
 const projectId = ref(null)
 
 // 项目管理相关数据
-const projectList = ref([])
-const selectedProjectId = ref(null)
-const loadingProjects = ref(false)
 const showProjectManageModal = ref(false)
 const isEditing = ref(false)
 const savingProject = ref(false)
@@ -514,11 +462,30 @@ const canProcess = computed(() => {
   return hasText && hasAssignments && !isProcessing.value
 })
 
-// 初始化加载声音库
+// 初始化加载声音库和项目
 onMounted(async () => {
   await loadVoiceProfiles()
-  await refreshProjectList()
+  
+  // 如果路由包含项目ID，加载项目详情
+  const projectIdFromRoute = route.params.id
+  if (projectIdFromRoute) {
+    await loadProjectById(projectIdFromRoute)
+  } else {
+    // 如果没有项目ID，重定向到项目列表
+    router.push('/novel-reader')
+  }
 })
+
+// 根据ID加载项目
+const loadProjectById = async (id) => {
+  try {
+    projectId.value = id
+    await loadProjectDetail()
+  } catch (error) {
+    message.error('加载项目失败')
+    router.push('/novel-reader')
+  }
+}
 
 // 加载声音库列表
 const loadVoiceProfiles = async () => {
@@ -1217,72 +1184,26 @@ const analyzeDirectText = async () => {
   }
 }
 
-// ========== 项目管理相关方法 ==========
+// ========== 导航相关方法 ==========
 
-// 刷新项目列表
-const refreshProjectList = async () => {
-  loadingProjects.value = true
-  try {
-    const response = await readerAPI.getProjects({
-      page: 1,
-      page_size: 50,
-      sort_by: 'created_at',
-      sort_order: 'desc'
-    })
-    
-    if (response.data.success) {
-      projectList.value = response.data.data || []
-    } else {
-      message.error('获取项目列表失败: ' + response.data.message)
-    }
-  } catch (error) {
-    console.error('获取项目列表失败:', error)
-    message.error('获取项目列表失败: ' + (error.response?.data?.detail || error.message))
-  } finally {
-    loadingProjects.value = false
+const goBackToList = () => {
+  router.push('/novel-reader')
+}
+
+const editProject = () => {
+  if (currentProject.value?.id) {
+    router.push(`/novel-reader/edit/${currentProject.value.id}`)
   }
 }
 
-// 项目选择处理
-const onProjectSelect = async (selectedId) => {
-  if (selectedId === 'new') {
-    // 清空当前项目，允许创建新项目
-    selectedProjectId.value = null
-    currentProject.value = null
-    projectId.value = null
-    detectedCharacters.value = []
-    novelFiles.value = []
-    directText.value = ''
-    
-    // 重置状态
-    analysisCompleted.value = false
-    characterDetected.value = false
-    voiceGenerated.value = false
-    progressStatus.value = '等待开始'
-    overallProgress.value = 0
-    
-    message.info('已切换到新建项目模式')
-    return
-  }
-  
-  if (selectedId) {
-    // 加载选中的项目
-    selectedProjectId.value = selectedId
-    projectId.value = selectedId
-    await loadProjectDetail()
-    message.success('项目加载成功')
-  }
+// 辅助函数
+const getCharacterCount = (project) => {
+  const mapping = project?.character_mapping || {}
+  return Object.keys(mapping).length
 }
 
-// 项目筛选
-const filterProjects = (input, option) => {
-  const text = option.children?.[0]?.children?.find(child => 
-    typeof child === 'string' || child?.children?.[0]
-  )
-  if (typeof text === 'string') {
-    return text.toLowerCase().includes(input.toLowerCase())
-  }
-  return false
+const getSegmentCount = (project) => {
+  return project?.segments?.length || 0
 }
 
 // 获取状态颜色
@@ -1710,52 +1631,49 @@ const exportProject = () => {
   color: #6b7280;
 }
 
-/* ========== 项目管理样式 ========== */
-.project-selector-container {
+/* ========== 项目信息样式 ========== */
+.project-info-container {
   margin-bottom: 24px;
 }
 
-.project-selector-card {
+.project-info-card {
   border-radius: 12px !important;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08) !important;
   border: none !important;
 }
 
-.project-selector {
+.project-info {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   gap: 24px;
 }
 
-.selector-left {
+.project-main {
   flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.current-project-info {
-  padding: 16px;
-  background: #f8fafc;
-  border-radius: 8px;
-  border-left: 4px solid #06b6d4;
 }
 
 .project-name {
+  font-size: 24px;
   font-weight: 600;
   color: #374151;
-  margin-bottom: 8px;
+  margin: 0 0 8px 0;
 }
 
-.project-details {
-  display: flex;
-  gap: 16px;
-  font-size: 14px;
+.project-description {
   color: #6b7280;
+  margin: 0 0 16px 0;
+  line-height: 1.5;
 }
 
-.selector-right {
+.project-meta {
+  display: flex;
+  gap: 24px;
+  font-size: 14px;
+  color: #9ca3af;
+}
+
+.project-actions {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -1763,13 +1681,6 @@ const exportProject = () => {
 
 .project-manage-content {
   padding: 16px 0;
-}
-
-.project-actions {
-  margin-top: 24px;
-  padding-top: 24px;
-  border-top: 1px solid #e5e7eb;
-  text-align: right;
 }
 
 @media (max-width: 1200px) {
