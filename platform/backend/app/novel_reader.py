@@ -17,7 +17,7 @@ import re
 from datetime import datetime, timedelta
 
 from database import get_db
-from models import NovelProject, TextSegment, VoiceProfile, SystemLog
+from models import NovelProject, TextSegment, VoiceProfile, SystemLog, AudioFile
 from tts_client import MegaTTS3Client, TTSRequest, get_tts_client
 from utils import log_system_event, update_usage_stats, save_upload_file
 
@@ -1304,12 +1304,38 @@ async def process_single_segment(segment: TextSegment, tts_client, semaphore, db
                     file_size = os.path.getsize(audio_path)
                     logger.info(f"[SEGMENT] 音频文件生成: {audio_path} ({file_size} bytes)")
                     
+                    # 获取音频时长
+                    try:
+                        from utils import get_audio_duration
+                        duration = get_audio_duration(audio_path)
+                    except:
+                        duration = 0.0
+                    
                     # 更新段落记录
                     segment.audio_file_path = audio_path
                     segment.status = 'completed'
                     segment.processing_time = processing_time
                     segment.completed_at = datetime.utcnow()
                     segment.error_message = None
+                    
+                    # 创建AudioFile记录 - 修复数据库脱节问题
+                    audio_file = AudioFile(
+                        filename=os.path.basename(audio_path),
+                        original_name=f"段落{segment.segment_order}_{segment.detected_speaker or '未知'}",
+                        file_path=audio_path,
+                        file_size=file_size,
+                        duration=duration,
+                        project_id=segment.project_id,
+                        segment_id=segment.id,
+                        voice_profile_id=segment.voice_profile_id,
+                        text_content=segment.text_content,
+                        audio_type='segment',
+                        processing_time=processing_time,
+                        model_used='MegaTTS3',
+                        status='active',
+                        created_at=datetime.utcnow()
+                    )
+                    db.add(audio_file)
                     
                     # 更新声音档案使用计数 - 修复NoneType错误
                     if voice.usage_count is None:
@@ -1318,7 +1344,7 @@ async def process_single_segment(segment: TextSegment, tts_client, semaphore, db
                     voice.last_used = datetime.utcnow()
                     
                     db.commit()
-                    logger.info(f"[SEGMENT] 段落 {segment.id} 处理完成")
+                    logger.info(f"[SEGMENT] 段落 {segment.id} 处理完成，已创建AudioFile记录 ID: {audio_file.id}")
                     
                 else:
                     logger.error(f"[SEGMENT] 段落 {segment.id} 音频文件未生成: {audio_path}")
@@ -1412,6 +1438,32 @@ async def merge_audio_files(project: NovelProject, segments: List[TextSegment], 
             
             # 导出最终音频
             combined.export(final_path, format="wav")
+            
+            # 创建合并音频的AudioFile记录
+            try:
+                file_size = os.path.getsize(final_path)
+                duration = len(combined) / 1000.0  # pydub时长单位是毫秒
+                
+                merged_audio_file = AudioFile(
+                    filename=os.path.basename(final_path),
+                    original_name=f"{project.name}_完整合成",
+                    file_path=final_path,
+                    file_size=file_size,
+                    duration=duration,
+                    project_id=project.id,
+                    segment_id=None,
+                    voice_profile_id=None,
+                    text_content=f"项目《{project.name}》完整音频合成",
+                    audio_type='project',
+                    processing_time=None,
+                    model_used='MegaTTS3',
+                    status='active',
+                    created_at=datetime.utcnow()
+                )
+                db.add(merged_audio_file)
+                logger.info(f"已创建项目合并音频的AudioFile记录 ID: {merged_audio_file.id}")
+            except Exception as e:
+                logger.warning(f"创建合并音频的AudioFile记录失败: {str(e)}")
             
             # 更新项目记录
             project.final_audio_path = final_path

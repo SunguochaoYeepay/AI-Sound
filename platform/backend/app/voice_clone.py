@@ -17,7 +17,7 @@ from datetime import datetime
 import shutil
 
 from database import get_db
-from models import VoiceProfile, SystemLog, UsageStats
+from models import VoiceProfile, SystemLog, UsageStats, AudioFile
 from tts_client import MegaTTS3Client, TTSRequest, get_tts_client
 from utils import save_upload_file, log_system_event, update_usage_stats
 
@@ -180,6 +180,46 @@ async def synthesize_speech(
         processing_time = time.time() - start_time
         
         if response.success:
+            # 获取生成的音频文件信息
+            file_size = os.path.getsize(output_path) if os.path.exists(output_path) else 0
+            
+            # 获取音频时长
+            try:
+                from utils import get_audio_duration
+                duration = get_audio_duration(output_path)
+            except:
+                duration = 0.0
+            
+            # 创建AudioFile记录 - 修复单句TTS数据库脱节问题
+            try:
+                audio_file = AudioFile(
+                    filename=output_filename,
+                    original_name=f"单句合成_{voice_name}",
+                    file_path=output_path,
+                    file_size=file_size,
+                    duration=duration,
+                    project_id=None,
+                    segment_id=None,
+                    voice_profile_id=None,
+                    text_content=text[:200],  # 截取前200字符作为内容预览
+                    audio_type='single',
+                    processing_time=processing_time,
+                    model_used='MegaTTS3',
+                    parameters=json.dumps({
+                        "time_step": time_step,
+                        "p_weight": p_weight,
+                        "t_weight": t_weight,
+                        "voice_name": voice_name
+                    }),
+                    status='active',
+                    created_at=datetime.utcnow()
+                )
+                db.add(audio_file)
+                db.commit()
+                logger.info(f"已创建单句TTS的AudioFile记录 ID: {audio_file.id}")
+            except Exception as e:
+                logger.warning(f"创建单句TTS的AudioFile记录失败: {str(e)}")
+            
             # 记录成功日志
             await log_system_event(
                 db=db,
@@ -729,6 +769,45 @@ async def synthesize_from_library(
         processing_time = time.time() - start_time
         
         if response.success:
+            # 获取生成的音频文件信息
+            file_size = os.path.getsize(output_path) if os.path.exists(output_path) else 0
+            
+            # 获取音频时长
+            try:
+                from utils import get_audio_duration
+                duration = get_audio_duration(output_path)
+            except:
+                duration = 0.0
+            
+            # 创建AudioFile记录 - 修复声音库TTS数据库脱节问题
+            try:
+                audio_file = AudioFile(
+                    filename=output_filename,
+                    original_name=f"声音库合成_{voice_profile.name}",
+                    file_path=output_path,
+                    file_size=file_size,
+                    duration=duration,
+                    project_id=None,
+                    segment_id=None,
+                    voice_profile_id=voice_profile_id,
+                    text_content=text[:200],  # 截取前200字符作为内容预览
+                    audio_type='single',
+                    processing_time=processing_time,
+                    model_used='MegaTTS3',
+                    parameters=json.dumps({
+                        "time_step": time_step,
+                        "p_weight": p_weight,
+                        "t_weight": t_weight,
+                        "voice_name": voice_profile.name
+                    }),
+                    status='active',
+                    created_at=datetime.utcnow()
+                )
+                db.add(audio_file)
+                logger.info(f"已创建声音库TTS的AudioFile记录 ID: {audio_file.id}")
+            except Exception as e:
+                logger.warning(f"创建声音库TTS的AudioFile记录失败: {str(e)}")
+            
             # 更新声音档案的使用统计
             voice_profile.usage_count = (voice_profile.usage_count or 0) + 1
             voice_profile.last_used = datetime.utcnow()

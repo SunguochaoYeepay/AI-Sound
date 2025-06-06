@@ -707,15 +707,15 @@ const loadVoiceLibrary = async () => {
     const responseData = response.data
     
     if (responseData && responseData.success) {
-              // 转换后端数据格式到前端格式
-        voiceLibrary.value = responseData.data.map(voice => ({
-          id: voice.id,
-          name: voice.name,
-          description: voice.description || '暂无描述',
-          type: voice.type || 'female',
+      // 转换后端数据格式到前端格式
+      voiceLibrary.value = responseData.data.map(voice => ({
+        id: voice.id,
+        name: voice.name,
+        description: voice.description || '暂无描述',
+        type: voice.type || 'female',
           quality: typeof voice.quality === 'number' ? voice.quality : 3.0,
-          status: voice.status || 'active',
-          color: voice.color || '#06b6d4',
+        status: voice.status || 'active',
+        color: voice.color || '#06b6d4',
           usageCount: typeof voice.usageCount === 'number' ? voice.usageCount : 0,
         audioUrl: voice.sampleAudioUrl || voice.referenceAudioUrl || '',
         referenceAudioUrl: voice.referenceAudioUrl || '',
