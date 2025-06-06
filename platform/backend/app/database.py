@@ -1,5 +1,6 @@
 """
-SQLite 数据库连接和会话管理
+数据库连接和会话管理
+支持SQLite和PostgreSQL
 """
 
 from sqlalchemy import create_engine, event, text
@@ -12,21 +13,42 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# 数据库配置
-DATABASE_DIR = "./data"
-DATABASE_PATH = os.path.join(DATABASE_DIR, "database.db")
-DATABASE_URL = f"sqlite:///{DATABASE_PATH}"
+# 数据库配置 - 优先使用环境变量
+DATABASE_URL = os.getenv('DATABASE_URL')
+
+if DATABASE_URL:
+    # 使用PostgreSQL
+    logger.info(f"[CONFIG] 使用PostgreSQL数据库: {DATABASE_URL.split('@')[1] if '@' in DATABASE_URL else 'PostgreSQL'}")
+    IS_POSTGRES = True
+else:
+    # 回退到SQLite
+    DATABASE_DIR = "./data"
+    DATABASE_PATH = os.path.join(DATABASE_DIR, "database.db")
+    DATABASE_URL = f"sqlite:///{DATABASE_PATH}"
+    logger.info(f"[CONFIG] 使用SQLite数据库: {DATABASE_PATH}")
+    IS_POSTGRES = False
 
 # 创建数据库引擎
-engine = create_engine(
-    DATABASE_URL,
-    connect_args={
-        "check_same_thread": False,  # SQLite多线程支持
-        "timeout": 20  # 连接超时时间
-    },
-    echo=False,  # 设为True可以看到SQL日志
-    pool_pre_ping=True  # 连接池预检查
-)
+if IS_POSTGRES:
+    # PostgreSQL配置
+    engine = create_engine(
+        DATABASE_URL,
+        echo=False,  # 设为True可以看到SQL日志
+        pool_pre_ping=True,  # 连接池预检查
+        pool_size=10,
+        max_overflow=20
+    )
+else:
+    # SQLite配置
+    engine = create_engine(
+        DATABASE_URL,
+        connect_args={
+            "check_same_thread": False,  # SQLite多线程支持
+            "timeout": 20  # 连接超时时间
+        },
+        echo=False,  # 设为True可以看到SQL日志
+        pool_pre_ping=True  # 连接池预检查
+    )
 
 # 启用SQLite外键约束
 @event.listens_for(Engine, "connect")
@@ -67,8 +89,9 @@ def init_db():
     创建所有表结构
     """
     try:
-        # 确保数据库目录存在
-        os.makedirs(DATABASE_DIR, exist_ok=True)
+        if not IS_POSTGRES:
+            # SQLite需要确保目录存在
+            os.makedirs(DATABASE_DIR, exist_ok=True)
         
         # 导入所有模型以确保表被创建
         import models
@@ -76,13 +99,20 @@ def init_db():
         # 创建所有表
         Base.metadata.create_all(bind=engine)
         
-        logger.info(f"[SUCCESS] 数据库初始化完成: {DATABASE_PATH}")
-        
-        # 检查数据库连接
-        with SessionLocal() as db:
-            result = db.execute(text("SELECT sqlite_version()"))
-            version = result.fetchone()[0]
-            logger.info(f"[INFO] SQLite版本: {version}")
+        if IS_POSTGRES:
+            logger.info(f"[SUCCESS] PostgreSQL数据库初始化完成")
+            # 检查PostgreSQL连接
+            with SessionLocal() as db:
+                result = db.execute(text("SELECT version()"))
+                version = result.fetchone()[0]
+                logger.info(f"[INFO] PostgreSQL版本: {version.split()[0]} {version.split()[1]}")
+        else:
+            logger.info(f"[SUCCESS] SQLite数据库初始化完成: {DATABASE_PATH}")
+            # 检查SQLite连接
+            with SessionLocal() as db:
+                result = db.execute(text("SELECT sqlite_version()"))
+                version = result.fetchone()[0]
+                logger.info(f"[INFO] SQLite版本: {version}")
             
     except Exception as e:
         logger.error(f"[ERROR] 数据库初始化失败: {str(e)}")
@@ -94,22 +124,42 @@ def get_db_info():
     """
     try:
         with SessionLocal() as db:
-            # 获取数据库大小
-            db_size = os.path.getsize(DATABASE_PATH) if os.path.exists(DATABASE_PATH) else 0
-            
-            # 获取表信息
-            tables_info = db.execute(text("""
-                SELECT name, type FROM sqlite_master 
-                WHERE type='table' AND name NOT LIKE 'sqlite_%'
-                ORDER BY name
-            """)).fetchall()
-            
-            return {
-                "database_path": DATABASE_PATH,
-                "database_size_mb": round(db_size / (1024 * 1024), 2),
-                "tables_count": len(tables_info),
-                "tables": [{"name": table[0], "type": table[1]} for table in tables_info]
-            }
+            if IS_POSTGRES:
+                # PostgreSQL查询
+                tables_info = db.execute(text("""
+                    SELECT table_name, table_type FROM information_schema.tables 
+                    WHERE table_schema = 'public'
+                    ORDER BY table_name
+                """)).fetchall()
+                
+                # PostgreSQL数据库大小查询
+                db_size_result = db.execute(text("""
+                    SELECT pg_size_pretty(pg_database_size(current_database()))
+                """)).fetchone()
+                
+                return {
+                    "database_type": "PostgreSQL",
+                    "database_size": db_size_result[0] if db_size_result else "Unknown",
+                    "tables_count": len(tables_info),
+                    "tables": [{"name": table[0], "type": table[1]} for table in tables_info]
+                }
+            else:
+                # SQLite查询
+                db_size = os.path.getsize(DATABASE_PATH) if os.path.exists(DATABASE_PATH) else 0
+                
+                tables_info = db.execute(text("""
+                    SELECT name, type FROM sqlite_master 
+                    WHERE type='table' AND name NOT LIKE 'sqlite_%'
+                    ORDER BY name
+                """)).fetchall()
+                
+                return {
+                    "database_type": "SQLite",
+                    "database_path": DATABASE_PATH,
+                    "database_size_mb": round(db_size / (1024 * 1024), 2),
+                    "tables_count": len(tables_info),
+                    "tables": [{"name": table[0], "type": table[1]} for table in tables_info]
+                }
     except Exception as e:
         logger.error(f"获取数据库信息失败: {str(e)}")
         return {"error": str(e)}

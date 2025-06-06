@@ -4,7 +4,7 @@ services:
   # 后端服务
   backend:
     build:
-      context: ..
+      context: .
       dockerfile: docker/backend/Dockerfile.correct
     container_name: ai-sound-backend
     environment:
@@ -37,7 +37,7 @@ services:
       - POSTGRES_USER=ai_sound_user
       - POSTGRES_PASSWORD=ai_sound_password
     volumes:
-      - ./data/database:/var/lib/postgresql/data
+      - ./data/database_postgres:/var/lib/postgresql/data
       - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - ai-sound-network
@@ -54,7 +54,7 @@ services:
     container_name: ai-sound-redis
     command: redis-server --appendonly yes
     volumes:
-      - ../data/cache:/data
+      - ./data/cache:/data
     networks:
       - ai-sound-network
     restart: unless-stopped
@@ -76,6 +76,7 @@ services:
       - ./platform/frontend/dist:/usr/share/nginx/html:ro
       - ./data/audio:/usr/share/nginx/audio:ro
       - ./data/voice_profiles:/usr/share/nginx/voice_profiles:ro
+      - ./data/uploads:/usr/share/nginx/uploads:ro
       - ./data/logs/nginx:/var/log/nginx
     depends_on:
       - backend

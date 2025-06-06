@@ -237,7 +237,7 @@ const testCustomUrl = async () => {
     audio.onloadeddata = () => {
       isTestingCustom.value = false
       customResult.value = 'success'
-      testLogs.value.unshift(`[${new Date().toLocaleTimeString()}] 自定义音频加载成功: ${audio.duration.toFixed(2)}秒`)
+      testLogs.value.unshift(`[${new Date().toLocaleTimeString()}] 自定义音频加载成功: ${(audio.duration || 0).toFixed(2)}秒`)
     }
     
     audio.onerror = (e) => {

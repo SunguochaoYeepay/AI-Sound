@@ -1,0 +1,14 @@
+-- AI-Sound数据迁移脚本
+-- 从SQLite迁移到PostgreSQL
+
+-- 迁移声音档案
+INSERT INTO voice_profiles (id, name, description, type, reference_audio_path, latent_file_path, sample_audio_path, parameters, quality_score, usage_count, last_used, color, tags, status, created_at, updated_at) 
+VALUES (1, '温柔女声', '温柔甜美的女性声音', 'female', '../data/uploads\ref_0f47c098738b4e5988d4c3d18c129807.wav', '../data/uploads\latent_0904480606644380bec6b1747d9a5cdb.npy', '', '{"timeStep": 20, "pWeight": 1.0, "tWeight": 1.0}', 8.5, 0, NULL, '#ff6b9d', '[]', 'active', '2025-06-03 14:26:47.731378', '2025-06-04 05:46:14.853116') ON CONFLICT (name) DO NOTHING;
+INSERT INTO voice_profiles (id, name, description, type, reference_audio_path, latent_file_path, sample_audio_path, parameters, quality_score, usage_count, last_used, color, tags, status, created_at, updated_at) 
+VALUES (2, '磁性男声', '低沉有磁性的男性声音', 'male', '../data/uploads\ref_14ec72125ea14cd78dcd1b8463fd1018.wav', '../data/uploads\latent_16382e3155e749c8af2c9a5cabcddc7b.npy', '', '{"timeStep": 20, "pWeight": 1.0, "tWeight": 1.0}', 8.8, 0, NULL, '#4e73df', '[]', 'active', '2025-06-03 14:26:47.731378', '2025-06-04 05:46:14.853116') ON CONFLICT (name) DO NOTHING;
+INSERT INTO voice_profiles (id, name, description, type, reference_audio_path, latent_file_path, sample_audio_path, parameters, quality_score, usage_count, last_used, color, tags, status, created_at, updated_at) 
+VALUES (3, '专业主播', '专业播音员声音', 'female', '../data/uploads\ref_1717d428da7d4056a5e4b656c0319f95.wav', '../data/uploads\latent_3073eb20d788482e962cfc3f3a454ea9.npy', '', '{"timeStep": 20, "pWeight": 1.0, "tWeight": 1.0}', 9.2, 0, NULL, '#1cc88a', '[]', 'active', '2025-06-03 14:26:47.731378', '2025-06-04 05:46:14.853116') ON CONFLICT (name) DO NOTHING;
+INSERT INTO voice_profiles (id, name, description, type, reference_audio_path, latent_file_path, sample_audio_path, parameters, quality_score, usage_count, last_used, color, tags, status, created_at, updated_at) 
+VALUES (4, '老者声音', '成熟稳重的老者声音', 'male', '../data/uploads\ref_1d3d4724bc7f4722867c250b1958ec75.wav', '../data/uploads\latent_3bf68a6b26194d63a810b4212f9aeb3c.npy', '', '{"timeStep": 20, "pWeight": 1.0, "tWeight": 1.0}', 8.0, 0, NULL, '#f6c23e', '[]', 'active', '2025-06-03 14:26:47.731378', '2025-06-04 05:46:14.853116') ON CONFLICT (name) DO NOTHING;
+INSERT INTO voice_profiles (id, name, description, type, reference_audio_path, latent_file_path, sample_audio_path, parameters, quality_score, usage_count, last_used, color, tags, status, created_at, updated_at) 
+VALUES (5, '童声', '清脆可爱的儿童声音', 'child', '../data/uploads\ref_219c6ddb984440a288047ee791c8ad4f.wav', '../data/uploads\latent_48981ecf6e224a45abb80eaad2203928.npy', '', '{"timeStep": 20, "pWeight": 1.0, "tWeight": 1.0}', 7.8, 0, NULL, '#e74a3b', '[]', 'active', '2025-06-03 14:26:47.731378', '2025-06-04 05:46:14.853116') ON CONFLICT (name) DO NOTHING;

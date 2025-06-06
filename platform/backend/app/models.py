@@ -11,6 +11,7 @@ import json
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 import os
+from urllib.parse import quote
 
 class VoiceProfile(Base):
     """
@@ -63,8 +64,11 @@ class VoiceProfile(Base):
             parts = normalized_path.split("/")
             filename = parts[-1]  # 取最后一部分作为文件名
             
+            # URL编码文件名以支持中文字符
+            encoded_filename = quote(filename, safe='._-')
+            
             # 统一返回标准的nginx路径格式
-            return f"/voice_profiles/{filename}"
+            return f"/voice_profiles/{encoded_filename}"
         
         return {
             "id": self.id,

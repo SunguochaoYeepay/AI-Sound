@@ -76,7 +76,7 @@
           </svg>
         </div>
         <div class="stat-content">
-          <div class="stat-value">{{ (averageQuality * 2).toFixed(1) }}</div>
+          <div class="stat-value">{{ ((averageQuality || 0) * 2).toFixed(1) }}</div>
           <div class="stat-label">平均质量评分</div>
         </div>
       </div>
@@ -165,7 +165,7 @@
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
                 </svg>
-                <span>{{ voice.quality.toFixed(1) }}</span>
+                <span>{{ (voice.quality || 0).toFixed(1) }}</span>
               </div>
               <div class="meta-item">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
@@ -520,7 +520,7 @@
             :max="2"
             :step="0.1"
           />
-          <div class="param-display">{{ editingVoice.params.pWeight.toFixed(1) }}</div>
+                        <div class="param-display">{{ (editingVoice.params.pWeight || 1.0).toFixed(1) }}</div>
         </a-form-item>
         
         <a-form-item label="相似度权重 (t_w)">
@@ -530,7 +530,7 @@
             :max="2"
             :step="0.1"
           />
-          <div class="param-display">{{ editingVoice.params.tWeight.toFixed(1) }}</div>
+                        <div class="param-display">{{ (editingVoice.params.tWeight || 1.0).toFixed(1) }}</div>
         </a-form-item>
 
         <a-form-item label="质量评分">
@@ -707,16 +707,16 @@ const loadVoiceLibrary = async () => {
     const responseData = response.data
     
     if (responseData && responseData.success) {
-      // 转换后端数据格式到前端格式
-      voiceLibrary.value = responseData.data.map(voice => ({
-        id: voice.id,
-        name: voice.name,
-        description: voice.description || '暂无描述',
-        type: voice.type || 'female',
-        quality: voice.quality || 3.0,
-        status: voice.status || 'active',
-        color: voice.color || '#06b6d4',
-        usageCount: voice.usageCount || 0,
+              // 转换后端数据格式到前端格式
+        voiceLibrary.value = responseData.data.map(voice => ({
+          id: voice.id,
+          name: voice.name,
+          description: voice.description || '暂无描述',
+          type: voice.type || 'female',
+          quality: typeof voice.quality === 'number' ? voice.quality : 3.0,
+          status: voice.status || 'active',
+          color: voice.color || '#06b6d4',
+          usageCount: typeof voice.usageCount === 'number' ? voice.usageCount : 0,
         audioUrl: voice.sampleAudioUrl || voice.referenceAudioUrl || '',
         referenceAudioUrl: voice.referenceAudioUrl || '',
         sampleAudioUrl: voice.sampleAudioUrl || '',
@@ -747,6 +747,9 @@ const loadVoiceLibrary = async () => {
 // 保存声音到后端
 const saveVoiceToBackend = async (voiceData) => {
   try {
+    // 调试：打印voiceData内容
+    console.log('[DEBUG] 保存声音数据:', voiceData)
+    
     // 构建FormData格式数据（后端期望Form格式）
     const formData = new FormData()
     formData.append('name', voiceData.name)
@@ -755,6 +758,12 @@ const saveVoiceToBackend = async (voiceData) => {
     formData.append('color', voiceData.color || '#06b6d4')
     formData.append('parameters', JSON.stringify(voiceData.params || {}))
     formData.append('tags', '') // 暂时为空，后续可添加标签功能
+    
+    // 调试：打印FormData内容
+    console.log('[DEBUG] FormData内容:')
+    for (let [key, value] of formData.entries()) {
+      console.log(`  ${key}: ${value}`)
+    }
     
     // 添加音频文件（如果有新上传的）
     if (voiceData.audioFileList && voiceData.audioFileList.length > 0) {
@@ -833,9 +842,10 @@ const filteredVoices = computed(() => {
   // 质量过滤
   if (qualityFilter.value) {
     voices = voices.filter(voice => {
-      if (qualityFilter.value === 'high') return voice.quality >= 4.0
-      if (qualityFilter.value === 'medium') return voice.quality >= 3.0 && voice.quality < 4.0
-      if (qualityFilter.value === 'low') return voice.quality < 3.0
+      const quality = typeof voice.quality === 'number' ? voice.quality : 0
+      if (qualityFilter.value === 'high') return quality >= 4.0
+      if (qualityFilter.value === 'medium') return quality >= 3.0 && quality < 4.0
+      if (qualityFilter.value === 'low') return quality < 3.0
       return true
     })
   }
@@ -849,16 +859,16 @@ const filteredVoices = computed(() => {
 })
 
 const highQualityCount = computed(() => 
-  voiceLibrary.value.filter(v => v.quality >= 4.0).length
+  voiceLibrary.value.filter(v => typeof v.quality === 'number' && v.quality >= 4.0).length
 )
 
 const todayUsage = computed(() => 
-  voiceLibrary.value.reduce((sum, v) => sum + v.usageCount, 0)
+  voiceLibrary.value.reduce((sum, v) => sum + (typeof v.usageCount === 'number' ? v.usageCount : 0), 0)
 )
 
 const averageQuality = computed(() => {
   if (voiceLibrary.value.length === 0) return 0
-  const total = voiceLibrary.value.reduce((sum, v) => sum + v.quality, 0)
+  const total = voiceLibrary.value.reduce((sum, v) => sum + (typeof v.quality === 'number' ? v.quality : 0), 0)
   const average = total / voiceLibrary.value.length
   return average || 0
 })

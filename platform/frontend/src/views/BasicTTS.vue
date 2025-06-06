@@ -159,7 +159,7 @@
                     :step="0.1"
                     :tooltip-formatter="(value) => value.toFixed(1)"
                   />
-                  <div class="param-value">{{ params.pWeight.toFixed(1) }}</div>
+                  <div class="param-value">{{ (params.pWeight || 1.0).toFixed(1) }}</div>
                 </div>
 
                 <div class="param-item">
@@ -171,7 +171,7 @@
                     :step="0.1"
                     :tooltip-formatter="(value) => value.toFixed(1)"
                   />
-                  <div class="param-value">{{ params.tWeight.toFixed(1) }}</div>
+                  <div class="param-value">{{ (params.tWeight || 1.0).toFixed(1) }}</div>
                 </div>
               </div>
             </div>
@@ -554,7 +554,7 @@ const generateSpeech = async () => {
         generatedAudio.value = {
           url: audioCheck.url,
           size: '未知', // 后端暂时没有返回文件大小
-          duration: audioCheck.duration ? `${audioCheck.duration.toFixed(1)}秒` : '未知',
+          duration: (audioCheck.duration && typeof audioCheck.duration === 'number') ? `${audioCheck.duration.toFixed(1)}秒` : '未知',
           quality: 4.0, // 默认质量评分
           processingTime: synthesizeResponse.data.processingTime
         }

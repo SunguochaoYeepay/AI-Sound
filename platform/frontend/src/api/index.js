@@ -90,14 +90,14 @@ export const charactersAPI = {
   }),
   
   // 更新角色
-  updateCharacter: (id, data) => apiClient.put(`/characters/${id}/`, data, {
+  updateCharacter: (id, data) => apiClient.put(`/characters/${id}`, data, {
     headers: {
       'Content-Type': 'multipart/form-data'
     }
   }),
   
   // 删除角色
-  deleteCharacter: (id) => apiClient.delete(`/characters/${id}/`),
+  deleteCharacter: (id) => apiClient.delete(`/characters/${id}`),
   
   // 获取单个声音档案
   getVoiceProfile: (id) => apiClient.get(`/characters/${id}`),
