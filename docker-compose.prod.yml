@@ -5,7 +5,8 @@ services:
   backend:
     build:
       context: .
-      dockerfile: docker/backend/Dockerfile.correct
+      dockerfile: docker/backend/Dockerfile
+      no_cache: true
     container_name: ai-sound-backend
     environment:
       - DATABASE_URL=postgresql://ai_sound_user:ai_sound_password@database:5432/ai_sound
@@ -38,7 +39,7 @@ services:
       - POSTGRES_PASSWORD=ai_sound_password
     volumes:
       - ./data/database_postgres:/var/lib/postgresql/data
-      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./database:/docker-entrypoint-initdb.d
     networks:
       - ai-sound-network
     restart: unless-stopped

@@ -42,8 +42,8 @@ class MegaTTS3Client:
     """
     
     def __init__(self, base_url: str = "http://localhost:7929"):
-        # MegaTTS3 实际运行在7930端口上（Gradio API）
-        self.base_url = base_url.replace(':7929', ':7930').rstrip('/')
+        # MegaTTS3 运行在7929端口
+        self.base_url = base_url.rstrip('/')
         self.timeout = aiohttp.ClientTimeout(
             total=300,    # 总超时5分钟
             connect=30,   # 连接超时30秒
@@ -65,9 +65,15 @@ class MegaTTS3Client:
     async def health_check(self) -> Dict[str, Any]:
         """检查MegaTTS3服务健康状态"""
         try:
-            # 检查7929端口的健康状态（原始健康检查端点）
-            health_url = self.base_url.replace(':7930', ':7929')
-            async with aiohttp.ClientSession(timeout=self.timeout) as session:
+            # 检查7929端口的健康状态
+            health_url = self.base_url
+            # 强制禁用SSL，避免端口变化
+            connector = aiohttp.TCPConnector(ssl=False)
+            async with aiohttp.ClientSession(
+                timeout=self.timeout,
+                connector=connector,
+                connector_owner=True
+            ) as session:
                 async with session.get(f"{health_url}/health") as response:
                     if response.status == 200:
                         data = await response.json()
@@ -124,16 +130,11 @@ class MegaTTS3Client:
                         latent_content = f.read()
                         latent_filename = os.path.basename(request.latent_file_path)
                 
-                # 构建表单数据 - 使用已读取的内容
-                form_data = aiohttp.FormData()
-                form_data.add_field('text', clean_text)
-                form_data.add_field('time_step', str(request.time_step))
-                form_data.add_field('p_w', str(request.p_weight))
-                form_data.add_field('t_w', str(request.t_weight))
+
                 
                 # 🚨 详细请求参数日志
                 logger.info(f"=== TTS请求参数详情 ===")
-                logger.info(f"目标URL: {self.base_url}/gradio_api/partial")
+                logger.info(f"目标URL: {self.base_url}/api/v1/tts/synthesize_file")
                 logger.info(f"文本内容: '{clean_text}' (长度: {len(clean_text)})")
                 logger.info(f"time_step: {request.time_step} (类型: {type(request.time_step)})")
                 logger.info(f"p_w: {request.p_weight} (类型: {type(request.p_weight)})")
@@ -146,29 +147,27 @@ class MegaTTS3Client:
                 logger.info(f"输出路径: {request.output_audio_path}")
                 logger.info(f"=== 请求参数结束 ===")
                 
-                # 构建Gradio API数据格式
-                gradio_data = [
-                    {
-                        "path": f"/tmp/{audio_filename}",
-                        "meta": {"_type": "gradio.FileData"},
-                        "orig_name": audio_filename
-                    },
-                    {
-                        "path": f"/tmp/{latent_filename}" if latent_filename else None,
-                        "meta": {"_type": "gradio.FileData"},
-                        "orig_name": latent_filename
-                    } if latent_content else None,
-                    clean_text,
-                    request.time_step,
-                    request.p_weight,
-                    request.t_weight
-                ]
+                # 构建REST API表单数据
+                form_data = aiohttp.FormData()
+                form_data.add_field('text', clean_text)
+                form_data.add_field('time_step', str(request.time_step))
+                form_data.add_field('p_w', str(request.p_weight))
+                form_data.add_field('t_w', str(request.t_weight))
+                form_data.add_field('audio_file', audio_content, filename=audio_filename, content_type='audio/wav')
+                if latent_content:
+                    form_data.add_field('latent_file', latent_content, filename=latent_filename, content_type='application/octet-stream')
                 
-                # 发送请求到Gradio API
-                async with aiohttp.ClientSession(timeout=self.timeout) as session:
+                # 发送请求到REST API
+                # 强制禁用SSL和自动重定向，避免7929->7930的端口变化
+                connector = aiohttp.TCPConnector(ssl=False)
+                async with aiohttp.ClientSession(
+                    timeout=self.timeout,
+                    connector=connector,
+                    connector_owner=True
+                ) as session:
                     async with session.post(
-                        f"{self.base_url}/gradio_api/partial",
-                        json={"data": gradio_data}
+                        f"{self.base_url}/api/v1/tts/synthesize_file",
+                        data=form_data
                     ) as response:
                         
                         processing_time = time.time() - start_time
