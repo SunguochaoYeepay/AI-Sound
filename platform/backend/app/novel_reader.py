@@ -1311,8 +1311,11 @@ async def process_single_segment(segment: TextSegment, tts_client, semaphore, db
                     segment.completed_at = datetime.utcnow()
                     segment.error_message = None
                     
-                    # 更新声音档案使用计数
+                    # 更新声音档案使用计数 - 修复NoneType错误
+                    if voice.usage_count is None:
+                        voice.usage_count = 0
                     voice.usage_count += 1
+                    voice.last_used = datetime.utcnow()
                     
                     db.commit()
                     logger.info(f"[SEGMENT] 段落 {segment.id} 处理完成")
