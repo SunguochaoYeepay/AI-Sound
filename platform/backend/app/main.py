@@ -72,6 +72,12 @@ async def startup_event():
     from database import init_db
     init_db()
     
+    # 执行数据库健康检查和自动修复
+    from database_health import startup_database_check
+    health_check_success = startup_database_check()
+    if not health_check_success:
+        logger.error("[STARTUP] 数据库健康检查失败，某些功能可能无法正常工作")
+    
     logger.info("[SUCCESS] AI-Sound Platform Backend 启动完成!")
 
 @app.on_event("shutdown")
@@ -118,6 +124,28 @@ async def health_check():
     except Exception as e:
         logger.error(f"健康检查失败: {str(e)}")
         raise HTTPException(status_code=503, detail=f"服务不健康: {str(e)}")
+
+@app.get("/api/database/health")
+async def database_health_check():
+    """数据库结构健康检查接口"""
+    try:
+        from database_health import health_checker
+        health_report = health_checker.check_database_health()
+        return health_report
+    except Exception as e:
+        logger.error(f"数据库健康检查失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"健康检查失败: {str(e)}")
+
+@app.post("/api/database/fix")
+async def database_auto_fix():
+    """数据库结构自动修复接口"""
+    try:
+        from database_health import health_checker
+        fix_result = health_checker.auto_fix_structure()
+        return fix_result
+    except Exception as e:
+        logger.error(f"数据库自动修复失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"自动修复失败: {str(e)}")
 
 # 路由注册
 from voice_clone import router as voice_router
