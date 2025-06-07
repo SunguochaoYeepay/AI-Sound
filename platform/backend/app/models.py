@@ -198,6 +198,22 @@ class NovelProject(Base):
     def set_initial_characters(self, characters: List[str]):
         """设置初始角色列表"""
         self.initial_characters = json.dumps(characters, ensure_ascii=False)
+    
+    def get_settings(self) -> Dict[str, Any]:
+        """获取项目设置"""
+        # 由于模型中没有settings字段，返回默认设置
+        return {
+            "segment_mode": "paragraph",
+            "audio_quality": "high",
+            "enable_smart_detection": True,
+            "enable_bg_music": False
+        }
+    
+    def set_settings(self, settings: Dict[str, Any]):
+        """设置项目设置"""
+        # 由于模型中没有settings字段，这里暂时不做任何操作
+        # 可以考虑在未来版本中添加settings字段
+        pass
 
 class TextSegment(Base):
     """

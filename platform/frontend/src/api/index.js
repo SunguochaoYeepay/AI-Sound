@@ -148,9 +148,17 @@ export const readerAPI = {
     const formData = new FormData()
     formData.append('name', data.name)
     formData.append('description', data.description || '')
-    formData.append('text_content', data.text_content || '')
-    formData.append('character_mapping', JSON.stringify(data.character_mapping || {}))
+    formData.append('book_id', data.book_id)
+    formData.append('initial_characters', JSON.stringify(data.initial_characters || []))
+    formData.append('settings', JSON.stringify(data.settings || {}))
     
+    // 兼容旧版本参数
+    if (data.text_content) {
+      formData.append('text_content', data.text_content)
+    }
+    if (data.character_mapping) {
+      formData.append('character_mapping', JSON.stringify(data.character_mapping))
+    }
     if (data.text_file) {
       formData.append('text_file', data.text_file)
     }

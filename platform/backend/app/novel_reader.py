@@ -33,7 +33,6 @@ AUDIO_DIR = "/app/data/audio"
 async def create_project(
     name: str = Form(...),
     description: str = Form(""),
-    type: str = Form("novel"),
     book_id: int = Form(...),
     initial_characters: str = Form("[]"),
     settings: str = Form("{}"),
@@ -84,14 +83,13 @@ async def create_project(
         project = NovelProject(
             name=name,
             description=description,
-            type=type,
             book_id=book_id,
             status='pending'
         )
         
         # 设置初始角色映射（如果有）
+        char_mapping = {}
         if initial_chars:
-            char_mapping = {}
             for char_info in initial_chars:
                 if isinstance(char_info, dict) and 'name' in char_info and 'voice_id' in char_info:
                     char_mapping[char_info['name']] = char_info['voice_id']
@@ -787,11 +785,23 @@ async def get_generation_progress(
         # 估算剩余时间
         estimated_completion = None
         if project.started_at and stats["completed"] > 0:
-            elapsed_time = datetime.utcnow() - project.started_at
-            avg_time_per_segment = elapsed_time.total_seconds() / stats["completed"]
-            remaining_segments = stats["total"] - stats["completed"]
-            remaining_seconds = avg_time_per_segment * remaining_segments
-            estimated_completion = (datetime.utcnow() + timedelta(seconds=remaining_seconds)).isoformat()
+            try:
+                # 确保时间戳兼容性
+                now = datetime.utcnow()
+                started_at = project.started_at
+                
+                # 如果started_at是aware datetime，转换为naive
+                if started_at.tzinfo is not None:
+                    started_at = started_at.replace(tzinfo=None)
+                
+                elapsed_time = now - started_at
+                avg_time_per_segment = elapsed_time.total_seconds() / stats["completed"]
+                remaining_segments = stats["total"] - stats["completed"]
+                remaining_seconds = avg_time_per_segment * remaining_segments
+                estimated_completion = (now + timedelta(seconds=remaining_seconds)).isoformat()
+            except Exception as time_error:
+                logger.warning(f"时间计算错误: {time_error}")
+                estimated_completion = None
         
         # 最近完成的段落
         recent_completed = db.query(TextSegment).filter(
@@ -1226,23 +1236,33 @@ async def process_audio_generation(project_id: int, parallel_tasks: int = 2):
                 
                 logger.info(f"[GENERATION] 处理批次: {len(pending_segments)} 个段落")
                 
-                # 处理这一批段落（真正的并发控制）
-                semaphore = asyncio.Semaphore(parallel_tasks)
-                tasks = []
-                
-                for segment in pending_segments:
-                    task = asyncio.create_task(
-                        process_single_segment(segment, tts_client, semaphore, db)
-                    )
-                    tasks.append(task)
-                
-                # 等待这一批完成
-                results = await asyncio.gather(*tasks, return_exceptions=True)
-                
-                # 检查结果
-                for i, result in enumerate(results):
-                    if isinstance(result, Exception):
-                        logger.error(f"[GENERATION] 段落 {pending_segments[i].id} 处理失败: {result}")
+                # 强制顺序处理，避免显存不足
+                if parallel_tasks == 1:
+                    # 单线程顺序处理
+                    for segment in pending_segments:
+                        try:
+                            logger.info(f"[GENERATION] 顺序处理段落 {segment.id}")
+                            await process_single_segment_sequential(segment, tts_client, db)
+                        except Exception as e:
+                            logger.error(f"[GENERATION] 段落 {segment.id} 处理失败: {e}")
+                else:
+                    # 并发处理（仅当parallel_tasks > 1时）
+                    semaphore = asyncio.Semaphore(parallel_tasks)
+                    tasks = []
+                    
+                    for segment in pending_segments:
+                        task = asyncio.create_task(
+                            process_single_segment(segment, tts_client, semaphore, db)
+                        )
+                        tasks.append(task)
+                    
+                    # 等待这一批完成
+                    results = await asyncio.gather(*tasks, return_exceptions=True)
+                    
+                    # 检查结果
+                    for i, result in enumerate(results):
+                        if isinstance(result, Exception):
+                            logger.error(f"[GENERATION] 段落 {pending_segments[i].id} 处理失败: {result}")
                 
                 # 短暂休息，避免过度占用资源
                 await asyncio.sleep(0.5)
@@ -1258,6 +1278,128 @@ async def process_audio_generation(project_id: int, parallel_tasks: int = 2):
         logger.error(f"[GENERATION] 音频生成后台任务失败: {str(e)}")
         import traceback
         logger.error(f"[GENERATION] 详细错误: {traceback.format_exc()}")
+
+async def process_single_segment_sequential(segment: TextSegment, tts_client, db: Session):
+    """顺序处理单个段落 - 无并发，专用于避免显存不足"""
+    try:
+        logger.info(f"[SEGMENT] 开始顺序处理段落 {segment.id}: {segment.text_content[:30]}...")
+        
+        # 更新段落状态
+        segment.status = 'processing'
+        db.commit()
+        
+        # 获取声音档案
+        voice = db.query(VoiceProfile).filter(VoiceProfile.id == segment.voice_profile_id).first()
+        if not voice:
+            logger.error(f"[SEGMENT] 段落 {segment.id} 声音档案不存在: {segment.voice_profile_id}")
+            segment.status = 'failed'
+            segment.error_message = "声音档案不存在"
+            db.commit()
+            return
+        
+        # 检查声音文件
+        if not voice.reference_audio_path or not os.path.exists(voice.reference_audio_path):
+            logger.error(f"[SEGMENT] 段落 {segment.id} 声音文件不存在: {voice.reference_audio_path}")
+            segment.status = 'failed'
+            segment.error_message = "声音文件不存在"
+            db.commit()
+            return
+        
+        # 生成音频文件路径
+        import uuid
+        audio_filename = f"segment_{segment.id}_{uuid.uuid4().hex}.wav"
+        audio_path = os.path.join(AUDIO_DIR, audio_filename)
+        
+        # 确保目录存在
+        os.makedirs(AUDIO_DIR, exist_ok=True)
+        
+        # 构建TTS请求
+        start_time = time.time()
+        tts_request = TTSRequest(
+            text=segment.text_content,
+            reference_audio_path=voice.reference_audio_path,
+            output_audio_path=audio_path,
+            time_step=20,  # 使用稳定的参数
+            p_weight=1.0,
+            t_weight=1.0,
+            latent_file_path=voice.latent_file_path
+        )
+        
+        logger.info(f"[SEGMENT] 调用TTS服务处理段落 {segment.id}")
+        
+        # 调用TTS服务
+        response = await tts_client.synthesize_speech(tts_request)
+        processing_time = time.time() - start_time
+        
+        if response.success:
+            logger.info(f"[SEGMENT] 段落 {segment.id} TTS合成成功，耗时 {processing_time:.2f}s")
+            
+            # 验证生成的音频文件
+            if os.path.exists(audio_path):
+                file_size = os.path.getsize(audio_path)
+                logger.info(f"[SEGMENT] 音频文件生成: {audio_path} ({file_size} bytes)")
+                
+                # 获取音频时长
+                try:
+                    from utils import get_audio_duration
+                    duration = get_audio_duration(audio_path)
+                except:
+                    duration = 0.0
+                
+                # 更新段落记录
+                segment.audio_file_path = audio_path
+                segment.status = 'completed'
+                segment.processing_time = processing_time
+                segment.completed_at = datetime.utcnow()
+                segment.error_message = None
+                
+                # 创建AudioFile记录
+                audio_file = AudioFile(
+                    filename=os.path.basename(audio_path),
+                    original_name=f"段落{segment.segment_order}_{segment.detected_speaker or '未知'}",
+                    file_path=audio_path,
+                    file_size=file_size,
+                    duration=duration,
+                    project_id=segment.project_id,
+                    segment_id=segment.id,
+                    voice_profile_id=segment.voice_profile_id,
+                    text_content=segment.text_content,
+                    audio_type='segment',
+                    processing_time=processing_time,
+                    model_used='MegaTTS3',
+                    status='active',
+                    created_at=datetime.utcnow()
+                )
+                db.add(audio_file)
+                
+                # 更新声音档案使用计数
+                if voice.usage_count is None:
+                    voice.usage_count = 0
+                voice.usage_count += 1
+                voice.last_used = datetime.utcnow()
+                
+                db.commit()
+                logger.info(f"[SEGMENT] 段落 {segment.id} 顺序处理完成，已创建AudioFile记录 ID: {audio_file.id}")
+                
+            else:
+                logger.error(f"[SEGMENT] 段落 {segment.id} 音频文件未生成: {audio_path}")
+                segment.status = 'failed'
+                segment.error_message = f"音频文件未生成: {response.message}"
+                db.commit()
+        else:
+            logger.error(f"[SEGMENT] 段落 {segment.id} TTS合成失败: {response.message}")
+            segment.status = 'failed'
+            segment.error_message = f"TTS合成失败: {response.message}"
+            db.commit()
+            
+    except Exception as e:
+        logger.error(f"[SEGMENT] 段落 {segment.id} 顺序处理异常: {str(e)}")
+        import traceback
+        logger.error(f"[SEGMENT] 详细错误: {traceback.format_exc()}")
+        
+        segment.status = 'failed'
+        segment.error_message = f"处理异常: {str(e)}"
+        db.commit()
 
 async def process_single_segment(segment: TextSegment, tts_client, semaphore, db: Session):
     """处理单个段落 - 增加更多错误处理"""

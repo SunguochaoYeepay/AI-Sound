@@ -597,7 +597,6 @@ const createProject = async () => {
     const projectData = {
       name: projectForm.name,
       description: projectForm.description,
-      type: projectForm.type,
       book_id: selectedBook.value.id,
       initial_characters: [], // 初始化为空，后续在合成阶段配置
       settings: {

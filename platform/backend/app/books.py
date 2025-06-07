@@ -7,17 +7,19 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Q
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, desc
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 import os
 import json
 import uuid
 import re
 from datetime import datetime
 
-from .database import get_db
-from .models import Book, NovelProject
-from .logging_config import logger
-from .system_logs import log_system_event
+from database import get_db
+from models import Book, NovelProject
+import logging
+from utils import log_system_event
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/books", tags=["books"])
 
@@ -492,7 +494,7 @@ async def get_book_stats(
         logger.error(f"获取书籍统计失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"获取统计失败: {str(e)}")
 
-def auto_detect_chapters(content: str) -> List[Dict[str, any]]:
+def auto_detect_chapters(content: str) -> List[Dict[str, Any]]:
     """
     自动检测章节
     基于常见的章节标记模式
