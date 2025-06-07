@@ -232,6 +232,87 @@ export const readerAPI = {
   getStatus: (taskId) => apiClient.get(`/reader/status/${taskId}`)
 }
 
+// 书籍管理API
+export const booksAPI = {
+  // 获取书籍列表
+  getBooks: (params = {}) => {
+    const queryParams = new URLSearchParams()
+    if (params.page) queryParams.append('page', params.page)
+    if (params.page_size) queryParams.append('page_size', params.page_size)
+    if (params.search) queryParams.append('search', params.search)
+    if (params.status) queryParams.append('status', params.status)
+    if (params.author) queryParams.append('author', params.author)
+    if (params.tags) queryParams.append('tags', params.tags)
+    if (params.sort_by) queryParams.append('sort_by', params.sort_by)
+    if (params.sort_order) queryParams.append('sort_order', params.sort_order)
+    
+    const queryString = queryParams.toString()
+    const url = queryString ? `/books?${queryString}` : '/books'
+    
+    return apiClient.get(url)
+  },
+  
+  // 创建书籍
+  createBook: (data) => {
+    const formData = new FormData()
+    formData.append('title', data.title)
+    formData.append('author', data.author || '')
+    formData.append('description', data.description || '')
+    formData.append('content', data.content || '')
+    formData.append('tags', JSON.stringify(data.tags || []))
+    
+    if (data.text_file) {
+      formData.append('text_file', data.text_file)
+    }
+    
+    return apiClient.post('/books', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    })
+  },
+  
+  // 获取书籍详情
+  getBookDetail: (bookId) => apiClient.get(`/books/${bookId}`),
+  
+  // 更新书籍
+  updateBook: (bookId, data) => {
+    const formData = new FormData()
+    formData.append('title', data.title)
+    formData.append('author', data.author || '')
+    formData.append('description', data.description || '')
+    formData.append('content', data.content || '')
+    formData.append('tags', JSON.stringify(data.tags || []))
+    formData.append('status', data.status || 'draft')
+    
+    return apiClient.put(`/books/${bookId}`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    })
+  },
+  
+  // 删除书籍
+  deleteBook: (bookId, force = false) => 
+    apiClient.delete(`/books/${bookId}?force=${force}`),
+  
+  // 获取书籍内容
+  getBookContent: (bookId, params = {}) => {
+    const queryParams = new URLSearchParams()
+    if (params.chapter) queryParams.append('chapter', params.chapter)
+    if (params.start) queryParams.append('start', params.start)
+    if (params.length) queryParams.append('length', params.length)
+    
+    const queryString = queryParams.toString()
+    const url = queryString ? `/books/${bookId}/content?${queryString}` : `/books/${bookId}/content`
+    
+    return apiClient.get(url)
+  },
+  
+  // 获取书籍统计
+  getBookStats: (bookId) => apiClient.get(`/books/${bookId}/stats`)
+}
+
 // 音频库API
 export const audioAPI = {
   // 获取音频文件列表

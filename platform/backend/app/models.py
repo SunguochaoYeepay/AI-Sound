@@ -12,6 +12,9 @@ from datetime import datetime
 from typing import Dict, List, Any, Optional
 import os
 from urllib.parse import quote
+from sqlalchemy.ext.declarative import declarative_base
+
+Base = declarative_base()
 
 class VoiceProfile(Base):
     """
@@ -113,7 +116,7 @@ class VoiceProfile(Base):
 
 class NovelProject(Base):
     """
-    朗读项目表 - 对应 NovelReader.vue 功能
+    朗读项目表 - 关联书籍进行语音合成
     """
     __tablename__ = "novel_projects"
     
@@ -122,9 +125,11 @@ class NovelProject(Base):
     name = Column(String(200), nullable=False, index=True)
     description = Column(Text)
     
-    # 文本内容
-    original_text = Column(Text)
-    text_file_path = Column(String(500))
+    # 关联书籍
+    book_id = Column(Integer, ForeignKey("books.id"), nullable=False, index=True)
+    
+    # 预设角色（可选）
+    initial_characters = Column(Text, default='[]')  # JSON格式的初始角色列表
     
     # 处理状态
     status = Column(String(20), default='pending', index=True)  # 'pending' | 'processing' | 'paused' | 'completed' | 'failed'
@@ -146,6 +151,7 @@ class NovelProject(Base):
     estimated_completion = Column(DateTime)
     
     # 关系
+    book = relationship("Book", back_populates="synthesis_projects")
     segments = relationship("TextSegment", back_populates="project", cascade="all, delete-orphan")
     
     def to_dict(self) -> Dict[str, Any]:
@@ -154,8 +160,9 @@ class NovelProject(Base):
             "id": self.id,
             "name": self.name,
             "description": self.description,
-            "originalText": self.original_text,
-            "textFilePath": self.text_file_path,
+            "bookId": self.book_id,
+            "book": self.book.to_dict() if self.book else None,
+            "initialCharacters": json.loads(self.initial_characters) if self.initial_characters else [],
             "status": self.status,
             "totalSegments": self.total_segments,
             "processedSegments": self.processed_segments,
@@ -180,6 +187,17 @@ class NovelProject(Base):
     def set_character_mapping(self, mapping: Dict[str, str]):
         """设置角色映射"""
         self.character_mapping = json.dumps(mapping)
+    
+    def get_initial_characters(self) -> List[str]:
+        """获取初始角色列表"""
+        try:
+            return json.loads(self.initial_characters) if self.initial_characters else []
+        except (json.JSONDecodeError, TypeError):
+            return []
+    
+    def set_initial_characters(self, characters: List[str]):
+        """设置初始角色列表"""
+        self.initial_characters = json.dumps(characters, ensure_ascii=False)
 
 class TextSegment(Base):
     """
@@ -420,3 +438,91 @@ class UsageStats(Base):
             "avgProcessingTime": avg_processing_time,
             "audioFilesGenerated": self.audio_files_generated
         } 
+
+class Book(Base):
+    """
+    书籍内容管理表
+    """
+    __tablename__ = "books"
+    
+    # 基础字段
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    title = Column(String(200), nullable=False, index=True)
+    author = Column(String(100), default='')
+    description = Column(Text, default='')
+    
+    # 内容字段
+    content = Column(Text, nullable=False)  # 完整文本内容
+    chapters = Column(Text, default='[]')   # JSON格式的章节信息
+    
+    # 状态管理
+    status = Column(String(20), default='draft', index=True)  # 'draft' | 'published' | 'archived'
+    tags = Column(Text, default='[]')  # JSON格式的标签列表
+    
+    # 统计信息
+    word_count = Column(Integer, default=0)
+    chapter_count = Column(Integer, default=0)
+    
+    # 文件信息
+    source_file_path = Column(String(500))  # 原始文件路径
+    source_file_name = Column(String(200))  # 原始文件名
+    
+    # 时间戳
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # 关系
+    synthesis_projects = relationship("NovelProject", back_populates="book", cascade="all, delete-orphan")
+    
+    # 索引
+    __table_args__ = (
+        Index('idx_book_status_created', 'status', 'created_at'),
+        Index('idx_book_title_author', 'title', 'author'),
+    )
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """转换为字典格式"""
+        return {
+            "id": self.id,
+            "title": self.title,
+            "author": self.author,
+            "description": self.description,
+            "content": self.content,
+            "chapters": json.loads(self.chapters) if self.chapters else [],
+            "status": self.status,
+            "tags": json.loads(self.tags) if self.tags else [],
+            "wordCount": self.word_count,
+            "chapterCount": self.chapter_count,
+            "sourceFileName": self.source_file_name,
+            "createdAt": self.created_at.isoformat() if self.created_at else None,
+            "updatedAt": self.updated_at.isoformat() if self.updated_at else None
+        }
+    
+    def get_chapters(self) -> List[Dict[str, Any]]:
+        """获取章节信息"""
+        try:
+            return json.loads(self.chapters) if self.chapters else []
+        except (json.JSONDecodeError, TypeError):
+            return []
+    
+    def set_chapters(self, chapters: List[Dict[str, Any]]):
+        """设置章节信息"""
+        self.chapters = json.dumps(chapters, ensure_ascii=False)
+        self.chapter_count = len(chapters)
+    
+    def get_tags(self) -> List[str]:
+        """获取标签列表"""
+        try:
+            return json.loads(self.tags) if self.tags else []
+        except (json.JSONDecodeError, TypeError):
+            return []
+    
+    def set_tags(self, tags: List[str]):
+        """设置标签列表"""
+        self.tags = json.dumps(tags, ensure_ascii=False)
+    
+    def update_word_count(self):
+        """更新字数统计"""
+        if self.content:
+            # 简单的中文字数统计
+            self.word_count = len(self.content.replace(' ', '').replace('\n', '').replace('\r', '')) 

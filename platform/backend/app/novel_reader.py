@@ -33,14 +33,15 @@ AUDIO_DIR = "/app/data/audio"
 async def create_project(
     name: str = Form(...),
     description: str = Form(""),
-    text_content: str = Form(""),
-    text_file: Optional[UploadFile] = File(None),
-    character_mapping: str = Form("{}"),
+    type: str = Form("novel"),
+    book_id: int = Form(...),
+    initial_characters: str = Form("[]"),
+    settings: str = Form("{}"),
     db: Session = Depends(get_db)
 ):
     """
-    创建新的朗读项目
-    对应前端 NovelReader.vue 的项目创建功能
+    创建新的朗读项目（重构版）
+    支持书籍引用，不再存储原始文本
     """
     try:
         # 验证项目名称
@@ -52,51 +53,53 @@ async def create_project(
         if existing:
             raise HTTPException(status_code=400, detail="项目名称已存在")
         
-        # 处理文本内容
-        final_text = text_content
-        text_file_path = None
+        # 验证书籍是否存在
+        from models import Book
+        book = db.query(Book).filter(Book.id == book_id).first()
+        if not book:
+            raise HTTPException(status_code=404, detail="指定的书籍不存在")
         
-        if text_file:
-            # 验证文件类型
-            if not text_file.filename.lower().endswith(('.txt', '.md')):
-                raise HTTPException(status_code=400, detail="只支持 .txt 和 .md 文件")
+        if not book.content or len(book.content.strip()) == 0:
+            raise HTTPException(status_code=400, detail="书籍内容为空，无法创建项目")
             
-            # 保存文本文件
-            os.makedirs(TEXTS_DIR, exist_ok=True)
-            file_content = await text_file.read()
-            final_text = file_content.decode('utf-8', errors='ignore')
-            
-            # 保存文件到磁盘
-            import uuid
-            filename = f"project_{uuid.uuid4().hex}.txt"
-            text_file_path = os.path.join(TEXTS_DIR, filename)
-            
-            with open(text_file_path, 'w', encoding='utf-8') as f:
-                f.write(final_text)
-        
-        if not final_text or len(final_text.strip()) == 0:
-            raise HTTPException(status_code=400, detail="文本内容不能为空")
-        
-        # 解析角色映射
+        # 解析初始角色映射
         try:
-            char_mapping = json.loads(character_mapping) if character_mapping else {}
-            logger.info(f"[DEBUG] 解析角色映射 - 原始: {character_mapping}")
-            logger.info(f"[DEBUG] 解析角色映射 - 结果: {char_mapping}")
-            logger.info(f"[DEBUG] 解析角色映射 - 类型: {type(char_mapping)}")
+            initial_chars = json.loads(initial_characters) if initial_characters else []
+            logger.info(f"[DEBUG] 解析初始角色 - 原始: {initial_characters}")
+            logger.info(f"[DEBUG] 解析初始角色 - 结果: {initial_chars}")
         except json.JSONDecodeError as e:
-            logger.error(f"[DEBUG] 角色映射JSON解析失败: {e}")
-            raise HTTPException(status_code=400, detail="角色映射格式错误")
+            logger.error(f"[DEBUG] 初始角色JSON解析失败: {e}")
+            raise HTTPException(status_code=400, detail="初始角色格式错误")
         
-        # 创建项目记录
+        # 解析项目设置
+        try:
+            project_settings = json.loads(settings) if settings else {}
+            logger.info(f"[DEBUG] 解析项目设置 - 原始: {settings}")
+            logger.info(f"[DEBUG] 解析项目设置 - 结果: {project_settings}")
+        except json.JSONDecodeError as e:
+            logger.error(f"[DEBUG] 项目设置JSON解析失败: {e}")
+            raise HTTPException(status_code=400, detail="项目设置格式错误")
+        
+        # 创建项目记录（新版本）
         project = NovelProject(
             name=name,
             description=description,
-            original_text=final_text,
-            text_file_path=text_file_path,
+            type=type,
+            book_id=book_id,
             status='pending'
         )
         
+        # 设置初始角色映射（如果有）
+        if initial_chars:
+            char_mapping = {}
+            for char_info in initial_chars:
+                if isinstance(char_info, dict) and 'name' in char_info and 'voice_id' in char_info:
+                    char_mapping[char_info['name']] = char_info['voice_id']
         project.set_character_mapping(char_mapping)
+        
+        # 设置项目配置
+        if project_settings:
+            project.set_settings(project_settings)
         
         db.add(project)
         logger.info(f"[DEBUG] 项目添加到会话: {project.name}")
@@ -105,25 +108,15 @@ async def create_project(
         db.flush()  # 刷新以获取项目ID
         logger.info(f"[DEBUG] 项目刷新获取ID: {project.id}")
         
-        # 自动进行文本分段
+        # 自动进行文本分段（使用书籍内容）
         try:
             logger.info(f"[DEBUG] 开始文本分段: {project.id}")
-            segments_count = await auto_segment_text_no_commit(project.id, final_text, db)
+            segments_count = await auto_segment_text_no_commit(project.id, book.content, db)
             logger.info(f"项目 {project.id} 分段完成，分段数量: {segments_count}")
         except Exception as seg_error:
             logger.error(f"项目分段失败: {str(seg_error)}")
             # 分段失败不影响项目创建，可以后续手动分段
             segments_count = 0
-        
-        # 如果有角色映射，立即应用到段落
-        if char_mapping and segments_count > 0:
-            try:
-                logger.info(f"[DEBUG] 应用角色映射到段落: {project.id}")
-                await update_segments_voice_mapping_no_commit(project.id, char_mapping, db)
-                logger.info(f"项目 {project.id} 角色映射应用完成")
-            except Exception as mapping_error:
-                logger.error(f"应用角色映射失败: {str(mapping_error)}")
-                # 映射失败不影响项目创建，可以后续手动设置
         
         # 记录创建日志
         try:
@@ -135,9 +128,10 @@ async def create_project(
                 module="novel_reader",
                 details={
                     "project_id": project.id,
-                    "text_length": len(final_text),
-                    "has_file": text_file is not None,
-                    "character_count": len(char_mapping),
+                    "book_id": book_id,
+                    "book_title": book.title,
+                    "text_length": len(book.content),
+                    "initial_character_count": len(initial_chars),
                     "segments_count": segments_count
                 }
             )
@@ -256,16 +250,38 @@ async def get_project_detail(
         
         project_data = project.to_dict()
         
+        # 获取关联的书籍信息
+        book_info = None
+        book_content_length = 0
+        if hasattr(project, 'book_id') and project.book_id:
+            from models import Book
+            book = db.query(Book).filter(Book.id == project.book_id).first()
+            if book:
+                book_info = {
+                    "id": book.id,
+                    "title": book.title,
+                    "author": book.author,
+                    "word_count": book.word_count,
+                    "status": book.status,
+                    "description": book.description
+                }
+                book_content_length = len(book.content) if book.content else 0
+        
         # 获取文本段落列表
         segments = db.query(TextSegment).filter(
             TextSegment.project_id == project_id
         ).order_by(TextSegment.segment_order).all()
         
         project_data['segments'] = [segment.to_dict() for segment in segments]
+        project_data['book'] = book_info  # 添加书籍信息
         
-        # 统计信息
+        # 统计信息（兼容旧项目的original_text和新项目的book引用）
+        total_chars = book_content_length if book_content_length > 0 else (
+            len(project.original_text) if hasattr(project, 'original_text') and project.original_text else 0
+        )
+        
         project_data['statistics'] = {
-            "totalCharacters": len(project.original_text) if project.original_text else 0,
+            "totalCharacters": total_chars,
             "totalSegments": len(segments),
             "completedSegments": len([s for s in segments if s.status == 'completed']),
             "failedSegments": len([s for s in segments if s.status == 'failed']),

@@ -57,43 +57,43 @@
     <!-- 筛选工具栏 -->
     <div class="filter-section">
       <div class="filter-controls">
-        <a-select
-          v-model:value="filters.projectId"
-          placeholder="选择项目"
+          <a-select
+            v-model:value="filters.projectId"
+            placeholder="选择项目"
           style="width: 200px;"
           size="large"
-          allow-clear
-          @change="refreshAudioList"
-        >
-          <a-select-option
-            v-for="project in projectList"
-            :key="project.id"
-            :value="project.id"
+            allow-clear
+            @change="refreshAudioList"
           >
-            {{ project.name }}
-          </a-select-option>
-        </a-select>
+            <a-select-option
+              v-for="project in projectList"
+              :key="project.id"
+              :value="project.id"
+            >
+              {{ project.name }}
+            </a-select-option>
+          </a-select>
         
-        <a-select
-          v-model:value="filters.audioType"
-          placeholder="音频类型"
+          <a-select
+            v-model:value="filters.audioType"
+            placeholder="音频类型"
           style="width: 120px;"
           size="large"
-          allow-clear
-          @change="refreshAudioList"
-        >
-          <a-select-option value="segment">分段音频</a-select-option>
-          <a-select-option value="project">项目合成</a-select-option>
-          <a-select-option value="single">单句合成</a-select-option>
-          <a-select-option value="test">测试音频</a-select-option>
-        </a-select>
+            allow-clear
+            @change="refreshAudioList"
+          >
+            <a-select-option value="segment">分段音频</a-select-option>
+            <a-select-option value="project">项目合成</a-select-option>
+            <a-select-option value="single">单句合成</a-select-option>
+            <a-select-option value="test">测试音频</a-select-option>
+          </a-select>
         
-        <a-input-search
-          v-model:value="filters.search"
-          placeholder="搜索文件名或内容"
+          <a-input-search
+            v-model:value="filters.search"
+            placeholder="搜索文件名或内容"
           style="width: 300px;"
           size="large"
-          @search="refreshAudioList"
+            @search="refreshAudioList"
           allow-clear
         />
         
@@ -106,31 +106,31 @@
       </div>
       
       <div class="action-controls">
-        <a-space>
-          <a-button
-            @click="batchDownload"
-            :disabled="!selectedRowKeys.length"
-            :loading="downloading"
+          <a-space>
+            <a-button
+              @click="batchDownload"
+              :disabled="!selectedRowKeys.length"
+              :loading="downloading"
             size="large"
-          >
+            >
             <template #icon>
               <DownloadOutlined />
             </template>
-            批量下载 ({{ selectedRowKeys.length }})
-          </a-button>
-          <a-button
-            danger
-            @click="batchDelete"
-            :disabled="!selectedRowKeys.length"
-            :loading="deleting"
+              批量下载 ({{ selectedRowKeys.length }})
+            </a-button>
+            <a-button
+              danger
+              @click="batchDelete"
+              :disabled="!selectedRowKeys.length"
+              :loading="deleting"
             size="large"
-          >
+            >
             <template #icon>
               <DeleteOutlined />
             </template>
-            批量删除
-          </a-button>
-        </a-space>
+              批量删除
+            </a-button>
+          </a-space>
       </div>
     </div>
 
