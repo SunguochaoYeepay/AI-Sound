@@ -5,7 +5,7 @@ services:
   backend:
     build:
       context: .
-      dockerfile: docker/backend/Dockerfile.correct
+      dockerfile: docker/backend/Dockerfile
     container_name: ai-sound-backend
     environment:
       - DATABASE_URL=postgresql://ai_sound_user:ai_sound_password@database:5432/ai_sound
@@ -39,7 +39,7 @@ services:
       - POSTGRES_USER=ai_sound_user
       - POSTGRES_PASSWORD=ai_sound_password
     volumes:
-      - ./data/database:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
       - ./docker/database/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - ai-sound-network
@@ -85,7 +85,7 @@ services:
       - ai-sound-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/health"]
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
