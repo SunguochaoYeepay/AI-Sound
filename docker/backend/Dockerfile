@@ -15,7 +15,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # 复制requirements文件并安装Python依赖
-COPY platform/backend/requirements_fixed.txt ./requirements.txt
+COPY platform/backend/requirements.txt ./requirements.txt
 RUN pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/ && \
     pip config set global.trusted-host mirrors.aliyun.com && \
     pip install --no-cache-dir --upgrade pip && \

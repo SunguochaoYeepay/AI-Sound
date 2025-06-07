@@ -7,8 +7,8 @@ pydantic==2.5.1
 
 # Database
 sqlalchemy==2.0.23
-sqlite3
 alembic==1.13.0
+psycopg2-binary==2.9.7
 
 # HTTP Client
 aiohttp==3.9.0

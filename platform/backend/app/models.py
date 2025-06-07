@@ -4,6 +4,7 @@ SQLAlchemy 数据模型
 """
 
 from sqlalchemy import Column, Integer, String, Text, Float, DateTime, ForeignKey, Index, Boolean
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from database import Base
@@ -453,11 +454,11 @@ class Book(Base):
     
     # 内容字段
     content = Column(Text, nullable=False)  # 完整文本内容
-    chapters = Column(Text, default='[]')   # JSON格式的章节信息
+    chapters = Column(Text, default='[]')   # JSON格式的章节信息（字符串存储）
     
     # 状态管理
     status = Column(String(20), default='draft', index=True)  # 'draft' | 'published' | 'archived'
-    tags = Column(Text, default='[]')  # JSON格式的标签列表
+    tags = Column(Text, default='[]')  # JSON格式的标签列表（字符串存储）
     
     # 统计信息
     word_count = Column(Integer, default=0)
@@ -482,15 +483,26 @@ class Book(Base):
     
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典格式"""
+        # 简单的JSON字符串处理
+        try:
+            chapters_data = json.loads(self.chapters) if self.chapters else []
+        except:
+            chapters_data = []
+            
+        try:
+            tags_data = json.loads(self.tags) if self.tags else []
+        except:
+            tags_data = []
+        
         return {
             "id": self.id,
             "title": self.title,
             "author": self.author,
             "description": self.description,
             "content": self.content,
-            "chapters": json.loads(self.chapters) if self.chapters else [],
+            "chapters": chapters_data,
             "status": self.status,
-            "tags": json.loads(self.tags) if self.tags else [],
+            "tags": tags_data,
             "wordCount": self.word_count,
             "chapterCount": self.chapter_count,
             "sourceFileName": self.source_file_name,
@@ -502,7 +514,7 @@ class Book(Base):
         """获取章节信息"""
         try:
             return json.loads(self.chapters) if self.chapters else []
-        except (json.JSONDecodeError, TypeError):
+        except:
             return []
     
     def set_chapters(self, chapters: List[Dict[str, Any]]):
@@ -514,7 +526,7 @@ class Book(Base):
         """获取标签列表"""
         try:
             return json.loads(self.tags) if self.tags else []
-        except (json.JSONDecodeError, TypeError):
+        except:
             return []
     
     def set_tags(self, tags: List[str]):

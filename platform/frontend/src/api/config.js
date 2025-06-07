@@ -1,10 +1,8 @@
 import axios from 'axios'
 
-// 环境配置 - 支持开发和生产环境
+// 环境配置 - 统一使用相对路径，让Vite代理处理
 const isDevelopment = import.meta.env.DEV
-const API_BASE_URL = isDevelopment 
-  ? 'http://localhost:3001/api'  // 开发环境：通过nginx代理
-  : '/api'                       // 生产环境：相对路径，由nginx服务
+const API_BASE_URL = '/api'  // 开发环境通过Vite代理，生产环境通过nginx代理
 
 console.log(`[API配置] 当前环境: ${isDevelopment ? '开发' : '生产'}, API地址: ${API_BASE_URL}`)
 
