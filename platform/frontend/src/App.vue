@@ -72,16 +72,6 @@
           <span style="font-weight: 500;">音频资源库</span>
         </a-menu-item>
 
-        <a-menu-item key="data-management" @click="navigateTo('data-management')">
-          <template #icon>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M6 2c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 2 2h10v-2H6V4h7V2H6zm13 7h-6v2h6V9zm0 4h-6v2h6v-2z"/>
-              <path d="M14 2v5l3-2.5L20 7V2h-6z"/>
-            </svg>
-          </template>
-          <span style="font-weight: 500;">数据管理</span>
-        </a-menu-item>
-
         <a-menu-divider style="background-color: rgba(255,255,255,0.1); margin: 16px 0;" />
 
         <a-menu-item key="settings" @click="navigateTo('settings')">
@@ -177,10 +167,6 @@ const updateSelectedKeys = () => {
     '/novel-reader/edit': 'novel-projects',
     '/novel-reader/detail': 'novel-projects',
     '/audio-library': 'audio-library',
-    '/books': 'data-management',
-    '/books/create': 'data-management',
-    '/books/edit': 'data-management',
-    '/books/detail': 'data-management',
     '/settings': 'settings'
   }
   
@@ -213,7 +199,6 @@ const navigateTo = (view) => {
     'voice-library': '/characters', 
     'novel-projects': '/novel-reader',
     'audio-library': '/audio-library',
-    'data-management': '/books',
     'settings': '/settings'
   }
   
@@ -238,10 +223,6 @@ const getPageTitle = () => {
     '/novel-reader/edit': '语音合成',
     '/novel-reader/detail': '语音合成',
     '/audio-library': '音频资源库',
-    '/books': '数据管理',
-    '/books/create': '数据管理',
-    '/books/edit': '数据管理',
-    '/books/detail': '数据管理',
     '/settings': '系统设置'
   }
   

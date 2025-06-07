@@ -9,7 +9,7 @@ services:
     container_name: ai-sound-backend
     environment:
       - DATABASE_URL=postgresql://ai_sound_user:ai_sound_password@database:5432/ai_sound
-      - MEGATTS3_URL=http://host.docker.internal:9000
+      - MEGATTS3_URL=http://host.docker.internal:7929
       - AUDIO_DIR=/app/data/audio
       - UPLOADS_DIR=/app/data/uploads
       - VOICE_PROFILES_DIR=/app/data/voice_profiles
