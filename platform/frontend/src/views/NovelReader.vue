@@ -3,405 +3,374 @@
     <!-- 页面头部 -->
     <div class="page-header">
       <div class="header-content">
-        <h1 style="margin: 0; color: white; font-size: 28px; font-weight: 700;">
-          智能多角色朗读
-        </h1>
-        <p style="margin: 8px 0 0 0; color: rgba(255,255,255,0.9); font-size: 16px;">
-          上传小说文本，自动识别角色对话，分配声音并生成多角色朗读音频
-        </p>
+        <h1>项目详情</h1>
+        <p>{{ currentProject?.name || '加载中...' }}</p>
       </div>
-      <div class="header-stats">
-        <div class="stat-item">
-          <div class="stat-number">{{ processedChapters }}</div>
-          <div class="stat-label">已处理章节</div>
-        </div>
-        <div class="stat-item">
-          <div class="stat-number">{{ totalCharacters }}</div>
-          <div class="stat-label">角色数量</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- 项目信息显示 -->
-    <div v-if="currentProject" class="project-info-container">
-      <a-card title="当前项目" :bordered="false" class="project-info-card">
-        <div class="project-info">
-          <div class="project-main">
-            <h2 class="project-name">{{ currentProject.name }}</h2>
-            <p class="project-description">{{ currentProject.description || '暂无描述' }}</p>
-            <div class="project-meta">
-              <span>📅 {{ formatDate(currentProject.created_at) }}</span>
-              <span>📝 {{ getSegmentCount(currentProject) }} 个段落</span>
-              <span>👥 {{ getCharacterCount(currentProject) }} 个角色</span>
-            </div>
-          </div>
-          <div class="project-actions">
-            <a-button @click="goBackToList">← 返回项目列表</a-button>
-            <a-button @click="editProject">编辑项目</a-button>
-            <a-tag :color="getStatusColor(currentProject.status)">
-              {{ getStatusText(currentProject.status) }}
-            </a-tag>
-          </div>
-        </div>
-      </a-card>
-    </div>
-
-    <!-- 主内容区域 -->
-    <div class="main-content">
-      <!-- 左侧：小说上传和配置 -->
-      <div class="config-panel">
-        <!-- 文本上传 -->
-        <a-card title="小说文本上传" :bordered="false" class="upload-card">
-          <div class="upload-section">
-            <a-upload-dragger
-              v-model:fileList="novelFiles"
-              :multiple="false"
-              :before-upload="beforeNovelUpload"
-              @change="handleNovelChange"
-              accept=".txt,.doc,.docx"
-              class="novel-upload"
-            >
-              <div class="upload-content">
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="#06b6d4" style="margin-bottom: 16px;">
-                  <path d="M21 5c-1.11-.35-2.33-.5-3.5-.5-1.95 0-4.05.4-5.5 1.5-1.45-1.1-3.55-1.5-5.5-1.5S2.45 4.9 1 6v14.65c0 .25.25.5.5.5.1 0 .15-.05.25-.05C3.1 20.45 5.05 20 6.5 20c1.95 0 4.05.4 5.5 1.5 1.35-.85 3.8-1.5 5.5-1.5 1.65 0 3.35.3 4.75 1.05.1.05.15.05.25.05.25 0 .5-.25.5-.5V6c-.6-.45-1.25-.75-2-1zm0 13.5c-1.1-.35-2.3-.5-3.5-.5-1.7 0-4.15.65-5.5 1.5V8c1.35-.85 3.8-1.5 5.5-1.5 1.2 0 2.4.15 3.5.5v11.5z"/>
-                </svg>
-                <p style="font-size: 16px; color: #374151; margin: 0;">点击或拖拽小说文件到此区域</p>
-                <p style="font-size: 14px; color: #9ca3af; margin: 8px 0 0 0;">支持 TXT, DOC, DOCX 格式</p>
-              </div>
-            </a-upload-dragger>
-
-            <!-- 或者直接粘贴文本 -->
-            <a-divider>或</a-divider>
-            
-            <a-textarea
-              v-model:value="directText"
-              placeholder="直接粘贴小说文本内容..."
-              :rows="8"
-              :maxlength="50000"
-              show-count
-              class="direct-input"
-            />
-            
-            <!-- 分析文本按钮 -->
-            <div v-if="directText.trim()" style="margin-top: 16px; text-align: center;">
-              <a-button 
-                type="primary" 
-                @click="analyzeDirectText"
-                :loading="analysisCompleted === false && progressStatus !== '等待开始'"
-                :disabled="!directText.trim()"
-              >
-                <template #icon>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/>
-                  </svg>
-                </template>
-                分析文本内容
-              </a-button>
-            </div>
-          </div>
-        </a-card>
-
-        <!-- 角色声音分配 -->
-        <a-card title="角色声音分配" :bordered="false" class="character-assign-card">
-          <template #extra>
-            <a-button type="text" @click="autoAssignVoices" :loading="autoAssigning">
-              <template #icon>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
-                </svg>
-              </template>
-              智能分配
-            </a-button>
+      <div class="header-actions">
+        <a-button @click="goBackToList">
+          <template #icon>
+            <LeftOutlined />
           </template>
+          返回列表
+        </a-button>
+        <a-button type="primary" @click="startSynthesis" :loading="synthesizing" :disabled="!canSynthesize">
+          <template #icon>
+            <PlayCircleOutlined />
+          </template>
+          开始合成
+        </a-button>
+        </div>
+        </div>
 
-          <div class="character-list">
-            <div v-if="detectedCharacters.length === 0" class="empty-characters">
-              <svg width="48" height="48" viewBox="0 0 24 24" fill="#d1d5db" style="margin-bottom: 16px;">
-                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
-              </svg>
-              <p style="color: #6b7280; margin: 0;">上传小说后将自动识别角色</p>
+    <!-- 项目信息 -->
+    <div v-if="currentProject" class="project-info-section">
+      <div class="info-card">
+        <div class="info-item">
+          <span class="info-label">项目状态</span>
+          <a-tag :color="getStatusColor(currentProject.status)">
+            {{ getStatusText(currentProject.status) }}
+          </a-tag>
+      </div>
+        <div class="info-item">
+          <span class="info-label">角色数量</span>
+          <span class="info-value">{{ getCharacterCount(currentProject) }} 个</span>
+    </div>
+        <div class="info-item">
+          <span class="info-label">文本段落</span>
+          <span class="info-value">{{ getSegmentCount(currentProject) }} 段</span>
+                </div>
+        <div class="info-item">
+          <span class="info-label">创建时间</span>
+          <span class="info-value">{{ formatDate(currentProject.createdAt) }}</span>
+                    </div>
+                  </div>
+                </div>
+
+    <!-- 合成进度 -->
+    <div v-if="synthesizing || currentProject?.status === 'processing'" class="progress-section">
+      <div class="progress-card">
+        <div class="progress-header">
+          <h3>合成进度</h3>
+          <span>{{ progressPercent }}%</span>
+              </div>
+        <a-progress :percent="progressPercent" :stroke-color="progressColor" />
+        <div class="progress-details">
+          <div class="progress-step">
+            <span class="step-label">文本分析:</span>
+            <span :class="['step-status', progressStatus.text]">{{ getStepText('text') }}</span>
+          </div>
+          <div class="progress-step">
+            <span class="step-label">角色识别:</span>
+            <span :class="['step-status', progressStatus.character]">{{ getStepText('character') }}</span>
+          </div>
+          <div class="progress-step">
+            <span class="step-label">语音生成:</span>
+            <span :class="['step-status', progressStatus.synthesis]">{{ getStepText('synthesis') }}</span>
+          </div>
+        </div>
             </div>
+          </div>
+          
+    <!-- 文本内容预览 -->
+    <div class="content-section">
+      <div class="content-card">
+        <div class="content-header">
+          <h3>文本内容</h3>
+          <div class="content-actions">
+            <a-button type="text" size="small" @click="showFullText = !showFullText">
+              {{ showFullText ? '收起' : '展开' }}
+            </a-button>
+          </div>
+        </div>
+        <div class="content-preview" :class="{ 'expanded': showFullText }">
+          {{ currentProject?.originalText || '加载中...' }}
+    </div>
+              </div>
+    </div>
 
-            <div v-else class="character-items">
-              <div 
-                v-for="character in detectedCharacters" 
-                :key="character.id"
-                class="character-item"
-              >
+    <!-- 操作引导 -->
+    <div v-if="!synthesizing && currentProject?.status !== 'processing' && audioFiles.length === 0" class="action-guide-section">
+      <div class="action-guide-card">
+        <div class="guide-content">
+          <div class="guide-icon">
+            <PlayCircleOutlined style="font-size: 48px; color: #06b6d4;" />
+            </div>
+          <div class="guide-text">
+            <h3>准备开始语音合成</h3>
+            <p>点击上方的"开始合成"按钮，将文本转换为语音文件</p>
+            <div class="guide-features">
+              <div class="feature-item">
+                <span class="feature-icon">🎯</span>
+                <span>智能文本分析</span>
+          </div>
+              <div class="feature-item">
+                <span class="feature-icon">🎭</span>
+                <span>角色声音识别</span>
+              </div>
+              <div class="feature-item">
+                <span class="feature-icon">🔊</span>
+                <span>高质量语音生成</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 角色配置 -->
+    <div v-if="characters.length > 0" class="characters-section">
+      <div class="characters-card">
+        <div class="characters-header">
+          <h3>角色配置</h3>
+          <div class="character-actions">
+            <span class="character-count">{{ characters.length }} 个角色</span>
+            <a-button type="primary" size="small" @click="autoAssignVoices" :loading="autoAssigning">
+              <template #icon>
+                <SoundOutlined />
+              </template>
+              自动分配声音
+            </a-button>
+            <a-button size="small" @click="showCharacterConfig = true">
+              <template #icon>
+                <SettingOutlined />
+          </template>
+              配置角色
+            </a-button>
+            </div>
+        </div>
+        <div class="characters-list">
+          <div v-for="character in characters" :key="character.name" class="character-item">
                 <div class="character-info">
-                  <div class="character-avatar" :style="{ background: character.color }">
+              <div class="character-avatar">
                     {{ character.name.charAt(0) }}
                   </div>
                   <div class="character-details">
                     <div class="character-name">{{ character.name }}</div>
-                    <div class="character-lines">对话数量: {{ character.lineCount }}</div>
+                <div class="character-lines">{{ character.line_count || 0 }} 句对话</div>
                   </div>
                 </div>
-
-                <div class="voice-selector">
+            <div class="voice-assignment">
                   <a-select
-                    v-model:value="character.voiceId"
+                v-model:value="character.voice_id" 
                     placeholder="选择声音"
-                    style="width: 140px;"
-                    size="small"
-                    @change="updateCharacterVoice(character.id, $event)"
-                  >
+                style="width: 200px;"
+                @change="updateCharacterMapping"
+                :loading="loadingVoices"
+              >
+                <a-select-option value="">使用默认声音</a-select-option>
                     <a-select-option
                       v-for="voice in availableVoices"
                       :key="voice.id"
                       :value="voice.id"
                     >
-                      {{ voice.name }}
+                  {{ voice.name }} ({{ getVoiceTypeText(voice.type) }})
                     </a-select-option>
                   </a-select>
-                  
                   <a-button 
+                v-if="character.voice_id" 
                     type="text" 
                     size="small" 
-                    @click="testCharacterVoice(character)"
-                    :disabled="!character.voiceId"
+                @click="playVoicePreview(character)"
                   >
                     <template #icon>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M8,5.14V19.14L19,12.14L8,5.14Z"/>
-                      </svg>
+                  <PlayCircleOutlined />
                     </template>
                   </a-button>
                 </div>
               </div>
             </div>
           </div>
-        </a-card>
-
-        <!-- 生成设置 -->
-        <a-card title="朗读设置" :bordered="false" class="settings-card">
-          <div class="setting-item">
-            <label class="setting-label">分段方式</label>
-            <a-radio-group v-model:value="segmentMode" size="small">
-              <a-radio-button value="paragraph">按段落</a-radio-button>
-              <a-radio-button value="sentence">按句子</a-radio-button>
-              <a-radio-button value="chapter">按章节</a-radio-button>
-            </a-radio-group>
           </div>
 
-          <div class="setting-item">
-            <label class="setting-label">朗读速度</label>
-            <a-slider v-model:value="readingSpeed" :min="0.5" :max="2.0" :step="0.1" />
-            <div class="setting-value">{{ readingSpeed }}x</div>
+    <!-- 空状态 - 等待角色配置 -->
+    <div v-else-if="currentProject?.segments?.length > 0" class="empty-characters-section">
+      <div class="empty-card">
+        <div class="empty-content">
+          <div class="empty-icon">
+            <SoundOutlined style="font-size: 48px; color: #d9d9d9;" />
           </div>
-
-          <div class="setting-item">
-            <label class="setting-label">背景音乐</label>
-            <a-switch v-model:checked="enableBgMusic" />
-          </div>
-        </a-card>
-      </div>
-
-      <!-- 右侧：进度和控制 -->
-      <div class="control-panel">
-        <!-- 处理进度 -->
-        <a-card title="处理进度" :bordered="false" class="progress-card">
-          <div class="progress-section">
-            <div class="progress-info">
-              <div class="progress-status">
-                <span class="status-text">{{ progressStatus }}</span>
-                <span class="progress-percent">{{ Math.round(overallProgress) }}%</span>
-              </div>
-              <a-progress :percent="overallProgress" :show-info="false" />
-            </div>
-
-            <div class="progress-details">
-              <div class="detail-item">
-                <span class="detail-label">文本分析:</span>
-                <span class="detail-status" :class="{ 'completed': analysisCompleted }">
-                  {{ analysisCompleted ? '完成' : '等待中' }}
-                </span>
-              </div>
-              <div class="detail-item">
-                <span class="detail-label">角色识别:</span>
-                <span class="detail-status" :class="{ 'completed': characterDetected }">
-                  {{ characterDetected ? '完成' : '等待中' }}
-                </span>
-              </div>
-              <div class="detail-item">
-                <span class="detail-label">语音生成:</span>
-                <span class="detail-status" :class="{ 'completed': voiceGenerated }">
-                  {{ voiceGenerated ? '完成' : '进行中' }}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div class="control-buttons">
-            <a-button 
-              type="primary" 
-              size="large" 
-              block
-              @click="startProcessing"
-              :loading="isProcessing"
-              :disabled="!canProcess"
-            >
-              <template #icon v-if="!isProcessing">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M8,5.14V19.14L19,12.14L8,5.14Z"/>
-                </svg>
+          <div class="empty-text">
+            <h3>暂无角色配置</h3>
+            <p>系统将使用默认声音进行合成</p>
+            <a-button type="primary" @click="extractCharacters" :loading="extracting">
+              <template #icon>
+                <UserOutlined />
               </template>
-              {{ isProcessing ? '处理中...' : '开始生成' }}
+              提取角色
             </a-button>
+          </div>
+      </div>
+              </div>
+            </div>
 
-            <div class="control-actions" v-if="isProcessing">
-              <a-button @click="pauseProcessing" style="flex: 1;">暂停</a-button>
-              <a-button @click="stopProcessing" danger style="flex: 1;">停止</a-button>
+    <!-- 生成结果 -->
+    <div v-if="audioFiles.length > 0" class="results-section">
+      <div class="results-card">
+        <div class="results-header">
+          <h3>生成结果</h3>
+          <div class="results-actions">
+            <a-button @click="downloadAll" :loading="downloading">
+              <template #icon>
+                <DownloadOutlined />
+              </template>
+              下载全部
+            </a-button>
+            <a-button @click="viewInAudioLibrary">
+              <template #icon>
+                <SoundOutlined />
+              </template>
+              音频库
+            </a-button>
             </div>
           </div>
-        </a-card>
-
-        <!-- 音频播放器 -->
-        <a-card v-if="generatedAudios.length > 0" title="生成的音频" :bordered="false" class="audio-card">
           <div class="audio-list">
-            <div 
-              v-for="(audio, index) in generatedAudios" 
-              :key="audio.id"
-              class="audio-item"
-              :class="{ 'playing': currentPlaying === index }"
-            >
+          <div v-for="audio in audioFiles" :key="audio.id" class="audio-item">
               <div class="audio-info">
-                <div class="audio-title">第{{ index + 1 }}段</div>
-                <div class="audio-meta">
-                  {{ audio.duration }} | {{ audio.characters.join(', ') }}
+              <div class="audio-icon">
+                <SoundOutlined />
                 </div>
+              <div class="audio-details">
+                <div class="audio-name">{{ audio.filename }}</div>
+                <div class="audio-meta">{{ audio.duration }}s · {{ audio.size }}MB</div>
               </div>
-
-              <div class="audio-controls">
-                <a-button 
-                  type="text" 
-                  size="small" 
-                  @click="playAudio(index)"
-                  :icon="currentPlaying === index ? 'PauseOutlined' : 'PlayOutlined'"
-                />
-                <a-button 
-                  type="text" 
-                  size="small" 
-                  @click="downloadAudio(audio)"
-                >
+            </div>
+            <div class="audio-actions">
+              <a-button type="text" size="small" @click="playAudio(audio)">
                   <template #icon>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M5,20H19V18H5M19,9H15V3H9V9H5L12,16L19,9Z"/>
-                    </svg>
+                  <PlayCircleOutlined />
+                </template>
+              </a-button>
+              <a-button type="text" size="small" @click="downloadAudio(audio)">
+                <template #icon>
+                  <DownloadOutlined />
                   </template>
                 </a-button>
+            </div>
+          </div>
               </div>
             </div>
           </div>
 
-          <div class="batch-actions">
-            <a-button block @click="downloadAll">
+    <!-- 音频播放器 -->
+    <div v-if="currentAudio" class="audio-player">
+      <div class="player-content">
+        <div class="player-info">
+          <span class="player-title">{{ currentAudio.filename }}</span>
+          <span class="player-time">{{ formatTime(currentAudio.duration) }}</span>
+        </div>
+        <audio ref="audioElement" controls style="width: 100%;">
+          <source :src="currentAudio.url" type="audio/wav">
+        </audio>
+      </div>
+      <a-button type="text" @click="closePlayer">
               <template #icon>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M5,20H19V18H5M19,9H15V3H9V9H5L12,16L19,9Z"/>
-                </svg>
+          <CloseOutlined />
               </template>
-              下载全部音频
             </a-button>
           </div>
-        </a-card>
 
-        <!-- 处理队列 -->
-        <a-card v-if="processingQueue.length > 0" title="处理队列" :bordered="false" class="queue-card">
-          <div class="queue-list">
-            <div 
-              v-for="(item, index) in processingQueue" 
-              :key="item.id"
-              class="queue-item"
-            >
-              <div class="queue-info">
-                <div class="queue-text">{{ item.text.substring(0, 30) }}...</div>
-                <div class="queue-character">{{ item.character }}</div>
+    <!-- 角色配置弹窗 -->
+    <a-modal
+      v-model:open="showCharacterConfig"
+      title="角色配置管理"
+      width="800"
+      :footer="null"
+    >
+      <div class="character-config-content">
+        <div class="config-header">
+          <div class="config-stats">
+            <div class="stat-item">
+              <span class="stat-label">总角色数</span>
+              <span class="stat-value">{{ characters.length }}</span>
               </div>
-              <div class="queue-status">
-                <a-tag :color="getQueueStatusColor(item.status)">
-                  {{ getQueueStatusText(item.status) }}
-                </a-tag>
+            <div class="stat-item">
+              <span class="stat-label">已配置</span>
+              <span class="stat-value">{{ characters.filter(c => c.voice_id).length }}</span>
               </div>
+            <div class="stat-item">
+              <span class="stat-label">未配置</span>
+              <span class="stat-value">{{ characters.filter(c => !c.voice_id).length }}</span>
             </div>
           </div>
-        </a-card>
+          <div class="config-actions">
+            <a-button @click="autoAssignVoices" :loading="autoAssigning">
+              <template #icon>
+                <SoundOutlined />
+              </template>
+              自动分配
+            </a-button>
+            <a-button type="primary" @click="saveCharacterConfig">
+              <template #icon>
+                <SaveOutlined />
+              </template>
+              保存配置
+            </a-button>
       </div>
     </div>
 
-    <!-- 项目管理弹窗 -->
-    <a-modal
-      v-model:open="showProjectManageModal"
-      title="项目管理"
-      width="800px"
-      :footer="null"
-    >
-      <div v-if="currentProject" class="project-manage-content">
-        <a-descriptions :column="2" bordered>
-          <a-descriptions-item label="项目名称">
-            <a-input 
-              v-model:value="editingProject.name" 
-              :disabled="!isEditing"
-              placeholder="请输入项目名称"
-            />
-          </a-descriptions-item>
-          <a-descriptions-item label="状态">
-            <a-tag :color="getStatusColor(currentProject.status)">
-              {{ getStatusText(currentProject.status) }}
-            </a-tag>
-          </a-descriptions-item>
-          <a-descriptions-item label="描述" :span="2">
-            <a-textarea 
-              v-model:value="editingProject.description" 
-              :disabled="!isEditing"
-              :rows="3"
-              placeholder="请输入项目描述"
-            />
-          </a-descriptions-item>
-          <a-descriptions-item label="创建时间">
-            {{ formatDate(currentProject.created_at) }}
-          </a-descriptions-item>
-          <a-descriptions-item label="更新时间">
-            {{ formatDate(currentProject.updated_at) }}
-          </a-descriptions-item>
-          <a-descriptions-item label="文本长度">
-            {{ currentProject.original_text?.length || 0 }} 字符
-          </a-descriptions-item>
-          <a-descriptions-item label="分段数量">
-            {{ currentProject.segments?.length || 0 }} 个
-          </a-descriptions-item>
-        </a-descriptions>
+        <a-divider />
 
-        <div class="project-actions">
-          <a-space>
+        <div class="character-config-list">
+          <div v-for="character in characters" :key="character.name" class="config-character-item">
+            <div class="config-character-info">
+              <div class="config-character-avatar">
+                {{ character.name.charAt(0) }}
+              </div>
+              <div class="config-character-details">
+                <div class="config-character-name">{{ character.name }}</div>
+                <div class="config-character-meta">
+                  {{ character.line_count || 0 }} 句对话
+                  <span v-if="character.voice_id" class="configured-badge">已配置</span>
+                  <span v-else class="unconfigured-badge">未配置</span>
+                </div>
+              </div>
+            </div>
+            <div class="config-voice-selection">
+              <a-select 
+                v-model:value="character.voice_id" 
+                placeholder="选择声音"
+                style="width: 250px;"
+                @change="updateCharacterMapping"
+                :loading="loadingVoices"
+              >
+                <a-select-option value="">使用默认声音</a-select-option>
+                <a-select-option 
+                  v-for="voice in availableVoices" 
+                  :key="voice.id" 
+                  :value="voice.id"
+                >
+                  <div class="voice-option">
+                    <span class="voice-option-name">{{ voice.name }}</span>
+                    <span class="voice-option-type">{{ getVoiceTypeText(voice.type) }}</span>
+                  </div>
+                </a-select-option>
+              </a-select>
             <a-button 
-              v-if="!isEditing" 
-              type="primary" 
-              @click="startEditing"
-            >
-              编辑项目
-            </a-button>
-            <template v-else>
-              <a-button type="primary" @click="saveProject" :loading="savingProject">
-                保存修改
-              </a-button>
-              <a-button @click="cancelEditing">
-                取消
-              </a-button>
+                v-if="character.voice_id" 
+                type="text" 
+                @click="playVoicePreview(character)"
+                title="播放预览"
+              >
+                <template #icon>
+                  <PlayCircleOutlined />
             </template>
-            
-            <a-popconfirm
-              title="确定要删除这个项目吗？"
-              ok-text="删除"
-              cancel-text="取消"
-              @confirm="deleteProject"
-              placement="topRight"
-            >
-              <a-button danger>删除项目</a-button>
-            </a-popconfirm>
-            
-            <a-button @click="exportProject">导出项目</a-button>
-          </a-space>
+              </a-button>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="!characters.length" class="no-characters">
+          <div class="no-characters-content">
+            <UserOutlined style="font-size: 48px; color: #d9d9d9;" />
+            <h3>暂无角色数据</h3>
+            <p>请先提取文本中的角色信息</p>
+            <a-button type="primary" @click="extractCharacters" :loading="extracting">
+              <template #icon>
+                <UserOutlined />
+              </template>
+              提取角色
+            </a-button>
+          </div>
         </div>
       </div>
     </a-modal>
@@ -409,1010 +378,742 @@
 </template>
 
 <script setup>
-import { ref, computed, reactive, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { message } from 'ant-design-vue'
-import { readerAPI, charactersAPI } from '@/api'
+import { 
+  LeftOutlined, 
+  PlayCircleOutlined, 
+  DownloadOutlined, 
+  SoundOutlined,
+  CloseOutlined,
+  SettingOutlined,
+  UserOutlined,
+  SaveOutlined
+} from '@ant-design/icons-vue'
+import { readerAPI } from '@/api'
 
 const router = useRouter()
 const route = useRoute()
 
 // 响应式数据
-const novelFiles = ref([])
-const directText = ref('')
-const detectedCharacters = ref([])
-const segmentMode = ref('paragraph')
-const readingSpeed = ref(1.0)
-const enableBgMusic = ref(false)
-const isProcessing = ref(false)
-const autoAssigning = ref(false)
-const overallProgress = ref(0)
-const progressStatus = ref('等待开始')
-const currentPlaying = ref(-1)
-const analysisCompleted = ref(false)
-const characterDetected = ref(false)
-const voiceGenerated = ref(false)
-
-// 项目相关数据
+const loading = ref(false)
+const synthesizing = ref(false)
+const downloading = ref(false)
 const currentProject = ref(null)
-const projectId = ref(null)
+const characters = ref([])
+const audioFiles = ref([])
+const currentAudio = ref(null)
+const showFullText = ref(false)
 
-// 项目管理相关数据
-const showProjectManageModal = ref(false)
-const isEditing = ref(false)
-const savingProject = ref(false)
-const editingProject = ref({
-  name: '',
-  description: ''
-})
-
-// 声音库数据
+// 角色配置相关
 const availableVoices = ref([])
+const loadingVoices = ref(false)
+const autoAssigning = ref(false)
+const extracting = ref(false)
+const showCharacterConfig = ref(false)
 
-const generatedAudios = ref([])
-const processingQueue = ref([])
+// 进度状态
+const progressPercent = ref(0)
+const progressStatus = ref({
+  text: 'pending',
+  character: 'pending', 
+  synthesis: 'pending'
+})
 
 // 计算属性
-const processedChapters = computed(() => generatedAudios.value.length)
-const totalCharacters = computed(() => detectedCharacters.value.length)
-
-const canProcess = computed(() => {
-  const hasText = directText.value.trim() || novelFiles.value.length > 0
-  const hasAssignments = detectedCharacters.value.every(char => char.voiceId)
-  return hasText && hasAssignments && !isProcessing.value
+const progressColor = computed(() => {
+  if (progressPercent.value === 100) return '#52c41a'
+  if (progressPercent.value > 0) return '#1890ff'
+  return '#d9d9d9'
 })
 
-// 初始化加载声音库和项目
-onMounted(async () => {
-  await loadVoiceProfiles()
-  
-  // 如果路由包含项目ID，加载项目详情
-  const projectIdFromRoute = route.params.id
-  if (projectIdFromRoute) {
-    await loadProjectById(projectIdFromRoute)
-  } else {
-    // 如果没有项目ID，重定向到项目列表
-    router.push('/novel-reader')
-  }
+const canSynthesize = computed(() => {
+  return currentProject.value && 
+         currentProject.value.status !== 'processing' &&
+         (currentProject.value.segments?.length > 0 || currentProject.value.originalText)
 })
-
-// 根据ID加载项目
-const loadProjectById = async (id) => {
-  try {
-    projectId.value = id
-    await loadProjectDetail()
-  } catch (error) {
-    message.error('加载项目失败')
-    router.push('/novel-reader')
-  }
-}
-
-// 加载声音库列表
-const loadVoiceProfiles = async () => {
-  try {
-    const response = await charactersAPI.getCharacters()
-    if (response.data.success) {
-      availableVoices.value = response.data.data.map(profile => ({
-        id: profile.id,
-        name: profile.name,
-        type: profile.type || 'neutral'
-      }))
-    }
-  } catch (error) {
-    console.error('加载声音库失败:', error)
-    // 使用默认声音库作为后备
-    availableVoices.value = [
-      { id: 1, name: '温柔女声', type: 'female' },
-      { id: 2, name: '磁性男声', type: 'male' },
-      { id: 3, name: '童声', type: 'child' },
-      { id: 4, name: '专业主播', type: 'female' },
-      { id: 5, name: '老者声音', type: 'male' }
-    ]
-  }
-}
 
 // 方法
-const beforeNovelUpload = (file) => {
-  const isValidFormat = ['text/plain', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'].includes(file.type)
-  if (!isValidFormat) {
-    message.error('请上传 TXT, DOC, 或 DOCX 格式的文件！')
-    return false
+const loadProject = async () => {
+  const projectId = route.params.id
+  if (!projectId) {
+    message.error('项目ID不存在')
+    router.push('/novel-reader')
+    return
   }
-  
-  const isLt10M = file.size / 1024 / 1024 < 10
-  if (!isLt10M) {
-    message.error('文件大小不能超过 10MB！')
-    return false
-  }
-  
-  return false // 阻止自动上传
-}
 
-const handleNovelChange = async (info) => {
-  if (info.fileList.length > 0) {
-    const file = info.fileList[0].originFileObj
-    await analyzeNovel(file)
-  }
-}
-
-const analyzeNovel = async (file) => {
-  analysisCompleted.value = false
-  characterDetected.value = false
-  progressStatus.value = '正在分析小说内容...'
-  
+  loading.value = true
   try {
-    message.loading('正在分析小说内容...', 2)
-    
-    // 创建项目 - 添加时间戳避免重复名称
-    const timestamp = new Date().toLocaleString('zh-CN', {
-      month: '2-digit',
-      day: '2-digit', 
-      hour: '2-digit',
-      minute: '2-digit'
-    }).replace(/\//g, '').replace(/:/g, '').replace(' ', '-')
-    
-    const baseName = file.name.replace(/\.[^/.]+$/, '') // 移除文件扩展名
-    const projectName = `${baseName}_${timestamp}`
-    
-    const projectData = {
-      name: projectName,
-      description: '智能多角色朗读项目',
-      text_file: file,
-      character_mapping: {}
-    }
-    
-    const response = await readerAPI.createProject(projectData)
-    
+    const response = await readerAPI.getProjectDetail(projectId)
     if (response.data.success) {
       currentProject.value = response.data.data
-      projectId.value = response.data.data.id
-      analysisCompleted.value = true
       
-      // 获取项目详情，包含分段和角色信息
-      await loadProjectDetail()
+      // 从characterMapping构建角色数组
+      const characterMapping = currentProject.value.characterMapping || {}
+      characters.value = Object.entries(characterMapping).map(([name, voiceId]) => ({
+        name,
+        voice_id: voiceId ? parseInt(voiceId) : null,
+        line_count: currentProject.value.segments?.filter(s => 
+          s.detectedSpeaker === name || 
+          (s.text_content || s.textContent || '').includes(name)
+        ).length || 0
+      }))
       
-      message.success('文本分析完成')
-    } else {
-      throw new Error(response.data.message || '项目创建失败')
-    }
-    
-  } catch (error) {
-    console.error('分析小说失败:', error)
-    
-    // 改善错误处理
-    let errorMessage = '未知错误'
-    if (error.response?.data?.detail) {
-      errorMessage = error.response.data.detail
+      audioFiles.value = response.data.data.audio_files || []
       
-      // 特殊处理重复名称错误
-      if (errorMessage.includes('项目名称已存在')) {
-        errorMessage = '项目名称重复，请稍后再试或换个文件名'
+      // 加载可用声音列表
+      await loadAvailableVoices()
+      
+      // 如果项目正在处理中，开始轮询进度
+      if (currentProject.value.status === 'processing') {
+        startProgressPolling()
       }
-    } else if (error.message) {
-      errorMessage = error.message
+    } else {
+      message.error('获取项目详情失败')
+      router.push('/novel-reader')
     }
-    
-    message.error('分析失败: ' + errorMessage)
-    
-    // 重置状态
-    analysisCompleted.value = false
-    characterDetected.value = false
-    progressStatus.value = '等待开始'
+  } catch (error) {
+    console.error('获取项目详情失败:', error)
+    message.error('获取项目详情失败')
+    router.push('/novel-reader')
+  } finally {
+    loading.value = false
   }
 }
 
-const loadProjectDetail = async () => {
-  if (!projectId.value) return
-  
+// 加载可用声音列表
+const loadAvailableVoices = async () => {
   try {
-    const response = await readerAPI.getProjectDetail(projectId.value)
+    loadingVoices.value = true
+    const { charactersAPI } = await import('@/api')
+    const response = await charactersAPI.getCharacters()
     
     if (response.data.success) {
-      const project = response.data.data
-      currentProject.value = project
-      
-      // 提取角色信息
-      const characterMapping = project.character_mapping || {}
-      const segments = project.segments || []
-      
-      console.log('[DEBUG] 项目段落数据:', segments)
-      console.log('[DEBUG] 角色映射数据:', characterMapping)
-      
-      // 添加详细的段落调试信息
-      console.log('[DEBUG] 段落详细信息:')
-      segments.forEach((segment, index) => {
-        console.log(`  段落${index + 1}:`, {
-          segmentOrder: segment.segmentOrder || segment.segment_order,
-          textContent: segment.textContent || segment.text_content,
-          speaker: segment.speaker,
-          detectedSpeaker: segment.detectedSpeaker || segment.detected_speaker,
-          originalSegment: segment
-        })
-      })
-      
-      // 从文本段落中识别角色 - 兼容多种字段名
+      availableVoices.value = response.data.data.filter(voice => voice.status === 'active')
+    }
+  } catch (error) {
+    console.error('加载声音列表失败:', error)
+    message.error('加载声音列表失败')
+  } finally {
+    loadingVoices.value = false
+  }
+}
+
+// 提取角色
+const extractCharacters = async () => {
+  if (!currentProject.value) return
+  
+  extracting.value = true
+  try {
+    // 从项目的segments中提取角色信息
+    const segments = currentProject.value.segments || []
+    if (!segments.length) {
+      message.warning('项目没有文本段落，无法提取角色')
+      return
+    }
+    
+    // 简单的角色提取逻辑：从段落文本中提取常见的对话格式
       const characterSet = new Set()
-      const allSpeakers = new Set() // 记录所有说话人，包括旁白
       
       segments.forEach(segment => {
-        // 兼容多种字段名格式
-        const speaker = segment.speaker || segment.detectedSpeaker || segment.detected_speaker
-        
-        console.log(`[DEBUG] 段落${segment.segmentOrder || segment.segment_order}: speaker='${speaker}'`)
-        
-        if (speaker) {
-          allSpeakers.add(speaker)
-          // 只有非旁白角色才加入角色集合
-          if (speaker !== 'narrator' && speaker !== '旁白') {
-            characterSet.add(speaker)
+      const text = segment.text_content || segment.text || ''
+      
+      // 匹配对话格式：「角色名:对话内容」或「角色名说：」
+      const dialoguePatterns = [
+        /「([^」:：]+)[：:]/g,        // 「角色名：」格式
+        /([^」「\s]+)说[：:]/g,       // 角色名说：格式
+        /"([^"]+)"[说道]/g,          // "角色名"说道格式
+        /([^，。！？\s]{2,4})[：:]/g  // 简单的名字:格式
+      ]
+      
+      dialoguePatterns.forEach(pattern => {
+        let match
+        while ((match = pattern.exec(text)) !== null) {
+          const name = match[1].trim()
+          if (name.length >= 2 && name.length <= 6) {
+            characterSet.add(name)
           }
         }
       })
-      
-      console.log('[DEBUG] 所有说话人（包括旁白）:', Array.from(allSpeakers))
-      console.log('[DEBUG] 识别出的角色（排除旁白）:', Array.from(characterSet))
-      
-      // 构建角色列表
-      detectedCharacters.value = Array.from(characterSet).map((charName, index) => ({
-        id: index + 1,
-        name: charName,
-        lineCount: segments.filter(s => {
-          const speaker = s.speaker || s.detectedSpeaker || s.detected_speaker
-          return speaker === charName
-        }).length,
-        color: getCharacterColor(index),
-        voiceId: characterMapping[charName] || null,
-        gender: inferGender(charName)
-      }))
-      
-      // 添加旁白角色（如果存在旁白段落）
-      const narratorCount = segments.filter(s => {
-        const speaker = s.speaker || s.detectedSpeaker || s.detected_speaker
-        return speaker === 'narrator' || speaker === '旁白'
-      }).length
-      
-      console.log('[DEBUG] 旁白段落数量:', narratorCount)
-      
-      if (narratorCount > 0) {
-        detectedCharacters.value.unshift({
-          id: 0,
+    })
+    
+    // 转换为角色数组
+    const extractedCharacters = Array.from(characterSet).map(name => ({
+      name,
+      voice_id: null,
+      line_count: segments.filter(s => (s.text_content || s.text || '').includes(name)).length
+    }))
+    
+    if (extractedCharacters.length > 0) {
+      characters.value = extractedCharacters
+      message.success(`成功提取到 ${extractedCharacters.length} 个角色`)
+    } else {
+      // 如果没有提取到角色，创建一个默认的旁白角色
+      characters.value = [{
           name: '旁白',
-          lineCount: narratorCount,
-          color: '#6b7280',
-          voiceId: characterMapping['旁白'] || characterMapping['narrator'] || null,
-          gender: 'neutral'
-        })
-      }
-      
-      characterDetected.value = true
-      console.log('[DEBUG] 最终角色列表:', detectedCharacters.value)
-      
-      // 改进提示信息
-      if (detectedCharacters.value.length === 0) {
-        console.warn('[DEBUG] 没有识别出任何角色')
-        message.warning('未识别出任何角色。可能原因：\n1. 文本内容太简单，没有明显的对话\n2. 缺少对话标记（如：小明说："..."）\n3. 建议使用包含角色对话的文本')
-      } else if (detectedCharacters.value.length === 1 && detectedCharacters.value[0].name === '旁白') {
-        message.info(`只识别出旁白角色。如果文本包含对话，请确保使用以下格式：\n• 小明说："你好"\n• 小红："很高兴见到你"\n• "真不错！"张老师说`)
-      } else {
-        message.success(`角色识别完成，发现 ${detectedCharacters.value.length} 个角色`)
-      }
+        voice_id: null,
+        line_count: segments.length
+      }]
+      message.info('未检测到明显的角色对话，已创建默认旁白角色')
     }
     
   } catch (error) {
-    console.error('获取项目详情失败:', error)
-    message.error('获取项目详情失败: ' + (error.response?.data?.detail || error.message))
+    console.error('角色提取失败:', error)
+    message.error('角色提取失败')
+  } finally {
+    extracting.value = false
   }
 }
 
-// 辅助函数
-const getCharacterColor = (index) => {
-  const colors = ['#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#f97316']
-  return colors[index % colors.length]
-}
-
-const inferGender = (name) => {
-  // 简单的性别推断逻辑
-  const femaleIndicators = ['雅', '柔', '婷', '娜', '丽', '美', '小姐', '女士']
-  const maleIndicators = ['浩', '强', '明', '军', '刚', '先生', '男士', '少爷']
-  
-  const lowerName = name.toLowerCase()
-  if (femaleIndicators.some(indicator => lowerName.includes(indicator))) {
-    return 'female'
-  }
-  if (maleIndicators.some(indicator => lowerName.includes(indicator))) {
-    return 'male'
-  }
-  return 'neutral'
-}
-
+// 自动分配声音
 const autoAssignVoices = async () => {
-  autoAssigning.value = true
+  if (!characters.value.length || !availableVoices.value.length) {
+    message.warning('没有可分配的角色或声音')
+    return
+  }
   
+  autoAssigning.value = true
   try {
-    // 检查是否有角色
-    if (detectedCharacters.value.length === 0) {
-      message.warning('没有识别出任何角色，请先上传包含对话的文本')
-      return
+    // 简单的自动分配逻辑：根据角色名称特征分配声音类型
+    characters.value.forEach(character => {
+      if (!character.voice_id) {
+        // 根据角色名称判断性别
+        const name = character.name
+        let preferredType = 'female' // 默认女声
+        
+        // 简单的性别判断逻辑
+        const maleKeywords = ['先生', '公子', '少爷', '大哥', '老板', '师父', '爷爷', '父亲', '爸爸']
+        const childKeywords = ['小', '儿', '宝', '娃', '童']
+        
+        if (maleKeywords.some(keyword => name.includes(keyword))) {
+          preferredType = 'male'
+        } else if (childKeywords.some(keyword => name.includes(keyword))) {
+          preferredType = 'child'
+        }
+        
+        // 找到匹配类型的声音
+        const matchingVoice = availableVoices.value.find(voice => voice.type === preferredType)
+        if (matchingVoice) {
+          character.voice_id = matchingVoice.id
+    } else {
+          // 如果没有匹配的，使用第一个可用声音
+          character.voice_id = availableVoices.value[0]?.id
     }
-    
-    // 检查是否有可用声音
-    if (availableVoices.value.length === 0) {
-      message.error('没有可用的声音档案，请先在声音库管理中上传声音文件')
-      return
-    }
-    
-    console.log('[DEBUG] 开始智能分配')
-    console.log('[DEBUG] 检测到的角色:', detectedCharacters.value)
-    console.log('[DEBUG] 可用声音:', availableVoices.value)
-    
-    // 智能分配逻辑
-    const femaleVoices = availableVoices.value.filter(v => v.type === 'female')
-    const maleVoices = availableVoices.value.filter(v => v.type === 'male')
-    const neutralVoices = availableVoices.value.filter(v => v.type === 'neutral' || v.type === 'child')
-    
-    console.log('[DEBUG] 声音分类 - 女声:', femaleVoices.length, '男声:', maleVoices.length, '中性:', neutralVoices.length)
-    
-    let femaleIndex = 0, maleIndex = 0, neutralIndex = 0
-    let assignedCount = 0
-    
-    detectedCharacters.value.forEach(character => {
-      if (character.gender === 'female' && femaleVoices.length > 0) {
-        character.voiceId = femaleVoices[femaleIndex % femaleVoices.length].id
-        femaleIndex++
-        assignedCount++
-        console.log(`[DEBUG] ${character.name} (女性) -> ${femaleVoices[(femaleIndex - 1) % femaleVoices.length].name}`)
-      } else if (character.gender === 'male' && maleVoices.length > 0) {
-        character.voiceId = maleVoices[maleIndex % maleVoices.length].id
-        maleIndex++
-        assignedCount++
-        console.log(`[DEBUG] ${character.name} (男性) -> ${maleVoices[(maleIndex - 1) % maleVoices.length].name}`)
-      } else if (neutralVoices.length > 0) {
-        character.voiceId = neutralVoices[neutralIndex % neutralVoices.length].id
-        neutralIndex++
-        assignedCount++
-        console.log(`[DEBUG] ${character.name} (中性) -> ${neutralVoices[(neutralIndex - 1) % neutralVoices.length].name}`)
-      } else if (availableVoices.value.length > 0) {
-        character.voiceId = availableVoices.value[0]?.id
-        assignedCount++
-        console.log(`[DEBUG] ${character.name} (兜底) -> ${availableVoices.value[0]?.name}`)
       }
     })
     
-    console.log(`[DEBUG] 分配完成，共分配 ${assignedCount} 个角色`)
-    
-    // 更新项目的角色映射
+    // 更新角色映射
     await updateCharacterMapping()
-    
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    
-    if (assignedCount > 0) {
-      message.success(`智能分配完成，已为 ${assignedCount} 个角色分配声音`)
-    } else {
-      message.warning('智能分配失败，请手动为角色选择声音')
-    }
-    
+    message.success('自动分配完成')
   } catch (error) {
-    console.error('智能分配失败:', error)
-    message.error('智能分配失败: ' + (error.message || '未知错误'))
+    console.error('自动分配失败:', error)
+    message.error('自动分配失败')
   } finally {
     autoAssigning.value = false
   }
 }
 
+// 更新角色映射
 const updateCharacterMapping = async () => {
-  if (!projectId.value) return
+  if (!currentProject.value) return
   
   try {
+    // 构建角色映射对象
     const characterMapping = {}
-    detectedCharacters.value.forEach(character => {
-      if (character.voiceId) {
-        const voiceName = character.name === '旁白' ? 'narrator' : character.name
-        characterMapping[voiceName] = character.voiceId
+    characters.value.forEach(character => {
+      if (character.voice_id) {
+        characterMapping[character.name] = character.voice_id.toString()
       }
     })
     
-    await readerAPI.updateProject(projectId.value, {
-      name: currentProject.value.name,
-      description: currentProject.value.description,
+    console.log('[DEBUG] 发送角色映射更新:', characterMapping)
+    
+    // 更新项目的角色映射，传递完整的项目信息
+    const response = await readerAPI.updateProject(currentProject.value.id, {
+      name: currentProject.value.name,  // 必须传递项目名称
+      description: currentProject.value.description || '',  // 必须传递描述
       character_mapping: characterMapping
     })
     
+    if (response.data.success) {
+      console.log('角色映射更新成功:', characterMapping)
+      // 更新本地项目数据
+      currentProject.value.characterMapping = characterMapping
+    }
   } catch (error) {
     console.error('更新角色映射失败:', error)
+    message.error('更新角色映射失败: ' + (error.response?.data?.detail || error.message))
   }
 }
 
-const updateCharacterVoice = async (characterId, voiceId) => {
-  const character = detectedCharacters.value.find(c => c.id === characterId)
-  if (character) {
-    character.voiceId = voiceId
-    await updateCharacterMapping()
+// 获取声音类型文本
+const getVoiceTypeText = (type) => {
+  const typeMap = {
+    'male': '男声',
+    'female': '女声', 
+    'child': '童声'
   }
+  return typeMap[type] || '未知'
 }
 
-const testCharacterVoice = async (character) => {
-  const voice = availableVoices.value.find(v => v.id === character.voiceId)
-  if (!voice) {
-    message.error('请先选择声音')
+// 播放声音预览
+const playVoicePreview = async (character) => {
+  if (!character.voice_id) {
+    message.warning('请先为角色分配声音')
     return
   }
   
   try {
-    message.loading('正在生成测试音频...')
-    
-    // 使用声音库进行测试合成
-    const testData = {
-      text: `你好，我是${character.name}，这是声音测试。`,
-      time_step: 32,
-      p_weight: 1.4,
-      t_weight: 3.0
-    }
-    
-    const response = await charactersAPI.testVoiceSynthesis(character.voiceId, testData)
-    
-    if (response.data.success) {
-      // 播放测试音频 - 修复：使用blob方式
-      console.log('[DEBUG] 音频URL:', response.data.audioUrl)
-      
-      try {
-        // 尝试直接播放
-        const audio = new Audio(response.data.audioUrl)
-        
-        // 添加错误处理
-        audio.addEventListener('error', async (e) => {
-          console.error('[DEBUG] 直接播放失败，尝试fetch方式:', e)
-          
-          // 如果直接播放失败，尝试fetch + blob方式
-          try {
-            const audioResponse = await fetch(response.data.audioUrl)
-            if (!audioResponse.ok) {
-              throw new Error(`HTTP ${audioResponse.status}: ${audioResponse.statusText}`)
-            }
-            
-            const blob = await audioResponse.blob()
-            console.log('[DEBUG] Blob信息:', blob.type, blob.size, 'bytes')
-            
-            const blobUrl = URL.createObjectURL(blob)
-            const blobAudio = new Audio(blobUrl)
-            
-            blobAudio.addEventListener('error', (blobError) => {
-              console.error('[DEBUG] Blob播放也失败:', blobError)
-              message.error('音频格式不支持，可能是编码问题')
-              URL.revokeObjectURL(blobUrl)
-            })
-            
-            blobAudio.addEventListener('canplay', () => {
-              console.log('[DEBUG] Blob音频可以播放')
-              message.success(`试听 ${character.name} 的声音：${voice.name}`)
-            })
-            
-            blobAudio.addEventListener('ended', () => {
-              URL.revokeObjectURL(blobUrl)
-            })
-            
-            await blobAudio.play()
-            
-          } catch (fetchError) {
-            console.error('[DEBUG] Fetch失败:', fetchError)
-            message.error('音频加载失败: ' + fetchError.message)
-          }
-        })
-        
-        audio.addEventListener('loadstart', () => {
-          console.log('[DEBUG] 开始加载音频')
-        })
-        
-        audio.addEventListener('canplay', () => {
-          console.log('[DEBUG] 音频可以播放')
-          message.success(`试听 ${character.name} 的声音：${voice.name}`)
-        })
-        
-        // 尝试播放
+    const voice = availableVoices.value.find(v => v.id === character.voice_id)
+    if (voice && (voice.sampleAudioUrl || voice.referenceAudioUrl)) {
+      const audioUrl = voice.sampleAudioUrl || voice.referenceAudioUrl
+      const audio = new Audio(audioUrl)
         await audio.play()
-        
-      } catch (error) {
-        console.error('[DEBUG] 播放失败:', error)
-        message.error('播放失败: ' + error.message)
-      }
+      message.success(`正在播放：${voice.name}`)
     } else {
-      throw new Error(response.data.message || '测试失败')
+      message.warning('该声音暂无可播放的音频样本')
     }
-    
   } catch (error) {
-    console.error('测试声音失败:', error)
-    message.error('测试失败: ' + (error.response?.data?.detail || error.message))
+    console.error('播放声音预览失败:', error)
+    message.error('播放失败')
   }
 }
 
-const startProcessing = async () => {
-  if (!projectId.value) {
-    message.error('请先上传小说文件')
-    return
-  }
-  
-  if (!canProcess.value) {
-    message.error('请确保已上传文件并分配所有角色声音')
-    return
-  }
-  
-  isProcessing.value = true
-  voiceGenerated.value = false
-  overallProgress.value = 0
-  progressStatus.value = '开始处理...'
-  
+// 保存角色配置
+const saveCharacterConfig = async () => {
   try {
-    // 开始音频生成 - 改为单任务处理，避免CUDA内存溢出
-    const response = await readerAPI.startGeneration(projectId.value, 1)
-    
+    await updateCharacterMapping()
+    showCharacterConfig.value = false
+    message.success('角色配置保存成功')
+  } catch (error) {
+    console.error('保存角色配置失败:', error)
+    message.error('保存角色配置失败')
+  }
+}
+
+const startSynthesis = async () => {
+  try {
+    synthesizing.value = true
+    progressPercent.value = 0
+    progressStatus.value = {
+      text: 'processing',
+      character: 'pending',
+      synthesis: 'pending'
+    }
+
+    const response = await readerAPI.startGeneration(currentProject.value.id)
     if (response.data.success) {
-      message.success('开始生成多角色朗读音频')
-      
-      // 启动进度监控
-      monitorProgress()
+      message.success('开始语音合成')
+      currentProject.value.status = 'processing'
+      startProgressPolling()
     } else {
-      throw new Error(response.data.message || '启动失败')
+      message.error('启动合成失败: ' + response.data.message)
+      synthesizing.value = false
     }
-    
   } catch (error) {
-    console.error('启动处理失败:', error)
-    message.error('启动失败: ' + (error.response?.data?.detail || error.message))
-    isProcessing.value = false
+    message.error('启动合成失败')
+    synthesizing.value = false
   }
 }
 
-const monitorProgress = async () => {
-  if (!projectId.value || !isProcessing.value) return
-  
+const startProgressPolling = () => {
+  const pollInterval = setInterval(async () => {
   try {
-    const response = await readerAPI.getProgress(projectId.value)
-    
+      const response = await readerAPI.getProgress(currentProject.value.id)
     if (response.data.success) {
       const progress = response.data.progress
-      console.log('[DEBUG] 进度数据:', progress) // 添加调试信息
-      
-      overallProgress.value = progress.progressPercent || progress.progress_percent || 0
-      progressStatus.value = getProgressStatusText(progress)
-      
-      // 更新处理队列
-      if (progress.recentCompleted) {
-        processingQueue.value = progress.recentCompleted.map(segment => ({
-          id: segment.id,
-          text: (segment.text || '未知文本').substring(0, 30) + '...',
-          character: segment.speaker,
-          status: 'completed'
-        }))
-      }
-      
-      // 检查是否完成
-      if (progress.status === 'completed') {
-        voiceGenerated.value = true
-        progressStatus.value = '处理完成'
-        isProcessing.value = false
-        message.success('多角色朗读生成完成！')
         
-        // 加载生成的音频列表
-        await loadGeneratedAudios()
+        progressPercent.value = progress.progressPercent || 0
+        
+        // 根据进度状态更新步骤状态
+        if (progress.status === 'processing') {
+          progressStatus.value = {
+            text: 'completed',
+            character: 'completed',
+            synthesis: 'processing'
+          }
+        } else if (progress.status === 'completed') {
+          progressStatus.value = {
+            text: 'completed',
+            character: 'completed',
+            synthesis: 'completed'
+          }
+        } else if (progress.status === 'failed') {
+          progressStatus.value = {
+            text: 'completed',
+            character: 'completed',
+            synthesis: 'failed'
+          }
+        }
+        
+      if (progress.status === 'completed') {
+          clearInterval(pollInterval)
+          synthesizing.value = false
+          currentProject.value.status = 'completed'
+          // 重新加载项目以获取音频文件
+          loadProject()
+          message.success('语音合成完成！')
       } else if (progress.status === 'failed') {
-        isProcessing.value = false
-        progressStatus.value = '处理失败'
-        message.error('处理失败，请检查日志')
-      } else {
-        // 继续监控
-        setTimeout(monitorProgress, 2000)
+          clearInterval(pollInterval)
+          synthesizing.value = false
+          currentProject.value.status = 'failed'
+          message.error('语音合成失败')
+        }
       }
-    }
-    
   } catch (error) {
     console.error('获取进度失败:', error)
-    setTimeout(monitorProgress, 5000) // 出错时延长间隔
-  }
-}
-
-const getProgressStatusText = (progress) => {
-  const total = progress.statistics?.total || 0
-  const completed = progress.statistics?.completed || 0
-  const processing = progress.statistics?.processing || 0
-  
-  if (processing > 0) {
-    return `处理中... (${completed}/${total})`
-  } else if (completed === total && total > 0) {
-    return '处理完成'
-  } else {
-    return `等待处理... (${completed}/${total})`
-  }
-}
-
-const loadGeneratedAudios = async () => {
-  // 这里可以添加获取生成音频列表的逻辑
-  // 暂时使用模拟数据
-  generatedAudios.value = [
-    {
-      id: 1,
-      duration: '03:45',
-      characters: ['旁白', '林清雅'],
-      url: '/audio/segment_1.wav'
     }
-  ]
-}
+  }, 2000)
 
-const pauseProcessing = async () => {
-  if (!projectId.value) return
-  
-  try {
-    await readerAPI.pauseGeneration(projectId.value)
-    message.info('已暂停处理')
-  } catch (error) {
-    message.error('暂停失败: ' + (error.response?.data?.detail || error.message))
-  }
+  // 组件卸载时清除定时器
+  onUnmounted(() => {
+    clearInterval(pollInterval)
+  })
 }
-
-const stopProcessing = async () => {
-  isProcessing.value = false
-  processingQueue.value = []
-  overallProgress.value = 0
-  progressStatus.value = '已停止'
-  message.info('已停止处理')
-}
-
-const playAudio = (index) => {
-  if (currentPlaying.value === index) {
-    currentPlaying.value = -1
-    message.info('已暂停播放')
-  } else {
-    currentPlaying.value = index
-    message.success(`播放第 ${index + 1} 段音频`)
-  }
-}
-
-const downloadAudio = (audio) => {
-  message.success(`下载音频：第${audio.id}段`)
-}
-
-const downloadAll = async () => {
-  if (!projectId.value) {
-    message.error('没有可下载的项目')
-    return
-  }
-  
-  try {
-    const response = await readerAPI.downloadAudio(projectId.value)
-    
-    // 创建下载链接
-    const url = window.URL.createObjectURL(new Blob([response.data]))
-    const link = document.createElement('a')
-    link.href = url
-    link.setAttribute('download', `${currentProject.value?.name || '朗读项目'}_final.wav`)
-    document.body.appendChild(link)
-    link.click()
-    link.remove()
-    window.URL.revokeObjectURL(url)
-    
-    message.success('开始下载全部音频文件')
-  } catch (error) {
-    console.error('下载失败:', error)
-    message.error('下载失败: ' + (error.response?.data?.detail || error.message))
-  }
-}
-
-const getQueueStatusColor = (status) => {
-  const colors = {
-    'waiting': 'default',
-    'processing': 'processing',
-    'completed': 'success',
-    'error': 'error'
-  }
-  return colors[status] || 'default'
-}
-
-const getQueueStatusText = (status) => {
-  const texts = {
-    'waiting': '等待',
-    'processing': '处理中',
-    'completed': '完成',
-    'error': '错误'
-  }
-  return texts[status] || '未知'
-}
-
-const analyzeDirectText = async () => {
-  if (!directText.value.trim()) {
-    message.error('请先输入文本内容')
-    return
-  }
-  
-  analysisCompleted.value = false
-  characterDetected.value = false
-  progressStatus.value = '正在分析小说内容...'
-  
-  try {
-    message.loading('正在分析文本内容...', 2)
-    
-    // 创建项目 - 添加时间戳避免重复名称
-    const timestamp = new Date().toLocaleString('zh-CN', {
-      month: '2-digit',
-      day: '2-digit', 
-      hour: '2-digit',
-      minute: '2-digit'
-    }).replace(/\//g, '').replace(/:/g, '').replace(' ', '-')
-    
-    const projectName = `直接输入文本_${timestamp}`
-    
-    const projectData = {
-      name: projectName,
-      description: '智能多角色朗读项目',
-      text_content: directText.value.trim(),
-      character_mapping: {}
-    }
-    
-    const response = await readerAPI.createProject(projectData)
-    
-    if (response.data.success) {
-      currentProject.value = response.data.data
-      projectId.value = response.data.data.id
-      analysisCompleted.value = true
-      
-      // 获取项目详情，包含分段和角色信息
-      await loadProjectDetail()
-      
-      message.success('文本分析完成')
-    } else {
-      throw new Error(response.data.message || '项目创建失败')
-    }
-    
-  } catch (error) {
-    console.error('分析文本失败:', error)
-    
-    // 改善错误处理
-    let errorMessage = '未知错误'
-    if (error.response?.data?.detail) {
-      errorMessage = error.response.data.detail
-      
-      // 特殊处理重复名称错误
-      if (errorMessage.includes('项目名称已存在')) {
-        errorMessage = '项目名称重复，请稍后再试'
-      }
-    } else if (error.message) {
-      errorMessage = error.message
-    }
-    
-    message.error('分析失败: ' + errorMessage)
-    
-    // 重置状态
-    analysisCompleted.value = false
-    characterDetected.value = false
-    progressStatus.value = '等待开始'
-  }
-}
-
-// ========== 导航相关方法 ==========
 
 const goBackToList = () => {
   router.push('/novel-reader')
 }
 
-const editProject = () => {
-  if (currentProject.value?.id) {
-    router.push(`/novel-reader/edit/${currentProject.value.id}`)
+const playAudio = (audio) => {
+  currentAudio.value = audio
+  // 在下一个tick中播放，确保DOM已更新
+  nextTick(() => {
+    const audioElement = document.querySelector('audio')
+    if (audioElement) {
+      audioElement.play()
+    }
+  })
+}
+
+const closePlayer = () => {
+  currentAudio.value = null
+}
+
+const downloadAudio = async (audio) => {
+  try {
+    const response = await fetch(audio.url)
+    const blob = await response.blob()
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = audio.filename
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.URL.revokeObjectURL(url)
+    message.success('下载成功')
+  } catch (error) {
+    message.error('下载失败')
   }
 }
 
+const downloadAll = async () => {
+  downloading.value = true
+  try {
+    for (const audio of audioFiles.value) {
+      await downloadAudio(audio)
+      // 稍微延迟避免同时下载太多文件
+      await new Promise(resolve => setTimeout(resolve, 500))
+    }
+    message.success('全部下载完成')
+  } catch (error) {
+    message.error('批量下载失败')
+  } finally {
+    downloading.value = false
+  }
+}
+
+const viewInAudioLibrary = () => {
+  router.push({
+    path: '/audio-library',
+    query: { search: currentProject.value.name }
+  })
+}
+
 // 辅助函数
+const formatDate = (dateString) => {
+  if (!dateString) return '-'
+  const date = new Date(dateString)
+  return date.toLocaleDateString('zh-CN')
+}
+
+const formatTime = (seconds) => {
+  if (!seconds) return '00:00'
+  const mins = Math.floor(seconds / 60)
+  const secs = Math.floor(seconds % 60)
+  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+}
+
 const getCharacterCount = (project) => {
-  const mapping = project?.character_mapping || {}
-  return Object.keys(mapping).length
+  if (!project) return 0
+  return project.characters?.length || 0
 }
 
 const getSegmentCount = (project) => {
-  return project?.segments?.length || 0
+  if (!project) return 0
+  return project.segments?.length || 0
 }
 
-// 获取状态颜色
 const getStatusColor = (status) => {
   const colors = {
     'pending': 'orange',
     'processing': 'blue', 
-    'paused': 'yellow',
     'completed': 'green',
     'failed': 'red'
   }
   return colors[status] || 'default'
 }
 
-// 获取状态文本
 const getStatusText = (status) => {
   const texts = {
     'pending': '待处理',
     'processing': '处理中',
-    'paused': '已暂停', 
     'completed': '已完成',
     'failed': '失败'
   }
   return texts[status] || '未知'
 }
 
-// 格式化日期
-const formatDate = (dateString) => {
-  if (!dateString) return '-'
-  const date = new Date(dateString)
-  return date.toLocaleString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit'
-  })
+const getStepText = (step) => {
+  const currentStatus = progressStatus.value[step]
+  const texts = {
+    'pending': '等待中',
+    'processing': '进行中',
+    'completed': '已完成',
+    'failed': '失败'
+  }
+  return texts[currentStatus] || '等待中'
 }
 
-// 开始编辑项目
-const startEditing = () => {
-  isEditing.value = true
-  editingProject.value = {
-    name: currentProject.value.name,
-    description: currentProject.value.description || ''
-  }
-}
+// 生命周期
+onMounted(() => {
+  loadProject()
+})
 
-// 取消编辑
-const cancelEditing = () => {
-  isEditing.value = false
-  editingProject.value = {
-    name: '',
-    description: ''
+// 监听路由变化
+watch(() => route.params.id, () => {
+  if (route.params.id) {
+    loadProject()
   }
-}
-
-// 保存项目修改
-const saveProject = async () => {
-  if (!editingProject.value.name.trim()) {
-    message.error('项目名称不能为空')
-    return
-  }
-  
-  savingProject.value = true
-  try {
-    const response = await readerAPI.updateProject(currentProject.value.id, {
-      name: editingProject.value.name,
-      description: editingProject.value.description,
-      character_mapping: currentProject.value.character_mapping || {}
-    })
-    
-    if (response.data.success) {
-      currentProject.value = response.data.data
-      isEditing.value = false
-      await refreshProjectList()
-      message.success('项目修改成功')
-    } else {
-      message.error('修改失败: ' + response.data.message)
-    }
-  } catch (error) {
-    console.error('保存项目失败:', error)
-    message.error('保存失败: ' + (error.response?.data?.detail || error.message))
-  } finally {
-    savingProject.value = false
-  }
-}
-
-// 删除项目
-const deleteProject = async () => {
-  try {
-    const response = await readerAPI.deleteProject(currentProject.value.id)
-    
-    if (response.data.success) {
-      showProjectManageModal.value = false
-      selectedProjectId.value = null
-      currentProject.value = null
-      projectId.value = null
-      
-      await refreshProjectList()
-      message.success('项目删除成功')
-    } else {
-      message.error('删除失败: ' + response.data.message)
-    }
-  } catch (error) {
-    console.error('删除项目失败:', error)
-    message.error('删除失败: ' + (error.response?.data?.detail || error.message))
-  }
-}
-
-// 导出项目
-const exportProject = () => {
-  const projectData = {
-    ...currentProject.value,
-    export_time: new Date().toISOString(),
-    version: '1.0'
-  }
-  
-  const blob = new Blob([JSON.stringify(projectData, null, 2)], {
-    type: 'application/json'
-  })
-  
-  const url = window.URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = `${currentProject.value.name}_export.json`
-  document.body.appendChild(link)
-  link.click()
-  link.remove()
-  window.URL.revokeObjectURL(url)
-  
-  message.success('项目导出成功')
-}
+})
 </script>
 
 <style scoped>
 .novel-reader-container {
-  max-width: 1400px;
-  margin: 0 auto;
+  background: #faf9f8;
+  min-height: 100vh;
 }
 
+/* 页面头部 */
 .page-header {
+  background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
+  padding: 40px;
+  border-radius: 16px;
+  margin-bottom: 32px;
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 32px;
-  padding: 32px;
-  background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
-  border-radius: 16px;
+  align-items: center;
+  box-shadow: 0 8px 32px rgba(6, 182, 212, 0.2);
+}
+
+.header-content h1 {
+  margin: 0;
   color: white;
-}
-
-.header-stats {
-  display: flex;
-  gap: 32px;
-}
-
-.stat-item {
-  text-align: center;
-}
-
-.stat-number {
-  font-size: 32px;
+  font-size: 28px;
   font-weight: 700;
-  line-height: 1;
 }
 
-.stat-label {
-  font-size: 14px;
-  opacity: 0.9;
-  margin-top: 4px;
+.header-content p {
+  margin: 8px 0 0 0;
+  color: rgba(255,255,255,0.9);
+  font-size: 16px;
 }
 
-.main-content {
+.header-actions {
+  display: flex;
+  gap: 16px;
+}
+
+/* 项目信息 */
+.project-info-section {
+  margin-bottom: 24px;
+}
+
+.info-card {
+  background: white;
+  padding: 24px;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
   display: grid;
-  grid-template-columns: 1fr 400px;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 24px;
 }
 
-.upload-card, .character-assign-card, .settings-card, .progress-card, .audio-card, .queue-card {
-  margin-bottom: 24px;
-  border-radius: 12px !important;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08) !important;
-  border: none !important;
+.info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.novel-upload {
-  border-radius: 12px !important;
-  border-color: #d1d5db !important;
-  background: #f9fafb !important;
-}
-
-.upload-content {
-  padding: 32px;
-  text-align: center;
-}
-
-.direct-input {
-  border-radius: 8px !important;
-  border-color: #d1d5db !important;
-}
-
-.empty-characters {
-  text-align: center;
-  padding: 40px 20px;
+.info-label {
+  font-size: 14px;
   color: #6b7280;
 }
 
-.character-items {
+.info-value {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+/* 进度部分 */
+.progress-section {
+  margin-bottom: 24px;
+}
+
+.progress-card {
+  background: white;
+  padding: 24px;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+
+.progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.progress-header h3 {
+  margin: 0;
+  color: #1f2937;
+}
+
+.progress-details {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.progress-step {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.step-label {
+  font-size: 14px;
+  color: #6b7280;
+}
+
+.step-status {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.step-status.pending {
+  color: #9ca3af;
+}
+
+.step-status.processing {
+  color: #1890ff;
+}
+
+.step-status.completed {
+  color: #52c41a;
+}
+
+.step-status.failed {
+  color: #ef4444;
+}
+
+/* 内容部分 */
+.content-section {
+  margin-bottom: 24px;
+}
+
+.content-card {
+  background: white;
+  padding: 24px;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+
+.content-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.content-header h3 {
+  margin: 0;
+  color: #1f2937;
+}
+
+.content-preview {
+  max-height: 200px;
+  overflow: hidden;
+  line-height: 1.6;
+  color: #374151;
+  white-space: pre-wrap;
+  position: relative;
+}
+
+.content-preview.expanded {
+  max-height: none;
+}
+
+.content-preview:not(.expanded)::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 40px;
+  background: linear-gradient(transparent, white);
+}
+
+/* 角色部分 */
+.characters-section {
+  margin-bottom: 24px;
+}
+
+.characters-card {
+  background: white;
+  padding: 24px;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+
+.characters-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.characters-header h3 {
+  margin: 0;
+  color: #1f2937;
+}
+
+.character-count {
+  font-size: 14px;
+  color: #6b7280;
+}
+
+.character-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.characters-list {
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -1425,12 +1126,12 @@ const exportProject = () => {
   padding: 16px;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
-  transition: all 0.3s;
+  transition: all 0.2s ease;
 }
 
 .character-item:hover {
   border-color: #06b6d4;
-  background: #f0f9ff;
+  box-shadow: 0 2px 8px rgba(6, 182, 212, 0.1);
 }
 
 .character-info {
@@ -1443,113 +1144,55 @@ const exportProject = () => {
   width: 40px;
   height: 40px;
   border-radius: 8px;
+  background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
   display: flex;
   align-items: center;
   justify-content: center;
   color: white;
   font-weight: 600;
-  font-size: 16px;
-}
-
-.character-details {
-  display: flex;
-  flex-direction: column;
 }
 
 .character-name {
-  font-weight: 500;
-  color: #374151;
+  font-weight: 600;
+  color: #1f2937;
 }
 
 .character-lines {
   font-size: 12px;
   color: #6b7280;
-  margin-top: 2px;
 }
 
-.voice-selector {
+.voice-assignment {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.setting-item {
+/* 结果部分 */
+.results-section {
   margin-bottom: 24px;
 }
 
-.setting-label {
-  display: block;
-  font-weight: 500;
-  color: #374151;
-  margin-bottom: 8px;
+.results-card {
+  background: white;
+  padding: 24px;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
 }
 
-.setting-value {
-  text-align: center;
-  font-weight: 600;
-  color: #06b6d4;
-  font-size: 14px;
-  margin-top: 8px;
-}
-
-.progress-section {
-  margin-bottom: 24px;
-}
-
-.progress-info {
+.results-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   margin-bottom: 16px;
 }
 
-.progress-status {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
+.results-header h3 {
+  margin: 0;
+  color: #1f2937;
 }
 
-.status-text {
-  color: #374151;
-  font-weight: 500;
-}
-
-.progress-percent {
-  color: #06b6d4;
-  font-weight: 600;
-}
-
-.progress-details {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.detail-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 14px;
-}
-
-.detail-label {
-  color: #6b7280;
-}
-
-.detail-status {
-  color: #9ca3af;
-}
-
-.detail-status.completed {
-  color: #10b981;
-  font-weight: 500;
-}
-
-.control-buttons {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.control-actions {
+.results-actions {
   display: flex;
   gap: 12px;
 }
@@ -1558,142 +1201,384 @@ const exportProject = () => {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  margin-bottom: 16px;
 }
 
 .audio-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px;
+  padding: 16px;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
-  transition: all 0.3s;
+  transition: all 0.2s;
 }
 
 .audio-item:hover {
   border-color: #06b6d4;
-  background: #f0f9ff;
-}
-
-.audio-item.playing {
-  border-color: #10b981;
-  background: #f0fdf4;
+  box-shadow: 0 2px 8px rgba(6, 182, 212, 0.1);
 }
 
 .audio-info {
-  flex: 1;
-}
-
-.audio-title {
-  font-weight: 500;
-  color: #374151;
-}
-
-.audio-meta {
-  font-size: 12px;
-  color: #6b7280;
-  margin-top: 2px;
-}
-
-.audio-controls {
-  display: flex;
-  gap: 8px;
-}
-
-.queue-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.queue-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px 12px;
-  border-radius: 6px;
-  background: #f8fafc;
-}
-
-.queue-info {
-  flex: 1;
-}
-
-.queue-text {
-  font-size: 12px;
-  color: #374151;
-  margin-bottom: 2px;
-}
-
-.queue-character {
-  font-size: 11px;
-  color: #6b7280;
-}
-
-/* ========== 项目信息样式 ========== */
-.project-info-container {
-  margin-bottom: 24px;
-}
-
-.project-info-card {
-  border-radius: 12px !important;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08) !important;
-  border: none !important;
-}
-
-.project-info {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 24px;
-}
-
-.project-main {
-  flex: 1;
-}
-
-.project-name {
-  font-size: 24px;
-  font-weight: 600;
-  color: #374151;
-  margin: 0 0 8px 0;
-}
-
-.project-description {
-  color: #6b7280;
-  margin: 0 0 16px 0;
-  line-height: 1.5;
-}
-
-.project-meta {
-  display: flex;
-  gap: 24px;
-  font-size: 14px;
-  color: #9ca3af;
-}
-
-.project-actions {
   display: flex;
   align-items: center;
   gap: 12px;
 }
 
-.project-manage-content {
-  padding: 16px 0;
+.audio-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: #f3f4f6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #06b6d4;
 }
 
-@media (max-width: 1200px) {
-  .main-content {
+.audio-name {
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.audio-meta {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.audio-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* 音频播放器 */
+.audio-player {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: white;
+  padding: 16px;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 400px;
+  z-index: 1000;
+}
+
+.player-content {
+  flex: 1;
+}
+
+.player-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.player-title {
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.player-time {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+/* 操作引导部分 */
+.action-guide-section {
+  margin-bottom: 24px;
+}
+
+.action-guide-card {
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  padding: 32px;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+}
+
+.guide-content {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.guide-icon {
+  flex-shrink: 0;
+}
+
+.guide-text h3 {
+  margin: 0 0 8px 0;
+  color: #1f2937;
+  font-size: 20px;
+}
+
+.guide-text p {
+  margin: 0 0 16px 0;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.guide-features {
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.feature-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: #374151;
+}
+
+.feature-icon {
+  font-size: 16px;
+}
+
+/* 空状态部分 */
+.empty-characters-section,
+.empty-results-section {
+  margin-bottom: 24px;
+}
+
+.empty-card {
+  background: white;
+  padding: 48px 24px;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  text-align: center;
+}
+
+.empty-content {
+  max-width: 400px;
+  margin: 0 auto;
+}
+
+.empty-icon {
+  margin-bottom: 16px;
+}
+
+.empty-text h3 {
+  margin: 0 0 8px 0;
+  color: #1f2937;
+  font-size: 18px;
+}
+
+.empty-text p {
+  margin: 0 0 24px 0;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+/* 角色配置弹窗样式 */
+.character-config-content {
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+.config-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.config-stats {
+  display: flex;
+  gap: 24px;
+}
+
+.stat-item {
+  text-align: center;
+}
+
+.stat-label {
+  display: block;
+  font-size: 12px;
+  color: #6b7280;
+  margin-bottom: 4px;
+}
+
+.stat-value {
+  display: block;
+  font-size: 20px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.config-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.character-config-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.config-character-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.config-character-item:hover {
+  border-color: #06b6d4;
+  box-shadow: 0 2px 8px rgba(6, 182, 212, 0.1);
+}
+
+.config-character-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.config-character-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: 600;
+}
+
+.config-character-name {
+  font-weight: 600;
+  color: #1f2937;
+  margin-bottom: 4px;
+}
+
+.config-character-meta {
+  font-size: 12px;
+  color: #6b7280;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.configured-badge {
+  background: #dcfce7;
+  color: #166534;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+}
+
+.unconfigured-badge {
+  background: #fef3cd;
+  color: #92400e;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+}
+
+.config-voice-selection {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.voice-option {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.voice-option-name {
+  font-weight: 500;
+}
+
+.voice-option-type {
+  font-size: 12px;
+  color: #6b7280;
+  background: #f3f4f6;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.no-characters {
+  text-align: center;
+  padding: 48px 24px;
+}
+
+.no-characters-content h3 {
+  margin: 16px 0 8px 0;
+  color: #1f2937;
+}
+
+.no-characters-content p {
+  margin: 0 0 24px 0;
+  color: #6b7280;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .page-header {
+  flex-direction: column;
+    gap: 20px;
+    text-align: center;
+  }
+
+  .info-card {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .progress-details {
     grid-template-columns: 1fr;
   }
-  
-  .header-stats {
-    gap: 16px;
+
+  .guide-content {
+    flex-direction: column;
+    text-align: center;
+  }
+
+  .guide-features {
+    justify-content: center;
+  }
+
+  .audio-player {
+    left: 16px;
+    right: 16px;
+    transform: none;
+    min-width: auto;
+  }
+
+  .character-item,
+  .config-character-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
   }
   
-  .stat-number {
-    font-size: 24px;
+  .voice-assignment,
+  .config-voice-selection {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  
+  .config-header {
+    flex-direction: column;
+    gap: 16px;
+    align-items: flex-start;
+  }
+  
+  .config-stats {
+    width: 100%;
+    justify-content: space-around;
   }
 }
 </style>

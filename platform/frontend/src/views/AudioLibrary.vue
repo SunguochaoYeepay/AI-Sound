@@ -55,71 +55,84 @@
     </a-row>
 
     <!-- 筛选工具栏 -->
-    <a-card class="filter-toolbar" :bordered="false">
-      <a-row :gutter="16" align="middle">
-        <a-col :span="4">
-          <a-select
-            v-model:value="filters.projectId"
-            placeholder="选择项目"
-            allow-clear
-            @change="refreshAudioList"
+    <div class="filter-section">
+      <div class="filter-controls">
+        <a-select
+          v-model:value="filters.projectId"
+          placeholder="选择项目"
+          style="width: 200px;"
+          size="large"
+          allow-clear
+          @change="refreshAudioList"
+        >
+          <a-select-option
+            v-for="project in projectList"
+            :key="project.id"
+            :value="project.id"
           >
-            <a-select-option
-              v-for="project in projectList"
-              :key="project.id"
-              :value="project.id"
-            >
-              {{ project.name }}
-            </a-select-option>
-          </a-select>
-        </a-col>
-        <a-col :span="4">
-          <a-select
-            v-model:value="filters.audioType"
-            placeholder="音频类型"
-            allow-clear
-            @change="refreshAudioList"
+            {{ project.name }}
+          </a-select-option>
+        </a-select>
+        
+        <a-select
+          v-model:value="filters.audioType"
+          placeholder="音频类型"
+          style="width: 120px;"
+          size="large"
+          allow-clear
+          @change="refreshAudioList"
+        >
+          <a-select-option value="segment">分段音频</a-select-option>
+          <a-select-option value="project">项目合成</a-select-option>
+          <a-select-option value="single">单句合成</a-select-option>
+          <a-select-option value="test">测试音频</a-select-option>
+        </a-select>
+        
+        <a-input-search
+          v-model:value="filters.search"
+          placeholder="搜索文件名或内容"
+          style="width: 300px;"
+          size="large"
+          @search="refreshAudioList"
+          allow-clear
+        />
+        
+        <a-button @click="refreshAudioList" :loading="loading" size="large">
+          <template #icon>
+            <ReloadOutlined />
+          </template>
+          刷新
+        </a-button>
+      </div>
+      
+      <div class="action-controls">
+        <a-space>
+          <a-button
+            @click="batchDownload"
+            :disabled="!selectedRowKeys.length"
+            :loading="downloading"
+            size="large"
           >
-            <a-select-option value="segment">分段音频</a-select-option>
-            <a-select-option value="project">项目合成</a-select-option>
-            <a-select-option value="single">单句合成</a-select-option>
-            <a-select-option value="test">测试音频</a-select-option>
-          </a-select>
-        </a-col>
-        <a-col :span="6">
-          <a-input-search
-            v-model:value="filters.search"
-            placeholder="搜索文件名或内容"
-            @search="refreshAudioList"
-          />
-        </a-col>
-        <a-col :span="10">
-          <a-space>
-            <a-button
-              @click="batchDownload"
-              :disabled="!selectedRowKeys.length"
-              :loading="downloading"
-            >
+            <template #icon>
               <DownloadOutlined />
-              批量下载 ({{ selectedRowKeys.length }})
-            </a-button>
-            <a-button
-              danger
-              @click="batchDelete"
-              :disabled="!selectedRowKeys.length"
-              :loading="deleting"
-            >
+            </template>
+            批量下载 ({{ selectedRowKeys.length }})
+          </a-button>
+          <a-button
+            danger
+            @click="batchDelete"
+            :disabled="!selectedRowKeys.length"
+            :loading="deleting"
+            size="large"
+          >
+            <template #icon>
               <DeleteOutlined />
-              批量删除
-            </a-button>
-            <a-button @click="refreshAudioList" :loading="loading">
-              <ReloadOutlined />
-              刷新
-            </a-button>
-          </a-space>
-        </a-col>
-      </a-row>
-    </a-card>
+            </template>
+            批量删除
+          </a-button>
+        </a-space>
+      </div>
+    </div>
 
     <!-- 音频文件表格 -->
     <a-card :bordered="false">
@@ -623,8 +636,28 @@ onMounted(async () => {
   text-align: center;
 }
 
-.filter-toolbar {
-  margin-bottom: 16px;
+/* 筛选部分 */
+.filter-section {
+  background: white;
+  padding: 24px;
+  border-radius: 12px;
+  margin-bottom: 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+
+.filter-controls {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.action-controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
 }
 
 .filename-cell {

@@ -4,7 +4,7 @@
     <div class="page-header">
       <div class="header-content">
         <h1>{{ isEditing ? '编辑项目' : '创建新项目' }}</h1>
-        <p>{{ isEditing ? '修改项目配置和设置' : '配置您的多角色朗读项目基本信息和生成设置' }}</p>
+        <p>{{ isEditing ? '修改项目配置和设置' : '一次性配置您的多角色朗读项目，无需繁琐步骤' }}</p>
       </div>
       <div class="header-actions">
         <a-button @click="goBack">
@@ -13,256 +13,181 @@
       </div>
     </div>
 
-    <!-- 创建步骤指示器 -->
-    <div class="steps-section">
-      <a-steps :current="currentStep" size="small">
-        <a-step title="基本信息" description="项目名称和设置" />
-        <a-step title="文本上传" description="上传或输入小说文本" />
-        <a-step title="确认创建" description="确认项目信息" />
-      </a-steps>
-    </div>
+    <div class="create-content-simplified">
+      <a-row :gutter="24">
+        <!-- 左侧：基本信息和文本上传 -->
+        <a-col :span="14">
+          <!-- 基本信息 -->
+          <a-card title="📝 项目基本信息" :bordered="false" class="config-card">
+            <a-form :model="projectForm" :rules="projectRules" ref="projectFormRef" layout="vertical">
+              <a-row :gutter="16">
+                <a-col :span="16">
+                  <a-form-item label="项目名称" name="name" required>
+                    <a-input 
+                      v-model:value="projectForm.name"
+                      placeholder="如：西游记朗读版"
+                      size="large"
+                    />
+                  </a-form-item>
+                </a-col>
+                <a-col :span="8">
+                  <a-form-item label="项目类型" name="type">
+                    <a-select 
+                      v-model:value="projectForm.type"
+                      placeholder="类型"
+                      size="large"
+                    >
+                      <a-select-option value="novel">小说</a-select-option>
+                      <a-select-option value="story">故事</a-select-option>
+                      <a-select-option value="dialogue">对话</a-select-option>
+                    </a-select>
+                  </a-form-item>
+                </a-col>
+              </a-row>
 
-    <div class="create-content">
-      <!-- 步骤1：基本信息 -->
-      <div v-show="currentStep === 0" class="step-content">
-        <a-card title="项目基本信息" :bordered="false" class="config-card">
-          <a-form :model="projectForm" :rules="projectRules" ref="projectFormRef" layout="vertical">
-            <a-row :gutter="24">
-              <a-col :span="12">
-                <a-form-item label="项目名称" name="name" required>
-                  <a-input 
-                    v-model:value="projectForm.name"
-                    placeholder="请输入项目名称，如：西游记朗读版"
-                    size="large"
-                  />
-                </a-form-item>
-              </a-col>
-              <a-col :span="12">
-                <a-form-item label="项目类型" name="type">
-                  <a-select 
-                    v-model:value="projectForm.type"
-                    placeholder="选择项目类型"
-                    size="large"
-                  >
-                    <a-select-option value="novel">小说朗读</a-select-option>
-                    <a-select-option value="story">故事朗读</a-select-option>
-                    <a-select-option value="dialogue">对话朗读</a-select-option>
-                    <a-select-option value="custom">自定义</a-select-option>
-                  </a-select>
-                </a-form-item>
-              </a-col>
-            </a-row>
+              <a-form-item label="项目描述（可选）" name="description">
+                <a-textarea 
+                  v-model:value="projectForm.description"
+                  placeholder="简要描述项目内容..."
+                  :rows="3"
+                  :maxlength="200"
+                  show-count
+                />
+              </a-form-item>
+            </a-form>
+          </a-card>
 
-            <a-form-item label="项目描述" name="description">
-              <a-textarea 
-                v-model:value="projectForm.description"
-                placeholder="简要描述这个项目的内容和目标（可选）"
-                :rows="4"
-                :maxlength="500"
-                show-count
-              />
-            </a-form-item>
-
-            <a-form-item label="标签" name="tags">
-              <a-select
-                v-model:value="projectForm.tags"
-                mode="tags"
-                placeholder="添加标签以便管理（按回车确认）"
-                style="width: 100%"
-              >
-                <a-select-option value="武侠">武侠</a-select-option>
-                <a-select-option value="言情">言情</a-select-option>
-                <a-select-option value="玄幻">玄幻</a-select-option>
-                <a-select-option value="科幻">科幻</a-select-option>
-              </a-select>
-            </a-form-item>
-          </a-form>
-        </a-card>
-
-        <a-card title="朗读设置预配置" :bordered="false" class="config-card">
-          <a-form layout="vertical">
-            <a-row :gutter="24">
-              <a-col :span="8">
-                <a-form-item label="分段方式">
-                  <a-radio-group v-model:value="projectSettings.segmentMode" size="large">
-                    <a-radio-button value="paragraph">按段落</a-radio-button>
-                    <a-radio-button value="sentence">按句子</a-radio-button>
-                    <a-radio-button value="chapter">按章节</a-radio-button>
-                  </a-radio-group>
-                </a-form-item>
-              </a-col>
-              <a-col :span="8">
-                <a-form-item label="朗读速度">
-                  <a-slider 
-                    v-model:value="projectSettings.readingSpeed" 
-                    :min="0.5" 
-                    :max="2.0" 
-                    :step="0.1"
-                  />
-                  <div class="setting-value">{{ projectSettings.readingSpeed }}x</div>
-                </a-form-item>
-              </a-col>
-              <a-col :span="8">
-                <a-form-item label="音质设置">
-                  <a-select v-model:value="projectSettings.audioQuality" size="large">
-                    <a-select-option value="standard">标准音质</a-select-option>
-                    <a-select-option value="high">高音质</a-select-option>
-                    <a-select-option value="premium">专业音质</a-select-option>
-                  </a-select>
-                </a-form-item>
-              </a-col>
-            </a-row>
-
-            <a-row :gutter="24">
-              <a-col :span="12">
-                <a-form-item label="背景音乐">
-                  <a-switch 
-                    v-model:checked="projectSettings.enableBgMusic"
-                    checked-children="开启"
-                    un-checked-children="关闭"
-                  />
-                  <span style="margin-left: 12px; color: #666;">为朗读添加轻柔的背景音乐</span>
-                </a-form-item>
-              </a-col>
-              <a-col :span="12">
-                <a-form-item label="智能识别">
-                  <a-switch 
-                    v-model:checked="projectSettings.enableSmartDetection"
-                    checked-children="开启"
-                    un-checked-children="关闭"
-                  />
-                  <span style="margin-left: 12px; color: #666;">自动识别角色对话和情感</span>
-                </a-form-item>
-              </a-col>
-            </a-row>
-          </a-form>
-        </a-card>
-      </div>
-
-      <!-- 步骤2：文本上传 -->
-      <div v-show="currentStep === 1" class="step-content">
-        <a-card title="上传小说文本" :bordered="false" class="config-card">
-          <div class="upload-section">
+          <!-- 文本上传 -->
+          <a-card title="📚 小说文本" :bordered="false" class="config-card">
             <a-tabs v-model:activeKey="uploadMode" size="large">
-              <a-tab-pane key="file" tab="文件上传">
+              <a-tab-pane key="file" tab="📁 文件上传">
                 <a-upload-dragger
                   v-model:fileList="novelFiles"
                   :multiple="false"
                   :before-upload="beforeNovelUpload"
                   @change="handleNovelChange"
                   accept=".txt,.doc,.docx"
-                  class="novel-upload"
+                  class="novel-upload-simplified"
                 >
-                  <div class="upload-content">
+                  <div class="upload-content-simplified">
                     <div class="upload-icon">📖</div>
-                    <h3>点击或拖拽小说文件到此区域</h3>
-                    <p>支持 TXT, DOC, DOCX 格式，文件大小不超过 10MB</p>
+                    <p><strong>拖拽或点击上传文本文件</strong></p>
+                    <p style="color: #666; font-size: 12px;">支持 TXT, DOC, DOCX，最大10MB</p>
                   </div>
                 </a-upload-dragger>
               </a-tab-pane>
 
-              <a-tab-pane key="text" tab="直接输入">
+              <a-tab-pane key="text" tab="✏️ 直接输入">
                 <a-textarea
                   v-model:value="directText"
-                  placeholder="直接粘贴或输入小说文本内容..."
-                  :rows="12"
-                  :maxlength="100000"
+                  placeholder="直接粘贴小说文本内容..."
+                  :rows="8"
+                  :maxlength="50000"
                   show-count
                   class="direct-input"
                 />
-                <div class="input-tips">
-                  <div class="tip-item">
-                    💡 建议：请确保文本中角色对话使用引号「」或""标记
-                  </div>
-                  <div class="tip-item">
-                    💡 提示：段落之间使用空行分隔可以获得更好的识别效果
-                  </div>
-                </div>
               </a-tab-pane>
             </a-tabs>
-          </div>
-        </a-card>
 
-        <!-- 文本预览 -->
-        <a-card v-if="textPreview" title="文本预览" :bordered="false" class="config-card">
-          <div class="text-preview">
-            <div class="preview-stats">
-              <div class="stat-item">
-                <span class="stat-label">总字数:</span>
-                <span class="stat-value">{{ textStats.totalChars }}</span>
+            <!-- 文本预览统计 -->
+            <div v-if="textPreview" class="text-stats-simple">
+              <a-space>
+                <span>📊 字数: <strong>{{ textStats.totalChars }}</strong></span>
+                <span>📝 段落: <strong>{{ textStats.estimatedSegments }}</strong></span>
+                <span>⏱️ 预计: <strong>{{ textStats.estimatedDuration }}</strong></span>
+              </a-space>
+            </div>
+          </a-card>
+        </a-col>
+
+        <!-- 右侧：配置和操作 -->
+        <a-col :span="10">
+          <!-- 朗读设置 -->
+          <a-card title="🎯 朗读设置" :bordered="false" class="config-card">
+            <a-form layout="vertical">
+              <a-form-item label="分段方式">
+                <a-radio-group v-model:value="projectSettings.segmentMode" size="small">
+                  <a-radio-button value="paragraph">段落</a-radio-button>
+                  <a-radio-button value="sentence">句子</a-radio-button>
+                </a-radio-group>
+              </a-form-item>
+
+              <a-form-item label="音质设置">
+                <a-select v-model:value="projectSettings.audioQuality" size="large">
+                  <a-select-option value="high">高音质 (推荐)</a-select-option>
+                  <a-select-option value="standard">标准音质</a-select-option>
+                </a-select>
+              </a-form-item>
+
+              <a-form-item label="智能功能">
+                <div style="display: flex; flex-direction: column; gap: 8px;">
+                  <a-checkbox v-model:checked="projectSettings.enableSmartDetection">
+                    🤖 智能角色识别
+                  </a-checkbox>
+                  <a-checkbox v-model:checked="projectSettings.enableBgMusic">
+                    🎵 背景音乐
+                  </a-checkbox>
+                </div>
+              </a-form-item>
+            </a-form>
+          </a-card>
+
+          <!-- 快速操作 -->
+          <a-card title="🚀 快速创建" :bordered="false" class="config-card">
+            <div class="quick-actions">
+              <a-space direction="vertical" style="width: 100%;">
+                <a-button 
+                  type="primary" 
+                  size="large" 
+                  block 
+                  @click="createProject" 
+                  :loading="creating"
+                  :disabled="!canCreate"
+                >
+                  {{ isEditing ? '💾 保存修改' : '✨ 创建项目' }}
+                </a-button>
+                
+                <a-button 
+                  size="large" 
+                  block 
+                  @click="createAndStart" 
+                  :loading="creating"
+                  :disabled="!canCreate"
+                  style="background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%); border: none; color: white;"
+                >
+                  🎙️ 创建并立即开始合成
+                </a-button>
+              </a-space>
+            </div>
+
+            <!-- 创建提示 -->
+            <a-alert 
+              v-if="!canCreate" 
+              message="请填写项目名称和上传文本" 
+              type="warning" 
+              show-icon 
+              style="margin-top: 16px;"
+            />
+
+            <div v-if="canCreate" class="create-preview">
+              <a-divider style="margin: 16px 0;" />
+              <h4 style="margin-bottom: 8px;">📋 创建预览</h4>
+              <div class="preview-item">
+                <span class="preview-label">项目名称:</span>
+                <span class="preview-value">{{ projectForm.name }}</span>
               </div>
-              <div class="stat-item">
-                <span class="stat-label">预计段落:</span>
-                <span class="stat-value">{{ textStats.estimatedSegments }}</span>
+              <div class="preview-item">
+                <span class="preview-label">文本长度:</span>
+                <span class="preview-value">{{ textStats.totalChars }} 字</span>
               </div>
-              <div class="stat-item">
-                <span class="stat-label">预计时长:</span>
-                <span class="stat-value">{{ textStats.estimatedDuration }}</span>
+              <div class="preview-item">
+                <span class="preview-label">分段方式:</span>
+                <span class="preview-value">{{ getSegmentModeText(projectSettings.segmentMode) }}</span>
               </div>
             </div>
-            <div class="preview-content">
-              {{ textPreview.substring(0, 500) }}{{ textPreview.length > 500 ? '...' : '' }}
-            </div>
-          </div>
-        </a-card>
-      </div>
-
-      <!-- 步骤3：确认创建 -->
-      <div v-show="currentStep === 2" class="step-content">
-        <a-card title="确认项目信息" :bordered="false" class="config-card">
-          <a-descriptions :column="2" bordered>
-            <a-descriptions-item label="项目名称">
-              {{ projectForm.name }}
-            </a-descriptions-item>
-            <a-descriptions-item label="项目类型">
-              {{ getTypeText(projectForm.type) }}
-            </a-descriptions-item>
-            <a-descriptions-item label="项目描述" :span="2">
-              {{ projectForm.description || '暂无描述' }}
-            </a-descriptions-item>
-            <a-descriptions-item label="分段方式">
-              {{ getSegmentModeText(projectSettings.segmentMode) }}
-            </a-descriptions-item>
-            <a-descriptions-item label="朗读速度">
-              {{ projectSettings.readingSpeed }}x
-            </a-descriptions-item>
-            <a-descriptions-item label="音质设置">
-              {{ getAudioQualityText(projectSettings.audioQuality) }}
-            </a-descriptions-item>
-            <a-descriptions-item label="背景音乐">
-              {{ projectSettings.enableBgMusic ? '开启' : '关闭' }}
-            </a-descriptions-item>
-            <a-descriptions-item label="文本来源">
-              {{ uploadMode === 'file' ? '文件上传' : '直接输入' }}
-            </a-descriptions-item>
-            <a-descriptions-item label="文本字数">
-              {{ textStats.totalChars }} 字符
-            </a-descriptions-item>
-          </a-descriptions>
-
-          <div class="confirm-text-preview">
-            <h4>文本内容预览:</h4>
-            <div class="preview-box">
-              {{ textPreview?.substring(0, 800) }}{{ textPreview?.length > 800 ? '...' : '' }}
-            </div>
-          </div>
-        </a-card>
-      </div>
-
-      <!-- 操作按钮 -->
-      <div class="action-buttons">
-        <a-space size="large">
-          <a-button v-if="currentStep > 0" size="large" @click="prevStep">
-            上一步
-          </a-button>
-          <a-button v-if="currentStep < 2" type="primary" size="large" @click="nextStep" :disabled="!canProceed">
-            下一步
-          </a-button>
-          <a-button v-if="currentStep === 2" type="primary" size="large" @click="createProject" :loading="creating">
-            ✓ {{ isEditing ? '保存修改' : '创建项目' }}
-          </a-button>
-        </a-space>
-      </div>
+          </a-card>
+        </a-col>
+      </a-row>
     </div>
   </div>
 </template>
@@ -313,27 +238,34 @@ const projectRules = {
 }
 
 // 计算属性
+const canProceed = computed(() => {
+  if (currentStep.value === 0) {
+    return projectForm.name && projectForm.name.trim()
+  } else if (currentStep.value === 1) {
+    return textPreview.value && textPreview.value.trim()
+  }
+  return false
+})
+
+const canCreate = computed(() => {
+  return projectForm.name && 
+         projectForm.name.trim() && 
+         textPreview.value && 
+         textPreview.value.trim()
+})
+
 const textStats = computed(() => {
   const text = textPreview.value || ''
   const totalChars = text.length
-  const estimatedSegments = Math.ceil(totalChars / 200) // 假设每段200字
+  const estimatedSegments = Math.max(1, Math.ceil(totalChars / 200))
   const estimatedMinutes = Math.ceil(totalChars / 300) // 假设每分钟300字
+  const estimatedDuration = `${estimatedMinutes} 分钟`
   
   return {
     totalChars,
     estimatedSegments,
-    estimatedDuration: `约 ${estimatedMinutes} 分钟`
+    estimatedDuration
   }
-})
-
-const canProceed = computed(() => {
-  if (currentStep.value === 0) {
-    return projectForm.name.trim().length >= 2
-  }
-  if (currentStep.value === 1) {
-    return textPreview.value && textPreview.value.length > 10
-  }
-  return true
 })
 
 // 方法
@@ -403,41 +335,93 @@ const readFileAsText = (file) => {
 }
 
 const createProject = async () => {
-  if (!textPreview.value) {
-    message.error('请先上传文本内容')
-    return
-  }
-  
   creating.value = true
   try {
+    await projectFormRef.value.validate()
+    
     const projectData = {
-      name: projectForm.name,
+      name: projectForm.name.trim(),
+      description: projectForm.description?.trim() || '',
       type: projectForm.type,
-      description: projectForm.description,
-      tags: projectForm.tags,
       text_content: textPreview.value,
-      settings: projectSettings,
       character_mapping: {}
     }
     
-    let response
-    if (isEditing.value) {
-      response = await readerAPI.updateProject(route.params.id, projectData)
-    } else {
-      response = await readerAPI.createProject(projectData)
-    }
+    console.log('[创建项目] 提交数据:', projectData)
+    
+    const response = await readerAPI.createProject(projectData)
     
     if (response.data.success) {
-      message.success(isEditing.value ? '项目更新成功' : '项目创建成功')
+      message.success('项目创建成功')
       router.push(`/novel-reader/detail/${response.data.data.id}`)
     } else {
-      message.error((isEditing.value ? '更新' : '创建') + '失败: ' + response.data.message)
+      message.error(response.data.message || '创建失败')
     }
   } catch (error) {
-    message.error((isEditing.value ? '更新' : '创建') + '失败')
+    console.error('创建项目失败:', error)
+    message.error('创建项目失败')
   } finally {
     creating.value = false
   }
+}
+
+// 创建并立即开始合成
+const createAndStart = async () => {
+  creating.value = true
+  try {
+    await projectFormRef.value.validate()
+    
+    const projectData = {
+      name: projectForm.name.trim(),
+      description: projectForm.description?.trim() || '',
+      type: projectForm.type,
+      text_content: textPreview.value,
+      character_mapping: {}
+    }
+    
+    console.log('[创建并开始] 提交数据:', projectData)
+    
+    // 1. 创建项目
+    const createResponse = await readerAPI.createProject(projectData)
+    
+    if (createResponse.data.success) {
+      const projectId = createResponse.data.data.id
+      message.success('项目创建成功，正在启动合成...')
+      
+      // 2. 立即开始合成
+      try {
+        const startResponse = await readerAPI.startGeneration(projectId)
+        if (startResponse.data.success) {
+          message.success('合成已开始！')
+          router.push(`/novel-reader/detail/${projectId}`)
+        } else {
+          message.warning('项目创建成功，但启动合成失败，请手动开始')
+          router.push(`/novel-reader/detail/${projectId}`)
+        }
+      } catch (startError) {
+        console.error('启动合成失败:', startError)
+        message.warning('项目创建成功，但启动合成失败，请手动开始')
+        router.push(`/novel-reader/detail/${projectId}`)
+      }
+    } else {
+      message.error(createResponse.data.message || '创建失败')
+    }
+  } catch (error) {
+    console.error('创建项目失败:', error)
+    message.error('创建项目失败')
+  } finally {
+    creating.value = false
+  }
+}
+
+// 获取分段方式文本
+const getSegmentModeText = (mode) => {
+  const modeMap = {
+    'paragraph': '按段落',
+    'sentence': '按句子',
+    'chapter': '按章节'
+  }
+  return modeMap[mode] || mode
 }
 
 // 辅助函数
@@ -449,15 +433,6 @@ const getTypeText = (type) => {
     'custom': '自定义'
   }
   return types[type] || '未知'
-}
-
-const getSegmentModeText = (mode) => {
-  const modes = {
-    'paragraph': '按段落',
-    'sentence': '按句子',
-    'chapter': '按章节'
-  }
-  return modes[mode] || '未知'
 }
 
 const getAudioQualityText = (quality) => {
@@ -708,5 +683,79 @@ onMounted(() => {
     flex-direction: column;
     gap: 12px;
   }
+}
+
+/* 简化版样式 */
+.create-content-simplified {
+  padding: 24px 0;
+}
+
+.config-card {
+  margin-bottom: 24px;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.config-card .ant-card-head-title {
+  font-weight: 600;
+  font-size: 16px;
+}
+
+.novel-upload-simplified {
+  border: 2px dashed #d1d5db;
+  border-radius: 8px;
+  transition: all 0.3s ease;
+}
+
+.novel-upload-simplified:hover {
+  border-color: #06b6d4;
+  background-color: #f0f9ff;
+}
+
+.upload-content-simplified {
+  padding: 32px 16px;
+  text-align: center;
+}
+
+.upload-content-simplified .upload-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+
+.text-stats-simple {
+  margin-top: 16px;
+  padding: 12px;
+  background: #f8fafc;
+  border-radius: 6px;
+  border-left: 4px solid #06b6d4;
+}
+
+.quick-actions .ant-btn {
+  height: 48px;
+  font-weight: 600;
+}
+
+.create-preview {
+  background: #f8fafc;
+  padding: 16px;
+  border-radius: 8px;
+  margin-top: 16px;
+}
+
+.preview-item {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.preview-label {
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.preview-value {
+  font-weight: 600;
+  color: #1f2937;
+  font-size: 14px;
 }
 </style> 
