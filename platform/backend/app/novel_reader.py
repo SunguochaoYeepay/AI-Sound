@@ -1280,6 +1280,7 @@ async def process_audio_generation(project_id: int, parallel_tasks: int = 2):
         logger.error(f"[GENERATION] 详细错误: {traceback.format_exc()}")
 
 async def process_single_segment_sequential(segment: TextSegment, tts_client, db: Session):
+    from tts_memory_optimizer import synthesis_context, optimize_tts_memory
     """顺序处理单个段落 - 无并发，专用于避免显存不足"""
     try:
         logger.info(f"[SEGMENT] 开始顺序处理段落 {segment.id}: {segment.text_content[:30]}...")
@@ -1325,11 +1326,12 @@ async def process_single_segment_sequential(segment: TextSegment, tts_client, db
             latent_file_path=voice.latent_file_path
         )
         
-        logger.info(f"[SEGMENT] 调用TTS服务处理段落 {segment.id}")
-        
-        # 调用TTS服务
-        response = await tts_client.synthesize_speech(tts_request)
-        processing_time = time.time() - start_time
+                    logger.info(f"[SEGMENT] 调用TTS服务处理段落 {segment.id}")
+            
+            # 调用TTS服务 - 使用显存优化
+            with synthesis_context(segment.text_content):
+                response = await tts_client.synthesize_speech(tts_request)
+            processing_time = time.time() - start_time
         
         if response.success:
             logger.info(f"[SEGMENT] 段落 {segment.id} TTS合成成功，耗时 {processing_time:.2f}s")
@@ -1450,8 +1452,9 @@ async def process_single_segment(segment: TextSegment, tts_client, semaphore, db
             
             logger.info(f"[SEGMENT] 调用TTS服务处理段落 {segment.id}")
             
-            # 调用TTS服务
-            response = await tts_client.synthesize_speech(tts_request)
+            # 调用TTS服务 - 使用显存优化
+            with synthesis_context(segment.text_content):
+                response = await tts_client.synthesize_speech(tts_request)
             processing_time = time.time() - start_time
             
             if response.success:
