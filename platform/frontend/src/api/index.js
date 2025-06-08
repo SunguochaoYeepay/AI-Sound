@@ -214,6 +214,11 @@ export const readerAPI = {
     formData.append('name', data.name)
     formData.append('description', data.description || '')
     
+    // 添加book_id字段
+    if (data.book_id !== undefined && data.book_id !== null) {
+      formData.append('book_id', data.book_id)
+    }
+    
     // 处理character_mapping - 如果已经是字符串就直接使用，否则序列化
     let characterMapping = data.character_mapping || {}
     if (typeof characterMapping === 'string') {

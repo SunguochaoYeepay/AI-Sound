@@ -17,7 +17,7 @@ import re
 from datetime import datetime, timedelta
 
 from database import get_db
-from models import NovelProject, TextSegment, VoiceProfile, SystemLog, AudioFile
+from models import NovelProject, TextSegment, VoiceProfile, Book, SystemLog, AudioFile
 from tts_client import MegaTTS3Client, TTSRequest, get_tts_client
 from utils import log_system_event, update_usage_stats, save_upload_file
 # from tts_memory_optimizer import synthesis_context, optimize_tts_memory  # 暂时禁用以避免torch依赖
@@ -320,6 +320,7 @@ async def update_project(
     name: str = Form(...),
     description: str = Form(""),
     character_mapping: str = Form("{}"),
+    book_id: Optional[int] = Form(None),
     db: Session = Depends(get_db)
 ):
     """
@@ -363,6 +364,12 @@ async def update_project(
         old_name = project.name
         project.name = name
         project.description = description
+        
+        # 更新书籍关联
+        if book_id is not None:
+            project.book_id = book_id
+            logger.info(f"[DEBUG] 更新book_id: {book_id}")
+        
         project.set_character_mapping(char_mapping)
         
         # 更新相关段落的声音分配（不自动提交）
@@ -519,9 +526,26 @@ async def regenerate_segments(
         db.query(TextSegment).filter(TextSegment.project_id == project_id).delete()
         db.commit()
         
+        # 获取文本内容 - 支持书籍引用和直接文本
+        text_content = ""
+        if project.book_id:
+            # 从关联的书籍获取内容
+            book = db.query(Book).filter(Book.id == project.book_id).first()
+            if book and book.content:
+                text_content = book.content
+                logger.info(f"[DEBUG] 从书籍获取内容: {len(text_content)}字符")
+            else:
+                raise HTTPException(status_code=400, detail="关联的书籍内容为空")
+        elif hasattr(project, 'original_text') and project.original_text:
+            # 使用直接输入的文本
+            text_content = project.original_text
+            logger.info(f"[DEBUG] 使用项目原始文本: {len(text_content)}字符")
+        else:
+            raise HTTPException(status_code=400, detail="项目没有可用的文本内容")
+        
         # 重新分段
         segments_created = await segment_text_by_strategy(
-            project.original_text, 
+            text_content, 
             project_id, 
             strategy, 
             custom_rules,

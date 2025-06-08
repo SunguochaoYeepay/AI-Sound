@@ -693,20 +693,45 @@ const loadProject = async () => {
   if (!isEditing.value) return
 
   try {
+    console.log('=== 开始加载项目数据 ===')
     const response = await readerAPI.getProjectDetail(route.params.id)
+    console.log('项目详情API响应:', response.data)
+    
     if (response.data.success) {
       const project = response.data.data
+      console.log('项目数据:', project)
+      
       projectForm.name = project.name
       projectForm.description = project.description
       projectForm.type = project.type
       
-      // 加载关联的书籍
-      if (project.book_id) {
-        const bookResponse = await booksAPI.getBookDetail(project.book_id)
-        if (bookResponse.data.success) {
-          selectedBook.value = bookResponse.data.data
+      // 加载关联的书籍 - 支持多种字段格式
+      const bookId = project.book_id || project.bookId
+      console.log('书籍ID:', bookId)
+      
+      if (bookId) {
+        // 如果项目数据中已经包含了book信息，直接使用
+        if (project.book) {
+          console.log('使用项目中的书籍数据:', project.book)
+          selectedBook.value = project.book
           await detectBookChapters(selectedBook.value)
+        } else {
+          // 否则通过API获取书籍详情
+          console.log('通过API获取书籍详情...')
+          try {
+            const bookResponse = await booksAPI.getBookDetail(bookId)
+            if (bookResponse.data.success) {
+              console.log('书籍API响应:', bookResponse.data)
+              selectedBook.value = bookResponse.data.data
+              await detectBookChapters(selectedBook.value)
+            }
+          } catch (bookError) {
+            console.error('获取书籍详情失败:', bookError)
+            message.warning('无法加载关联的书籍信息')
+          }
         }
+      } else {
+        console.log('项目没有关联书籍')
       }
       
       // 加载项目设置
@@ -716,6 +741,9 @@ const loadProject = async () => {
         projectSettings.enableSmartDetection = project.settings.enable_smart_detection !== false
         projectSettings.enableBgMusic = project.settings.enable_bg_music || false
       }
+      
+      console.log('=== 项目数据加载完成 ===')
+      console.log('selectedBook:', selectedBook.value)
     }
   } catch (error) {
     console.error('加载项目数据失败:', error)
@@ -728,6 +756,8 @@ const loadProject = async () => {
 onMounted(() => {
   if (isEditing.value) {
     loadProject()
+    // 编辑模式下也需要加载书籍列表，以便用户重新选择
+    loadBooks()
   } else {
     checkPreSelectedBook()
   }
