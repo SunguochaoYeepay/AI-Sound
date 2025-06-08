@@ -33,14 +33,16 @@ AUDIO_DIR = "/app/data/audio"
 async def create_project(
     name: str = Form(...),
     description: str = Form(""),
-    book_id: int = Form(...),
+    content: str = Form(""),
+    book_id: int = Form(None),
     initial_characters: str = Form("[]"),
     settings: str = Form("{}"),
     db: Session = Depends(get_db)
 ):
     """
-    创建新的朗读项目（重构版）
-    支持书籍引用，不再存储原始文本
+    创建新的朗读项目（支持两种方式）
+    方式1：基于书籍引用 (book_id)
+    方式2：直接输入文本内容 (content)
     """
     try:
         # 验证项目名称
@@ -52,14 +54,28 @@ async def create_project(
         if existing:
             raise HTTPException(status_code=400, detail="项目名称已存在")
         
-        # 验证书籍是否存在
-        from models import Book
-        book = db.query(Book).filter(Book.id == book_id).first()
-        if not book:
-            raise HTTPException(status_code=404, detail="指定的书籍不存在")
+        # 获取文本内容：优先使用书籍，其次使用直接输入的内容
+        text_content = ""
+        actual_book_id = None
         
-        if not book.content or len(book.content.strip()) == 0:
-            raise HTTPException(status_code=400, detail="书籍内容为空，无法创建项目")
+        if book_id:
+            # 方式1：基于书籍
+            from models import Book
+            book = db.query(Book).filter(Book.id == book_id).first()
+            if not book:
+                raise HTTPException(status_code=404, detail="指定的书籍不存在")
+            
+            if not book.content or len(book.content.strip()) == 0:
+                raise HTTPException(status_code=400, detail="书籍内容为空，无法创建项目")
+            
+            text_content = book.content
+            actual_book_id = book_id
+        elif content and content.strip():
+            # 方式2：直接输入文本
+            text_content = content.strip()
+            actual_book_id = None
+        else:
+            raise HTTPException(status_code=400, detail="必须提供书籍ID或文本内容")
             
         # 解析初始角色映射
         try:
@@ -79,11 +95,11 @@ async def create_project(
             logger.error(f"[DEBUG] 项目设置JSON解析失败: {e}")
             raise HTTPException(status_code=400, detail="项目设置格式错误")
         
-        # 创建项目记录（新版本）
+        # 创建项目记录（支持两种方式）
         project = NovelProject(
             name=name,
             description=description,
-            book_id=book_id,
+            book_id=actual_book_id,
             status='pending'
         )
         
@@ -106,10 +122,10 @@ async def create_project(
         db.flush()  # 刷新以获取项目ID
         logger.info(f"[DEBUG] 项目刷新获取ID: {project.id}")
         
-        # 自动进行文本分段（使用书籍内容）
+        # 自动进行文本分段（使用获取到的文本内容）
         try:
             logger.info(f"[DEBUG] 开始文本分段: {project.id}")
-            segments_count = await auto_segment_text_no_commit(project.id, book.content, db)
+            segments_count = await auto_segment_text_no_commit(project.id, text_content, db)
             logger.info(f"项目 {project.id} 分段完成，分段数量: {segments_count}")
         except Exception as seg_error:
             logger.error(f"项目分段失败: {str(seg_error)}")
