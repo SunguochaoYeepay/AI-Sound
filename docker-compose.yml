@@ -16,6 +16,7 @@ services:
       - DEBUG=false
     volumes:
       - ./data:/app/data
+      - ./platform/backend/app:/app/app  # 开发模式：代码热重载
     depends_on:
       - database
       - redis

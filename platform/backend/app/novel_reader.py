@@ -1341,12 +1341,12 @@ async def process_single_segment_sequential(segment: TextSegment, tts_client, db
             latent_file_path=voice.latent_file_path
         )
         
-                    logger.info(f"[SEGMENT] 调用TTS服务处理段落 {segment.id}")
-            
-            # 调用TTS服务 - 使用显存优化
-            with synthesis_context(segment.text_content):
-                response = await tts_client.synthesize_speech(tts_request)
-            processing_time = time.time() - start_time
+        logger.info(f"[SEGMENT] 调用TTS服务处理段落 {segment.id}")
+        
+        # 调用TTS服务 - 使用显存优化
+        with synthesis_context(segment.text_content):
+            response = await tts_client.synthesize_speech(tts_request)
+        processing_time = time.time() - start_time
         
         if response.success:
             logger.info(f"[SEGMENT] 段落 {segment.id} TTS合成成功，耗时 {processing_time:.2f}s")

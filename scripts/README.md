@@ -232,3 +232,216 @@ systeminfo
 | 重启服务 | `docker-compose restart` | `docker-compose restart` |
 
 **记住：所有脚本都需要在项目根目录（AI-Sound/）下运行！**
+
+# 🚀 AI-Sound 自动化脚本工具
+
+本目录包含AI-Sound项目的自动化脚本和开发工具。
+
+## 📋 脚本列表
+
+### 🛠️ 开发环境脚本
+
+| 脚本 | 平台 | 功能 | 使用场景 |
+|------|------|------|----------|
+| `dev-start.bat` | Windows | 启动开发环境 | 日常开发，支持热重载 |
+| `dev-start.sh` | Linux/macOS | 启动开发环境 | 日常开发，支持热重载 |
+| `check-code.bat` | Windows | 检查代码同步 | 验证容器内代码是否为最新 |
+| `force-rebuild.bat` | Windows | 强制重建容器 | 解决Docker缓存问题 |
+
+### 🚀 部署脚本
+
+| 脚本 | 平台 | 功能 | 使用场景 |
+|------|------|------|----------|
+| `deploy.bat` | Windows | 一键部署 | 生产环境部署 |
+| `deploy.sh` | Linux/macOS | 一键部署 | 生产环境部署 |
+
+### 🔧 维护脚本
+
+| 脚本 | 平台 | 功能 | 使用场景 |
+|------|------|------|----------|
+| `maintain_megatts3.sh` | Linux/macOS | MegaTTS3维护 | 定期维护检查 |
+
+## 🛠️ 开发环境使用
+
+### 启动开发环境
+
+**Windows:**
+```bash
+cd AI-Sound
+scripts\dev-start.bat
+```
+
+**Linux/macOS:**
+```bash
+cd AI-Sound
+chmod +x scripts/dev-start.sh
+scripts/dev-start.sh
+```
+
+**功能特点：**
+- ✅ 代码热重载 - 修改Python代码立即生效
+- ✅ Volume挂载 - 避免Docker构建缓存问题  
+- ✅ 调试模式 - 详细日志输出
+- ✅ 自动检查 - 服务状态自动检测
+
+### 检查代码同步
+
+当修改代码后，可以验证容器内代码是否为最新：
+
+```bash
+# 检查特定代码（例如：book_id修复）
+scripts\check-code.bat "book_id.*Optional"
+
+# 检查文件时间戳
+scripts\check-code.bat
+```
+
+**输出示例：**
+```
+[CHECK] 检查容器内代码是否更新...
+[CHECK] 检查本地代码...
+platform\backend\app\novel_reader.py:37:    book_id: Optional[int] = Form(None),
+
+[CHECK] 检查容器内代码...
+37:    book_id: Optional[int] = Form(None),
+
+[CHECK] 代码同步正常！
+```
+
+### 强制重建容器
+
+当遇到Docker缓存问题时：
+
+```bash
+scripts\force-rebuild.bat
+```
+
+**执行流程：**
+1. 停止所有服务
+2. 清理Docker缓存
+3. 强制重新构建镜像  
+4. 重新启动服务
+5. 检查服务状态
+
+## 🚀 生产环境部署
+
+### 一键部署
+
+**Windows:**
+```bash
+scripts\deploy.bat
+```
+
+**Linux/macOS:**
+```bash
+chmod +x scripts/deploy.sh
+scripts/deploy.sh
+```
+
+**部署流程：**
+1. 检查前置条件
+2. 构建前端静态文件
+3. 启动Docker服务
+4. 等待服务就绪
+5. 执行健康检查
+
+## 🔧 维护和故障排查
+
+### MegaTTS3维护
+
+```bash
+# Linux/macOS
+chmod +x scripts/maintain_megatts3.sh
+scripts/maintain_megatts3.sh
+```
+
+**维护内容：**
+- 检查容器状态
+- 验证API服务
+- 自动重启异常服务
+- 生成维护报告
+
+### 常见问题解决
+
+#### 1. 代码修改不生效
+```bash
+# 检查代码同步
+scripts\check-code.bat
+
+# 如果不同步，强制重建
+scripts\force-rebuild.bat
+```
+
+#### 2. 服务启动失败
+```bash
+# 查看详细日志
+docker-compose logs -f
+
+# 重新部署
+scripts\force-rebuild.bat
+```
+
+#### 3. 端口冲突
+```bash
+# 检查端口占用
+netstat -tulpn | grep :3001
+netstat -tulpn | grep :7929
+
+# 停止冲突服务后重新启动
+docker-compose down
+scripts\dev-start.bat
+```
+
+## 📝 自定义脚本
+
+### 添加新的开发脚本
+
+1. 创建新脚本文件
+2. 设置执行权限（Linux/macOS）
+3. 更新本README文档
+4. 测试脚本功能
+
+### 脚本模板
+
+**Windows批处理模板：**
+```batch
+@echo off
+echo [SCRIPT] 脚本描述...
+
+REM 检查Docker
+docker info >nul 2>&1
+if %errorlevel% neq 0 (
+    echo [ERROR] Docker未运行
+    pause
+    exit /b 1
+)
+
+REM 执行主要逻辑
+echo [INFO] 执行操作...
+
+echo [SUCCESS] 操作完成！
+pause
+```
+
+**Linux/macOS Shell模板：**
+```bash
+#!/bin/bash
+echo "🔧 脚本描述..."
+
+# 检查Docker
+if ! command -v docker &> /dev/null; then
+    echo "❌ Docker未安装"
+    exit 1
+fi
+
+# 执行主要逻辑
+echo "ℹ️ 执行操作..."
+
+echo "✅ 操作完成！"
+```
+
+## 🔗 相关文档
+
+- [DEVELOPMENT.md](../DEVELOPMENT.md) - 详细开发指南
+- [README.md](../README.md) - 项目主文档
+- [Docker配置文档](../docker/README.md) - Docker相关配置
