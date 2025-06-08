@@ -327,12 +327,17 @@ async def update_project(
     对应前端项目编辑功能
     """
     try:
+        logger.info(f"[DEBUG] PUT请求开始 - project_id: {project_id}")
+        logger.info(f"[DEBUG] 参数 - name: {name}, description: {description}")
+        logger.info(f"[DEBUG] character_mapping原始值: {character_mapping}")
+        logger.info(f"[DEBUG] character_mapping类型: {type(character_mapping)}")
         project = db.query(NovelProject).filter(NovelProject.id == project_id).first()
         
         if not project:
             raise HTTPException(status_code=404, detail="项目不存在")
         
         # 检查名称重复（排除自己）
+        logger.info(f"[DEBUG] 检查名称重复...")
         existing = db.query(NovelProject).filter(
             and_(
                 NovelProject.name == name,
@@ -341,6 +346,7 @@ async def update_project(
         ).first()
         
         if existing:
+            logger.error(f"[DEBUG] 项目名称已存在: {name}")
             raise HTTPException(status_code=400, detail="项目名称已存在")
         
         # 解析角色映射
@@ -397,10 +403,13 @@ async def update_project(
             "data": project.to_dict()
         }
         
-    except HTTPException:
+    except HTTPException as he:
+        logger.error(f"[DEBUG] PUT请求HTTPException: {he.detail}")
         raise
     except Exception as e:
-        logger.error(f"更新项目失败: {str(e)}")
+        logger.error(f"[DEBUG] PUT请求Exception: {str(e)}")
+        import traceback
+        logger.error(f"[DEBUG] PUT详细错误: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"更新失败: {str(e)}")
 
 @router.delete("/projects/{project_id}")
@@ -1178,7 +1187,7 @@ def detect_speaker(text: str) -> str:
                     if re.match(r'^[一-龯]{2,4}$', speaker) or re.match(r'^[A-Za-z\s]{2,8}$', speaker):
                         return speaker
         
-        # 5. 检测姓名模式 - 更保守
+        # 5. 检测姓名模式 - 更保守，排除叙述性开头
         name_patterns = [
             r'^([一-龯]{2,4})[^一-龯]',  # 开头的中文姓名
             r'^([A-Z][a-z]+)[^a-z]',   # 开头的英文名
@@ -1188,10 +1197,16 @@ def detect_speaker(text: str) -> str:
             match = re.search(pattern, text)
             if match:
                 speaker = match.group(1).strip()
-                # 排除常见的非人名词汇
-                excluded_words = ['这个', '那个', '什么', '哪里', '为什么', '怎么', '可是', '但是', '所以', '因为', '如果', '虽然']
+                # 排除常见的非人名词汇和叙述性开头
+                excluded_words = [
+                    '这个', '那个', '什么', '哪里', '为什么', '怎么', '可是', '但是', '所以', '因为', '如果', '虽然',
+                    '遇到', '慢慢', '而这', '这一', '那一', '当他', '当她', '此时', '此后', '然后', '接着', '最后',
+                    '林晓', '苏然', '陈宇', '从那', '经过', '虽然', '尽管', '无奈', '正发', '神奇', '在一', '而这'
+                ]
                 if speaker not in excluded_words and len(speaker) <= 4:
-                    return speaker
+                    # 进一步验证：必须是真正的人名格式
+                    if re.match(r'^[一-龯]{2,3}$', speaker) and not any(word in speaker for word in ['之后', '以后', '开始', '结束', '时候', '地方']):
+                        return speaker
         
         # 默认返回旁白
         return "旁白"

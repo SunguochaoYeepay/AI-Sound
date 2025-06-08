@@ -7,7 +7,7 @@
         <p>管理文本转语音项目，创建和生成多角色朗读音频</p>
       </div>
       <div class="header-actions">
-        <a-button type="primary" size="large" @click="showCreateModal = true">
+        <a-button type="primary" size="large" @click="goToCreatePage">
           <template #icon>
             <PlusOutlined />
           </template>
@@ -129,7 +129,7 @@
             </svg>
             <h3>暂无项目</h3>
             <p>创建您的第一个语音合成项目</p>
-            <a-button type="primary" @click="showCreateModal = true">
+            <a-button type="primary" @click="goToCreatePage">
               立即创建
             </a-button>
           </div>
@@ -266,35 +266,7 @@
       </a-spin>
     </div>
 
-    <!-- 新建项目弹窗 -->
-    <a-modal
-      v-model:open="showCreateModal"
-      title="新建语音合成项目"
-      width="600"
-      @ok="createProject"
-      @cancel="cancelCreate"
-      :confirm-loading="creating"
-    >
-      <a-form
-        ref="createForm"
-        :model="newProject"
-        :rules="createRules"
-        layout="vertical"
-        style="margin-top: 20px;"
-      >
-        <a-form-item label="项目名称" name="name" required>
-          <a-input v-model:value="newProject.name" placeholder="请输入项目名称" />
-        </a-form-item>
 
-        <a-form-item label="项目描述" name="description">
-          <a-textarea v-model:value="newProject.description" placeholder="请输入项目描述（可选）" :rows="3" />
-        </a-form-item>
-
-        <a-form-item label="文本内容（可选）" name="text_content">
-          <a-textarea v-model:value="newProject.text_content" placeholder="可选：直接输入文本内容，或创建后再关联书籍" :rows="6" />
-        </a-form-item>
-      </a-form>
-    </a-modal>
   </div>
 </template>
 
@@ -309,23 +281,10 @@ const router = useRouter()
 
 // 响应式数据
 const loading = ref(false)
-const creating = ref(false)
 const projects = ref([])
 const searchKeyword = ref('')
 const statusFilter = ref('')
 const viewMode = ref('grid')
-const showCreateModal = ref(false)
-
-// 新建项目表单
-const newProject = ref({
-  name: '',
-  description: '',
-  text_content: ''
-})
-
-const createRules = {
-  name: [{ required: true, message: '请输入项目名称', trigger: 'blur' }]
-}
 
 // 表格列定义
 const tableColumns = [
@@ -437,42 +396,8 @@ const onFilterChange = () => {
   // 过滤功能已在computed中处理
 }
 
-const createProject = async () => {
-  try {
-    creating.value = true
-    const projectData = {
-      name: newProject.value.name,
-      description: newProject.value.description,
-      content: newProject.value.text_content || '',
-      book_id: null
-    }
-    const response = await readerAPI.createProject(projectData)
-    if (response.data.success) {
-      message.success('项目创建成功')
-      showCreateModal.value = false
-      resetCreateForm()
-      loadProjects()
-    } else {
-      message.error('创建失败: ' + response.data.message)
-    }
-  } catch (error) {
-    message.error('创建失败')
-  } finally {
-    creating.value = false
-  }
-}
-
-const cancelCreate = () => {
-  showCreateModal.value = false
-  resetCreateForm()
-}
-
-const resetCreateForm = () => {
-  newProject.value = {
-    name: '',
-    description: '',
-    text_content: ''
-  }
+const goToCreatePage = () => {
+  router.push('/novel-reader/create')
 }
 
 const openProject = (project) => {

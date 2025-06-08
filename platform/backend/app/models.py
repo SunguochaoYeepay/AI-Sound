@@ -180,8 +180,25 @@ class NovelProject(Base):
     def get_character_mapping(self) -> Dict[str, str]:
         """获取角色映射"""
         try:
-            return json.loads(self.character_mapping) if self.character_mapping else {}
-        except (json.JSONDecodeError, TypeError):
+            if not self.character_mapping:
+                return {}
+            
+            # 如果已经是字典，直接返回
+            if isinstance(self.character_mapping, dict):
+                return self.character_mapping
+            
+            # 如果是字符串，尝试解析JSON
+            if isinstance(self.character_mapping, str):
+                parsed = json.loads(self.character_mapping)
+                # 确保返回的是字典
+                if isinstance(parsed, dict):
+                    return parsed
+                else:
+                    return {}
+            
+            return {}
+        except (json.JSONDecodeError, TypeError, AttributeError) as e:
+            print(f"[DEBUG] character_mapping解析失败: {e}, 原始值: {self.character_mapping}")
             return {}
     
     def set_character_mapping(self, mapping: Dict[str, str]):

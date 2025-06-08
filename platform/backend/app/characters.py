@@ -27,6 +27,7 @@ router = APIRouter(prefix="/characters", tags=["声音库管理"])
 VOICE_PROFILES_DIR = "/app/data/voice_profiles"
 AUDIO_DIR = "/app/data/audio"
 
+@router.get("")
 @router.get("/")
 async def get_voice_profiles(
     page: int = Query(1, ge=1, description="页码"),
@@ -131,6 +132,7 @@ async def get_voice_profiles(
         logger.error(f"获取声音档案列表失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"获取列表失败: {str(e)}")
 
+@router.post("")
 @router.post("/")
 async def create_voice_profile(
     name: str = Form(...),

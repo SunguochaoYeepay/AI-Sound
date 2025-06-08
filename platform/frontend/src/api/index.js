@@ -213,7 +213,14 @@ export const readerAPI = {
     const formData = new FormData()
     formData.append('name', data.name)
     formData.append('description', data.description || '')
-    formData.append('character_mapping', JSON.stringify(data.character_mapping || {}))
+    
+    // 处理character_mapping - 如果已经是字符串就直接使用，否则序列化
+    let characterMapping = data.character_mapping || {}
+    if (typeof characterMapping === 'string') {
+      formData.append('character_mapping', characterMapping)
+    } else {
+      formData.append('character_mapping', JSON.stringify(characterMapping))
+    }
     
     return apiClient.put(`/novel-reader/projects/${projectId}`, formData, {
       headers: {
