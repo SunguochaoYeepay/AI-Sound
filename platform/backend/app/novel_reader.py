@@ -20,9 +20,10 @@ from database import get_db
 from models import NovelProject, TextSegment, VoiceProfile, SystemLog, AudioFile
 from tts_client import MegaTTS3Client, TTSRequest, get_tts_client
 from utils import log_system_event, update_usage_stats, save_upload_file
+# from tts_memory_optimizer import synthesis_context, optimize_tts_memory  # 暂时禁用以避免torch依赖
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api/novel-reader", tags=["小说朗读"])
+router = APIRouter(prefix="/novel-reader", tags=["小说朗读"])
 
 # 文件存储路径
 PROJECTS_DIR = "/app/data/projects"
@@ -427,10 +428,6 @@ async def delete_project(
         # 删除相关文件
         files_to_delete = []
         
-        # 删除文本文件
-        if project.text_file_path and os.path.exists(project.text_file_path):
-            files_to_delete.append(project.text_file_path)
-        
         # 删除最终音频文件
         if project.final_audio_path and os.path.exists(project.final_audio_path):
             files_to_delete.append(project.final_audio_path)
@@ -440,6 +437,15 @@ async def delete_project(
         for segment in segments:
             if segment.audio_file_path and os.path.exists(segment.audio_file_path):
                 files_to_delete.append(segment.audio_file_path)
+        
+        # 删除AudioFile表中的关联记录
+        from models import AudioFile
+        audio_files = db.query(AudioFile).filter(AudioFile.project_id == project_id).all()
+        for audio_file in audio_files:
+            if audio_file.file_path and os.path.exists(audio_file.file_path):
+                if audio_file.file_path not in files_to_delete:
+                    files_to_delete.append(audio_file.file_path)
+            db.delete(audio_file)
         
         # 删除数据库记录（级联删除段落）
         db.delete(project)
@@ -1295,7 +1301,6 @@ async def process_audio_generation(project_id: int, parallel_tasks: int = 2):
         logger.error(f"[GENERATION] 详细错误: {traceback.format_exc()}")
 
 async def process_single_segment_sequential(segment: TextSegment, tts_client, db: Session):
-    from tts_memory_optimizer import synthesis_context, optimize_tts_memory
     """顺序处理单个段落 - 无并发，专用于避免显存不足"""
     try:
         logger.info(f"[SEGMENT] 开始顺序处理段落 {segment.id}: {segment.text_content[:30]}...")
@@ -1343,9 +1348,8 @@ async def process_single_segment_sequential(segment: TextSegment, tts_client, db
         
         logger.info(f"[SEGMENT] 调用TTS服务处理段落 {segment.id}")
         
-        # 调用TTS服务 - 使用显存优化
-        with synthesis_context(segment.text_content):
-            response = await tts_client.synthesize_speech(tts_request)
+        # 调用TTS服务
+        response = await tts_client.synthesize_speech(tts_request)
         processing_time = time.time() - start_time
         
         if response.success:
@@ -1467,9 +1471,8 @@ async def process_single_segment(segment: TextSegment, tts_client, semaphore, db
             
             logger.info(f"[SEGMENT] 调用TTS服务处理段落 {segment.id}")
             
-            # 调用TTS服务 - 使用显存优化
-            with synthesis_context(segment.text_content):
-                response = await tts_client.synthesize_speech(tts_request)
+            # 调用TTS服务
+            response = await tts_client.synthesize_speech(tts_request)
             processing_time = time.time() - start_time
             
             if response.success:

@@ -176,6 +176,7 @@ const updateSelectedKeys = () => {
     '/novel-reader/create': 'novel-projects',
     '/novel-reader/edit': 'novel-projects',
     '/novel-reader/detail': 'novel-projects',
+    '/synthesis': 'novel-projects',
     '/audio-library': 'audio-library',
     '/settings': 'settings'
   }
@@ -234,6 +235,7 @@ const getPageTitle = () => {
     '/novel-reader/create': '语音合成',
     '/novel-reader/edit': '语音合成',
     '/novel-reader/detail': '语音合成',
+    '/synthesis': '合成中心',
     '/audio-library': '音频资源库',
     '/settings': '系统设置'
   }

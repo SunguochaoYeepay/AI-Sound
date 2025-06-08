@@ -476,7 +476,14 @@ const resetCreateForm = () => {
 }
 
 const openProject = (project) => {
-  router.push(`/novel-reader/detail/${project.id}`)
+  // 根据项目状态和内容决定跳转位置
+  if (project.status === 'completed') {
+    // 已完成的项目跳转到详情页
+    router.push(`/novel-reader/detail/${project.id}`)
+  } else {
+    // 其他状态跳转到合成中心
+    router.push(`/synthesis/${project.id}`)
+  }
 }
 
 const viewAudioFiles = (project) => {

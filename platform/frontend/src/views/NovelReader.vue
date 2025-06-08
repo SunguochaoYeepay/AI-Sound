@@ -88,34 +88,7 @@
               </div>
     </div>
 
-    <!-- 操作引导 -->
-    <div v-if="!synthesizing && currentProject?.status !== 'processing' && audioFiles.length === 0" class="action-guide-section">
-      <div class="action-guide-card">
-        <div class="guide-content">
-          <div class="guide-icon">
-            <PlayCircleOutlined style="font-size: 48px; color: #06b6d4;" />
-            </div>
-          <div class="guide-text">
-            <h3>准备开始语音合成</h3>
-            <p>点击上方的"开始合成"按钮，将文本转换为语音文件</p>
-            <div class="guide-features">
-              <div class="feature-item">
-                <span class="feature-icon">🎯</span>
-                <span>智能文本分析</span>
-          </div>
-              <div class="feature-item">
-                <span class="feature-icon">🎭</span>
-                <span>角色声音识别</span>
-              </div>
-              <div class="feature-item">
-                <span class="feature-icon">🔊</span>
-                <span>高质量语音生成</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+    
 
     <!-- 角色配置 -->
     <div v-if="characters.length > 0" class="characters-section">

@@ -81,6 +81,20 @@ export const charactersAPI = {
     console.log('[API请求] GET', url, params)
     return apiClient.get(url)
   },
+
+  // 获取声音档案列表
+  getVoiceProfiles: (params = {}) => {
+    const queryParams = new URLSearchParams()
+    if (params.search) queryParams.append('search', params.search)
+    if (params.status) queryParams.append('status', params.status)
+    if (params.gender) queryParams.append('gender', params.gender)
+    if (params.page) queryParams.append('page', params.page)
+    if (params.page_size) queryParams.append('page_size', params.page_size)
+    
+    const queryString = queryParams.toString()
+    const url = queryString ? `/characters?${queryString}` : '/characters'
+    return apiClient.get(url)
+  },
   
   // 创建角色
   createCharacter: (data) => apiClient.post('/characters/', data, {
@@ -213,9 +227,9 @@ export const readerAPI = {
     apiClient.delete(`/novel-reader/projects/${projectId}?force=${force}`),
   
   // 开始音频生成
-  startGeneration: (projectId, parallelTasks = 2) => {
+  startGeneration: (projectId, data) => {
     const formData = new FormData()
-    formData.append('parallel_tasks', parallelTasks)
+    formData.append('parallel_tasks', data.parallel_tasks || 2)
     
     return apiClient.post(`/novel-reader/projects/${projectId}/start-generation`, formData, {
       headers: {
@@ -227,11 +241,25 @@ export const readerAPI = {
   // 暂停生成
   pauseGeneration: (projectId) => apiClient.post(`/novel-reader/projects/${projectId}/pause`),
   
+  // 恢复生成
+  resumeGeneration: (projectId, data) => {
+    const formData = new FormData()
+    formData.append('parallel_tasks', data.parallel_tasks || 2)
+    
+    return apiClient.post(`/novel-reader/projects/${projectId}/resume`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    })
+  },
+  
   // 获取生成进度
   getProgress: (projectId) => apiClient.get(`/novel-reader/projects/${projectId}/progress`),
   
   // 下载音频
-  downloadAudio: (projectId) => apiClient.get(`/novel-reader/projects/${projectId}/download`),
+  downloadAudio: (projectId) => apiClient.get(`/novel-reader/projects/${projectId}/download`, {
+    responseType: 'blob'
+  }),
   
   // 兼容旧API
   uploadText: (formData) => apiClient.post('/reader/upload', formData, {
@@ -260,8 +288,10 @@ export const booksAPI = {
     if (params.sort_order) queryParams.append('sort_order', params.sort_order)
     
     const queryString = queryParams.toString()
-    const url = queryString ? `/books?${queryString}` : '/books'
+    const url = queryString ? `/api/books?${queryString}` : '/api/books'
     
+    console.log('[API请求] GET', url, params)
+    console.log('[API请求] 完整URL:', url)
     return apiClient.get(url)
   },
   
@@ -278,7 +308,7 @@ export const booksAPI = {
       formData.append('text_file', data.text_file)
     }
     
-    return apiClient.post('/books', formData, {
+    return apiClient.post('/api/books', formData, {
       headers: {
         'Content-Type': 'multipart/form-data'
       }
@@ -286,7 +316,7 @@ export const booksAPI = {
   },
   
   // 获取书籍详情
-  getBookDetail: (bookId) => apiClient.get(`/books/${bookId}`),
+  getBookDetail: (bookId) => apiClient.get(`/api/books/${bookId}`),
   
   // 更新书籍
   updateBook: (bookId, data) => {
@@ -298,7 +328,7 @@ export const booksAPI = {
     formData.append('tags', JSON.stringify(data.tags || []))
     formData.append('status', data.status || 'draft')
     
-    return apiClient.put(`/books/${bookId}`, formData, {
+    return apiClient.put(`/api/books/${bookId}`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data'
       }
@@ -307,7 +337,7 @@ export const booksAPI = {
   
   // 删除书籍
   deleteBook: (bookId, force = false) => 
-    apiClient.delete(`/books/${bookId}?force=${force}`),
+    apiClient.delete(`/api/books/${bookId}?force=${force}`),
   
   // 获取书籍内容
   getBookContent: (bookId, params = {}) => {
@@ -317,13 +347,13 @@ export const booksAPI = {
     if (params.length) queryParams.append('length', params.length)
     
     const queryString = queryParams.toString()
-    const url = queryString ? `/books/${bookId}/content?${queryString}` : `/books/${bookId}/content`
+    const url = queryString ? `/api/books/${bookId}/content?${queryString}` : `/api/books/${bookId}/content`
     
     return apiClient.get(url)
   },
   
   // 获取书籍统计
-  getBookStats: (bookId) => apiClient.get(`/books/${bookId}/stats`)
+  getBookStats: (bookId) => apiClient.get(`/api/books/${bookId}/stats`)
 }
 
 // 音频库API

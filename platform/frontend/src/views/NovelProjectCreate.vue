@@ -153,7 +153,7 @@
                   </div>
                 </div>
 
-                <div v-else class="no-books">
+                <div v-else-if="!booksLoading" class="no-books">
                   <a-empty description="暂无可用书籍">
                     <a-button type="primary" @click="goToCreateBook">
                       📝 创建新书籍
@@ -479,8 +479,8 @@ const loadBooks = async () => {
   }
 }
 
-const handleBookSearch = () => {
-  loadBooks()
+const handleBookSearch = async () => {
+  await loadBooks()
 }
 
 const selectBook = async (book) => {
@@ -624,14 +624,47 @@ const createProject = async () => {
 }
 
 const createAndStart = async () => {
-  await createProject()
-  // 创建成功后跳转到合成中心
-  if (!creating.value) {
-    message.info('即将跳转到合成中心...')
-    // 暂时跳转到项目列表，后续实现合成中心
-    setTimeout(() => {
-      router.push('/projects')
-    }, 1000)
+  try {
+    await projectFormRef.value.validate()
+  } catch (error) {
+    message.error('请检查表单内容')
+    return
+  }
+
+  creating.value = true
+  try {
+    const projectData = {
+      name: projectForm.name,
+      description: projectForm.description,
+      book_id: selectedBook.value?.id || null,
+      initial_characters: [], // 初始化为空，后续在合成阶段配置
+      settings: {
+        segment_mode: projectSettings.segmentMode,
+        audio_quality: projectSettings.audioQuality,
+        enable_smart_detection: projectSettings.enableSmartDetection,
+        enable_bg_music: projectSettings.enableBgMusic
+      }
+    }
+
+    let response
+    if (isEditing.value) {
+      response = await readerAPI.updateProject(route.params.id, projectData)
+    } else {
+      response = await readerAPI.createProject(projectData)
+    }
+
+    if (response.data.success) {
+      const projectId = response.data.data.id
+      message.success('项目创建成功，正在跳转到合成中心...')
+      // 跳转到合成中心
+      router.push(`/synthesis/${projectId}`)
+    }
+  } catch (error) {
+    console.error('项目创建失败:', error)
+    const errorMsg = error.response?.data?.detail || '操作失败'
+    message.error(errorMsg)
+  } finally {
+    creating.value = false
   }
 }
 

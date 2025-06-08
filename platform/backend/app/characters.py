@@ -21,7 +21,7 @@ from tts_client import MegaTTS3Client, TTSRequest, get_tts_client
 from utils import log_system_event, update_usage_stats, validate_audio_file, get_audio_duration
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api/characters", tags=["声音库管理"])
+router = APIRouter(prefix="/characters", tags=["声音库管理"])
 
 # 音频文件存储路径
 VOICE_PROFILES_DIR = "/app/data/voice_profiles"

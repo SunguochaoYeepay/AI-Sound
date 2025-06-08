@@ -25,7 +25,7 @@ from tts_client import MegaTTS3Client, get_tts_client
 from utils import log_system_event, save_upload_file
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api/monitor", tags=["系统监控"])
+router = APIRouter(prefix="/monitor", tags=["系统监控"])
 
 # 备份存储路径
 BACKUP_DIR = "../data/backups"

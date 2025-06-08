@@ -21,12 +21,13 @@ from utils import log_system_event
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/books", tags=["books"])
+router = APIRouter(prefix="/books", tags=["books"])
 
 # 配置目录
 BOOKS_DIR = os.path.join(os.getcwd(), "data", "books")
 os.makedirs(BOOKS_DIR, exist_ok=True)
 
+@router.get("")
 @router.get("/")
 async def get_books(
     page: int = Query(1, ge=1, description="页码"),
@@ -109,6 +110,7 @@ async def get_books(
         logger.error(f"获取书籍列表失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"获取列表失败: {str(e)}")
 
+@router.post("")
 @router.post("/")
 async def create_book(
     title: str = Form(...),

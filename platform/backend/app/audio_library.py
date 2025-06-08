@@ -23,7 +23,7 @@ from models import AudioFile, NovelProject, TextSegment, VoiceProfile, SystemLog
 from utils import log_system_event, get_audio_duration
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api/audio-library", tags=["音频库管理"])
+router = APIRouter(prefix="/audio-library", tags=["音频库管理"])
 
 # 音频文件存储路径
 AUDIO_DIR = "/app/data/audio"
