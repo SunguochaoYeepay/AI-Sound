@@ -476,13 +476,26 @@ const resetCreateForm = () => {
 }
 
 const openProject = (project) => {
+  // 添加调试信息
+  console.log('打开项目:', project.name, '状态:', project.status, '项目ID:', project.id)
+  
   // 根据项目状态和内容决定跳转位置
   if (project.status === 'completed') {
     // 已完成的项目跳转到详情页
+    console.log('跳转到详情页:', `/novel-reader/detail/${project.id}`)
     router.push(`/novel-reader/detail/${project.id}`)
   } else {
     // 其他状态跳转到合成中心
-    router.push(`/synthesis/${project.id}`)
+    console.log('跳转到合成中心:', `/synthesis/${project.id}`)
+    
+    // 尝试使用name和params的方式跳转
+    router.push({
+      name: 'SynthesisCenter',
+      params: { projectId: project.id }
+    }).catch(err => {
+      console.error('路由跳转失败:', err)
+      message.error('跳转失败，请检查项目ID是否正确')
+    })
   }
 }
 

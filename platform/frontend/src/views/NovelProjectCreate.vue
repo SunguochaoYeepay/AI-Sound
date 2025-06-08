@@ -410,7 +410,7 @@ const estimatedDuration = computed(() => {
 
 // 方法
 const goBack = () => {
-  router.push('/projects')
+  router.push('/novel-reader')
 }
 
 const goToCreateBook = () => {
@@ -612,7 +612,7 @@ const createProject = async () => {
 
     if (response.data.success) {
       message.success(isEditing.value ? '项目更新成功' : '项目创建成功')
-      router.push('/projects')
+      router.push('/novel-reader')
     }
   } catch (error) {
     console.error('项目创建失败:', error)
@@ -719,7 +719,7 @@ const loadProject = async () => {
   } catch (error) {
     console.error('加载项目数据失败:', error)
     message.error('加载项目数据失败')
-    router.push('/projects')
+    router.push('/novel-reader')
   }
 }
 

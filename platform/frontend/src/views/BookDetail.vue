@@ -261,7 +261,7 @@ const editBook = () => {
 
 const createProject = () => {
   // 跳转到项目创建页面，传递书籍ID
-  router.push(`/projects/create?bookId=${route.params.id}`)
+  router.push(`/novel-reader/create?bookId=${route.params.id}`)
 }
 
 const getStatusColor = (status) => {

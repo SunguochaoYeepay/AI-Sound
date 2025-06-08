@@ -76,7 +76,7 @@ services:
     volumes:
       - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./docker/nginx/ssl:/etc/nginx/ssl:ro
-      - ./nginx-dist:/usr/share/nginx/html:ro
+      - ./platform/frontend/dist:/usr/share/nginx/html:ro
       - ./data/audio:/usr/share/nginx/audio:ro
       - ./data/voice_profiles:/usr/share/nginx/voice_profiles:ro
       - ./data/logs/nginx:/var/log/nginx

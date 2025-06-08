@@ -374,7 +374,7 @@ const analyzeCharacters = async () => {
         }
       }
       characterStats[speaker].count++
-      if (characterStats[speaker].samples.length < 3) {
+      if (characterStats[speaker].samples.length < 3 && segment.text_content) {
         characterStats[speaker].samples.push(segment.text_content.slice(0, 30) + '...')
       }
     })
