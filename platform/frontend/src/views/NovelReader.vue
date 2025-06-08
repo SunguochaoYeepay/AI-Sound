@@ -522,13 +522,13 @@ const extractCharacters = async () => {
       characters.value = extractedCharacters
       message.success(`成功提取到 ${extractedCharacters.length} 个角色`)
     } else {
-      // 如果没有提取到角色，创建一个默认的旁白角色
-      characters.value = [{
-          name: '旁白',
+              // 如果没有提取到角色，创建一个默认的温柔女声角色
+        characters.value = [{
+          name: '温柔女声',
         voice_id: null,
         line_count: segments.length
       }]
-      message.info('未检测到明显的角色对话，已创建默认旁白角色')
+              message.info('未检测到明显的角色对话，已创建默认温柔女声角色')
     }
     
   } catch (error) {

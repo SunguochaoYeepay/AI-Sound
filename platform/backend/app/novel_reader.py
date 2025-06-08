@@ -564,7 +564,7 @@ async def regenerate_segments(
 async def start_audio_generation(
     project_id: int,
     background_tasks: BackgroundTasks,
-    parallel_tasks: int = Form(2, description="并行任务数"),
+    parallel_tasks: int = Form(1, description="并行任务数"),
     db: Session = Depends(get_db)
 ):
     """
@@ -731,7 +731,7 @@ async def pause_generation(
 async def resume_generation(
     project_id: int,
     background_tasks: BackgroundTasks,
-    parallel_tasks: int = Form(2, description="并行任务数"),
+    parallel_tasks: int = Form(1, description="并行任务数"),
     db: Session = Depends(get_db)
 ):
     """
@@ -1123,7 +1123,7 @@ def detect_speaker(text: str) -> str:
         # 清理文本
         text = text.strip()
         if not text:
-            return "旁白"
+            return "温柔女声"
         
         # 1. 检测直接引语模式："小明说：'你好'"
         direct_quote_patterns = [
@@ -1208,11 +1208,11 @@ def detect_speaker(text: str) -> str:
                     if re.match(r'^[一-龯]{2,3}$', speaker) and not any(word in speaker for word in ['之后', '以后', '开始', '结束', '时候', '地方']):
                         return speaker
         
-        # 默认返回旁白
-        return "旁白"
+        # 默认返回温柔女声（确保存在的声音档案）
+        return "温柔女声"
         
     except Exception:
-        return "旁白"
+        return "温柔女声"
 
 async def update_segments_voice_mapping(project_id: int, char_mapping: Dict[str, str], db: Session):
     """更新段落的声音映射"""
@@ -1232,7 +1232,7 @@ async def update_segments_voice_mapping(project_id: int, char_mapping: Dict[str,
     except Exception as e:
         logger.error(f"更新声音映射失败: {str(e)}")
 
-async def process_audio_generation(project_id: int, parallel_tasks: int = 2):
+async def process_audio_generation(project_id: int, parallel_tasks: int = 1):
     """后台音频生成任务 - 修改为真正的逐个处理"""
     try:
         from database import SessionLocal

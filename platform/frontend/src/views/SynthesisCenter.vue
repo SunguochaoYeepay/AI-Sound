@@ -365,7 +365,7 @@ const analyzeCharacters = async () => {
   try {
     const characterStats = {}
     project.value.segments.forEach(segment => {
-      const speaker = segment.detected_speaker || '旁白'
+      const speaker = segment.detected_speaker || '温柔女声'
       if (!characterStats[speaker]) {
         characterStats[speaker] = {
           name: speaker,

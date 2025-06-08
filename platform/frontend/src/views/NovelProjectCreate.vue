@@ -469,7 +469,8 @@ const loadBooks = async () => {
     
     const response = await booksAPI.getBooks(params)
     if (response.data.success) {
-      availableBooks.value = response.data.data.items
+      // 修复：直接使用data数组，而不是data.items
+      availableBooks.value = response.data.data || []
     }
   } catch (error) {
     console.error('加载书籍列表失败:', error)
