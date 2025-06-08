@@ -390,7 +390,7 @@ const bookSearch = reactive({
 
 // 计算属性
 const canCreate = computed(() => {
-  return projectForm.name.trim() && selectedBook.value
+  return projectForm.name.trim()
 })
 
 const estimatedSegments = computed(() => {
@@ -447,7 +447,6 @@ const getSegmentModeText = (mode) => {
 
 const getCreateHint = () => {
   if (!projectForm.name.trim()) return '请输入项目名称'
-  if (!selectedBook.value) return '请选择书籍内容'
   return '准备就绪'
 }
 
@@ -587,17 +586,14 @@ const createProject = async () => {
     return
   }
 
-  if (!selectedBook.value) {
-    message.error('请选择书籍内容')
-    return
-  }
+
 
   creating.value = true
   try {
     const projectData = {
       name: projectForm.name,
       description: projectForm.description,
-      book_id: selectedBook.value.id,
+      book_id: selectedBook.value?.id || null,
       initial_characters: [], // 初始化为空，后续在合成阶段配置
       settings: {
         segment_mode: projectSettings.segmentMode,

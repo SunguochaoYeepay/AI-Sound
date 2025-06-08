@@ -34,7 +34,7 @@ async def create_project(
     name: str = Form(...),
     description: str = Form(""),
     content: str = Form(""),
-    book_id: int = Form(None),
+    book_id: Optional[int] = Form(None),
     initial_characters: str = Form("[]"),
     settings: str = Form("{}"),
     db: Session = Depends(get_db)
@@ -74,8 +74,7 @@ async def create_project(
             # 方式2：直接输入文本
             text_content = content.strip()
             actual_book_id = None
-        else:
-            raise HTTPException(status_code=400, detail="必须提供书籍ID或文本内容")
+
             
         # 解析初始角色映射
         try:

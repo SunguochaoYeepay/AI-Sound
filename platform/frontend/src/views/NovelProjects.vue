@@ -290,8 +290,8 @@
           <a-textarea v-model:value="newProject.description" placeholder="请输入项目描述（可选）" :rows="3" />
         </a-form-item>
 
-        <a-form-item label="文本内容" name="text_content" required>
-          <a-textarea v-model:value="newProject.text_content" placeholder="请输入要转换的文本内容" :rows="6" />
+        <a-form-item label="文本内容（可选）" name="text_content">
+          <a-textarea v-model:value="newProject.text_content" placeholder="可选：直接输入文本内容，或创建后再关联书籍" :rows="6" />
         </a-form-item>
       </a-form>
     </a-modal>
@@ -324,8 +324,7 @@ const newProject = ref({
 })
 
 const createRules = {
-  name: [{ required: true, message: '请输入项目名称', trigger: 'blur' }],
-  text_content: [{ required: true, message: '请输入文本内容', trigger: 'blur' }]
+  name: [{ required: true, message: '请输入项目名称', trigger: 'blur' }]
 }
 
 // 表格列定义
@@ -441,7 +440,13 @@ const onFilterChange = () => {
 const createProject = async () => {
   try {
     creating.value = true
-    const response = await readerAPI.createProject(newProject.value)
+    const projectData = {
+      name: newProject.value.name,
+      description: newProject.value.description,
+      content: newProject.value.text_content || '',
+      book_id: null
+    }
+    const response = await readerAPI.createProject(projectData)
     if (response.data.success) {
       message.success('项目创建成功')
       showCreateModal.value = false

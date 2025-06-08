@@ -54,6 +54,15 @@
           <span style="font-weight: 500;">声音库管理</span>
         </a-menu-item>
 
+        <a-menu-item key="books" @click="navigateTo('books')">
+          <template #icon>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/>
+            </svg>
+          </template>
+          <span style="font-weight: 500;">书籍管理</span>
+        </a-menu-item>
+
         <a-menu-item key="novel-projects" @click="navigateTo('novel-projects')">
           <template #icon>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
@@ -162,6 +171,7 @@ const updateSelectedKeys = () => {
     '/': 'voice-clone',
     '/basic-tts': 'voice-clone', 
     '/characters': 'voice-library',
+    '/books': 'books',
     '/novel-reader': 'novel-projects',
     '/novel-reader/create': 'novel-projects',
     '/novel-reader/edit': 'novel-projects',
@@ -196,7 +206,8 @@ onMounted(() => {
 const navigateTo = (view) => {
   const viewToRoute = {
     'voice-clone': '/basic-tts',
-    'voice-library': '/characters', 
+    'voice-library': '/characters',
+    'books': '/books',
     'novel-projects': '/novel-reader',
     'audio-library': '/audio-library',
     'settings': '/settings'
@@ -218,6 +229,7 @@ const getPageTitle = () => {
     '/basic-tts': '声音克隆测试平台',
     '/': '声音克隆测试平台',
     '/characters': '声音库管理',
+    '/books': '书籍管理',
     '/novel-reader': '语音合成',
     '/novel-reader/create': '语音合成',
     '/novel-reader/edit': '语音合成',
