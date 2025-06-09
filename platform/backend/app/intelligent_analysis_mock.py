@@ -23,7 +23,7 @@ async def mock_intelligent_analysis(
 ):
     """
     Mock智能分析接口
-    返回预设的分析结果用于测试
+    返回直接可用的合成计划
     """
     try:
         # 验证项目是否存在
@@ -36,182 +36,111 @@ async def mock_intelligent_analysis(
         if len(voices) < 3:
             raise HTTPException(status_code=400, detail="可用声音档案不足，至少需要3个")
         
-        # Mock分析结果 - 基于真实的"数据之茧"小说内容
+        # 按性别分类声音
+        male_voices = [v for v in voices if v.type == 'male']
+        female_voices = [v for v in voices if v.type == 'female']
+        neutral_voices = [v for v in voices if v.type in ['child', 'neutral', 'narrator']]
+        
+        # 确保有足够的声音选择
+        all_voices = male_voices + female_voices + neutral_voices
+        if len(all_voices) < 4:
+            # 如果声音不够，补充使用所有可用声音
+            all_voices = voices
+        
+        # 智能分析结果 - 直接可用的合成计划
         mock_result = {
-            "analysis_metadata": {
+            "project_info": {
                 "novel_type": "科幻",
-                "total_characters": 12580,
-                "estimated_reading_time": 45,
-                "confidence_score": 0.92,
                 "analysis_time": datetime.now().isoformat(),
-                "ai_model": "mock-gpt-4"
+                "total_segments": 5,
+                "ai_model": "mock-intelligent-analysis"
             },
             
-            "detected_characters": [
-                {
-                    "name": "李维",
-                    "character_id": "char_001",
-                    "gender": "male",
-                    "estimated_age": 35,
-                    "personality_traits": ["理性", "专业", "冷静", "好奇"],
-                    "speaking_style": "逻辑清晰，语速适中，偶有专业术语",
-                    "role_importance": "protagonist",
-                    "first_appearance_segment": 1,
-                    "total_segments": 22,
-                    "sample_dialogues": [
-                        "数据的流动模式确实很有趣。",
-                        "我们需要更深入地分析这个现象。",
-                        "这背后一定有某种我们还没发现的规律。"
-                    ],
-                    "recommended_voice_id": voices[0].id if len(voices) > 0 else 1,
-                    "confidence_score": 0.95
-                },
-                {
-                    "name": "艾莉",
-                    "character_id": "char_002",
-                    "gender": "female", 
-                    "estimated_age": 28,
-                    "personality_traits": ["敏锐", "直觉强", "善于观察", "有点神秘"],
-                    "speaking_style": "语调轻柔，但透露着坚定",
-                    "role_importance": "protagonist",
-                    "first_appearance_segment": 8,
-                    "total_segments": 18,
-                    "sample_dialogues": [
-                        "你有没有觉得这些数据像是在讲故事？",
-                        "有时候直觉比逻辑更重要。",
-                        "我感觉我们正在接近真相。"
-                    ],
-                    "recommended_voice_id": voices[1].id if len(voices) > 1 else 2,
-                    "confidence_score": 0.88
-                },
-                {
-                    "name": "系统旁白",
-                    "character_id": "narrator_system",
-                    "type": "narrator",
-                    "style": "客观叙述，科技感",
-                    "total_segments": 14,
-                    "recommended_voice_id": voices[2].id if len(voices) > 2 else 3,
-                    "confidence_score": 0.99
-                }
-            ],
-            
-            "intelligent_segments": [
+            "synthesis_plan": [
                 {
                     "segment_id": 1,
                     "text": "在数字化时代的浪潮中，数据如同蚕茧般包裹着我们的生活。",
-                    "text_type": "环境描述",
                     "speaker": "系统旁白",
-                    "character_id": "narrator_system",
-                    "emotion": "平静",
-                    "narrative_perspective": "第三人称",
-                    "scene_setting": "科技背景",
-                    "recommended_voice_id": voices[2].id if len(voices) > 2 else 3,
-                    "confidence_score": 0.92,
-                    "processing_priority": "normal"
+                    "voice_id": neutral_voices[0].id if neutral_voices else None,
+                    "voice_name": neutral_voices[0].name if neutral_voices else "未配置",
+                    "parameters": {
+                        "timeStep": 20,
+                        "pWeight": 1.0,
+                        "tWeight": 1.0
+                    }
                 },
                 {
                     "segment_id": 2,
                     "text": "数据的流动模式确实很有趣，我从来没有从这个角度思考过。",
-                    "text_type": "对话",
                     "speaker": "李维",
-                    "character_id": "char_001", 
-                    "emotion": "好奇",
-                    "dialogue_type": "对话",
-                    "recommended_voice_id": voices[0].id if len(voices) > 0 else 1,
-                    "confidence_score": 0.89,
-                    "processing_priority": "high"
+                    "voice_id": male_voices[0].id if male_voices else None,
+                    "voice_name": male_voices[0].name if male_voices else "未配置",
+                    "parameters": {
+                        "timeStep": 15,
+                        "pWeight": 1.2,
+                        "tWeight": 0.8
+                    }
                 },
                 {
                     "segment_id": 3,
                     "text": "他停下手中的工作，开始重新审视屏幕上闪烁的数据流。",
-                    "text_type": "动作描述",
                     "speaker": "系统旁白",
-                    "character_id": "narrator_system",
-                    "emotion": "专注",
-                    "narrative_perspective": "第三人称", 
-                    "scene_setting": "办公环境",
-                    "recommended_voice_id": voices[2].id if len(voices) > 2 else 3,
-                    "confidence_score": 0.85,
-                    "processing_priority": "normal"
+                    "voice_id": neutral_voices[0].id if neutral_voices else None,
+                    "voice_name": neutral_voices[0].name if neutral_voices else "未配置",
+                    "parameters": {
+                        "timeStep": 18,
+                        "pWeight": 1.0,
+                        "tWeight": 1.0
+                    }
                 },
                 {
                     "segment_id": 4,
                     "text": "你有没有觉得这些数据像是在讲故事？每一个数据点都有它的情感。",
-                    "text_type": "对话",
                     "speaker": "艾莉",
-                    "character_id": "char_002",
-                    "emotion": "思考",
-                    "dialogue_type": "对话", 
-                    "recommended_voice_id": voices[1].id if len(voices) > 1 else 2,
-                    "confidence_score": 0.91,
-                    "processing_priority": "high"
+                    "voice_id": female_voices[0].id if female_voices else None,
+                    "voice_name": female_voices[0].name if female_voices else "未配置",
+                    "parameters": {
+                        "timeStep": 16,
+                        "pWeight": 1.1,
+                        "tWeight": 0.9
+                    }
                 },
                 {
                     "segment_id": 5,
                     "text": "李维思考着艾莉的话，意识到数据背后可能隐藏着更深层的含义。",
-                    "text_type": "心理活动",
                     "speaker": "心理旁白",
-                    "character_id": "narrator_thought",
-                    "emotion": "沉思",
-                    "psychological_state": "深度思考",
-                    "recommended_voice_id": voices[2].id if len(voices) > 2 else 3,
-                    "confidence_score": 0.87,
-                    "processing_priority": "normal"
+                    "voice_id": neutral_voices[1].id if len(neutral_voices) > 1 else (all_voices[3].id if len(all_voices) > 3 else None),
+                    "voice_name": neutral_voices[1].name if len(neutral_voices) > 1 else (all_voices[3].name if len(all_voices) > 3 else "未配置"),
+                    "parameters": {
+                        "timeStep": 22,
+                        "pWeight": 0.9,
+                        "tWeight": 1.1
+                    }
                 }
             ],
             
-            "voice_mapping_recommendation": {
-                "char_001": {
-                    "character_name": "李维",
-                    "primary_voice_id": voices[0].id if len(voices) > 0 else 1,
-                    "alternative_voice_ids": [voices[i].id for i in range(min(3, len(voices))) if i != 0],
-                    "matching_reasons": [
-                        "成熟男声，适合专业角色",
-                        "音色沉稳理性，符合科研人员特质",
-                        "语调适合表达逻辑思维"
-                    ]
+            "characters": [
+                {
+                    "name": "李维",
+                    "voice_id": male_voices[0].id if male_voices else None,
+                    "voice_name": male_voices[0].name if male_voices else "未配置"
                 },
-                "char_002": {
-                    "character_name": "艾莉",
-                    "primary_voice_id": voices[1].id if len(voices) > 1 else 2,
-                    "alternative_voice_ids": [voices[i].id for i in range(min(3, len(voices))) if i != 1],
-                    "matching_reasons": [
-                        "知性女声，适合敏锐角色",
-                        "音色柔和但坚定，符合直觉型人格",
-                        "适合表达深层思考"
-                    ]
+                {
+                    "name": "艾莉", 
+                    "voice_id": female_voices[0].id if female_voices else None,
+                    "voice_name": female_voices[0].name if female_voices else "未配置"
                 },
-                "narrator_system": {
-                    "character_name": "系统旁白",
-                    "primary_voice_id": voices[2].id if len(voices) > 2 else 3,
-                    "alternative_voice_ids": [],
-                    "matching_reasons": ["专业旁白音色，科技感强"]
+                {
+                    "name": "系统旁白",
+                    "voice_id": neutral_voices[0].id if neutral_voices else None,
+                    "voice_name": neutral_voices[0].name if neutral_voices else "未配置"
+                },
+                {
+                    "name": "心理旁白",
+                    "voice_id": neutral_voices[1].id if len(neutral_voices) > 1 else (all_voices[3].id if len(all_voices) > 3 else None),
+                    "voice_name": neutral_voices[1].name if len(neutral_voices) > 1 else (all_voices[3].name if len(all_voices) > 3 else "未配置")
                 }
-            },
-            
-            "analysis_summary": {
-                "total_segments": 54,
-                "character_dialogue_segments": 28,
-                "narration_segments": 20,
-                "thought_segments": 6,
-                "main_characters_count": 2,
-                "supporting_characters_count": 0,
-                "narrator_types_count": 2,
-                "estimated_synthesis_time": 15,
-                "quality_assessment": {
-                    "character_consistency": 0.92,
-                    "dialogue_clarity": 0.88,
-                    "text_type_accuracy": 0.91,
-                    "overall_confidence": 0.90
-                },
-                "potential_issues": [
-                    {
-                        "type": "ambiguous_speaker",
-                        "segments": [25, 31],
-                        "description": "部分技术讨论段落说话人可能存在歧义"
-                    }
-                ]
-            }
+            ]
         }
         
         logger.info(f"[MOCK] 为项目 {project_id} 生成Mock分析结果")
@@ -243,20 +172,17 @@ async def apply_mock_analysis(
             raise HTTPException(status_code=404, detail="项目不存在")
         
         # 提取角色映射
-        voice_mapping = analysis_data.get("voice_mapping_recommendation", {})
+        characters = analysis_data.get("characters", [])
         character_mapping = {}
         
-        for char_id, mapping_info in voice_mapping.items():
-            character_name = mapping_info.get("character_name", "")
-            voice_id = mapping_info.get("primary_voice_id", 1)
-            if character_name:
+        for char in characters:
+            character_name = char.get("name", "")
+            voice_id = char.get("voice_id")
+            if character_name and voice_id:
                 character_mapping[character_name] = voice_id
         
         # 更新项目的角色映射
         project.set_character_mapping(character_mapping)
-        
-        # 这里可以进一步处理segments数据，更新数据库中的TextSegment记录
-        # 但为了测试，先只更新角色映射
         
         db.commit()
         logger.info(f"[MOCK] 已应用分析结果到项目 {project_id}")
@@ -271,4 +197,4 @@ async def apply_mock_analysis(
         raise
     except Exception as e:
         logger.error(f"应用分析结果失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"应用失败: {str(e)}") 
+        raise HTTPException(status_code=500, detail=f"应用失败: {str(e)}")

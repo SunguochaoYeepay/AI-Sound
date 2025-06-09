@@ -49,8 +49,8 @@
             </a-descriptions>
           </a-card>
 
-          <!-- 智能分析区域 -->
-          <a-card title="🤖 智能分析" :bordered="false" class="analysis-card" style="margin-bottom: 16px;">
+          <!-- 自动匹配规则区域 -->
+          <a-card title="🤖 自动匹配规则" :bordered="false" class="analysis-card" style="margin-bottom: 16px;">
             <div class="debug-controls">
               <a-space>
                 <a-button 
@@ -58,14 +58,14 @@
                   @click="testMockAnalysis"
                   :loading="mockAnalyzing"
                 >
-                  🎯 开始智能分析
+                  🎯 执行自动匹配
                 </a-button>
                 <a-button 
                   v-if="mockResult"
                   @click="applyMockResult"
                   :loading="applyingMock"
                 >
-                  ✅ 应用分析结果
+                  ✅ 应用匹配结果
                 </a-button>
                 <a-button 
                   v-if="mockResult"
@@ -77,166 +77,18 @@
               </a-space>
             </div>
             
-            <div v-if="mockResult" class="mock-result-display" style="margin-top: 16px;">
-              <a-tabs>
-                <a-tab-pane tab="🎭 检测角色" key="characters">
-                  <div class="characters-preview">
-                    <div 
-                      v-for="character in mockResult.detected_characters" 
-                      :key="character.character_id"
-                      class="character-preview-item enhanced"
-                    >
-                      <div class="character-header">
-                        <h4>{{ character.name }}</h4>
-                        <div class="character-tags">
-                          <a-tag :color="character.gender === 'male' ? 'blue' : 'pink'">
-                            {{ character.gender === 'male' ? '男' : '女' }}
-                          </a-tag>
-                          <a-tag color="purple">{{ character.estimated_age }}岁</a-tag>
-                          <a-tag color="green">{{ (character.confidence_score * 100).toFixed(1) }}%</a-tag>
-                        </div>
-                      </div>
-                      
-                      <div class="character-details">
-                        <p><strong>性格特征:</strong> {{ character.personality_traits?.join('、') }}</p>
-                        <p><strong>台词示例:</strong> {{ character.sample_dialogues?.slice(0,2).join('；') }}</p>
-                      </div>
-                      
-                      <!-- 声音配置区域 -->
-                      <div class="voice-config-section">
-                        <div class="recommended-voice">
-                          <span class="recommend-label">💡 AI推荐:</span>
-                          <a-tag color="orange">音色ID {{ character.recommended_voice_id }}</a-tag>
-                        </div>
-                        
-                        <div class="voice-selector-inline">
-                          <a-select
-                            v-model:value="characterVoiceMapping[character.name]"
-                            placeholder="选择声音配置"
-                            style="width: 200px;"
-                            allowClear
-                            @change="updateVoiceMapping"
-                          >
-                            <a-select-option
-                              v-for="voice in availableVoices"
-                              :key="voice.id"
-                              :value="voice.id"
-                            >
-                              <div class="voice-option">
-                                <span class="voice-name">{{ voice.name }}</span>
-                                <a-tag size="small" :color="voice.type === 'male' ? 'blue' : 'pink'">
-                                  {{ voice.type === 'male' ? '男' : '女' }}
-                                </a-tag>
-                                <span v-if="voice.id === character.recommended_voice_id" class="recommended-marker">🌟</span>
-                              </div>
-                            </a-select-option>
-                          </a-select>
-                          
-                          <!-- 试听按钮 -->
-                          <a-button
-                            v-if="characterVoiceMapping[character.name]"
-                            type="primary"
-                            size="small"
-                            :loading="previewLoading === characterVoiceMapping[character.name]"
-                            @click="playVoicePreview(characterVoiceMapping[character.name], character.sample_dialogues?.[0])"
-                          >
-                            <template v-if="!previewLoading">
-                              <span v-if="currentPlayingVoice === characterVoiceMapping[character.name]">⏸️ 停止</span>
-                              <span v-else>🔊 试听</span>
-                            </template>
-                          </a-button>
-                        </div>
-                        
-                        <!-- 配置状态 -->
-                        <div class="config-status">
-                          <a-tag v-if="characterVoiceMapping[character.name]" color="success">
-                            ✅ 已配置
-                          </a-tag>
-                          <a-tag v-else color="warning">
-                            ⚠️ 待配置
-                          </a-tag>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </a-tab-pane>
-                
-                <a-tab-pane tab="📝 智能分段" key="segments">
-                  <div class="segments-preview">
-                    <div 
-                      v-for="segment in mockResult.intelligent_segments?.slice(0, 10)" 
-                      :key="segment.segment_id"
-                      class="segment-preview-item"
-                    >
-                      <div class="segment-header">
-                        <span class="segment-id">#{segment.segment_id}</span>
-                        <a-tag :color="getSegmentTypeColor(segment.text_type)">
-                          {{ segment.text_type }}
-                        </a-tag>
-                        <a-tag color="blue">{{ segment.speaker }}</a-tag>
-                      </div>
-                      <div class="segment-text">{{ segment.text }}</div>
-                    </div>
-                  </div>
-                </a-tab-pane>
-                
-                <a-tab-pane tab="🔊 音色映射" key="mapping">
-                  <div class="mapping-preview">
-                    <div 
-                      v-for="(mapping, charId) in mockResult.voice_mapping_recommendation" 
-                      :key="charId"
-                      class="mapping-preview-item"
-                    >
-                      <h4>{{ mapping.character_name }}</h4>
-                      <p><strong>主推音色ID:</strong> {{ mapping.primary_voice_id }}</p>
-                      <p><strong>备选音色:</strong> {{ mapping.alternative_voice_ids?.join(', ') || '无' }}</p>
-                      <div class="matching-reasons">
-                        <strong>推荐理由:</strong>
-                        <ul>
-                          <li v-for="reason in mapping.matching_reasons" :key="reason">{{ reason }}</li>
-                        </ul>
-                      </div>
-                    </div>
-                  </div>
-                </a-tab-pane>
-                
-                <a-tab-pane tab="📊 分析总结" key="summary">
-                  <div class="summary-preview">
-                    <a-descriptions bordered :column="2">
-                      <a-descriptions-item label="总段落数">
-                        {{ mockResult.analysis_summary?.total_segments }}
-                      </a-descriptions-item>
-                      <a-descriptions-item label="对话段落">
-                        {{ mockResult.analysis_summary?.character_dialogue_segments }}
-                      </a-descriptions-item>
-                      <a-descriptions-item label="旁白段落">
-                        {{ mockResult.analysis_summary?.narration_segments }}
-                      </a-descriptions-item>
-                      <a-descriptions-item label="心理活动">
-                        {{ mockResult.analysis_summary?.thought_segments }}
-                      </a-descriptions-item>
-                      <a-descriptions-item label="主要角色">
-                        {{ mockResult.analysis_summary?.main_characters_count }}
-                      </a-descriptions-item>
-                      <a-descriptions-item label="置信度">
-                        {{ (mockResult.analysis_summary?.quality_assessment?.overall_confidence * 100).toFixed(1) }}%
-                      </a-descriptions-item>
-                    </a-descriptions>
-                  </div>
-                </a-tab-pane>
-                
-                <a-tab-pane tab="🔧 原始数据" key="raw">
-                  <a-textarea 
-                    :value="JSON.stringify(mockResult, null, 2)"
-                    :rows="20"
-                    readonly
-                    class="raw-data-display"
-                  />
-                </a-tab-pane>
-              </a-tabs>
-            </div>
+            <!-- 使用新的自动匹配显示组件 -->
+            <IntelligentAnalysisDisplay
+              v-if="mockResult"
+              :analysisResult="mockResult"
+              :availableVoices="availableVoices"
+              :voiceMapping="characterVoiceMapping"
+              :previewLoading="previewLoading"
+              :currentPlayingVoice="currentPlayingVoice"
+              @updateVoiceMapping="updateVoiceMapping"
+              @playVoicePreview="playVoicePreview"
+            />
           </a-card>
-
 
         </a-col>
 
@@ -390,6 +242,7 @@ import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute, onBeforeRouteLeave } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { readerAPI, charactersAPI, intelligentAnalysisAPI } from '@/api'
+import IntelligentAnalysisDisplay from '@/components/IntelligentAnalysisDisplay.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -427,8 +280,8 @@ const progressPercent = computed(() => {
 
 const allCharactersConfigured = computed(() => {
   // 如果有智能分析结果，基于智能分析的角色
-  if (mockResult.value?.detected_characters) {
-    return mockResult.value.detected_characters.every(char => 
+  if (mockResult.value?.characters) {
+    return mockResult.value.characters.every(char => 
       characterVoiceMapping[char.name]
     )
   }
@@ -439,7 +292,7 @@ const allCharactersConfigured = computed(() => {
 })
 
 const canStartSynthesis = computed(() => {
-  const hasCharacters = mockResult.value?.detected_characters?.length > 0 || detectedCharacters.value.length > 0
+  const hasCharacters = mockResult.value?.characters?.length > 0 || detectedCharacters.value.length > 0
   return allCharactersConfigured.value && 
          project.value?.status !== 'processing' &&
          hasCharacters
@@ -473,8 +326,10 @@ const getStatusText = (status) => {
 }
 
 const getStartHint = () => {
-  if (detectedCharacters.value.length === 0) {
-    return '请先分析角色'
+  const hasCharacters = mockResult.value?.characters?.length > 0 || detectedCharacters.value.length > 0
+  
+  if (!hasCharacters) {
+    return '请先进行自动匹配'
   }
   if (!allCharactersConfigured.value) {
     return '请为所有角色配置声音'
@@ -491,19 +346,19 @@ const testMockAnalysis = async () => {
   
   mockAnalyzing.value = true
   try {
-    console.log('=== 开始Mock智能分析测试 ===')
+    console.log('=== 开始自动匹配规则测试 ===')
     const response = await intelligentAnalysisAPI.analyzeProject(project.value.id)
     
     if (response.data.success) {
       mockResult.value = response.data.data
-      message.success('Mock分析完成！查看各Tab了解分析结果')
-      console.log('Mock分析结果:', mockResult.value)
+      message.success('自动匹配完成！AI已生成可直接执行的合成计划')
+      console.log('自动匹配结果:', mockResult.value)
     } else {
-      message.error('Mock分析失败: ' + response.data.message)
+      message.error('自动匹配失败: ' + response.data.message)
     }
   } catch (error) {
-    console.error('Mock分析错误:', error)
-    message.error('Mock分析失败: ' + error.message)
+    console.error('自动匹配错误:', error)
+    message.error('自动匹配失败: ' + error.message)
   } finally {
     mockAnalyzing.value = false
   }
@@ -517,11 +372,11 @@ const applyMockResult = async () => {
   
   applyingMock.value = true
   try {
-    console.log('=== 应用Mock分析结果 ===')
+    console.log('=== 应用自动匹配结果 ===')
     const response = await intelligentAnalysisAPI.applyAnalysis(project.value.id, mockResult.value)
     
     if (response.data.success) {
-      message.success('Mock结果已应用！')
+      message.success('匹配结果已应用！')
       console.log('应用结果:', response.data.applied_mapping)
       
       // 使用智能分析的角色结果更新角色配置
@@ -533,7 +388,7 @@ const applyMockResult = async () => {
       message.error('应用失败: ' + response.data.message)
     }
   } catch (error) {
-    console.error('应用Mock结果错误:', error)
+    console.error('应用自动匹配结果错误:', error)
     message.error('应用失败: ' + error.message)
   } finally {
     applyingMock.value = false
@@ -542,53 +397,59 @@ const applyMockResult = async () => {
 
 // 从智能分析结果更新角色配置
 const updateCharactersFromAnalysis = () => {
-  if (!mockResult.value?.detected_characters) return
+  if (!mockResult.value?.characters) return
   
   // 清空现有角色数据
   detectedCharacters.value = []
   
-  // 使用智能分析的角色数据
-  detectedCharacters.value = mockResult.value.detected_characters.map(char => ({
+  // 使用智能分析的角色数据，添加简单的示例文本
+  detectedCharacters.value = mockResult.value.characters.map(char => ({
     name: char.name,
-    character_id: char.character_id,
-    count: char.total_segments || 0,
-    samples: char.sample_dialogues || [],
-    gender: char.gender,
-    age: char.estimated_age,
-    personality: char.personality_traits?.join(', ') || '',
-    recommended_voice_id: char.recommended_voice_id
+    character_id: char.name, // 使用名称作为ID
+    count: 1,
+    samples: [getCharacterSampleText(char.name)],
+    voice_id: char.voice_id,
+    voice_name: char.voice_name
   }))
   
-  // 应用推荐的声音映射
-  const voiceMapping = mockResult.value.voice_mapping_recommendation || {}
-  Object.keys(characterVoiceMapping).forEach(key => delete characterVoiceMapping[key])
-  
-  Object.values(voiceMapping).forEach(mapping => {
-    if (mapping.character_name && mapping.primary_voice_id) {
-      characterVoiceMapping[mapping.character_name] = mapping.primary_voice_id
-    }
-  })
-  
+  // 只初始化空的映射，让用户可以看到AI推荐并手动选择
+  // 不自动应用AI推荐，避免混淆
   console.log('已更新角色配置:', {
     characters: detectedCharacters.value,
-    voiceMapping: characterVoiceMapping
+    aiRecommendations: mockResult.value.characters.map(char => ({
+      name: char.name,
+      recommendedVoiceId: char.voice_id,
+      recommendedVoiceName: char.voice_name
+    }))
   })
+}
+
+// 获取角色示例文本
+const getCharacterSampleText = (characterName) => {
+  // 从合成计划中找到该角色的文本示例
+  if (mockResult.value?.synthesis_plan) {
+    const characterSegment = mockResult.value.synthesis_plan.find(segment => 
+      segment.speaker === characterName
+    )
+    if (characterSegment) {
+      return characterSegment.text.slice(0, 30) + '...'
+    }
+  }
+  
+  // 默认示例文本
+  const samples = {
+    '李维': '数据的流动模式确实很有趣。',
+    '艾莉': '你有没有觉得这些数据像是在讲故事？',
+    '系统旁白': '在数字化时代的浪潮中，数据如同蚕茧般包裹着我们的生活。',
+    '心理旁白': '李维思考着艾莉的话，意识到数据背后可能隐藏着更深层的含义。'
+  }
+  
+  return samples[characterName] || '这是一段示例文本用于声音试听。'
 }
 
 const clearMockResult = () => {
   mockResult.value = null
-  message.info('Mock结果已清空')
-}
-
-const getSegmentTypeColor = (textType) => {
-  const colors = {
-    '对话': 'blue',
-    '环境描述': 'green', 
-    '心理活动': 'purple',
-    '动作描述': 'orange',
-    '场景转换': 'red'
-  }
-  return colors[textType] || 'default'
+  message.info('匹配结果已清空')
 }
 
 // 加载项目详情
@@ -656,9 +517,16 @@ const loadVoices = async () => {
 }
 
 // 更新声音映射
-const updateVoiceMapping = async () => {
+const updateVoiceMapping = async (characterName, voiceId) => {
   try {
-    // 必须传递完整的项目信息，避免name被设为undefined
+    // 更新本地映射
+    if (voiceId) {
+      characterVoiceMapping[characterName] = voiceId
+    } else {
+      delete characterVoiceMapping[characterName]
+    }
+    
+    // 保存到后端
     await readerAPI.updateProject(project.value.id, {
       name: project.value.name,
       description: project.value.description || '',
@@ -711,9 +579,9 @@ const playVoicePreview = async (voiceId, sampleText) => {
     // 简化的试听文本
     const previewText = sampleText.slice(0, 30) || '你好，这是声音试听测试。'
 
-    // 发送请求到后端API（不直接调用TTS），增加超时控制
+    // 发送请求到后端API，增加超时控制
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 90000) // 90秒超时，给TTS更多时间
+    const timeoutId = setTimeout(() => controller.abort(), 90000) // 90秒超时
 
     // 构建试听请求，使用后端API而不是直接调用TTS
     const testFormData = new FormData()
@@ -781,25 +649,12 @@ const playVoicePreview = async (voiceId, sampleText) => {
     
     if (error.name === 'AbortError') {
       message.error('试听请求超时（90秒），TTS服务可能正在处理中，请稍后重试')
-      setTimeout(() => {
-        message.info('💡 如果持续超时，可能是TTS服务需要更多时间加载模型或处理请求')
-      }, 2000)
     } else if (error.message.includes('GPU') || error.message.includes('CUDA')) {
       message.error('GPU处理出错，请等待几秒后重试')
-      // 自动延迟重试
-      setTimeout(() => {
-        message.info('💡 提示：如果持续出现GPU错误，可以点击"检查TTS服务"重启服务')
-      }, 2000)
     } else if (error.message.includes('TTS服务内部错误')) {
       message.error('TTS服务出现内部错误，可能是GPU显存不足')
-      setTimeout(() => {
-        message.info('💡 建议：点击"检查TTS服务"或等待几秒后重试')
-      }, 2000)
     } else if (error.message.includes('fetch') || error.message.includes('Failed to fetch')) {
       message.error('无法连接到TTS服务，请检查服务状态')
-      setTimeout(() => {
-        message.info('💡 建议：点击"检查TTS服务"按钮测试连接')
-      }, 1500)
     } else {
       message.error('试听失败: ' + error.message)
     }
@@ -901,11 +756,6 @@ const checkTTSService = async () => {
     } else {
       message.error('TTS服务异常: ' + error.message)
     }
-    
-    // 提供恢复建议
-    setTimeout(() => {
-      message.info('建议：重启TTS服务或检查GPU状态')
-    }, 1000)
   } finally {
     checkingService.value = false
   }
@@ -1050,117 +900,23 @@ window.addEventListener('beforeunload', () => {
   margin-bottom: 24px;
 }
 
-.info-card, .character-card, .control-card, .progress-card {
+.info-card, .analysis-card, .control-card, .progress-card {
   margin-bottom: 24px;
   border-radius: 12px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 }
 
-/* 角色配置样式 */
-.no-characters {
-  text-align: center;
-  padding: 40px 0;
+.analysis-card {
+  border: 2px solid #1890ff;
+  background: #f8fffe;
 }
 
-.character-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  padding: 16px;
-  margin-bottom: 12px;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  background: #f8fafc;
-  transition: all 0.3s ease;
+.debug-controls {
+  margin-bottom: 16px;
 }
 
-.character-item:hover {
-  border-color: #1890ff;
-  box-shadow: 0 2px 8px rgba(24, 144, 255, 0.1);
-}
-
-.character-info {
-  flex: 1;
-}
-
-.character-name {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-  flex-wrap: wrap;
-}
-
-.character-name .name {
-  font-weight: 600;
-  color: #1f2937;
-  font-size: 14px;
-}
-
-.character-meta {
-  display: flex;
-  gap: 4px;
-  margin-top: 4px;
-}
-
-.character-samples {
-  font-size: 12px;
-  color: #6b7280;
-  margin-bottom: 8px;
-}
-
-.samples-label {
-  font-weight: 500;
-}
-
-.sample-text {
-  margin-left: 4px;
-  font-style: italic;
-}
-
-.character-personality {
-  font-size: 12px;
-  color: #059669;
-  margin-bottom: 8px;
-}
-
-.personality-label {
-  font-weight: 500;
-}
-
-.personality-text {
-  margin-left: 4px;
-}
-
-.recommended-voice {
-  margin-top: 4px;
-}
-
-.voice-selector {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.voice-option {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.voice-name {
-  font-weight: 500;
-}
-
-/* 合成控制样式 */
 .synthesis-controls {
   padding: 8px 0;
-}
-
-.config-hint {
-  font-size: 12px;
-  color: #6b7280;
-  margin-top: 4px;
 }
 
 .action-buttons {
@@ -1171,7 +927,6 @@ window.addEventListener('beforeunload', () => {
   margin-top: 16px;
 }
 
-/* 进度样式 */
 .progress-content {
   padding: 8px 0;
 }
@@ -1208,173 +963,8 @@ window.addEventListener('beforeunload', () => {
   margin-top: 16px;
 }
 
-  .error-content {
-    text-align: center;
-    padding: 60px 0;
-  }
-
-  /* 智能分析样式 */
-  .analysis-card {
-    border: 2px solid #1890ff;
-    background: #f8fffe;
-  }
-
-  .character-preview-item {
-    background: #f5f5f5;
-    padding: 12px;
-    margin-bottom: 12px;
-    border-radius: 6px;
-    border-left: 4px solid #1890ff;
-  }
-
-  .character-preview-item.enhanced {
-    background: #fff;
-    border: 1px solid #e8e8e8;
-    border-left: 4px solid #1890ff;
-    padding: 16px;
-    margin-bottom: 16px;
-  }
-
-  .character-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 12px;
-  }
-
-  .character-header h4 {
-    margin: 0;
-    color: #1890ff;
-    font-weight: bold;
-    font-size: 16px;
-  }
-
-  .character-tags {
-    display: flex;
-    gap: 4px;
-  }
-
-  .character-details {
-    margin-bottom: 16px;
-  }
-
-  .character-details p {
-    margin: 4px 0;
-    font-size: 13px;
-    color: #666;
-  }
-
-  .voice-config-section {
-    background: #f8f9fa;
-    padding: 12px;
-    border-radius: 6px;
-    border: 1px solid #e9ecef;
-  }
-
-  .recommended-voice {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 12px;
-  }
-
-  .recommend-label {
-    font-size: 12px;
-    font-weight: 500;
-  }
-
-  .voice-selector-inline {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 8px;
-  }
-
-  .recommended-marker {
-    color: #faad14;
-    margin-left: 4px;
-  }
-
-  .config-status {
-    text-align: right;
-  }
-
-  .character-preview-item h4 {
-    margin: 0 0 8px 0;
-    color: #1890ff;
-    font-weight: bold;
-  }
-
-  .character-preview-item p {
-    margin: 4px 0;
-    font-size: 13px;
-  }
-
-  .segment-preview-item {
-    background: #fff;
-    border: 1px solid #e8e8e8;
-    padding: 12px;
-    margin-bottom: 8px;
-    border-radius: 6px;
-  }
-
-  .segment-header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 8px;
-  }
-
-  .segment-id {
-    font-weight: bold;
-    color: #666;
-    font-size: 12px;
-  }
-
-  .segment-text {
-    color: #333;
-    line-height: 1.5;
-    font-size: 14px;
-  }
-
-  .mapping-preview-item {
-    background: #fafafa;
-    padding: 12px;
-    margin-bottom: 12px;
-    border-radius: 6px;
-    border-left: 4px solid #52c41a;
-  }
-
-  .mapping-preview-item h4 {
-    margin: 0 0 8px 0;
-    color: #52c41a;
-    font-weight: bold;
-  }
-
-  .matching-reasons {
-    margin-top: 8px;
-  }
-
-  .matching-reasons ul {
-    margin: 4px 0 0 16px;
-    padding: 0;
-  }
-
-  .matching-reasons li {
-    margin: 2px 0;
-    font-size: 13px;
-    color: #666;
-  }
-
-  .raw-data-display {
-    font-family: 'Courier New', monospace;
-    font-size: 12px;
-    background: #f6f8fa;
-  }
-
-  .summary-preview {
-    background: #fff;
-    padding: 16px;
-    border-radius: 6px;
-  }
-</style> 
+.error-content {
+  text-align: center;
+  padding: 60px 0;
+}
+</style>
