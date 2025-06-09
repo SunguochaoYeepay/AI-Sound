@@ -396,3 +396,13 @@ export const monitorAPI = {
   // 获取服务状态
   getServiceStatus: () => apiClient.get('/monitor/services')
 }
+
+// 智能分析API (Mock)
+export const intelligentAnalysisAPI = {
+  // 分析项目角色和文本
+  analyzeProject: (projectId) => apiClient.post(`/intelligent-analysis/analyze/${projectId}`),
+  
+  // 应用分析结果
+  applyAnalysis: (projectId, analysisData) => 
+    apiClient.post(`/intelligent-analysis/apply/${projectId}`, analysisData)
+}

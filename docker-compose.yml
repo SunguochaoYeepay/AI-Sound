@@ -9,7 +9,7 @@ services:
     container_name: ai-sound-backend
     environment:
       - DATABASE_URL=postgresql://ai_sound_user:ai_sound_password@database:5432/ai_sound
-      - MEGATTS3_URL=http://host.docker.internal:7929
+      - MEGATTS3_URL=http://megatts3:7929
       - AUDIO_DIR=/app/data/audio
       - UPLOADS_DIR=/app/data/uploads
       - VOICE_PROFILES_DIR=/app/data/voice_profiles
@@ -20,6 +20,7 @@ services:
     depends_on:
       - database
       - redis
+      - megatts3
     networks:
       - ai-sound-network
     restart: unless-stopped
@@ -65,6 +66,33 @@ services:
       test: ["CMD", "redis-cli", "ping"]
       interval: 30s
       timeout: 10s
+      retries: 3
+
+  # MegaTTS3语音合成服务
+  megatts3:
+    image: megatts3:latest
+    container_name: ai-sound-megatts3
+    command: python api_server.py
+    ports:
+      - "7929:7929"
+    volumes:
+      - ./data/tts:/app/data
+    networks:
+      - ai-sound-network
+    restart: unless-stopped
+    environment:
+      - CUDA_VISIBLE_DEVICES=0
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7929/health"]
+      interval: 60s
+      timeout: 30s
       retries: 3
 
   # Nginx网关

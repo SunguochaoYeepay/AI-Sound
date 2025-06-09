@@ -337,6 +337,11 @@ async def update_project(
         if not project:
             raise HTTPException(status_code=404, detail="项目不存在")
         
+        # 验证项目名称
+        if not name or name.strip() == "" or name.lower() == "undefined":
+            logger.error(f"[DEBUG] 项目名称无效: '{name}'")
+            raise HTTPException(status_code=400, detail="项目名称不能为空或无效")
+        
         # 检查名称重复（排除自己）
         logger.info(f"[DEBUG] 检查名称重复...")
         existing = db.query(NovelProject).filter(

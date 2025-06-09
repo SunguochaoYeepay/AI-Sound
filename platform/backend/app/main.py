@@ -126,6 +126,7 @@ from books import router as books_router
 from novel_reader import router as reader_router
 from monitor import router as monitor_router
 from audio_library import router as audio_library_router
+from intelligent_analysis_mock import router as mock_analysis_router
 
 app.include_router(voice_router)
 app.include_router(characters_router)
@@ -133,6 +134,7 @@ app.include_router(books_router)
 app.include_router(reader_router)
 app.include_router(monitor_router)
 app.include_router(audio_library_router)
+app.include_router(mock_analysis_router)
 
 # API路由已通过nginx代理 /api/* 到后端，无需重复定义
 
