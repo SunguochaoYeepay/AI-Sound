@@ -107,17 +107,16 @@
                     </a-select-option>
                   </a-select>
                   
-                  <!-- 试听按钮 -->
+                  <!-- 试听按钮 - 总是显示，优先试听用户选择，否则试听AI推荐 -->
                   <a-button
-                    v-if="voiceMapping[character.name]"
                     type="primary"
                     size="small"
-                    :loading="previewLoading === voiceMapping[character.name]"
-                    @click="$emit('playVoicePreview', voiceMapping[character.name], getCharacterSampleText(character.name))"
+                    :loading="previewLoading === getCurrentVoiceId(character)"
+                    @click="$emit('playVoicePreview', getCurrentVoiceId(character), getCharacterSampleText(character.name))"
                   >
                     <template v-if="!previewLoading">
-                      <span v-if="currentPlayingVoice === voiceMapping[character.name]">⏸️ 停止</span>
-                      <span v-else>🔊 试听</span>
+                      <span v-if="currentPlayingVoice === getCurrentVoiceId(character)">⏸️ 停止</span>
+                      <span v-else>🔊 试听{{ voiceMapping[character.name] ? '(已选)' : '(AI推荐)' }}</span>
                     </template>
                   </a-button>
                 </div>
@@ -247,6 +246,11 @@ const formatTime = (timeStr) => {
   } catch {
     return timeStr
   }
+}
+
+// 获取当前应该使用的声音ID（优先用户选择，否则AI推荐）
+const getCurrentVoiceId = (character) => {
+  return props.voiceMapping[character.name] || character.voice_id
 }
 </script>
 
