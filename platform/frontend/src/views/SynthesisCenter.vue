@@ -93,8 +93,8 @@
                     >
                       <div class="voice-option">
                         <span class="voice-name">{{ voice.name }}</span>
-                        <a-tag size="small" :color="voice.gender === 'male' ? 'blue' : 'pink'">
-                          {{ voice.gender === 'male' ? '男' : '女' }}
+                        <a-tag size="small" :color="voice.type === 'male' ? 'blue' : 'pink'">
+                          {{ voice.type === 'male' ? '男' : '女' }}
                         </a-tag>
                       </div>
                     </a-select-option>
@@ -105,9 +105,13 @@
                     v-if="characterVoiceMapping[character.name]"
                     type="link"
                     size="small"
+                    :loading="previewLoading === characterVoiceMapping[character.name]"
                     @click="playVoicePreview(characterVoiceMapping[character.name], character.samples?.[0])"
                   >
-                    🔊 试听
+                    <template v-if="!previewLoading">
+                      <span v-if="currentPlayingVoice === characterVoiceMapping[character.name]">⏸️ 停止</span>
+                      <span v-else>🔊 试听</span>
+                    </template>
                   </a-button>
                 </div>
               </div>
@@ -184,6 +188,28 @@
                   style="margin-top: 8px;"
                 >
                   ▶️ 继续合成
+                </a-button>
+
+                <!-- TTS服务恢复按钮 -->
+                <a-button
+                  type="dashed"
+                  size="small"
+                  @click="checkTTSService"
+                  style="margin-top: 8px;"
+                  :loading="checkingService"
+                >
+                  🔧 检查TTS服务
+                </a-button>
+
+                <!-- 手动停止轮询按钮 -->
+                <a-button
+                  v-if="progressTimer"
+                  danger
+                  size="small"
+                  @click="stopProgressPolling"
+                  style="margin-top: 8px;"
+                >
+                  ⏹️ 停止监控
                 </a-button>
               </div>
 
@@ -262,7 +288,7 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
+import { useRouter, useRoute, onBeforeRouteLeave } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { readerAPI, charactersAPI } from '@/api'
 
@@ -277,6 +303,10 @@ const detectedCharacters = ref([])
 const availableVoices = ref([])
 const characterVoiceMapping = reactive({})
 const progressTimer = ref(null)
+const previewLoading = ref(null)
+const currentPlayingVoice = ref(null)
+const currentAudio = ref(null)
+const checkingService = ref(false)
 
 const synthesisConfig = reactive({
   parallelTasks: 2,
@@ -420,9 +450,153 @@ const updateVoiceMapping = async () => {
 // 试听声音
 const playVoicePreview = async (voiceId, sampleText) => {
   try {
-    message.info('试听功能开发中...')
+    // 检查是否正在播放，如果是则停止
+    if (currentPlayingVoice.value === voiceId && currentAudio.value) {
+      currentAudio.value.pause()
+      currentAudio.value = null
+      currentPlayingVoice.value = null
+      return
+    }
+
+    // 停止其他正在播放的音频
+    if (currentAudio.value) {
+      currentAudio.value.pause()
+      currentAudio.value = null
+      currentPlayingVoice.value = null
+    }
+
+    if (!voiceId) {
+      message.warning('请选择声音')
+      return
+    }
+
+    if (!sampleText) {
+      message.warning('没有示例文本')
+      return
+    }
+
+    previewLoading.value = voiceId
+    
+    // 找到对应的声音配置
+    const voice = availableVoices.value.find(v => v.id === voiceId)
+    if (!voice) {
+      message.error('找不到声音配置')
+      return
+    }
+
+    // 简化的试听文本
+    const previewText = sampleText.slice(0, 30) || '你好，这是声音试听测试。'
+
+    // 构建试听请求
+    const formData = new FormData()
+    
+    // 添加音频文件 - 使用正确的字段名
+    if (voice.referenceAudioUrl) {
+      // 获取参考音频文件
+      const audioResponse = await fetch(voice.referenceAudioUrl)
+      if (!audioResponse.ok) {
+        throw new Error('音频文件加载失败')
+      }
+      const audioBlob = await audioResponse.blob()
+      formData.append('audio_file', audioBlob, 'voice.wav')
+    } else {
+      message.error('声音文件不存在')
+      return
+    }
+
+    // 添加latent文件（如果有）
+    if (voice.latentFileUrl) {
+      const latentResponse = await fetch(voice.latentFileUrl)
+      if (!latentResponse.ok) {
+        throw new Error('Latent文件加载失败')
+      }
+      const latentBlob = await latentResponse.blob()
+      formData.append('latent_file', latentBlob, 'voice.npy')
+    }
+
+    // 添加文本和参数 - 使用较快的设置
+    formData.append('text', previewText)
+    formData.append('time_step', '15') // 更快的推理步数
+    formData.append('p_w', '1.0')
+    formData.append('t_w', '1.0')
+
+    // 发送请求到TTS API，增加超时控制
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 30000) // 30秒超时
+
+    const response = await fetch('/api/tts/synthesize_file', {
+      method: 'POST',
+      body: formData,
+      signal: controller.signal
+    })
+
+    clearTimeout(timeoutId)
+
+    if (response.ok) {
+      // 获取音频数据并播放
+      const audioBlob = await response.blob()
+      const audioUrl = URL.createObjectURL(audioBlob)
+      
+      // 创建音频元素
+      const audio = new Audio(audioUrl)
+      currentAudio.value = audio
+      currentPlayingVoice.value = voiceId
+
+      // 播放事件处理
+      audio.addEventListener('loadstart', () => {
+        message.success('开始播放试听')
+      })
+
+      audio.addEventListener('ended', () => {
+        URL.revokeObjectURL(audioUrl)
+        currentAudio.value = null
+        currentPlayingVoice.value = null
+      })
+
+      audio.addEventListener('error', (e) => {
+        console.error('音频播放错误:', e)
+        URL.revokeObjectURL(audioUrl)
+        currentAudio.value = null
+        currentPlayingVoice.value = null
+        message.error('音频播放失败')
+      })
+
+      // 开始播放
+      await audio.play()
+    } else {
+      const errorText = await response.text()
+      console.error('TTS API错误:', errorText)
+      
+      if (response.status === 500) {
+        throw new Error('TTS服务内部错误，可能是GPU显存不足')
+      } else {
+        throw new Error(`试听请求失败: ${response.status}`)
+      }
+    }
+    
   } catch (error) {
     console.error('试听失败:', error)
+    
+    if (error.name === 'AbortError') {
+      message.error('试听请求超时，请重试')
+    } else if (error.message.includes('GPU') || error.message.includes('CUDA')) {
+      message.error('GPU处理出错，请等待几秒后重试')
+      // 自动延迟重试
+      setTimeout(() => {
+        message.info('💡 提示：如果持续出现GPU错误，可以点击"检查TTS服务"重启服务')
+      }, 2000)
+    } else if (error.message.includes('TTS服务内部错误')) {
+      message.error('TTS服务出现内部错误，可能是GPU显存不足')
+      setTimeout(() => {
+        message.info('💡 建议：点击"检查TTS服务"或等待几秒后重试')
+      }, 2000)
+    } else if (error.message.includes('fetch') || error.message.includes('Failed to fetch')) {
+      message.error('无法连接到TTS服务，请检查服务状态')
+    } else {
+      message.error('试听失败: ' + error.message)
+    }
+  } finally {
+    previewLoading.value = null
   }
 }
 
@@ -492,27 +666,103 @@ const downloadAudio = async () => {
   }
 }
 
+// 检查TTS服务状态
+const checkTTSService = async () => {
+  checkingService.value = true
+  try {
+    const response = await fetch('/api/tts/health', {
+      method: 'GET',
+      timeout: 5000
+    })
+    
+    if (response.ok) {
+      const data = await response.json()
+      if (data.model_loaded) {
+        message.success('TTS服务正常运行中')
+      } else {
+        message.warning('TTS服务已启动但模型未加载')
+      }
+    } else {
+      throw new Error(`服务响应错误: ${response.status}`)
+    }
+  } catch (error) {
+    console.error('TTS服务检查失败:', error)
+    
+    if (error.message.includes('fetch') || error.message.includes('Failed to fetch')) {
+      message.error('无法连接到TTS服务，请检查服务是否启动 (端口:7929)')
+    } else {
+      message.error('TTS服务异常: ' + error.message)
+    }
+    
+    // 提供恢复建议
+    setTimeout(() => {
+      message.info('建议：重启TTS服务或检查GPU状态')
+    }, 1000)
+  } finally {
+    checkingService.value = false
+  }
+}
+
 // 进度轮询
 const startProgressPolling = () => {
+  let errorCount = 0
+  const maxErrors = 5
+  const maxDuration = 30 * 60 * 1000 // 30分钟最大轮询时间
+  const startTime = Date.now()
+  
   progressTimer.value = setInterval(async () => {
     try {
+      // 检查轮询时间是否超过最大限制
+      if (Date.now() - startTime > maxDuration) {
+        console.warn('轮询超时，自动停止')
+        stopProgressPolling()
+        message.warning('进度监控超时，请刷新页面查看最新状态')
+        return
+      }
+
       const response = await readerAPI.getProgress(project.value.id)
       if (response.data.success) {
         const progress = response.data.progress
         project.value.statistics = progress.statistics
         project.value.status = progress.status
         
-        if (progress.status === 'completed' || progress.status === 'failed') {
+        // 重置错误计数
+        errorCount = 0
+        
+        // 检查停止条件
+        const shouldStop = progress.status === 'completed' || 
+                          progress.status === 'failed' ||
+                          progress.status === 'cancelled' ||
+                          // 如果没有段落在处理且没有待处理的段落，也停止轮询
+                          (progress.statistics.processing === 0 && 
+                           progress.statistics.pending === 0 && 
+                           progress.statistics.total > 0)
+        
+        if (shouldStop) {
           stopProgressPolling()
           if (progress.status === 'completed') {
             message.success('合成完成！')
-          } else {
+          } else if (progress.status === 'failed') {
             message.error('合成失败')
+          } else if (progress.status === 'cancelled') {
+            message.info('合成已取消')
+          } else {
+            message.info('任务处理完成')
           }
         }
+      } else {
+        throw new Error('API响应失败')
       }
     } catch (error) {
       console.error('获取进度失败:', error)
+      errorCount++
+      
+      // 连续错误过多时停止轮询
+      if (errorCount >= maxErrors) {
+        console.error(`连续${maxErrors}次获取进度失败，停止轮询`)
+        stopProgressPolling()
+        message.error('无法获取进度信息，请检查网络连接')
+      }
     }
   }, 2000)
 }
@@ -535,7 +785,19 @@ onMounted(async () => {
   }
 })
 
+// 页面切换前的清理
+onBeforeRouteLeave(() => {
+  stopProgressPolling()
+  return true
+})
+
+// 组件卸载时的清理
 onUnmounted(() => {
+  stopProgressPolling()
+})
+
+// 浏览器刷新/关闭前的清理
+window.addEventListener('beforeunload', () => {
   stopProgressPolling()
 })
 </script>

@@ -63,7 +63,11 @@ htmlcov/
 
 # Database
 *.sqlite3
+*.sqlite
 *.db
+# PostgreSQL dumps
+*.sql
+*.dump
 
 # Test outputs
 emotion_test_output/
@@ -119,6 +123,7 @@ src/web/node_modules/
 *.bin
 *.dat
 *.db
+# SQLite files (legacy)
 *.sqlite
 *.sqlite3
 

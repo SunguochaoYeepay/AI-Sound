@@ -114,14 +114,13 @@ docker-compose up -d database
 docker-compose up -d
 ```
 
-**SQLite问题：**
+**PostgreSQL问题：**
 ```bash
-# 检查SQLite文件权限
-ls -la data/database/
-chmod 664 data/database/ai_sound.db
+# 检查PostgreSQL连接
+docker-compose exec database psql -U ai_sound_user -d ai_sound -c "\dt"
 
-# 修复数据库文件权限
-sudo chown -R $USER:$USER data/database/
+# 重启PostgreSQL容器
+docker-compose restart database
 ```
 
 ### 3. MegaTTS3连接问题
@@ -435,7 +434,7 @@ cat .env | grep -v PASSWORD | grep -v SECRET
    ```
 
 3. **数据库优化**
-   - 使用PostgreSQL替代SQLite
+   - 确保PostgreSQL正常运行
    - 配置连接池
    - 定期清理日志
 

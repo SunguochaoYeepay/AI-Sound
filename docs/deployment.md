@@ -273,7 +273,7 @@ EOF
 
 | 变量名 | 默认值 | 描述 |
 |--------|--------|------|
-| `DATABASE_URL` | sqlite:///... | 数据库连接字符串 |
+| `DATABASE_URL` | postgresql://... | PostgreSQL数据库连接字符串 |
 | `MEGATTS3_URL` | http://host.docker.internal:9000 | MegaTTS3服务地址 |
 | `DEBUG` | false | 调试模式 |
 | `LOG_LEVEL` | info | 日志级别 |

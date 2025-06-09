@@ -63,7 +63,7 @@ platform/
 │   └── nginx.conf
 │
 ├── data/
-│   ├── database.db            # SQLite数据库
+│   ├── postgresql/            # PostgreSQL数据卷
 │   ├── audio/                 # 生成的音频文件
 │   └── uploads/               # 上传的文本文件
 │
@@ -115,7 +115,7 @@ Platform Demo:     8888  # ✅ 现有文档服务 (可选保留)
 
 ### 后端技术栈
 - **FastAPI** - 轻量级API服务框架
-- **SQLite** - 角色配置和项目数据存储
+- **PostgreSQL** - 角色配置和项目数据存储
 - **MegaTTS3 Client** - 封装对现有TTS服务的调用
 - **Python 3.8+** - 主要开发语言
 

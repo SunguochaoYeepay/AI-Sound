@@ -18,7 +18,7 @@
 - 📝 **日志系统** - 复杂查询过滤，级别统计，批量清理，搜索优化
 - ⚙️ **配置管理** - JSON文件存储，分类设置，默认值合并，热更新支持
 - 💾 **备份恢复** - ZIP压缩备份，选择性备份，后台任务处理
-- 🧹 **维护清理** - SQLite优化，VACUUM清理，临时文件管理
+- 🧹 **维护清理** - PostgreSQL优化，连接池管理，临时文件清理
 
 ### 📡 API接口 (对应Settings.vue)
 ```
@@ -205,7 +205,7 @@ DELETE /api/voice-clone/cleanup-temp-files # 清理临时文件
 
 ### 🏗️ 后端基础架构搭建 (Step 1)
 - ✅ **FastAPI应用框架** - 创建主应用入口和配置
-- ✅ **SQLite数据库层** - 完整的数据库连接、会话管理和优化配置
+- ✅ **PostgreSQL数据库层** - 完整的数据库连接、会话管理和优化配置
 - ✅ **数据模型设计** - 完整的SQLAlchemy模型(voice_profiles, novel_projects, text_segments, system_logs, usage_stats)
 - ✅ **MegaTTS3客户端** - HTTP客户端适配器，支持健康检查、语音合成、声音克隆、音质评估
 - ✅ **启动脚本** - Windows批处理脚本，自动环境配置和服务启动
@@ -213,7 +213,7 @@ DELETE /api/voice-clone/cleanup-temp-files # 清理临时文件
 
 ### 🔧 技术特性
 - 🚀 **异步处理** - 全异步API设计，支持高并发
-- 🗃️ **SQLite优化** - WAL模式、外键约束、性能优化配置
+- 🗃️ **PostgreSQL优化** - 连接池、事务管理、性能优化配置
 - 🔄 **错误处理** - 完整的异常处理和重试机制
 - 📊 **健康监控** - 服务状态检查和数据库连接监控
 - 🎵 **音频处理** - 文件上传、存储、静态服务支持

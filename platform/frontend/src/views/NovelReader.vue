@@ -352,7 +352,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
+import { useRouter, useRoute, onBeforeRouteLeave } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { 
   LeftOutlined, 
@@ -691,11 +691,27 @@ const startSynthesis = async () => {
 }
 
 const startProgressPolling = () => {
+  let errorCount = 0
+  const maxErrors = 5
+  const maxDuration = 30 * 60 * 1000 // 30分钟最大轮询时间
+  const startTime = Date.now()
+  
   const pollInterval = setInterval(async () => {
   try {
+      // 检查轮询时间是否超过最大限制
+      if (Date.now() - startTime > maxDuration) {
+        console.warn('轮询超时，自动停止')
+        clearInterval(pollInterval)
+        message.warning('进度监控超时，请刷新页面查看最新状态')
+        return
+      }
+
       const response = await readerAPI.getProgress(currentProject.value.id)
     if (response.data.success) {
       const progress = response.data.progress
+        
+        // 重置错误计数
+        errorCount = 0
         
         progressPercent.value = progress.progressPercent || 0
         
@@ -720,28 +736,58 @@ const startProgressPolling = () => {
           }
         }
         
-      if (progress.status === 'completed') {
+        // 检查停止条件
+        const shouldStop = progress.status === 'completed' || 
+                          progress.status === 'failed' ||
+                          progress.status === 'cancelled' ||
+                          // 如果没有段落在处理且没有待处理的段落，也停止轮询
+                          (progress.statistics.processing === 0 && 
+                           progress.statistics.pending === 0 && 
+                           progress.statistics.total > 0)
+        
+        if (shouldStop) {
           clearInterval(pollInterval)
           synthesizing.value = false
+          
+          if (progress.status === 'completed') {
           currentProject.value.status = 'completed'
           // 重新加载项目以获取音频文件
           loadProject()
           message.success('语音合成完成！')
       } else if (progress.status === 'failed') {
-          clearInterval(pollInterval)
-          synthesizing.value = false
           currentProject.value.status = 'failed'
           message.error('语音合成失败')
+          } else if (progress.status === 'cancelled') {
+            currentProject.value.status = 'cancelled'
+            message.info('语音合成已取消')
+          } else {
+            message.info('任务处理完成')
         }
+        }
+      } else {
+        throw new Error('API响应失败')
       }
   } catch (error) {
     console.error('获取进度失败:', error)
+      errorCount++
+      
+      // 连续错误过多时停止轮询
+      if (errorCount >= maxErrors) {
+        console.error(`连续${maxErrors}次获取进度失败，停止轮询`)
+        clearInterval(pollInterval)
+        synthesizing.value = false
+        message.error('无法获取进度信息，请检查网络连接')
+      }
     }
   }, 2000)
+
+  // 存储定时器ID以便全局清理
+  window.novelReaderPollInterval = pollInterval
 
   // 组件卸载时清除定时器
   onUnmounted(() => {
     clearInterval(pollInterval)
+    window.novelReaderPollInterval = null
   })
 }
 
@@ -869,6 +915,23 @@ onMounted(() => {
 watch(() => route.params.id, () => {
   if (route.params.id) {
     loadProject()
+  }
+})
+
+// 页面切换前的清理
+onBeforeRouteLeave(() => {
+  if (window.novelReaderPollInterval) {
+    clearInterval(window.novelReaderPollInterval)
+    window.novelReaderPollInterval = null
+  }
+  return true
+})
+
+// 浏览器刷新/关闭前的清理
+window.addEventListener('beforeunload', () => {
+  if (window.novelReaderPollInterval) {
+    clearInterval(window.novelReaderPollInterval)
+    window.novelReaderPollInterval = null
   }
 })
 </script>

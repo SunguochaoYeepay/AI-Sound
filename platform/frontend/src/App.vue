@@ -152,18 +152,25 @@
         </div>
       </a-layout-content>
     </a-layout>
+    
+    <!-- 开发者控制台 -->
+    <DevConsole v-if="isDev" />
   </a-layout>
 </template>
 
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import DevConsole from './components/DevConsole.vue'
 
 const router = useRouter()
 const route = useRoute()
 
 const collapsed = ref(false)
 const selectedKeys = ref(['voice-clone'])
+
+// 检查是否为开发环境
+const isDev = computed(() => import.meta.env.DEV)
 
 // 根据当前路由设置选中的菜单项
 const updateSelectedKeys = () => {
@@ -197,6 +204,13 @@ const updateSelectedKeys = () => {
 watch(route, () => {
   updateSelectedKeys()
 }, { immediate: true })
+
+// 开发环境设置
+onMounted(() => {
+  if (import.meta.env.DEV) {
+    document.body.classList.add('dev-mode')
+  }
+})
 
 // 组件挂载时更新选中状态
 onMounted(() => {
