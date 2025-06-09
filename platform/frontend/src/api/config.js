@@ -2,7 +2,7 @@ import axios from 'axios'
 
 // 环境配置 - 统一使用相对路径，让Vite代理处理
 const isDevelopment = import.meta.env.DEV
-const API_BASE_URL = '/api'  // 开发环境通过Vite代理，生产环境通过nginx代理
+const API_BASE_URL = isDevelopment ? '/api/v1' : '/api'  // 开发环境用v1，生产环境用nginx重写
 
 console.log(`[API配置] 当前环境: ${isDevelopment ? '开发' : '生产'}, API地址: ${API_BASE_URL}`)
 

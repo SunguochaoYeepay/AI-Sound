@@ -5,6 +5,7 @@ import 'ant-design-vue/dist/reset.css'
 
 import App from './App.vue'
 import routes from './router/index.js'
+import pinia from './stores/index.js'
 
 // 引入调试工具（开发环境）
 if (import.meta.env.DEV) {
@@ -19,5 +20,6 @@ const router = createRouter({
 
 const app = createApp(App)
 app.use(router)
+app.use(pinia)
 app.use(Antd)
 app.mount('#app')

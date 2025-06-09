@@ -36,6 +36,8 @@ services:
   database:
     image: postgres:15-alpine
     container_name: ai-sound-db
+    ports:
+      - "5432:5432"
     environment:
       - POSTGRES_DB=ai_sound
       - POSTGRES_USER=ai_sound_user

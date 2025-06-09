@@ -1,3 +1,5 @@
+import Home from '../views/Home.vue'
+import Dashboard from '../views/Dashboard.vue'
 import BasicTTS from '../views/BasicTTS.vue'
 import Characters from '../views/Characters.vue'
 import Books from '../views/Books.vue'
@@ -13,7 +15,13 @@ import Settings from '../views/Settings.vue'
 const routes = [
   {
     path: '/',
-    redirect: '/basic-tts'
+    name: 'Home',
+    component: Home
+  },
+  {
+    path: '/dashboard',
+    name: 'Dashboard',
+    component: Dashboard
   },
   {
     path: '/basic-tts',

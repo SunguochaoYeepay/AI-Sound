@@ -15,7 +15,7 @@ import re
 from datetime import datetime
 
 from database import get_db
-from models import Book, NovelProject
+from .models import Book, NovelProject
 import logging
 from utils import log_system_event
 

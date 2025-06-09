@@ -6,15 +6,12 @@ SQLAlchemy 数据模型
 from sqlalchemy import Column, Integer, String, Text, Float, DateTime, ForeignKey, Index, Boolean
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-from database import Base
+from app.database import Base
 import json
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 import os
 from urllib.parse import quote
-from sqlalchemy.ext.declarative import declarative_base
-
-Base = declarative_base()
 
 class VoiceProfile(Base):
     """
@@ -557,5 +554,57 @@ class Book(Base):
     def update_word_count(self):
         """更新字数统计"""
         if self.content:
-            # 简单的中文字数统计
-            self.word_count = len(self.content.replace(' ', '').replace('\n', '').replace('\r', '')) 
+            self.word_count = len(self.content.replace(' ', '').replace('\n', ''))
+
+class BookChapter(Base):
+    """
+    书籍章节表
+    """
+    __tablename__ = "book_chapters"
+    
+    # 基础字段
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    book_id = Column(Integer, ForeignKey("books.id"), nullable=False, index=True)
+    chapter_number = Column(Integer, nullable=False)
+    title = Column(String(200), nullable=False)
+    content = Column(Text, nullable=False)
+    
+    # 分析状态
+    analysis_status = Column(String(20), default='pending', index=True)  # 'pending' | 'completed' | 'failed'
+    
+    # 统计信息
+    word_count = Column(Integer, default=0)
+    character_count = Column(Integer, default=0)
+    
+    # 时间戳
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # 关系
+    book = relationship("Book", backref="book_chapters")
+    
+    # 索引
+    __table_args__ = (
+        Index('ix_book_chapters_book_chapter', 'book_id', 'chapter_number'),
+    )
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """转换为字典格式"""
+        return {
+            "id": self.id,
+            "bookId": self.book_id,
+            "chapterNumber": self.chapter_number,
+            "title": self.title,
+            "content": self.content,
+            "analysisStatus": self.analysis_status,
+            "wordCount": self.word_count,
+            "characterCount": self.character_count,
+            "createdAt": self.created_at.isoformat() if self.created_at else None,
+            "updatedAt": self.updated_at.isoformat() if self.updated_at else None
+        }
+    
+    def update_counts(self):
+        """更新字数和字符数统计"""
+        if self.content:
+            self.word_count = len(self.content.replace(' ', '').replace('\n', ''))
+            self.character_count = len(self.content) 

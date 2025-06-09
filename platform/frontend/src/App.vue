@@ -35,6 +35,15 @@
           marginTop: '20px'
         }"
       >
+        <a-menu-item key="home" @click="navigateTo('home')">
+          <template #icon>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
+            </svg>
+          </template>
+          <span style="font-weight: 500;">首页</span>
+        </a-menu-item>
+
         <a-menu-item key="voice-clone" @click="navigateTo('voice-clone')">
           <template #icon>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
@@ -107,19 +116,35 @@
       <a-layout-header style="background: linear-gradient(135deg, #ffffff 0%, #fdf9f4 100%) !important; border-bottom: 1px solid rgba(255, 123, 84, 0.1); height: 60px; display: flex; align-items: center; justify-content: space-between;">
         <div style="display: flex; align-items: center;">
           <h2 style="margin: 0; color: #2c3e50; font-weight: 600;">{{ getPageTitle() }}</h2>
-          <a-tag color="#52c41a" style="margin-left: 16px;">
+          <a-tag :color="getSystemStatusColor()" style="margin-left: 16px;">
             <template #icon>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
                 <circle cx="12" cy="12" r="6"/>
               </svg>
             </template>
-            MegaTTS3 运行中
+            {{ getSystemStatusText() }}
           </a-tag>
         </div>
         
         <div style="display: flex; align-items: center; gap: 16px;">
-          <a-badge count="3" size="small">
-            <a-button type="text" shape="circle">
+          <!-- 系统状态显示 -->
+          <a-tooltip title="查看系统状态">
+            <a-button 
+              type="text" 
+              shape="circle" 
+              @click="router.push('/settings')"
+                              :style="{ background: route.path === '/settings' ? 'rgba(6, 182, 212, 0.1)' : 'transparent' }"
+            >
+              <template #icon>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59 7.59L19 8l-9 9z"/>
+                </svg>
+              </template>
+            </a-button>
+          </a-tooltip>
+
+          <a-badge :count="notificationCount" size="small">
+            <a-button type="text" shape="circle" @click="showNotifications = !showNotifications">
               <template #icon>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.89 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/>
@@ -131,9 +156,9 @@
           <a-dropdown>
             <a-button type="text" style="display: flex; align-items: center; gap: 8px;">
               <a-avatar size="small" style="background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);">
-                <span style="color: white; font-weight: 600;">U</span>
+                <span style="color: white; font-weight: 600;">{{ userInitial }}</span>
               </a-avatar>
-              <span style="color: #2c3e50;">用户</span>
+              <span style="color: #2c3e50;">{{ userName }}</span>
             </a-button>
             <template #overlay>
               <a-menu>
@@ -148,6 +173,8 @@
       <!-- 页面内容 -->
       <a-layout-content style="margin: 0; background: #faf9f8;">
         <div style="padding: 24px; min-height: calc(100vh - 60px);">
+
+          
           <router-view />
         </div>
       </a-layout-content>
@@ -161,21 +188,37 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import { useAppStore } from './stores/app.js'
+import { useUserStore } from './stores/user.js'
+import { useWebSocketStore } from './stores/websocket.js'
 import DevConsole from './components/DevConsole.vue'
 
 const router = useRouter()
 const route = useRoute()
 
+// Stores
+const appStore = useAppStore()
+const userStore = useUserStore()
+const wsStore = useWebSocketStore()
+
 const collapsed = ref(false)
-const selectedKeys = ref(['voice-clone'])
+const selectedKeys = ref(['home'])
+const showNotifications = ref(false)
 
 // 检查是否为开发环境
 const isDev = computed(() => import.meta.env.DEV)
 
+// 计算属性
+const notificationCount = computed(() => appStore.notificationCount)
+const systemStatus = computed(() => appStore.systemStatus)
+const userName = computed(() => userStore.user.name)
+const userInitial = computed(() => userName.value.charAt(0).toUpperCase())
+
 // 根据当前路由设置选中的菜单项
 const updateSelectedKeys = () => {
   const routeToKey = {
-    '/': 'voice-clone',
+    '/': 'home',
+    '/dashboard': 'voice-clone',
     '/basic-tts': 'voice-clone', 
     '/characters': 'voice-library',
     '/books': 'books',
@@ -188,7 +231,7 @@ const updateSelectedKeys = () => {
     '/settings': 'settings'
   }
   
-  let key = 'voice-clone'
+  let key = 'home'
   // 检查路由路径匹配
   for (const [path, menuKey] of Object.entries(routeToKey)) {
     if (route.path === path || route.path.startsWith(path + '/')) {
@@ -210,16 +253,18 @@ onMounted(() => {
   if (import.meta.env.DEV) {
     document.body.classList.add('dev-mode')
   }
-})
-
-// 组件挂载时更新选中状态
-onMounted(() => {
+  
+  // 初始化应用
+  initializeApp()
+  
+  // 更新选中状态
   updateSelectedKeys()
 })
 
 // 导航函数 - 使用Vue Router
 const navigateTo = (view) => {
   const viewToRoute = {
+    'home': '/',
     'voice-clone': '/basic-tts',
     'voice-library': '/characters',
     'books': '/books',
@@ -228,7 +273,7 @@ const navigateTo = (view) => {
     'settings': '/settings'
   }
   
-  const targetRoute = viewToRoute[view] || '/basic-tts'
+  const targetRoute = viewToRoute[view] || '/'
   
   // 只有在路由真正改变时才跳转
   if (route.path !== targetRoute) {
@@ -241,8 +286,8 @@ const navigateTo = (view) => {
 // 根据当前路由获取页面标题
 const getPageTitle = () => {
   const titles = {
-    '/basic-tts': '声音克隆测试平台',
-    '/': '声音克隆测试平台',
+    '/': 'AI-Sound 智能语音平台',
+    '/basic-tts': '声音克隆测试',
     '/characters': '声音库管理',
     '/books': '书籍管理',
     '/novel-reader': '语音合成',
@@ -261,7 +306,39 @@ const getPageTitle = () => {
     }
   }
   
-  return '声音克隆测试平台'
+  return 'AI-Sound 智能语音平台'
+}
+
+// 获取系统状态颜色
+const getSystemStatusColor = () => {
+  const status = systemStatus.value
+  const dbOk = status.database === 'healthy'
+  const ttsOk = status.tts_service === 'healthy'
+  const wsOk = wsStore.connected
+  
+  if (dbOk && ttsOk && wsOk) return '#52c41a'
+  if (!dbOk || !ttsOk) return '#ff4d4f'
+  return '#fa8c16'
+}
+
+// 获取系统状态文本
+const getSystemStatusText = () => {
+  const status = systemStatus.value
+  const dbOk = status.database === 'healthy'
+  const ttsOk = status.tts_service === 'healthy'
+  const wsOk = wsStore.connected
+  
+  if (dbOk && ttsOk && wsOk) return 'AI-Sound 运行正常'
+  if (!dbOk) return '数据库连接异常'
+  if (!ttsOk) return 'TTS服务异常'
+  if (!wsOk) return '实时通信断开'
+  return 'AI-Sound 部分异常'
+}
+
+// 初始化应用
+const initializeApp = () => {
+  // 初始化应用状态
+  appStore.initApp()
 }
 </script>
 

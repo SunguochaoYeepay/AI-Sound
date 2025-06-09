@@ -12,7 +12,7 @@ from typing import Dict, List, Any, Optional
 from fastapi import UploadFile
 from sqlalchemy.orm import Session
 
-from models import SystemLog, UsageStats
+from ..models import SystemLog, UsageStats
 
 logger = logging.getLogger(__name__)
 

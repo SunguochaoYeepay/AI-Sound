@@ -15,8 +15,7 @@ import logging
 from datetime import datetime, timedelta
 from uuid import uuid4
 
-from database import get_db
-from models import VoiceProfile, SystemLog, UsageStats
+from .models import VoiceProfile, SystemLog, UsageStats
 from tts_client import MegaTTS3Client, TTSRequest, get_tts_client
 from utils import log_system_event, update_usage_stats, validate_audio_file, get_audio_duration
 

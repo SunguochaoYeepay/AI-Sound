@@ -19,8 +19,8 @@ from datetime import datetime, timedelta
 import zipfile
 import csv
 
-from database import get_db, engine
-from models import SystemLog, UsageStats, VoiceProfile, NovelProject, TextSegment
+from .database import get_db, engine
+from .models import SystemLog, UsageStats, VoiceProfile, NovelProject, TextSegment
 from tts_client import MegaTTS3Client, get_tts_client
 from utils import log_system_event, save_upload_file
 
@@ -230,7 +230,7 @@ async def check_service_health():
         
         # 检查数据库连接
         try:
-            from database import get_db
+            from .database import get_db
             db = next(get_db())
             db.execute(text("SELECT 1"))
             health_results["database"] = {
@@ -804,7 +804,7 @@ async def perform_maintenance(
 async def perform_backup_task(backup_name: str, include_audio: bool, include_logs: bool):
     """执行备份任务"""
     try:
-        from database import SessionLocal
+        from .database import SessionLocal
         db = SessionLocal()
         
         try:
@@ -882,7 +882,7 @@ async def perform_maintenance_task(
 ):
     """执行维护任务"""
     try:
-        from database import SessionLocal
+        from .database import SessionLocal
         db = SessionLocal()
         
         try:

@@ -17,7 +17,7 @@ from datetime import datetime
 import shutil
 
 from database import get_db
-from models import VoiceProfile, SystemLog, UsageStats, AudioFile
+from .models import VoiceProfile, SystemLog, UsageStats, AudioFile
 from tts_client import MegaTTS3Client, TTSRequest, get_tts_client
 from utils import save_upload_file, log_system_event, update_usage_stats
 

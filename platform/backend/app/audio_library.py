@@ -19,7 +19,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from database import get_db
-from models import AudioFile, NovelProject, TextSegment, VoiceProfile, SystemLog
+from .models import AudioFile, NovelProject, TextSegment, VoiceProfile, SystemLog
 from utils import log_system_event, get_audio_duration
 
 logger = logging.getLogger(__name__)

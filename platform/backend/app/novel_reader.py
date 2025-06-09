@@ -17,7 +17,7 @@ import re
 from datetime import datetime, timedelta
 
 from database import get_db
-from models import NovelProject, TextSegment, VoiceProfile, Book, SystemLog, AudioFile
+from .models import NovelProject, TextSegment, VoiceProfile, Book, SystemLog, AudioFile
 from tts_client import MegaTTS3Client, TTSRequest, get_tts_client
 from utils import log_system_event, update_usage_stats, save_upload_file
 # from tts_memory_optimizer import synthesis_context, optimize_tts_memory  # 暂时禁用以避免torch依赖
@@ -61,7 +61,7 @@ async def create_project(
         
         if book_id:
             # 方式1：基于书籍
-            from models import Book
+            from .models import Book
             book = db.query(Book).filter(Book.id == book_id).first()
             if not book:
                 raise HTTPException(status_code=404, detail="指定的书籍不存在")

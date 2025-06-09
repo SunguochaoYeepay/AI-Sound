@@ -8,7 +8,7 @@ from sqlalchemy import text, inspect, Column
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 from database import get_db, engine, Base
-from models import *
+from .models import *
 import json
 from typing import Dict, List, Any, Optional
 from datetime import datetime

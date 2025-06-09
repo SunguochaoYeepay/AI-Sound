@@ -3,10 +3,10 @@ import vue from '@vitejs/plugin-vue'
 import { resolve } from 'path'
 
 export default defineConfig(({ mode }) => {
-  // 根据环境选择API目标 - 统一使用nginx入口
+  // 根据环境选择API目标 - 开发环境直连本地后端
   const API_TARGET = mode === 'development' 
-    ? 'http://localhost:3001'      // 开发环境：通过nginx代理
-    : 'http://localhost:3001'      // 生产环境：同样使用nginx入口
+    ? 'http://localhost:8000'      // 开发环境：直连本地后端
+    : 'http://localhost:3001'      // 生产环境：通过nginx代理
   
   console.log(`[Vite配置] 模式: ${mode}, API代理目标: ${API_TARGET}`)
 
@@ -14,7 +14,8 @@ export default defineConfig(({ mode }) => {
   plugins: [vue()],
   resolve: {
     alias: {
-      '@': resolve(__dirname, 'src')
+      '@': resolve(__dirname, 'src'),
+      'pinia': resolve(__dirname, 'node_modules/pinia/dist/pinia.mjs')
     }
   },
   server: {
