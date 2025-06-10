@@ -24,7 +24,7 @@ router = APIRouter(prefix="/characters", tags=["声音库管理"])
 
 # 音频文件存储路径
 VOICE_PROFILES_DIR = "/app/data/voice_profiles"
-AUDIO_DIR = "/app/data/audio"
+AUDIO_DIR = "data/audio"
 
 @router.get("")
 @router.get("/")

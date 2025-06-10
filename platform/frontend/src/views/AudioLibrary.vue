@@ -416,7 +416,7 @@ const refreshAudioList = async () => {
         durationFormatted: formatDuration(item.duration),
         projectName: item.project?.name,
         segmentOrder: item.segment_order,
-        audioUrl: item.file_path ? `/audio/${item.filename}` : null
+        audioUrl: item.filename ? `/audio/${item.filename}` : null
       }))
       pagination.total = response.data.pagination.total
       pagination.current = response.data.pagination.page

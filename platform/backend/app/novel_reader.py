@@ -28,7 +28,7 @@ router = APIRouter(prefix="/novel-reader", tags=["小说朗读"])
 # 文件存储路径
 PROJECTS_DIR = "/app/data/projects"
 TEXTS_DIR = "/app/data/texts"
-AUDIO_DIR = "/app/data/audio"
+AUDIO_DIR = "data/audio"
 
 @router.post("/projects")
 async def create_project(
