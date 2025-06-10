@@ -11,10 +11,11 @@ import logging
 from datetime import datetime
 
 from app.database import get_db
-from app.models import NovelProject, VoiceProfile, Book
+from app.models import NovelProject, VoiceProfile, Book, TextSegment
 from app.services.dify_client import get_dify_client, DifyAPIException
 from app.exceptions import ServiceException
 from app.config import settings
+from app.novel_reader import update_segments_voice_mapping_no_commit
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/intelligent-analysis", tags=["智能分析"])
@@ -146,22 +147,41 @@ async def apply_analysis(
                 character_mapping[character_name] = voice_id
         
         # 更新项目的角色映射
+        logger.info(f"[DEBUG] 准备设置角色映射: {character_mapping}")
+        
         if hasattr(project, 'set_character_mapping'):
+            logger.info(f"[DEBUG] 使用set_character_mapping方法")
             project.set_character_mapping(character_mapping)
+            logger.info(f"[DEBUG] 设置完成，当前config: {project.config}")
         else:
+            logger.info(f"[DEBUG] 直接设置character_mapping字段")
             # 如果模型没有该方法，直接设置JSON字段
             project.character_mapping = json.dumps(character_mapping) if character_mapping else None
         
         # 标记项目为已配置状态
         project.status = 'configured'
         
+        logger.info(f"[DEBUG] 提交前项目config: {project.config}")
         db.commit()
+        logger.info(f"[DEBUG] 提交后重新查询项目配置")
+        
+        # 重新查询验证
+        db.refresh(project)
+        logger.info(f"[DEBUG] 重新查询后的config: {project.config}")
+        logger.info(f"[DEBUG] 获取的character_mapping: {project.get_character_mapping()}")
+        
+        # 重要：更新段落的声音映射
+        mapping_result = await update_segments_voice_mapping_no_commit(project_id, character_mapping, db)
+        db.commit()
+        
         logger.info(f"已应用分析结果到项目 {project_id}")
+        logger.info(f"段落映射更新结果: {mapping_result}")
         
         return {
             "success": True,
             "message": "分析结果已应用",
-            "applied_mapping": character_mapping
+            "applied_mapping": character_mapping,
+            "segments_updated": mapping_result.get("updated_count", 0)
         }
         
     except HTTPException:
@@ -253,6 +273,12 @@ async def _fallback_to_mock_analysis(project_id: int, voices: List[VoiceProfile]
     Dify调用失败时的Mock分析回退逻辑
     """
     try:
+        # 获取项目的实际段落数据，分析真实的角色
+        segments = db.query(TextSegment).filter(TextSegment.project_id == project_id).all()
+        
+        # 提取所有唯一的speaker名称
+        unique_speakers = list(set([seg.speaker for seg in segments if seg.speaker and seg.speaker.strip()]))
+        
         # 按性别分类声音
         male_voices = [v for v in voices if v.type == 'male']
         female_voices = [v for v in voices if v.type == 'female']
@@ -263,49 +289,55 @@ async def _fallback_to_mock_analysis(project_id: int, voices: List[VoiceProfile]
         if not all_voices:
             all_voices = voices
         
+        # 为每个角色分配声音（简单的轮询分配）
+        characters = []
+        synthesis_plan = []
+        
+        for i, speaker in enumerate(unique_speakers):
+            # 根据角色名称智能分配声音类型
+            if any(keyword in speaker.lower() for keyword in ['章', 'chapter', '旁白', 'narrator']):
+                # 章节标题和旁白使用中性声音
+                assigned_voice = neutral_voices[i % len(neutral_voices)] if neutral_voices else all_voices[i % len(all_voices)]
+            elif any(keyword in speaker.lower() for keyword in ['女', 'female', '温柔']):
+                # 女性角色使用女声
+                assigned_voice = female_voices[i % len(female_voices)] if female_voices else all_voices[i % len(all_voices)]
+            else:
+                # 其他角色使用男声
+                assigned_voice = male_voices[i % len(male_voices)] if male_voices else all_voices[i % len(all_voices)]
+            
+            characters.append({
+                "name": speaker,
+                "voice_id": assigned_voice.id,
+                "voice_name": assigned_voice.name
+            })
+        
+        # 生成合成计划（基于实际段落）
+        for i, segment in enumerate(segments[:5]):  # 只显示前5个段落作为示例
+            synthesis_plan.append({
+                "segment_id": i + 1,
+                "text": segment.content[:50] + "..." if len(segment.content) > 50 else segment.content,
+                "speaker": segment.speaker or "未知",
+                "voice_id": next((char["voice_id"] for char in characters if char["name"] == segment.speaker), all_voices[0].id),
+                "voice_name": next((char["voice_name"] for char in characters if char["name"] == segment.speaker), all_voices[0].name),
+                "parameters": {"timeStep": 20, "pWeight": 1.0, "tWeight": 1.0}
+            })
+        
         # 生成Mock分析结果
         mock_result = {
             "project_info": {
-                "novel_type": "科幻",
+                "novel_type": "智能检测",
                 "analysis_time": datetime.now().isoformat(),
-                "total_segments": 5,
-                "ai_model": "mock-fallback-analysis"
+                "total_segments": len(segments),
+                "ai_model": "mock-smart-analysis",
+                "detected_characters": len(unique_speakers)
             },
             
-            "synthesis_plan": [
-                {
-                    "segment_id": 1,
-                    "text": "在数字化时代的浪潮中，数据如同蚕茧般包裹着我们的生活。",
-                    "speaker": "系统旁白",
-                    "voice_id": neutral_voices[0].id if neutral_voices else all_voices[0].id,
-                    "voice_name": neutral_voices[0].name if neutral_voices else all_voices[0].name,
-                    "parameters": {"timeStep": 20, "pWeight": 1.0, "tWeight": 1.0}
-                },
-                {
-                    "segment_id": 2,
-                    "text": "数据的流动模式确实很有趣，我从来没有从这个角度思考过。",
-                    "speaker": "李维",
-                    "voice_id": male_voices[0].id if male_voices else all_voices[0].id,
-                    "voice_name": male_voices[0].name if male_voices else all_voices[0].name,
-                    "parameters": {"timeStep": 15, "pWeight": 1.2, "tWeight": 0.8}
-                }
-            ],
-            
-            "characters": [
-                {
-                    "name": "李维",
-                    "voice_id": male_voices[0].id if male_voices else all_voices[0].id,
-                    "voice_name": male_voices[0].name if male_voices else all_voices[0].name
-                },
-                {
-                    "name": "系统旁白",
-                    "voice_id": neutral_voices[0].id if neutral_voices else all_voices[0].id,
-                    "voice_name": neutral_voices[0].name if neutral_voices else all_voices[0].name
-                }
-            ]
+            "synthesis_plan": synthesis_plan,
+            "characters": characters
         }
         
-        logger.info(f"[MOCK FALLBACK] 为项目 {project_id} 生成Mock分析结果")
+        logger.info(f"[MOCK FALLBACK] 为项目 {project_id} 生成基于实际数据的Mock分析结果")
+        logger.info(f"[MOCK FALLBACK] 检测到 {len(unique_speakers)} 个角色: {unique_speakers}")
         
         return {
             "success": True,

@@ -637,8 +637,7 @@ async def start_audio_generation(
         
         # 检查角色映射 - 增加详细日志
         logger.info(f"[DEBUG] 检查角色映射...")
-        logger.info(f"[DEBUG] 原始 character_mapping 字段: {project.character_mapping}")
-        logger.info(f"[DEBUG] character_mapping 类型: {type(project.character_mapping)}")
+        logger.info(f"[DEBUG] 项目配置: {project.config}")
         
         char_mapping = project.get_character_mapping()
         logger.info(f"[DEBUG] 解析后的角色映射: {char_mapping}")
@@ -649,7 +648,7 @@ async def start_audio_generation(
             logger.error(f"[DEBUG] 角色映射为空，拒绝请求")
             # 详细显示段落信息
             for segment in segments[:3]:  # 只显示前3个段落
-                logger.error(f"[DEBUG] 段落 {segment.segment_order}: speaker='{segment.detected_speaker}', voice_id={segment.voice_profile_id}")
+                logger.error(f"[DEBUG] 段落 {segment.paragraph_index}: speaker='{segment.speaker}', voice_id={segment.voice_id}")
             raise HTTPException(status_code=400, detail="请先设置角色声音映射")
         
         # 验证声音映射的有效性
@@ -669,6 +668,7 @@ async def start_audio_generation(
         project.started_at = datetime.utcnow()
         project.current_segment = 0
         project.processed_segments = 0
+        project.total_segments = len(segments)  # 重要：设置总段落数
         
         # 重置所有段落状态
         logger.info(f"[DEBUG] 重置段落状态...")
@@ -1273,7 +1273,7 @@ async def update_segments_voice_mapping(project_id: int, char_mapping: Dict[str,
 async def process_audio_generation(project_id: int, parallel_tasks: int = 1):
     """后台音频生成任务 - 修改为真正的逐个处理"""
     try:
-        from database import SessionLocal
+        from app.database import SessionLocal
         db = SessionLocal()
         
         try:
@@ -1300,7 +1300,7 @@ async def process_audio_generation(project_id: int, parallel_tasks: int = 1):
                         TextSegment.project_id == project_id,
                         TextSegment.status == 'pending'
                     )
-                ).order_by(TextSegment.segment_order).limit(parallel_tasks).all()
+                ).order_by(TextSegment.paragraph_index).limit(parallel_tasks).all()
                 
                 if not pending_segments:
                     logger.info(f"[GENERATION] 没有待处理段落，检查完成状态")
@@ -1362,13 +1362,10 @@ async def process_single_segment_sequential(segment: TextSegment, tts_client, db
         segment.status = 'processing'
         db.commit()
         
-        # 获取声音档案，需要根据voice_id查找
-        voice = None
-        if hasattr(segment, 'voice_id') and segment.voice_id:
-            voice = db.query(VoiceProfile).filter(VoiceProfile.name == segment.voice_id).first()
-        
+        # 获取声音档案
+        voice = db.query(VoiceProfile).filter(VoiceProfile.id == segment.voice_id).first()
         if not voice:
-            logger.error(f"[SEGMENT] 段落 {segment.id} 声音档案不存在: {getattr(segment, 'voice_id', None)}")
+            logger.error(f"[SEGMENT] 段落 {segment.id} 声音档案不存在: {segment.voice_id}")
             segment.status = 'failed'
             segment.error_message = "声音档案不存在"
             db.commit()
@@ -1439,7 +1436,7 @@ async def process_single_segment_sequential(segment: TextSegment, tts_client, db
                     duration=duration,
                     project_id=segment.project_id,
                     segment_id=segment.id,
-                    voice_profile_id=segment.voice_profile_id,
+                    voice_profile_id=segment.voice_id,
                     text_content=segment.content,
                     audio_type='segment',
                     processing_time=processing_time,
@@ -1489,9 +1486,9 @@ async def process_single_segment(segment: TextSegment, tts_client, semaphore, db
             db.commit()
             
             # 获取声音档案
-            voice = db.query(VoiceProfile).filter(VoiceProfile.id == getattr(segment, 'voice_profile_id', None)).first()
+            voice = db.query(VoiceProfile).filter(VoiceProfile.id == segment.voice_id).first()
             if not voice:
-                logger.error(f"[SEGMENT] 段落 {segment.id} 声音档案不存在: {getattr(segment, 'voice_profile_id', None)}")
+                logger.error(f"[SEGMENT] 段落 {segment.id} 声音档案不存在: {segment.voice_id}")
                 segment.status = 'failed'
                 segment.error_message = "声音档案不存在"
                 db.commit()
@@ -1562,7 +1559,7 @@ async def process_single_segment(segment: TextSegment, tts_client, semaphore, db
                         duration=duration,
                         project_id=segment.project_id,
                         segment_id=segment.id,
-                        voice_profile_id=getattr(segment, 'voice_profile_id', None),
+                        voice_profile_id=segment.voice_id,
                         text_content=segment.content,
                         audio_type='segment',
                         processing_time=processing_time,
@@ -1572,7 +1569,7 @@ async def process_single_segment(segment: TextSegment, tts_client, semaphore, db
                     )
                     db.add(audio_file)
                     
-                    # 更新声音档案使用计数 - 修复NoneType错误
+                    # 更新声音档案使用计数
                     if voice.usage_count is None:
                         voice.usage_count = 0
                     voice.usage_count += 1
@@ -1734,11 +1731,11 @@ async def update_segments_voice_mapping_no_commit(project_id: int, char_mapping:
         unmapped_speakers = set()
         
         for segment in segments:
-            logger.info(f"[DEBUG] 段落{segment.segment_order}: detected_speaker='{segment.detected_speaker}'")
+            logger.info(f"[DEBUG] 段落{segment.paragraph_index}: speaker='{segment.speaker}'")
             
-            speaker = segment.detected_speaker
+            speaker = segment.speaker
             if not speaker:
-                logger.warning(f"[DEBUG] 段落{segment.segment_order}: detected_speaker为空，跳过")
+                logger.warning(f"[DEBUG] 段落{segment.paragraph_index}: speaker为空，跳过")
                 continue
             
             if speaker in enhanced_mapping:
@@ -1746,15 +1743,15 @@ async def update_segments_voice_mapping_no_commit(project_id: int, char_mapping:
                 # 验证声音ID是否有效
                 voice = db.query(VoiceProfile).filter(VoiceProfile.id == voice_id).first()
                 if voice and voice.status == 'active':
-                    old_voice_id = segment.voice_profile_id
-                    segment.voice_profile_id = voice_id
+                    old_voice_id = segment.voice_id
+                    segment.voice_id = voice_id
                     updated_count += 1
-                    logger.info(f"[DEBUG] 段落{segment.segment_order}: {speaker} -> 声音ID {voice_id} ({voice.name}) (原:{old_voice_id})")
+                    logger.info(f"[DEBUG] 段落{segment.paragraph_index}: {speaker} -> 声音ID {voice_id} ({voice.name}) (原:{old_voice_id})")
                 else:
-                    logger.warning(f"[DEBUG] 段落{segment.segment_order}: 声音ID {voice_id} 无效或声音档案不存在")
+                    logger.warning(f"[DEBUG] 段落{segment.paragraph_index}: 声音ID {voice_id} 无效或声音档案不存在")
                     unmapped_speakers.add(f"{speaker}(无效声音ID:{voice_id})")
             else:
-                logger.warning(f"[DEBUG] 段落{segment.segment_order}: 角色'{speaker}'未在映射中找到")
+                logger.warning(f"[DEBUG] 段落{segment.paragraph_index}: 角色'{speaker}'未在映射中找到")
                 unmapped_speakers.add(speaker)
         
         if unmapped_speakers:

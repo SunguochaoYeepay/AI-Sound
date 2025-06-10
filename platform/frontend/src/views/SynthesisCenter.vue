@@ -281,9 +281,12 @@ const progressPercent = computed(() => {
 const allCharactersConfigured = computed(() => {
   // 如果有智能分析结果，基于智能分析的角色
   if (mockResult.value?.characters) {
-    return mockResult.value.characters.every(char => 
-      characterVoiceMapping[char.name]
-    )
+    return mockResult.value.characters.every(char => {
+      // 检查用户是否手动选择了声音，如果没有，则检查AI是否推荐了声音
+      const userSelected = characterVoiceMapping[char.name]
+      const aiRecommended = char.voice_id
+      return userSelected || aiRecommended
+    })
   }
   // 否则基于原始检测的角色
   return detectedCharacters.value.every(char => 

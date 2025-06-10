@@ -7,10 +7,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Form
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, asc, func, or_, and_
 from typing import Dict, List, Any, Optional
+import json
+import logging
 
 from app.database import get_db
 from app.models import NovelProject, TextSegment, VoiceProfile
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/novel-reader", tags=["Novel Reader"])
 
 @router.get("/projects")
@@ -309,3 +312,102 @@ async def pause_generation(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"暂停项目失败: {str(e)}")
+
+@router.put("/projects/{project_id}")
+async def update_project(
+    project_id: int,
+    name: str = Form(...),
+    description: str = Form(""),
+    character_mapping: str = Form("{}"),
+    book_id: Optional[int] = Form(None),
+    db: Session = Depends(get_db)
+):
+    """
+    更新项目信息
+    包括角色映射、项目名称、描述等
+    """
+    try:
+        logger.info(f"[DEBUG] PUT请求开始 - project_id: {project_id}")
+        logger.info(f"[DEBUG] 参数 - name: {name}, description: {description}")
+        logger.info(f"[DEBUG] character_mapping原始值: {character_mapping}")
+        
+        project = db.query(NovelProject).filter(NovelProject.id == project_id).first()
+        
+        if not project:
+            raise HTTPException(status_code=404, detail="项目不存在")
+        
+        # 验证项目名称
+        if not name or name.strip() == "" or name.lower() == "undefined":
+            logger.error(f"[DEBUG] 项目名称无效: '{name}'")
+            raise HTTPException(status_code=400, detail="项目名称不能为空或无效")
+        
+        # 检查名称重复（排除自己）
+        existing = db.query(NovelProject).filter(
+            and_(
+                NovelProject.name == name,
+                NovelProject.id != project_id
+            )
+        ).first()
+        
+        if existing:
+            logger.error(f"[DEBUG] 项目名称已存在: {name}")
+            raise HTTPException(status_code=400, detail="项目名称已存在")
+        
+        # 解析角色映射
+        try:
+            char_mapping = json.loads(character_mapping) if character_mapping else {}
+            logger.info(f"[DEBUG] 解析角色映射 - 原始: {character_mapping}")
+            logger.info(f"[DEBUG] 解析角色映射 - 结果: {char_mapping}")
+        except json.JSONDecodeError as e:
+            logger.error(f"[DEBUG] 角色映射JSON解析失败: {e}")
+            raise HTTPException(status_code=400, detail="角色映射格式错误")
+        
+        # 更新项目信息
+        old_name = project.name
+        project.name = name
+        project.description = description
+        
+        # 更新书籍关联
+        if book_id is not None:
+            project.book_id = book_id
+            logger.info(f"[DEBUG] 更新book_id: {book_id}")
+        
+        # 更新角色映射
+        if hasattr(project, 'set_character_mapping'):
+            project.set_character_mapping(char_mapping)
+            logger.info(f"[DEBUG] 使用set_character_mapping方法")
+        else:
+            project.character_mapping = json.dumps(char_mapping)
+            logger.info(f"[DEBUG] 直接设置character_mapping字段")
+        
+        # 最终一次性提交所有更改
+        try:
+            db.commit()
+            db.refresh(project)
+            logger.info(f"[DEBUG] 项目更新提交成功: {project_id}")
+        except Exception as commit_error:
+            logger.error(f"项目更新提交失败: {str(commit_error)}")
+            db.rollback()
+            raise HTTPException(status_code=500, detail=f"更新失败: {str(commit_error)}")
+        
+        return {
+            "success": True,
+            "message": "项目更新成功",
+            "data": {
+                "id": project.id,
+                "name": project.name,
+                "description": project.description,
+                "status": project.status,
+                "character_mapping": project.character_mapping,
+                "updated_at": project.updated_at.isoformat() if project.updated_at else None
+            }
+        }
+        
+    except HTTPException as he:
+        logger.error(f"[DEBUG] PUT请求HTTPException: {he.detail}")
+        raise
+    except Exception as e:
+        logger.error(f"[DEBUG] PUT请求Exception: {str(e)}")
+        import traceback
+        logger.error(f"[DEBUG] PUT详细错误: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"更新失败: {str(e)}")
