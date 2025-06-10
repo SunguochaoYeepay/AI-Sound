@@ -31,10 +31,7 @@
             {{ getStatusText(currentProject.status) }}
           </a-tag>
       </div>
-        <div class="info-item">
-          <span class="info-label">角色数量</span>
-          <span class="info-value">{{ getCharacterCount(currentProject) }} 个</span>
-    </div>
+
         <div class="info-item">
           <span class="info-label">文本段落</span>
           <span class="info-value">{{ getSegmentCount(currentProject) }} 段</span>
@@ -90,91 +87,7 @@
 
     
 
-    <!-- 角色配置 -->
-    <div v-if="characters.length > 0" class="characters-section">
-      <div class="characters-card">
-        <div class="characters-header">
-          <h3>角色配置</h3>
-          <div class="character-actions">
-            <span class="character-count">{{ characters.length }} 个角色</span>
-            <a-button type="primary" size="small" @click="autoAssignVoices" :loading="autoAssigning">
-              <template #icon>
-                <SoundOutlined />
-              </template>
-              自动分配声音
-            </a-button>
-            <a-button size="small" @click="showCharacterConfig = true">
-              <template #icon>
-                <SettingOutlined />
-          </template>
-              配置角色
-            </a-button>
-            </div>
-        </div>
-        <div class="characters-list">
-          <div v-for="character in characters" :key="character.name" class="character-item">
-                <div class="character-info">
-              <div class="character-avatar">
-                    {{ character.name.charAt(0) }}
-                  </div>
-                  <div class="character-details">
-                    <div class="character-name">{{ character.name }}</div>
-                <div class="character-lines">{{ character.line_count || 0 }} 句对话</div>
-                  </div>
-                </div>
-            <div class="voice-assignment">
-                  <a-select
-                v-model:value="character.voice_id" 
-                    placeholder="选择声音"
-                style="width: 200px;"
-                @change="updateCharacterMapping"
-                :loading="loadingVoices"
-              >
-                <a-select-option value="">使用默认声音</a-select-option>
-                    <a-select-option
-                      v-for="voice in availableVoices"
-                      :key="voice.id"
-                      :value="voice.id"
-                    >
-                  {{ voice.name }} ({{ getVoiceTypeText(voice.type) }})
-                    </a-select-option>
-                  </a-select>
-                  <a-button 
-                v-if="character.voice_id" 
-                    type="text" 
-                    size="small" 
-                @click="playVoicePreview(character)"
-                  >
-                    <template #icon>
-                  <PlayCircleOutlined />
-                    </template>
-                  </a-button>
-                </div>
-              </div>
-            </div>
-          </div>
-          </div>
 
-    <!-- 空状态 - 等待角色配置 -->
-    <div v-else-if="currentProject?.segments?.length > 0" class="empty-characters-section">
-      <div class="empty-card">
-        <div class="empty-content">
-          <div class="empty-icon">
-            <SoundOutlined style="font-size: 48px; color: #d9d9d9;" />
-          </div>
-          <div class="empty-text">
-            <h3>暂无角色配置</h3>
-            <p>系统将使用默认声音进行合成</p>
-            <a-button type="primary" @click="extractCharacters" :loading="extracting">
-              <template #icon>
-                <UserOutlined />
-              </template>
-              提取角色
-            </a-button>
-          </div>
-      </div>
-              </div>
-            </div>
 
     <!-- 合成配置 -->
     <div v-if="currentProject?.status === 'completed' || currentProject?.status === 'processing'" class="synthesis-config-section">
@@ -233,17 +146,18 @@
             <div class="mapping-header">
               <span class="mapping-title">角色声音映射</span>
             </div>
-            <div class="mapping-list">
+            <div v-if="currentProject.config.character_mapping && Object.keys(currentProject.config.character_mapping).length > 0" class="mapping-list">
               <div 
                 v-for="(voiceId, characterName) in currentProject.config.character_mapping" 
                 :key="characterName"
                 class="mapping-item"
               >
                 <span class="character-name">{{ characterName }}</span>
-                <span class="voice-name">
-                  {{ getVoiceName(voiceId) || `声音ID: ${voiceId}` }}
-                </span>
+                <span class="voice-name">声音ID: {{ voiceId }}</span>
               </div>
+            </div>
+            <div v-else class="no-mapping">
+              <span style="color: #6b7280; font-style: italic;">使用默认声音</span>
             </div>
           </div>
         </div>
@@ -412,111 +326,7 @@
             </a-button>
           </div>
 
-    <!-- 角色配置弹窗 -->
-    <a-modal
-      v-model:open="showCharacterConfig"
-      title="角色配置管理"
-      width="800"
-      :footer="null"
-    >
-      <div class="character-config-content">
-        <div class="config-header">
-          <div class="config-stats">
-            <div class="stat-item">
-              <span class="stat-label">总角色数</span>
-              <span class="stat-value">{{ characters.length }}</span>
-              </div>
-            <div class="stat-item">
-              <span class="stat-label">已配置</span>
-              <span class="stat-value">{{ characters.filter(c => c.voice_id).length }}</span>
-              </div>
-            <div class="stat-item">
-              <span class="stat-label">未配置</span>
-              <span class="stat-value">{{ characters.filter(c => !c.voice_id).length }}</span>
-            </div>
-          </div>
-          <div class="config-actions">
-            <a-button @click="autoAssignVoices" :loading="autoAssigning">
-              <template #icon>
-                <SoundOutlined />
-              </template>
-              自动分配
-            </a-button>
-            <a-button type="primary" @click="saveCharacterConfig">
-              <template #icon>
-                <SaveOutlined />
-              </template>
-              保存配置
-            </a-button>
-      </div>
-    </div>
 
-        <a-divider />
-
-        <div class="character-config-list">
-          <div v-for="character in characters" :key="character.name" class="config-character-item">
-            <div class="config-character-info">
-              <div class="config-character-avatar">
-                {{ character.name.charAt(0) }}
-              </div>
-              <div class="config-character-details">
-                <div class="config-character-name">{{ character.name }}</div>
-                <div class="config-character-meta">
-                  {{ character.line_count || 0 }} 句对话
-                  <span v-if="character.voice_id" class="configured-badge">已配置</span>
-                  <span v-else class="unconfigured-badge">未配置</span>
-                </div>
-              </div>
-            </div>
-            <div class="config-voice-selection">
-              <a-select 
-                v-model:value="character.voice_id" 
-                placeholder="选择声音"
-                style="width: 250px;"
-                @change="updateCharacterMapping"
-                :loading="loadingVoices"
-              >
-                <a-select-option value="">使用默认声音</a-select-option>
-                <a-select-option 
-                  v-for="voice in availableVoices" 
-                  :key="voice.id" 
-                  :value="voice.id"
-                >
-                  <div class="voice-option">
-                    <span class="voice-option-name">{{ voice.name }}</span>
-                    <span class="voice-option-type">{{ getVoiceTypeText(voice.type) }}</span>
-                  </div>
-                </a-select-option>
-              </a-select>
-            <a-button 
-                v-if="character.voice_id" 
-                type="text" 
-                @click="playVoicePreview(character)"
-                title="播放预览"
-              >
-                <template #icon>
-                  <PlayCircleOutlined />
-            </template>
-              </a-button>
-            </div>
-          </div>
-        </div>
-
-        <div v-if="!characters.length" class="no-characters">
-          <div class="no-characters-content">
-            <UserOutlined style="font-size: 48px; color: #d9d9d9;" />
-            <h3>暂无角色数据</h3>
-            <p>请先提取文本中的角色信息</p>
-            <a-button type="primary" @click="extractCharacters" :loading="extracting">
-              <template #icon>
-                <UserOutlined />
-              </template>
-              提取角色
-            </a-button>
-          </div>
-        </div>
-      </div>
-    </a-modal>
   </div>
 </template>
 
@@ -528,11 +338,8 @@ import {
   LeftOutlined, 
   PlayCircleOutlined, 
   DownloadOutlined, 
-  SoundOutlined,
   CloseOutlined,
-  SettingOutlined,
-  UserOutlined,
-  SaveOutlined
+  SoundOutlined
 } from '@ant-design/icons-vue'
 import { readerAPI } from '@/api'
 
@@ -544,17 +351,11 @@ const loading = ref(false)
 const synthesizing = ref(false)
 const downloading = ref(false)
 const currentProject = ref(null)
-const characters = ref([])
 const audioFiles = ref([])
 const currentAudio = ref(null)
 const showFullText = ref(false)
 
-// 角色配置相关
-const availableVoices = ref([])
-const loadingVoices = ref(false)
-const autoAssigning = ref(false)
-const extracting = ref(false)
-const showCharacterConfig = ref(false)
+
 
 // 进度状态
 const progressPercent = ref(0)
@@ -592,21 +393,7 @@ const loadProject = async () => {
     if (response.data.success) {
       currentProject.value = response.data.data
       
-      // 从characterMapping构建角色数组
-      const characterMapping = currentProject.value.characterMapping || {}
-      characters.value = Object.entries(characterMapping).map(([name, voiceId]) => ({
-        name,
-        voice_id: voiceId ? parseInt(voiceId) : null,
-        line_count: currentProject.value.segments?.filter(s => 
-          s.detectedSpeaker === name || 
-          (s.text_content || s.textContent || '').includes(name)
-        ).length || 0
-      }))
-      
       audioFiles.value = response.data.data.audio_files || []
-      
-      // 加载可用声音列表
-      await loadAvailableVoices()
       
       // 如果项目正在处理中，开始轮询进度
       if (currentProject.value.status === 'processing') {
@@ -625,215 +412,15 @@ const loadProject = async () => {
   }
 }
 
-// 加载可用声音列表
-const loadAvailableVoices = async () => {
-  try {
-    loadingVoices.value = true
-    const { charactersAPI } = await import('@/api')
-    const response = await charactersAPI.getCharacters()
-    
-    if (response.data.success) {
-      availableVoices.value = response.data.data.filter(voice => voice.status === 'active')
-    }
-  } catch (error) {
-    console.error('加载声音列表失败:', error)
-    message.error('加载声音列表失败')
-  } finally {
-    loadingVoices.value = false
-  }
-}
 
-// 提取角色
-const extractCharacters = async () => {
-  if (!currentProject.value) return
-  
-  extracting.value = true
-  try {
-    // 从项目的segments中提取角色信息
-    const segments = currentProject.value.segments || []
-    if (!segments.length) {
-      message.warning('项目没有文本段落，无法提取角色')
-      return
-    }
-    
-    // 简单的角色提取逻辑：从段落文本中提取常见的对话格式
-      const characterSet = new Set()
-      
-      segments.forEach(segment => {
-      const text = segment.text_content || segment.text || ''
-      
-      // 匹配对话格式：「角色名:对话内容」或「角色名说：」
-      const dialoguePatterns = [
-        /「([^」:：]+)[：:]/g,        // 「角色名：」格式
-        /([^」「\s]+)说[：:]/g,       // 角色名说：格式
-        /"([^"]+)"[说道]/g,          // "角色名"说道格式
-        /([^，。！？\s]{2,4})[：:]/g  // 简单的名字:格式
-      ]
-      
-      dialoguePatterns.forEach(pattern => {
-        let match
-        while ((match = pattern.exec(text)) !== null) {
-          const name = match[1].trim()
-          if (name.length >= 2 && name.length <= 6) {
-            characterSet.add(name)
-          }
-        }
-      })
-    })
-    
-    // 转换为角色数组
-    const extractedCharacters = Array.from(characterSet).map(name => ({
-      name,
-      voice_id: null,
-      line_count: segments.filter(s => (s.text_content || s.text || '').includes(name)).length
-    }))
-    
-    if (extractedCharacters.length > 0) {
-      characters.value = extractedCharacters
-      message.success(`成功提取到 ${extractedCharacters.length} 个角色`)
-    } else {
-              // 如果没有提取到角色，创建一个默认的温柔女声角色
-        characters.value = [{
-          name: '温柔女声',
-        voice_id: null,
-        line_count: segments.length
-      }]
-              message.info('未检测到明显的角色对话，已创建默认温柔女声角色')
-    }
-    
-  } catch (error) {
-    console.error('角色提取失败:', error)
-    message.error('角色提取失败')
-  } finally {
-    extracting.value = false
-  }
-}
 
-// 自动分配声音
-const autoAssignVoices = async () => {
-  if (!characters.value.length || !availableVoices.value.length) {
-    message.warning('没有可分配的角色或声音')
-    return
-  }
-  
-  autoAssigning.value = true
-  try {
-    // 简单的自动分配逻辑：根据角色名称特征分配声音类型
-    characters.value.forEach(character => {
-      if (!character.voice_id) {
-        // 根据角色名称判断性别
-        const name = character.name
-        let preferredType = 'female' // 默认女声
-        
-        // 简单的性别判断逻辑
-        const maleKeywords = ['先生', '公子', '少爷', '大哥', '老板', '师父', '爷爷', '父亲', '爸爸']
-        const childKeywords = ['小', '儿', '宝', '娃', '童']
-        
-        if (maleKeywords.some(keyword => name.includes(keyword))) {
-          preferredType = 'male'
-        } else if (childKeywords.some(keyword => name.includes(keyword))) {
-          preferredType = 'child'
-        }
-        
-        // 找到匹配类型的声音
-        const matchingVoice = availableVoices.value.find(voice => voice.type === preferredType)
-        if (matchingVoice) {
-          character.voice_id = matchingVoice.id
-    } else {
-          // 如果没有匹配的，使用第一个可用声音
-          character.voice_id = availableVoices.value[0]?.id
-    }
-      }
-    })
-    
-    // 更新角色映射
-    await updateCharacterMapping()
-    message.success('自动分配完成')
-  } catch (error) {
-    console.error('自动分配失败:', error)
-    message.error('自动分配失败')
-  } finally {
-    autoAssigning.value = false
-  }
-}
 
-// 更新角色映射
-const updateCharacterMapping = async () => {
-  if (!currentProject.value) return
-  
-  try {
-    // 构建角色映射对象
-    const characterMapping = {}
-    characters.value.forEach(character => {
-      if (character.voice_id) {
-        characterMapping[character.name] = character.voice_id.toString()
-      }
-    })
-    
-    console.log('[DEBUG] 发送角色映射更新:', characterMapping)
-    
-    // 更新项目的角色映射，传递完整的项目信息
-    const response = await readerAPI.updateProject(currentProject.value.id, {
-      name: currentProject.value.name,  // 必须传递项目名称
-      description: currentProject.value.description || '',  // 必须传递描述
-      character_mapping: characterMapping
-    })
-    
-    if (response.data.success) {
-      console.log('角色映射更新成功:', characterMapping)
-      // 更新本地项目数据
-      currentProject.value.characterMapping = characterMapping
-    }
-  } catch (error) {
-    console.error('更新角色映射失败:', error)
-    message.error('更新角色映射失败: ' + (error.response?.data?.detail || error.message))
-  }
-}
 
-// 获取声音类型文本
-const getVoiceTypeText = (type) => {
-  const typeMap = {
-    'male': '男声',
-    'female': '女声', 
-    'child': '童声'
-  }
-  return typeMap[type] || '未知'
-}
 
-// 播放声音预览
-const playVoicePreview = async (character) => {
-  if (!character.voice_id) {
-    message.warning('请先为角色分配声音')
-    return
-  }
-  
-  try {
-    const voice = availableVoices.value.find(v => v.id === character.voice_id)
-    if (voice && (voice.sampleAudioUrl || voice.referenceAudioUrl)) {
-      const audioUrl = voice.sampleAudioUrl || voice.referenceAudioUrl
-      const audio = new Audio(audioUrl)
-        await audio.play()
-      message.success(`正在播放：${voice.name}`)
-    } else {
-      message.warning('该声音暂无可播放的音频样本')
-    }
-  } catch (error) {
-    console.error('播放声音预览失败:', error)
-    message.error('播放失败')
-  }
-}
 
-// 保存角色配置
-const saveCharacterConfig = async () => {
-  try {
-    await updateCharacterMapping()
-    showCharacterConfig.value = false
-    message.success('角色配置保存成功')
-  } catch (error) {
-    console.error('保存角色配置失败:', error)
-    message.error('保存角色配置失败')
-  }
-}
+
+
+
 
 const startSynthesis = async () => {
   try {
@@ -1035,10 +622,7 @@ const formatTime = (seconds) => {
   return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
 }
 
-const getCharacterCount = (project) => {
-  if (!project) return 0
-  return project.characters?.length || 0
-}
+
 
 const getSegmentCount = (project) => {
   if (!project) return 0
@@ -1076,12 +660,7 @@ const getStepText = (step) => {
   return texts[currentStatus] || '等待中'
 }
 
-// 新增的方法 - 获取声音名称
-const getVoiceName = (voiceId) => {
-  if (!voiceId || !availableVoices.value.length) return null
-  const voice = availableVoices.value.find(v => v.id === parseInt(voiceId))
-  return voice ? voice.name : null
-}
+
 
 // 获取处理时间
 const getProcessingTime = () => {
@@ -1421,95 +1000,7 @@ window.addEventListener('beforeunload', () => {
   background: linear-gradient(transparent, white);
 }
 
-/* 角色部分 */
-.characters-section {
-  margin-bottom: 24px;
-}
 
-.characters-card {
-  background: white;
-  padding: 24px;
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-}
-
-.characters-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-}
-
-.characters-header h3 {
-  margin: 0;
-  color: #1f2937;
-}
-
-.character-count {
-  font-size: 14px;
-  color: #6b7280;
-}
-
-.character-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.characters-list {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.character-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  transition: all 0.2s ease;
-}
-
-.character-item:hover {
-  border-color: #06b6d4;
-  box-shadow: 0 2px 8px rgba(6, 182, 212, 0.1);
-}
-
-.character-info {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.character-avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 8px;
-  background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  font-weight: 600;
-}
-
-.character-name {
-  font-weight: 600;
-  color: #1f2937;
-}
-
-.character-lines {
-  font-size: 12px;
-  color: #6b7280;
-}
-
-.voice-assignment {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
 
 /* 结果部分 */
 .results-section {
@@ -1684,7 +1175,6 @@ window.addEventListener('beforeunload', () => {
 }
 
 /* 空状态部分 */
-.empty-characters-section,
 .empty-results-section {
   margin-bottom: 24px;
 }
@@ -1718,156 +1208,6 @@ window.addEventListener('beforeunload', () => {
   font-size: 14px;
 }
 
-/* 角色配置弹窗样式 */
-.character-config-content {
-  max-height: 600px;
-  overflow-y: auto;
-}
-
-.config-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-}
-
-.config-stats {
-  display: flex;
-  gap: 24px;
-}
-
-.stat-item {
-  text-align: center;
-}
-
-.stat-label {
-  display: block;
-  font-size: 12px;
-  color: #6b7280;
-  margin-bottom: 4px;
-}
-
-.stat-value {
-  display: block;
-  font-size: 20px;
-  font-weight: 600;
-  color: #1f2937;
-}
-
-.config-actions {
-  display: flex;
-  gap: 12px;
-}
-
-.character-config-list {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.config-character-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  transition: all 0.2s ease;
-}
-
-.config-character-item:hover {
-  border-color: #06b6d4;
-  box-shadow: 0 2px 8px rgba(6, 182, 212, 0.1);
-}
-
-.config-character-info {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.config-character-avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 8px;
-  background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  font-weight: 600;
-}
-
-.config-character-name {
-  font-weight: 600;
-  color: #1f2937;
-  margin-bottom: 4px;
-}
-
-.config-character-meta {
-  font-size: 12px;
-  color: #6b7280;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.configured-badge {
-  background: #dcfce7;
-  color: #166534;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-size: 10px;
-}
-
-.unconfigured-badge {
-  background: #fef3cd;
-  color: #92400e;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-size: 10px;
-}
-
-.config-voice-selection {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.voice-option {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  width: 100%;
-}
-
-.voice-option-name {
-  font-weight: 500;
-}
-
-.voice-option-type {
-  font-size: 12px;
-  color: #6b7280;
-  background: #f3f4f6;
-  padding: 2px 6px;
-  border-radius: 4px;
-}
-
-.no-characters {
-  text-align: center;
-  padding: 48px 24px;
-}
-
-.no-characters-content h3 {
-  margin: 16px 0 8px 0;
-  color: #1f2937;
-}
-
-.no-characters-content p {
-  margin: 0 0 24px 0;
-  color: #6b7280;
-}
-
 /* 响应式设计 */
 @media (max-width: 768px) {
   .page-header {
@@ -1898,30 +1238,6 @@ window.addEventListener('beforeunload', () => {
     right: 16px;
     transform: none;
     min-width: auto;
-  }
-
-  .character-item,
-  .config-character-item {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 12px;
-  }
-  
-  .voice-assignment,
-  .config-voice-selection {
-    width: 100%;
-    justify-content: flex-start;
-  }
-  
-  .config-header {
-    flex-direction: column;
-    gap: 16px;
-    align-items: flex-start;
-  }
-  
-  .config-stats {
-    width: 100%;
-    justify-content: space-around;
   }
 }
 
@@ -2008,10 +1324,7 @@ window.addEventListener('beforeunload', () => {
   border: 1px solid #e5e7eb;
 }
 
-.character-name {
-  font-weight: 500;
-  color: #1f2937;
-}
+
 
 .voice-name {
   font-size: 14px;

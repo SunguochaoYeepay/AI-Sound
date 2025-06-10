@@ -111,7 +111,7 @@
               <div class="action-buttons">
                 <!-- 开始合成按钮 - 只在未开始时显示 -->
                 <a-button
-                  v-if="project.status === 'pending' || project.status === 'failed'"
+                  v-if="project.status === 'pending' || project.status === 'failed' || project.status === 'configured'"
                   type="primary"
                   size="large"
                   block
@@ -329,7 +329,7 @@ const progressPercent = computed(() => {
 const audioPreviewUrl = computed(() => {
   if (!project.value?.final_audio_path) return null
   // 构建音频预览URL
-  return `/api/v1/novel-reader/projects/${project.value.id}/download-audio`
+  return `/api/v1/novel-reader/projects/${project.value.id}/download`
 })
 
 const allCharactersConfigured = computed(() => {
@@ -776,6 +776,44 @@ const downloadAudio = async () => {
   }
 }
 
+// 重新合成
+const restartSynthesis = async () => {
+  if (!project.value) return
+  
+  synthesisStarting.value = true
+  try {
+    const response = await readerAPI.startGeneration(project.value.id, {
+      parallel_tasks: synthesisConfig.parallelTasks
+    })
+    
+    if (response.data.success) {
+      message.success('重新合成任务已启动')
+      project.value.status = 'processing'
+      startProgressPolling()
+    }
+  } catch (error) {
+    console.error('重新启动合成失败:', error)
+    message.error('重新启动合成失败')
+  } finally {
+    synthesisStarting.value = false
+  }
+}
+
+// 查看项目详情
+const viewProjectDetail = () => {
+  router.push(`/novel-reader/detail/${project.value.id}`)
+}
+
+// 音频预览相关处理
+const handleAudioLoadStart = () => {
+  console.log('音频开始加载')
+}
+
+const handleAudioError = (error) => {
+  console.error('音频加载失败:', error)
+  message.error('音频预览加载失败，请尝试下载完整音频')
+}
+
 // 检查TTS服务状态
 const checkTTSService = async () => {
   checkingService.value = true
@@ -1020,5 +1058,81 @@ window.addEventListener('beforeunload', () => {
 .error-content {
   text-align: center;
   padding: 60px 0;
+}
+
+/* 合成完成区域样式 */
+.completion-section {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.audio-preview {
+  margin-bottom: 20px;
+  padding: 16px;
+  background: #f8fafc;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+
+.preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.preview-header h4 {
+  margin: 0;
+  color: #1f2937;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.audio-info {
+  font-size: 12px;
+  color: #6b7280;
+  background: #e2e8f0;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.audio-player-container {
+  margin-top: 12px;
+}
+
+.audio-player-container audio {
+  border-radius: 6px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.download-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .synthesis-center-container {
+    padding: 16px;
+  }
+  
+  .page-header {
+    flex-direction: column;
+    gap: 16px;
+    text-align: center;
+  }
+  
+  .progress-stats {
+    flex-direction: column;
+    gap: 12px;
+  }
+  
+  .preview-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
 }
 </style>
