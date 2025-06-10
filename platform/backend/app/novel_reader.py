@@ -16,10 +16,10 @@ import asyncio
 import re
 from datetime import datetime, timedelta
 
-from database import get_db
+from app.database import get_db
 from .models import NovelProject, TextSegment, VoiceProfile, Book, SystemLog, AudioFile
-from tts_client import MegaTTS3Client, TTSRequest, get_tts_client
-from utils import log_system_event, update_usage_stats, save_upload_file
+from app.tts_client import MegaTTS3Client, TTSRequest, get_tts_client
+from app.utils import log_system_event, update_usage_stats, save_upload_file
 # from tts_memory_optimizer import synthesis_context, optimize_tts_memory  # 暂时禁用以避免torch依赖
 
 logger = logging.getLogger(__name__)
@@ -61,7 +61,6 @@ async def create_project(
         
         if book_id:
             # 方式1：基于书籍
-            from .models import Book
             book = db.query(Book).filter(Book.id == book_id).first()
             if not book:
                 raise HTTPException(status_code=404, detail="指定的书籍不存在")
@@ -75,6 +74,8 @@ async def create_project(
             # 方式2：直接输入文本
             text_content = content.strip()
             actual_book_id = None
+        else:
+            raise HTTPException(status_code=400, detail="必须提供书籍ID或文本内容")
 
             
         # 解析初始角色映射
@@ -135,6 +136,14 @@ async def create_project(
         # 记录创建日志
         try:
             logger.info(f"[DEBUG] 开始记录创建日志: {project.id}")
+            
+            # 安全获取book信息
+            book_title = "直接输入文本"
+            if book_id:
+                book = db.query(Book).filter(Book.id == book_id).first()
+                if book:
+                    book_title = book.title
+            
             await log_system_event(
                 db=db,
                 level="info",
@@ -143,8 +152,8 @@ async def create_project(
                 details={
                     "project_id": project.id,
                     "book_id": book_id,
-                    "book_title": book.title,
-                    "text_length": len(book.content),
+                    "book_title": book_title,
+                    "text_length": len(text_content),
                     "initial_character_count": len(initial_chars),
                     "segments_count": segments_count
                 }
@@ -268,7 +277,7 @@ async def get_project_detail(
         book_info = None
         book_content_length = 0
         if hasattr(project, 'book_id') and project.book_id:
-            from models import Book
+            from app.models import Book
             book = db.query(Book).filter(Book.id == project.book_id).first()
             if book:
                 book_info = {
@@ -460,7 +469,7 @@ async def delete_project(
                 files_to_delete.append(segment.audio_file_path)
         
         # 删除AudioFile表中的关联记录
-        from models import AudioFile
+        from app.models import AudioFile
         audio_files = db.query(AudioFile).filter(AudioFile.project_id == project_id).all()
         for audio_file in audio_files:
             if audio_file.file_path and os.path.exists(audio_file.file_path):
@@ -1013,9 +1022,9 @@ async def segment_text_by_strategy_no_commit(
         for segment_data in segments:
             segment = TextSegment(
                 project_id=project_id,
-                segment_order=segment_data["order"],
-                text_content=segment_data["text"],
-                detected_speaker=segment_data["speaker"],
+                paragraph_index=segment_data["order"],
+                content=segment_data["text"],
+                speaker=segment_data["speaker"],
                 status='pending'
             )
             db.add(segment)
@@ -1132,9 +1141,9 @@ async def segment_text_by_strategy(
         for segment_data in segments:
             segment = TextSegment(
                 project_id=project_id,
-                segment_order=segment_data["order"],
-                text_content=segment_data["text"],
-                detected_speaker=segment_data["speaker"],
+                paragraph_index=segment_data["order"],
+                content=segment_data["text"],
+                speaker=segment_data["speaker"],
                 status='pending'
             )
             db.add(segment)
@@ -1347,16 +1356,19 @@ async def process_audio_generation(project_id: int, parallel_tasks: int = 1):
 async def process_single_segment_sequential(segment: TextSegment, tts_client, db: Session):
     """顺序处理单个段落 - 无并发，专用于避免显存不足"""
     try:
-        logger.info(f"[SEGMENT] 开始顺序处理段落 {segment.id}: {segment.text_content[:30]}...")
+        logger.info(f"[SEGMENT] 开始顺序处理段落 {segment.id}: {segment.content[:30]}...")
         
         # 更新段落状态
         segment.status = 'processing'
         db.commit()
         
-        # 获取声音档案
-        voice = db.query(VoiceProfile).filter(VoiceProfile.id == segment.voice_profile_id).first()
+        # 获取声音档案，需要根据voice_id查找
+        voice = None
+        if hasattr(segment, 'voice_id') and segment.voice_id:
+            voice = db.query(VoiceProfile).filter(VoiceProfile.name == segment.voice_id).first()
+        
         if not voice:
-            logger.error(f"[SEGMENT] 段落 {segment.id} 声音档案不存在: {segment.voice_profile_id}")
+            logger.error(f"[SEGMENT] 段落 {segment.id} 声音档案不存在: {getattr(segment, 'voice_id', None)}")
             segment.status = 'failed'
             segment.error_message = "声音档案不存在"
             db.commit()
@@ -1381,7 +1393,7 @@ async def process_single_segment_sequential(segment: TextSegment, tts_client, db
         # 构建TTS请求
         start_time = time.time()
         tts_request = TTSRequest(
-            text=segment.text_content,
+            text=segment.content,
             reference_audio_path=voice.reference_audio_path,
             output_audio_path=audio_path,
             time_step=20,  # 使用稳定的参数
@@ -1406,7 +1418,7 @@ async def process_single_segment_sequential(segment: TextSegment, tts_client, db
                 
                 # 获取音频时长
                 try:
-                    from utils import get_audio_duration
+                    from app.utils import get_audio_duration
                     duration = get_audio_duration(audio_path)
                 except:
                     duration = 0.0
@@ -1529,7 +1541,7 @@ async def process_single_segment(segment: TextSegment, tts_client, semaphore, db
                     
                     # 获取音频时长
                     try:
-                        from utils import get_audio_duration
+                        from app.utils import get_audio_duration
                         duration = get_audio_duration(audio_path)
                     except:
                         duration = 0.0
