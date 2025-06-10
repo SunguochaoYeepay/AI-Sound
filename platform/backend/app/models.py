@@ -125,6 +125,9 @@ class NovelProject(Base):
     # 关联书籍
     book_id = Column(Integer, ForeignKey("books.id"), nullable=False, index=True)
     
+    # 配置信息 - 修复缺失字段
+    config = Column(Text, default='{}')  # JSON格式配置
+    
     # 预设角色（可选）
     initial_characters = Column(Text, default='[]')  # JSON格式的初始角色列表
     
@@ -159,6 +162,7 @@ class NovelProject(Base):
             "description": self.description,
             "bookId": self.book_id,
             "book": self.book.to_dict() if self.book else None,
+            "config": json.loads(self.config) if self.config else {},
             "initialCharacters": json.loads(self.initial_characters) if self.initial_characters else [],
             "status": self.status,
             "totalSegments": self.total_segments,
@@ -253,6 +257,7 @@ class TextSegment(Base):
     
     # 时间戳
     created_at = Column(DateTime, default=datetime.utcnow)
+    completed_at = Column(DateTime)
     
     # 关系
     project = relationship("NovelProject", back_populates="segments")
@@ -324,9 +329,9 @@ class AudioFile(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # 关系
-    project = relationship("NovelProject", backref="audio_files")
-    segment = relationship("TextSegment", backref="audio_files")
-    voice_profile = relationship("VoiceProfile", backref="audio_files")
+    project = relationship("NovelProject", foreign_keys=[project_id])
+    segment = relationship("TextSegment", foreign_keys=[segment_id])
+    voice_profile = relationship("VoiceProfile", foreign_keys=[voice_profile_id])
     
     # 索引
     __table_args__ = (
@@ -337,35 +342,84 @@ class AudioFile(Base):
     
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典格式"""
-        return {
-            "id": self.id,
-            "filename": self.filename,
-            "originalName": self.original_name or self.filename,
-            "filePath": self.file_path,
-            "audioUrl": f"/audio/{self.filename}",
-            "fileSize": self.file_size,
-            "fileSizeMB": round(self.file_size / 1024 / 1024, 2) if self.file_size else 0,
-            "duration": self.duration,
-            "durationFormatted": self.format_duration(),
-            "sampleRate": self.sample_rate,
-            "channels": self.channels,
-            "projectId": self.project_id,
-            "projectName": self.project.name if self.project else None,
-            "segmentId": self.segment_id,
-            "segmentOrder": self.segment.segment_order if self.segment else None,
-            "voiceProfileId": self.voice_profile_id,
-            "voiceProfileName": self.voice_profile.name if self.voice_profile else None,
-            "textContent": self.text_content,
-            "audioType": self.audio_type,
-            "processingTime": self.processing_time,
-            "modelUsed": self.model_used,
-            "parameters": json.loads(self.parameters) if self.parameters else {},
-            "status": self.status,
-            "tags": json.loads(self.tags) if self.tags else [],
-            "isFavorite": self.is_favorite,
-            "createdAt": self.created_at.isoformat() if self.created_at else None,
-            "updatedAt": self.updated_at.isoformat() if self.updated_at else None
-        }
+        try:
+            # 安全地获取关联对象的属性
+            project_name = None
+            if hasattr(self, 'project') and self.project:
+                project_name = self.project.name
+            
+            segment_order = None
+            if hasattr(self, 'segment') and self.segment:
+                segment_order = self.segment.segment_order
+            
+            voice_profile_name = None
+            if hasattr(self, 'voice_profile') and self.voice_profile:
+                voice_profile_name = self.voice_profile.name
+            
+            return {
+                "id": self.id,
+                "filename": self.filename,
+                "originalName": self.original_name or self.filename,
+                "filePath": self.file_path,
+                "audioUrl": f"/audio/{self.filename}",
+                "fileSize": self.file_size,
+                "fileSizeMB": round(self.file_size / 1024 / 1024, 2) if self.file_size else 0,
+                "duration": self.duration,
+                "durationFormatted": self.format_duration(),
+                "sampleRate": self.sample_rate,
+                "channels": self.channels,
+                "projectId": self.project_id,
+                "projectName": project_name,
+                "segmentId": self.segment_id,
+                "segmentOrder": segment_order,
+                "voiceProfileId": self.voice_profile_id,
+                "voiceProfileName": voice_profile_name,
+                "textContent": self.text_content,
+                "audioType": self.audio_type,
+                "processingTime": self.processing_time,
+                "modelUsed": self.model_used,
+                "parameters": json.loads(self.parameters) if self.parameters else {},
+                "status": self.status,
+                "tags": json.loads(self.tags) if self.tags else [],
+                "isFavorite": self.is_favorite,
+                "createdAt": self.created_at.isoformat() if self.created_at else None,
+                "updatedAt": self.updated_at.isoformat() if self.updated_at else None
+            }
+        except Exception as e:
+            # 如果出现任何错误，返回基本信息并记录错误
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"AudioFile.to_dict() 错误: {str(e)}")
+            
+            return {
+                "id": self.id,
+                "filename": self.filename,
+                "originalName": self.original_name or self.filename,
+                "filePath": self.file_path,
+                "audioUrl": f"/audio/{self.filename}",
+                "fileSize": self.file_size,
+                "fileSizeMB": round(self.file_size / 1024 / 1024, 2) if self.file_size else 0,
+                "duration": self.duration,
+                "durationFormatted": self.format_duration(),
+                "sampleRate": self.sample_rate,
+                "channels": self.channels,
+                "projectId": self.project_id,
+                "projectName": None,
+                "segmentId": self.segment_id,
+                "segmentOrder": None,
+                "voiceProfileId": self.voice_profile_id,
+                "voiceProfileName": None,
+                "textContent": self.text_content,
+                "audioType": self.audio_type,
+                "processingTime": self.processing_time,
+                "modelUsed": self.model_used,
+                "parameters": {},
+                "status": self.status,
+                "tags": [],
+                "isFavorite": self.is_favorite,
+                "createdAt": self.created_at.isoformat() if self.created_at else None,
+                "updatedAt": self.updated_at.isoformat() if self.updated_at else None
+            }
     
     def format_duration(self) -> str:
         """格式化时长显示"""
@@ -493,7 +547,14 @@ class Book(Base):
     word_count = Column(Integer, default=0)
     chapter_count = Column(Integer, default=0)
     
-    # 文件信息
+    # 文件信息 - 修复缺失字段
+    file_path = Column(String(500))  # 文件路径
+    file_size = Column(Integer, default=0)  # 文件大小
+    original_filename = Column(String(200))  # 原始文件名
+    total_chapters = Column(Integer, default=0)  # 总章节数
+    total_words = Column(Integer, default=0)  # 总字数
+    structure_detected = Column(Boolean, default=False)  # 是否检测到结构
+    chapter_detection_config = Column(Text, default='{}')  # 章节检测配置
     source_file_path = Column(String(500))  # 原始文件路径
     source_file_name = Column(String(200))  # 原始文件名
     
@@ -523,6 +584,13 @@ class Book(Base):
             "tags": json.loads(self.tags) if self.tags else [],
             "wordCount": self.word_count,
             "chapterCount": self.chapter_count,
+            "filePath": self.file_path,
+            "fileSize": self.file_size,
+            "originalFilename": self.original_filename,
+            "totalChapters": self.total_chapters,
+            "totalWords": self.total_words,
+            "structureDetected": self.structure_detected,
+            "chapterDetectionConfig": json.loads(self.chapter_detection_config) if self.chapter_detection_config else {},
             "sourceFileName": self.source_file_name,
             "createdAt": self.created_at.isoformat() if self.created_at else None,
             "updatedAt": self.updated_at.isoformat() if self.updated_at else None

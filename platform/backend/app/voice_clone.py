@@ -16,18 +16,18 @@ import logging
 from datetime import datetime
 import shutil
 
-from database import get_db
-from .models import VoiceProfile, SystemLog, UsageStats, AudioFile
-from tts_client import MegaTTS3Client, TTSRequest, get_tts_client
-from utils import save_upload_file, log_system_event, update_usage_stats
+from app.database import get_db
+from app.models import VoiceProfile, SystemLog, UsageStats, AudioFile
+from app.tts_client import MegaTTS3Client, TTSRequest, get_tts_client
+from app.utils import save_upload_file, log_system_event, update_usage_stats
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/voice-clone", tags=["声音克隆"])
 
 # 音频文件存储路径
-AUDIO_DIR = "/app/data/audio"
-UPLOAD_DIR = "/app/data/uploads"
-VOICE_PROFILES_DIR = "/app/data/voice_profiles"
+AUDIO_DIR = "data/audio"
+UPLOAD_DIR = "data/uploads"
+VOICE_PROFILES_DIR = "data/voice_profiles"
 
 @router.post("/upload-reference")
 async def upload_reference_audio(

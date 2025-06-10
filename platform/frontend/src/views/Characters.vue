@@ -812,17 +812,21 @@ const saveVoiceToBackend = async (voiceData) => {
 const deleteVoiceFromBackend = async (voiceId) => {
   try {
     const response = await charactersAPI.deleteCharacter(voiceId)
-    if (response.success) {
+    // 修正：axios响应的实际数据在response.data中
+    const responseData = response.data
+    if (responseData && responseData.success) {
       await loadVoiceLibrary() // 重新加载数据
       message.success('删除成功')
       return true
     } else {
-      message.error('删除失败：' + response.message)
+      const errorMsg = responseData?.message || '未知错误'
+      message.error('删除失败：' + errorMsg)
       return false
     }
   } catch (error) {
     console.error('删除声音错误:', error)
-    message.error('删除失败：' + error.message)
+    const errorMsg = error.response?.data?.detail || error.response?.data?.message || error.message || '网络连接错误'
+    message.error('删除失败：' + errorMsg)
     return false
   }
 }

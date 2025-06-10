@@ -19,10 +19,10 @@ from datetime import datetime, timedelta
 import zipfile
 import csv
 
-from .database import get_db, engine
-from .models import SystemLog, UsageStats, VoiceProfile, NovelProject, TextSegment
-from tts_client import MegaTTS3Client, get_tts_client
-from utils import log_system_event, save_upload_file
+from app.database import get_db, engine
+from app.models import SystemLog, UsageStats, VoiceProfile, NovelProject, TextSegment
+from app.tts_client import MegaTTS3Client, get_tts_client
+from app.utils import log_system_event, save_upload_file
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/monitor", tags=["系统监控"])

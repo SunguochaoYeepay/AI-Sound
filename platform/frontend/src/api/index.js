@@ -273,16 +273,16 @@ export const readerAPI = {
     responseType: 'blob'
   }),
   
-  // 兼容旧API
-  uploadText: (formData) => apiClient.post('/reader/upload', formData, {
+  // 兼容旧API - 已废弃，建议使用 readerAPI 中的对应方法
+  uploadText: (formData) => apiClient.post('/novel-reader/upload', formData, {
     headers: {
       'Content-Type': 'multipart/form-data'
     }
   }),
   
-  startReading: (data) => apiClient.post('/reader/start', data),
+  startReading: (data) => apiClient.post('/novel-reader/start', data),
   
-  getStatus: (taskId) => apiClient.get(`/reader/status/${taskId}`)
+  getStatus: (taskId) => apiClient.get(`/novel-reader/status/${taskId}`)
 }
 
 // 书籍管理API
@@ -377,6 +377,8 @@ export const audioAPI = {
     if (params.page_size) queryParams.append('page_size', params.page_size)
     if (params.search) queryParams.append('search', params.search)
     if (params.character) queryParams.append('character', params.character)
+    if (params.projectId) queryParams.append('project_id', params.projectId)
+    if (params.audioType) queryParams.append('audio_type', params.audioType)
     
     const queryString = queryParams.toString()
     const url = queryString ? `/audio-library/files?${queryString}` : '/audio-library/files'
@@ -385,16 +387,42 @@ export const audioAPI = {
   },
   
   // 获取统计信息
-  getStats: () => apiClient.get('/audio-library/stats')
+  getStats: () => apiClient.get('/audio-library/stats'),
+  
+  // 同步音频文件
+  syncFiles: () => apiClient.post('/audio-library/sync'),
+  
+  // 下载单个音频文件
+  downloadFile: (fileId) => apiClient.get(`/audio-library/download/${fileId}`, {
+    responseType: 'blob'
+  }),
+  
+  // 批量下载音频文件
+  batchDownload: (fileIds) => apiClient.post('/audio-library/batch-download', fileIds, {
+    responseType: 'blob'
+  }),
+  
+  // 删除单个音频文件
+  deleteFile: (fileId) => apiClient.delete(`/audio-library/files/${fileId}`),
+  
+  // 批量删除音频文件
+  batchDelete: (fileIds) => apiClient.post('/audio-library/batch-delete', fileIds),
+  
+  // 设置收藏状态
+  setFavorite: (fileId, isFavorite) => {
+    const formData = new FormData()
+    formData.append('is_favorite', isFavorite)
+    return apiClient.put(`/audio-library/files/${fileId}/favorite`, formData)
+  }
 }
 
 // 监控API
 export const monitorAPI = {
   // 获取系统状态
-  getSystemStatus: () => apiClient.get('/monitor/system'),
+  getSystemStatus: () => apiClient.get('/monitor/system-status'),
   
   // 获取服务状态
-  getServiceStatus: () => apiClient.get('/monitor/services')
+  getServiceStatus: () => apiClient.get('/monitor/service-health')
 }
 
 // 智能分析API (Mock)

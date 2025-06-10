@@ -241,7 +241,7 @@
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute, onBeforeRouteLeave } from 'vue-router'
 import { message } from 'ant-design-vue'
-import { readerAPI, charactersAPI, intelligentAnalysisAPI } from '@/api'
+import { readerAPI, charactersAPI, intelligentAnalysisAPI, systemAPI } from '@/api'
 import IntelligentAnalysisDisplay from '@/components/IntelligentAnalysisDisplay.vue'
 
 const router = useRouter()
@@ -576,72 +576,44 @@ const playVoicePreview = async (voiceId, sampleText) => {
       return
     }
 
-    // 简化的试听文本
-    const previewText = sampleText.slice(0, 30) || '你好，这是声音试听测试。'
-
-    // 发送请求到后端API，增加超时控制
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 90000) // 90秒超时
-
-    // 构建试听请求，使用后端API而不是直接调用TTS
-    const testFormData = new FormData()
-    testFormData.append('text', previewText)
-    testFormData.append('time_step', '15')
-    testFormData.append('p_weight', '1.0')
-    testFormData.append('t_weight', '1.0')
-
-    const response = await fetch(`/api/characters/${selectedVoice.id}/test`, {
-      method: 'POST',
-      body: testFormData,
-      signal: controller.signal
+    // 使用统一的API调用替代直接fetch
+    const response = await charactersAPI.testVoiceSynthesis(selectedVoice.id, {
+      text: '这是声音预览测试',
+      time_step: 20,
+      p_weight: 1.0,
+      t_weight: 1.0
     })
 
-    clearTimeout(timeoutId)
-
-    if (response.ok) {
-      // 后端API返回JSON格式，包含audioUrl
-      const result = await response.json()
+    if (response.data && response.data.success && response.data.audioUrl) {
+      // 构建完整的音频URL
+      const audioUrl = response.data.audioUrl.startsWith('http') ? response.data.audioUrl : response.data.audioUrl
       
-      if (result.success && result.audioUrl) {
-        // 构建完整的音频URL
-        const audioUrl = result.audioUrl.startsWith('http') ? result.audioUrl : result.audioUrl
-        
-        // 创建音频元素
-        const audio = new Audio(audioUrl)
-        currentAudio.value = audio
-        currentPlayingVoice.value = voiceId
+      // 创建音频元素
+      const audio = new Audio(audioUrl)
+      currentAudio.value = audio
+      currentPlayingVoice.value = voiceId
 
-        // 播放事件处理
-        audio.addEventListener('loadstart', () => {
-          message.success('开始播放试听')
-        })
+      // 播放事件处理
+      audio.addEventListener('loadstart', () => {
+        message.success('开始播放试听')
+      })
 
-        audio.addEventListener('ended', () => {
-          currentAudio.value = null
-          currentPlayingVoice.value = null
-        })
+      audio.addEventListener('ended', () => {
+        currentAudio.value = null
+        currentPlayingVoice.value = null
+      })
 
-        audio.addEventListener('error', (e) => {
-          console.error('音频播放错误:', e)
-          currentAudio.value = null
-          currentPlayingVoice.value = null
-          message.error('音频播放失败')
-        })
+      audio.addEventListener('error', (e) => {
+        console.error('音频播放错误:', e)
+        currentAudio.value = null
+        currentPlayingVoice.value = null
+        message.error('音频播放失败')
+      })
 
-        // 开始播放
-        await audio.play()
-      } else {
-        throw new Error(result.message || '后端API返回错误')
-      }
+      // 开始播放
+      await audio.play()
     } else {
-      const errorText = await response.text()
-      console.error('后端API错误:', errorText)
-      
-      if (response.status === 500) {
-        throw new Error('后端服务内部错误，可能是TTS服务异常')
-      } else {
-        throw new Error(`试听请求失败: ${response.status}`)
-      }
+      throw new Error(response.data?.message || '后端API返回错误')
     }
     
   } catch (error) {
@@ -733,26 +705,24 @@ const downloadAudio = async () => {
 const checkTTSService = async () => {
   checkingService.value = true
   try {
-    const response = await fetch('/api/v1/tts/health', {
-      method: 'GET',
-      timeout: 10000
-    })
+    // 使用统一的健康检查API
+    const response = await systemAPI.healthCheck()
     
-    if (response.ok) {
-      const data = await response.json()
-      if (data.model_loaded) {
+    if (response.data) {
+      const data = response.data
+      if (data.services?.tts_client?.status === 'healthy') {
         message.success('TTS服务正常运行中')
       } else {
-        message.warning('TTS服务已启动但模型未加载')
+        message.warning('TTS服务已启动但状态异常')
       }
     } else {
-      throw new Error(`服务响应错误: ${response.status}`)
+      throw new Error('健康检查返回数据异常')
     }
   } catch (error) {
     console.error('TTS服务检查失败:', error)
     
-    if (error.message.includes('fetch') || error.message.includes('Failed to fetch')) {
-      message.error('无法连接到TTS服务，请检查服务是否启动 (端口:7929)')
+    if (error.message.includes('Network')) {
+      message.error('无法连接到TTS服务，请检查服务是否启动')
     } else {
       message.error('TTS服务异常: ' + error.message)
     }

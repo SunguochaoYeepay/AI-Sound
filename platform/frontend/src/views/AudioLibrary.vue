@@ -274,6 +274,7 @@ import {
   HeartOutlined,
   HeartFilled
 } from '@ant-design/icons-vue'
+import { audioAPI, readerAPI } from '@/api'
 import apiClient from '@/api/config'
 
 // 响应式数据
@@ -386,7 +387,7 @@ const refreshAudioList = async () => {
       }
     })
     
-    const response = await apiClient.get('/audio-library/files', { params })
+    const response = await audioAPI.getFiles(params)
     
     if (response.data.success) {
       audioList.value = response.data.data
@@ -405,7 +406,7 @@ const refreshAudioList = async () => {
 
 const loadStats = async () => {
   try {
-    const response = await apiClient.get('/audio-library/stats')
+    const response = await audioAPI.getStats()
     if (response.data.success) {
       stats.value = response.data.data
     }
@@ -416,7 +417,7 @@ const loadStats = async () => {
 
 const loadProjectList = async () => {
   try {
-    const response = await apiClient.get('/novel-reader/projects')
+    const response = await readerAPI.getProjects()
     if (response.data.success) {
       projectList.value = response.data.data
     }
@@ -428,7 +429,7 @@ const loadProjectList = async () => {
 const syncAudioFiles = async () => {
   syncing.value = true
   try {
-    const response = await apiClient.post('/audio-library/sync')
+    const response = await audioAPI.syncFiles()
     if (response.data.success) {
       message.success(`同步完成: 新增${response.data.synced_count}个文件`)
       await Promise.all([refreshAudioList(), loadStats()])
@@ -448,9 +449,7 @@ const playAudio = (record) => {
 
 const downloadSingle = async (record) => {
   try {
-    const response = await apiClient.get(`/audio-library/download/${record.id}`, {
-      responseType: 'blob'
-    })
+    const response = await audioAPI.downloadFile(record.id)
     
     // 创建下载链接
     const url = window.URL.createObjectURL(new Blob([response.data]))
@@ -477,10 +476,7 @@ const batchDownload = async () => {
   
   downloading.value = true
   try {
-    const response = await apiClient.post('/audio-library/batch-download', 
-      selectedRowKeys.value,
-      { responseType: 'blob' }
-    )
+    const response = await audioAPI.batchDownload(selectedRowKeys.value)
     
     // 创建下载链接
     const url = window.URL.createObjectURL(new Blob([response.data]))
@@ -511,7 +507,7 @@ const deleteSingle = (record) => {
     okType: 'danger',
     onOk: async () => {
       try {
-        const response = await apiClient.delete(`/audio-library/files/${record.id}`)
+        const response = await audioAPI.deleteFile(record.id)
         if (response.data.success) {
           message.success('删除成功')
           await Promise.all([refreshAudioList(), loadStats()])
@@ -539,9 +535,7 @@ const batchDelete = () => {
     onOk: async () => {
       deleting.value = true
       try {
-        const response = await apiClient.post('/audio-library/batch-delete', 
-          selectedRowKeys.value
-        )
+        const response = await audioAPI.batchDelete(selectedRowKeys.value)
         if (response.data.success) {
           message.success(`成功删除 ${response.data.deleted_count} 个文件`)
           selectedRowKeys.value = []
@@ -559,10 +553,7 @@ const batchDelete = () => {
 
 const toggleFavorite = async (record) => {
   try {
-    const formData = new FormData()
-    formData.append('is_favorite', !record.isFavorite)
-    
-    const response = await apiClient.put(`/audio-library/files/${record.id}/favorite`, formData)
+    const response = await audioAPI.setFavorite(record.id, !record.isFavorite)
     if (response.data.success) {
       record.isFavorite = !record.isFavorite
       message.success(record.isFavorite ? '已收藏' : '已取消收藏')

@@ -10,8 +10,8 @@ import json
 import logging
 from datetime import datetime
 
-from database import get_db
-from .models import NovelProject, VoiceProfile
+from app.database import get_db
+from app.models import NovelProject, VoiceProfile
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/intelligent-analysis", tags=["智能分析Mock"])

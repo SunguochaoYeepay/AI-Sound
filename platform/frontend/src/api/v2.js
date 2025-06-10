@@ -393,7 +393,7 @@ export const systemAPI = {
   // 健康检查
   async healthCheck() {
     return apiRequest(() => 
-      apiClient.get('/health'), false // 不显示错误消息
+      apiClient.get(`${API_V2_PREFIX}/health`), false // 不显示错误消息
     )
   },
   

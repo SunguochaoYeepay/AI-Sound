@@ -12,7 +12,10 @@ from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 import uvicorn
+import os
+import mimetypes
 
 # 应用组件导入
 from app.database import init_database, health_check as db_health_check
@@ -34,6 +37,21 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# 确保必要的目录在应用创建前就存在
+os.makedirs("data/audio", exist_ok=True)
+os.makedirs("data/uploads", exist_ok=True)
+os.makedirs("data/voice_profiles", exist_ok=True)
+os.makedirs("data/logs", exist_ok=True)
+os.makedirs("data/projects", exist_ok=True)
+os.makedirs("data/texts", exist_ok=True)
+os.makedirs("data/config", exist_ok=True)
+os.makedirs("data/backups", exist_ok=True)
+
+# 配置音频文件类型
+mimetypes.add_type('audio/wav', '.wav')
+mimetypes.add_type('audio/mpeg', '.mp3')
+mimetypes.add_type('audio/ogg', '.ogg')
 
 
 @asynccontextmanager
@@ -102,6 +120,11 @@ app.add_middleware(
 )
 
 app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+# 挂载静态文件目录
+app.mount("/audio", StaticFiles(directory="data/audio"), name="audio")
+app.mount("/uploads", StaticFiles(directory="data/uploads"), name="uploads")
+app.mount("/voice_profiles", StaticFiles(directory="data/voice_profiles"), name="voice_profiles")
 
 # 注册API路由
 app.include_router(api_router, prefix="/api")
@@ -229,6 +252,13 @@ async def health_check() -> Dict[str, Any]:
             "status": "unhealthy",
             "error": str(e)
         }
+
+
+# API健康检查端点
+@app.get("/api/health")
+async def api_health_check() -> Dict[str, Any]:
+    """前API健康检查"""
+    return await health_check()
 
 
 # 根端点
