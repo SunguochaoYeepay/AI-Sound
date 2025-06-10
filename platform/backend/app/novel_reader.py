@@ -293,7 +293,7 @@ async def get_project_detail(
         # 获取文本段落列表
         segments = db.query(TextSegment).filter(
             TextSegment.project_id == project_id
-        ).order_by(TextSegment.segment_order).all()
+        ).order_by(TextSegment.paragraph_index).all()
         
         project_data['segments'] = [segment.to_dict() for segment in segments]
         project_data['book'] = book_info  # 添加书籍信息
@@ -882,8 +882,8 @@ async def get_generation_progress(
         recent_list = [
             {
                 "id": segment.id,
-                "order": segment.segment_order,
-                "speaker": segment.detected_speaker,
+                "order": segment.paragraph_index,
+                "speaker": segment.speaker,
                 "processingTime": segment.processing_time
             }
             for segment in recent_completed
@@ -1258,12 +1258,12 @@ async def update_segments_voice_mapping(project_id: int, char_mapping: Dict[str,
         segments = db.query(TextSegment).filter(TextSegment.project_id == project_id).all()
         
         for segment in segments:
-            if segment.detected_speaker in char_mapping:
-                voice_id = char_mapping[segment.detected_speaker]
+            if segment.speaker in char_mapping:
+                voice_id = char_mapping[segment.speaker]
                 # 验证声音ID是否有效
                 voice = db.query(VoiceProfile).filter(VoiceProfile.id == voice_id).first()
                 if voice and voice.status == 'active':
-                    segment.voice_profile_id = voice_id
+                    segment.voice_id = voice_id
         
         db.commit()
         
@@ -1433,14 +1433,14 @@ async def process_single_segment_sequential(segment: TextSegment, tts_client, db
                 # 创建AudioFile记录
                 audio_file = AudioFile(
                     filename=os.path.basename(audio_path),
-                    original_name=f"段落{segment.segment_order}_{segment.detected_speaker or '未知'}",
+                    original_name=f"段落{segment.paragraph_index}_{segment.speaker or '未知'}",
                     file_path=audio_path,
                     file_size=file_size,
                     duration=duration,
                     project_id=segment.project_id,
                     segment_id=segment.id,
                     voice_profile_id=segment.voice_profile_id,
-                    text_content=segment.text_content,
+                    text_content=segment.content,
                     audio_type='segment',
                     processing_time=processing_time,
                     model_used='MegaTTS3',
@@ -1482,16 +1482,16 @@ async def process_single_segment(segment: TextSegment, tts_client, semaphore, db
     """处理单个段落 - 增加更多错误处理"""
     async with semaphore:
         try:
-            logger.info(f"[SEGMENT] 开始处理段落 {segment.id}: {segment.text_content[:30]}...")
+            logger.info(f"[SEGMENT] 开始处理段落 {segment.id}: {segment.content[:30]}...")
             
             # 更新段落状态
             segment.status = 'processing'
             db.commit()
             
             # 获取声音档案
-            voice = db.query(VoiceProfile).filter(VoiceProfile.id == segment.voice_profile_id).first()
+            voice = db.query(VoiceProfile).filter(VoiceProfile.id == getattr(segment, 'voice_profile_id', None)).first()
             if not voice:
-                logger.error(f"[SEGMENT] 段落 {segment.id} 声音档案不存在: {segment.voice_profile_id}")
+                logger.error(f"[SEGMENT] 段落 {segment.id} 声音档案不存在: {getattr(segment, 'voice_profile_id', None)}")
                 segment.status = 'failed'
                 segment.error_message = "声音档案不存在"
                 db.commit()
@@ -1516,7 +1516,7 @@ async def process_single_segment(segment: TextSegment, tts_client, semaphore, db
             # 构建TTS请求
             start_time = time.time()
             tts_request = TTSRequest(
-                text=segment.text_content,
+                text=segment.content,
                 reference_audio_path=voice.reference_audio_path,
                 output_audio_path=audio_path,
                 time_step=20,  # 使用稳定的参数
@@ -1556,14 +1556,14 @@ async def process_single_segment(segment: TextSegment, tts_client, semaphore, db
                     # 创建AudioFile记录 - 修复数据库脱节问题
                     audio_file = AudioFile(
                         filename=os.path.basename(audio_path),
-                        original_name=f"段落{segment.segment_order}_{segment.detected_speaker or '未知'}",
+                        original_name=f"段落{segment.paragraph_index}_{segment.speaker or '未知'}",
                         file_path=audio_path,
                         file_size=file_size,
                         duration=duration,
                         project_id=segment.project_id,
                         segment_id=segment.id,
-                        voice_profile_id=segment.voice_profile_id,
-                        text_content=segment.text_content,
+                        voice_profile_id=getattr(segment, 'voice_profile_id', None),
+                        text_content=segment.content,
                         audio_type='segment',
                         processing_time=processing_time,
                         model_used='MegaTTS3',
@@ -1649,7 +1649,7 @@ async def merge_audio_files(project: NovelProject, segments: List[TextSegment], 
     try:
         # 按顺序获取已完成的段落
         completed_segments = [s for s in segments if s.status == 'completed' and s.audio_file_path]
-        completed_segments.sort(key=lambda x: x.segment_order)
+        completed_segments.sort(key=lambda x: x.paragraph_index)
         
         if not completed_segments:
             return

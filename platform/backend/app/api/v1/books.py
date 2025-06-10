@@ -10,9 +10,12 @@ from typing import List, Optional
 import asyncio
 import logging
 import json
+from pydantic import BaseModel
 
 from app.database import get_db
 from app.models import Book, BookChapter
+
+# 注意：PUT端点现在使用Form参数而不是JSON请求
 
 router = APIRouter(prefix="/books")
 
@@ -331,15 +334,75 @@ def delete_book(book_id: int, db: Session = Depends(get_db)):
     return {"message": f"书籍 '{book.title}' 已删除"}
 
 
+@router.put("/{book_id}")
+async def update_book_put(
+    book_id: int,
+    title: Optional[str] = Form(None),
+    author: Optional[str] = Form(None),
+    description: Optional[str] = Form(None),
+    content: Optional[str] = Form(None),
+    tags: Optional[str] = Form(None),
+    status: Optional[str] = Form(None),
+    db: Session = Depends(get_db)
+):
+    """完整更新书籍信息 (PUT方法) - 支持Form格式"""
+    try:
+        book = db.query(Book).filter(Book.id == book_id).first()
+        if not book:
+            raise HTTPException(status_code=404, detail="书籍不存在")
+        
+        # 更新提供的字段
+        if title is not None:
+            if not title.strip():
+                raise HTTPException(status_code=400, detail="书籍标题不能为空")
+            book.title = title.strip()
+        
+        if author is not None:
+            book.author = author.strip()
+        
+        if description is not None:
+            book.description = description.strip()
+        
+        if content is not None:
+            book.content = content
+            book.word_count = len(content)
+        
+        if tags is not None:
+            try:
+                parsed_tags = json.loads(tags) if tags else []
+                book.tags = json.dumps(parsed_tags, ensure_ascii=False)
+            except json.JSONDecodeError:
+                raise HTTPException(status_code=400, detail="标签格式错误")
+        
+        if status is not None:
+            if status not in ['draft', 'published', 'archived']:
+                raise HTTPException(status_code=400, detail="无效的状态值")
+            book.status = status
+        
+        db.commit()
+        db.refresh(book)
+        
+        return {
+            "success": True,
+            "data": book.to_dict()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"更新书籍失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"更新书籍失败: {str(e)}")
+
+
 @router.patch("/{book_id}")
-def update_book(
+def update_book_patch(
     book_id: int,
     title: Optional[str] = None,
     author: Optional[str] = None,
     description: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
-    """更新书籍信息"""
+    """部分更新书籍信息 (PATCH方法)"""
     book = db.query(Book).filter(Book.id == book_id).first()
     if not book:
         raise HTTPException(status_code=404, detail="书籍不存在")
@@ -354,4 +417,7 @@ def update_book(
     db.commit()
     db.refresh(book)
     
-    return book.to_dict() 
+    return {
+        "success": True,
+        "data": book.to_dict()
+    } 

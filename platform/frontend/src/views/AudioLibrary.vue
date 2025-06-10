@@ -370,6 +370,16 @@ const paginationConfig = computed(() => ({
   }
 }))
 
+// 工具函数
+const formatDuration = (seconds) => {
+  if (!seconds || seconds === 0) return '00:00'
+  const mins = Math.floor(seconds / 60)
+  const secs = Math.floor(seconds % 60)
+  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+}
+
+
+
 // 方法
 const refreshAudioList = async () => {
   loading.value = true
@@ -390,7 +400,24 @@ const refreshAudioList = async () => {
     const response = await audioAPI.getFiles(params)
     
     if (response.data.success) {
-      audioList.value = response.data.data
+      // 转换API数据字段名为前端使用的驼峰命名
+      audioList.value = response.data.data.map(item => ({
+        ...item,
+        originalName: item.original_name,
+        fileName: item.filename,
+        filePath: item.file_path,
+        fileSize: item.file_size,
+        fileSizeMB: item.file_size ? (item.file_size / 1024 / 1024).toFixed(2) : '0.00',
+        audioType: item.audio_type,
+        textContent: item.text_content,
+        isFavorite: item.is_favorite,
+        createdAt: item.created_at,
+        updatedAt: item.updated_at,
+        durationFormatted: formatDuration(item.duration),
+        projectName: item.project?.name,
+        segmentOrder: item.segment_order,
+        audioUrl: item.file_path ? `/audio/${item.filename}` : null
+      }))
       pagination.total = response.data.pagination.total
       pagination.current = response.data.pagination.page
     } else {

@@ -92,35 +92,21 @@
               </div>
 
               <div v-else class="manual-selection">
-                <!-- 搜索和筛选 -->
+                <!-- 搜索 -->
                 <div class="book-search">
-                  <a-row :gutter="16">
-                    <a-col :span="16">
-                      <a-input
-                        v-model:value="bookSearch.keyword"
-                        placeholder="搜索书籍标题、作者..."
-                        size="large"
-                        @change="handleBookSearch"
-                      >
-                        <template #prefix>
-                          <SearchOutlined />
-                        </template>
-                      </a-input>
-                    </a-col>
-                    <a-col :span="8">
-                      <a-select
-                        v-model:value="bookSearch.status"
-                        placeholder="状态筛选"
-                        size="large"
-                        @change="handleBookSearch"
-                        allowClear
-                      >
-                        <a-select-option value="published">已发布</a-select-option>
-                        <a-select-option value="draft">草稿</a-select-option>
-                        <a-select-option value="archived">已归档</a-select-option>
-                      </a-select>
-                    </a-col>
-                  </a-row>
+                  <a-input
+                    v-model:value="bookSearch.keyword"
+                    placeholder="搜索书籍标题、作者（仅显示已发布书籍）..."
+                    size="large"
+                    @change="handleBookSearch"
+                  >
+                    <template #prefix>
+                      <SearchOutlined />
+                    </template>
+                  </a-input>
+                  <p style="margin-top: 8px; color: #666; font-size: 12px;">
+                    💡 提示：项目创建仅支持已发布状态的书籍，草稿和归档书籍不会显示
+                  </p>
                 </div>
 
                 <!-- 书籍列表 -->
@@ -390,7 +376,7 @@ const bookSearch = reactive({
 
 // 计算属性
 const canCreate = computed(() => {
-  return projectForm.name.trim()
+  return projectForm.name.trim() && selectedBook.value
 })
 
 const estimatedSegments = computed(() => {
@@ -447,6 +433,7 @@ const getSegmentModeText = (mode) => {
 
 const getCreateHint = () => {
   if (!projectForm.name.trim()) return '请输入项目名称'
+  if (!selectedBook.value) return '请选择书籍'
   return '准备就绪'
 }
 
@@ -456,16 +443,18 @@ const loadBooks = async () => {
   try {
     const params = {
       page: 1,
-      page_size: 50
+      page_size: 50,
+      status: 'published' // 只显示已发布的书籍
     }
     
     if (bookSearch.keyword) {
       params.search = bookSearch.keyword
     }
     
-    if (bookSearch.status) {
-      params.status = bookSearch.status
-    }
+    // 项目创建页面只允许选择已发布的书籍，忽略用户的状态筛选
+    // if (bookSearch.status) {
+    //   params.status = bookSearch.status
+    // }
     
     const response = await booksAPI.getBooks(params)
     if (response.data.success) {

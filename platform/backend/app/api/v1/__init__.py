@@ -16,10 +16,10 @@ from .presets import router as presets_router
 from .projects import router as projects_router
 from .characters import router as characters_router
 from .audio_library import router as audio_library_router
-from .novel_reader import router as novel_reader_router
+from .intelligent_analysis import router as intelligent_analysis_router
+from app.novel_reader import router as novel_reader_router
 from app.voice_clone import router as voice_clone_router
 from app.monitor import router as monitor_router
-from app.intelligent_analysis_mock import router as intelligent_analysis_router
 
 # 导入需要的健康检查组件
 from app.database import health_check as db_health_check

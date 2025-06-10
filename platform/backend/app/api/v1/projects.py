@@ -189,8 +189,8 @@ async def create_project(
                 if len(para) > 10:  # 忽略太短的段落
                     segment = TextSegment(
                         project_id=project.id,
-                        segment_order=i + 1,
-                        text_content=para,
+                        paragraph_index=i + 1,
+                        content=para,
                         status='pending',
                         created_at=datetime.utcnow()
                     )
@@ -248,12 +248,12 @@ async def get_project(
         # 获取角色统计
         character_stats = {}
         for segment in segments:
-            speaker = getattr(segment, 'detected_speaker', None)
+            speaker = segment.speaker
             if speaker:
                 if speaker not in character_stats:
                     character_stats[speaker] = {"count": 0, "voice_assigned": False}
                 character_stats[speaker]["count"] += 1
-                if getattr(segment, 'voice_profile_id', None):
+                if segment.voice_id:
                     character_stats[speaker]["voice_assigned"] = True
         
         project_data = project.to_dict()
@@ -263,10 +263,10 @@ async def get_project(
             "segments_preview": [
                 {
                     "id": s.id,
-                    "order": s.segment_order,
-                    "text": s.text_content[:100] + "..." if len(s.text_content) > 100 else s.text_content,
-                    "speaker": getattr(s, 'detected_speaker', None),
-                    "voice_profile_id": getattr(s, 'voice_profile_id', None),
+                    "order": s.paragraph_index,
+                    "text": s.content[:100] + "..." if len(s.content) > 100 else s.content,
+                    "speaker": s.speaker,
+                    "voice_profile_id": s.voice_id,
                     "status": s.status
                 }
                 for s in segments[:10]  # 只返回前10个分段预览
