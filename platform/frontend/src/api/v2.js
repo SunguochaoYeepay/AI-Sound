@@ -6,8 +6,8 @@
 import apiClient from './config.js'
 import { message } from 'ant-design-vue'
 
-// API版本前缀
-const API_V2_PREFIX = '/v1'
+// API版本前缀 - 因为apiClient已经包含了/api/v1，这里留空
+const API_V2_PREFIX = ''
 
 /**
  * 通用API请求包装器

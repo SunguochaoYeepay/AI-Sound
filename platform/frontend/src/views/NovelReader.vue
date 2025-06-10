@@ -176,12 +176,97 @@
               </div>
             </div>
 
+    <!-- 合成配置 -->
+    <div v-if="currentProject?.status === 'completed' || currentProject?.status === 'processing'" class="synthesis-config-section">
+      <div class="config-card">
+        <div class="config-header">
+          <h3>合成配置</h3>
+          <div class="config-actions">
+            <a-button 
+              v-if="currentProject?.status !== 'completed'"
+              type="link" 
+              size="small" 
+              @click="$router.push(`/synthesis/${currentProject.id}`)"
+            >
+              编辑配置
+            </a-button>
+          </div>
+        </div>
+        <div class="config-content">
+          <div class="config-row">
+            <div class="config-item">
+              <span class="config-label">音质设置</span>
+              <span class="config-value">
+                <a-tag color="blue">
+                  {{ currentProject?.config?.audio_quality === 'high' ? '高质量' : '标准' }}
+                </a-tag>
+              </span>
+            </div>
+            <div class="config-item">
+              <span class="config-label">智能检测</span>
+              <span class="config-value">
+                <a-tag :color="currentProject?.config?.enable_smart_detection ? 'green' : 'default'">
+                  {{ currentProject?.config?.enable_smart_detection ? '已启用' : '已禁用' }}
+                </a-tag>
+              </span>
+            </div>
+            <div class="config-item">
+              <span class="config-label">分段模式</span>
+              <span class="config-value">
+                <a-tag color="purple">
+                  {{ currentProject?.config?.segment_mode === 'paragraph' ? '按段落' : '按章节' }}
+                </a-tag>
+              </span>
+            </div>
+            <div class="config-item">
+              <span class="config-label">背景音乐</span>
+              <span class="config-value">
+                <a-tag :color="currentProject?.config?.enable_bg_music ? 'green' : 'default'">
+                  {{ currentProject?.config?.enable_bg_music ? '已启用' : '已禁用' }}
+                </a-tag>
+              </span>
+            </div>
+          </div>
+          
+          <!-- 角色声音映射 -->
+          <div v-if="currentProject?.config?.character_mapping" class="character-mapping">
+            <div class="mapping-header">
+              <span class="mapping-title">角色声音映射</span>
+            </div>
+            <div class="mapping-list">
+              <div 
+                v-for="(voiceId, characterName) in currentProject.config.character_mapping" 
+                :key="characterName"
+                class="mapping-item"
+              >
+                <span class="character-name">{{ characterName }}</span>
+                <span class="voice-name">
+                  {{ getVoiceName(voiceId) || `声音ID: ${voiceId}` }}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- 生成结果 -->
-    <div v-if="audioFiles.length > 0" class="results-section">
+    <div v-if="currentProject?.status === 'completed' || audioFiles.length > 0" class="results-section">
       <div class="results-card">
         <div class="results-header">
           <h3>生成结果</h3>
           <div class="results-actions">
+            <a-button 
+              v-if="currentProject?.final_audio_path"
+              type="primary"
+              @click="downloadFinalAudio" 
+              :loading="downloading"
+            >
+              <template #icon>
+                <DownloadOutlined />
+              </template>
+              下载完整音频
+            </a-button>
             <a-button @click="downloadAll" :loading="downloading">
               <template #icon>
                 <DownloadOutlined />
@@ -194,9 +279,94 @@
               </template>
               音频库
             </a-button>
+          </div>
+        </div>
+        
+        <!-- 合成统计 -->
+        <div v-if="currentProject?.status === 'completed'" class="synthesis-stats">
+          <div class="stats-row">
+            <div class="stat-item">
+              <span class="stat-label">总段落数</span>
+              <span class="stat-value">{{ currentProject.total_segments || 0 }}</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">已完成</span>
+              <span class="stat-value">{{ currentProject.processed_segments || 0 }}</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">处理时间</span>
+              <span class="stat-value">{{ getProcessingTime() }}</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">最终音频</span>
+              <span class="stat-value">
+                <a-tag v-if="currentProject.final_audio_path" color="green">已生成</a-tag>
+                <a-tag v-else color="orange">处理中</a-tag>
+              </span>
             </div>
           </div>
-          <div class="audio-list">
+        </div>
+        
+        <!-- 段落详情列表 -->
+        <div v-if="currentProject?.segments?.length > 0" class="segments-list">
+          <div class="segments-header">
+            <span class="segments-title">段落处理详情</span>
+            <span class="segments-count">{{ currentProject.segments.length }} 个段落</span>
+          </div>
+          <div class="segments-content">
+            <div 
+              v-for="(segment, index) in currentProject.segments" 
+              :key="segment.id"
+              class="segment-item"
+            >
+              <div class="segment-index">{{ index + 1 }}</div>
+              <div class="segment-content">
+                <div class="segment-text">{{ segment.content || segment.text_content || '无内容' }}</div>
+                <div class="segment-meta">
+                  <span class="segment-speaker">{{ segment.speaker || '温柔女声' }}</span>
+                  <span class="segment-duration">
+                    {{ segment.processing_time ? `${segment.processing_time}s` : '未知时长' }}
+                  </span>
+                  <span class="segment-status">
+                    <a-tag 
+                      :color="getSegmentStatusColor(segment.status)"
+                      size="small"
+                    >
+                      {{ getSegmentStatusText(segment.status) }}
+                    </a-tag>
+                  </span>
+                </div>
+              </div>
+              <div class="segment-actions">
+                <a-button 
+                  v-if="segment.audio_file_path && segment.status === 'completed'"
+                  type="text" 
+                  size="small" 
+                  @click="playSegmentAudio(segment)"
+                  title="播放此段落"
+                >
+                  <template #icon>
+                    <PlayCircleOutlined />
+                  </template>
+                </a-button>
+                <a-button 
+                  v-if="segment.audio_file_path && segment.status === 'completed'"
+                  type="text" 
+                  size="small" 
+                  @click="downloadSegmentAudio(segment)"
+                  title="下载此段落"
+                >
+                  <template #icon>
+                    <DownloadOutlined />
+                  </template>
+                </a-button>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- 传统音频文件列表（兼容旧版本） -->
+        <div v-if="audioFiles.length > 0" class="audio-list">
           <div v-for="audio in audioFiles" :key="audio.id" class="audio-item">
               <div class="audio-info">
               <div class="audio-icon">
@@ -904,6 +1074,143 @@ const getStepText = (step) => {
     'failed': '失败'
   }
   return texts[currentStatus] || '等待中'
+}
+
+// 新增的方法 - 获取声音名称
+const getVoiceName = (voiceId) => {
+  if (!voiceId || !availableVoices.value.length) return null
+  const voice = availableVoices.value.find(v => v.id === parseInt(voiceId))
+  return voice ? voice.name : null
+}
+
+// 获取处理时间
+const getProcessingTime = () => {
+  if (!currentProject.value || !currentProject.value.started_at || !currentProject.value.completed_at) {
+    return '未知'
+  }
+  
+  const startTime = new Date(currentProject.value.started_at)
+  const endTime = new Date(currentProject.value.completed_at)
+  const diffMs = endTime - startTime
+  const diffSeconds = Math.floor(diffMs / 1000)
+  
+  if (diffSeconds < 60) {
+    return `${diffSeconds}秒`
+  } else if (diffSeconds < 3600) {
+    const minutes = Math.floor(diffSeconds / 60)
+    const seconds = diffSeconds % 60
+    return `${minutes}分${seconds}秒`
+  } else {
+    const hours = Math.floor(diffSeconds / 3600)
+    const minutes = Math.floor((diffSeconds % 3600) / 60)
+    return `${hours}小时${minutes}分钟`
+  }
+}
+
+// 获取段落状态颜色
+const getSegmentStatusColor = (status) => {
+  const colors = {
+    'pending': 'orange',
+    'processing': 'blue',
+    'completed': 'green',
+    'failed': 'red'
+  }
+  return colors[status] || 'default'
+}
+
+// 获取段落状态文本
+const getSegmentStatusText = (status) => {
+  const texts = {
+    'pending': '等待',
+    'processing': '处理中',
+    'completed': '已完成',
+    'failed': '失败'
+  }
+  return texts[status] || '未知'
+}
+
+// 下载完整音频
+const downloadFinalAudio = async () => {
+  if (!currentProject.value?.final_audio_path) {
+    message.error('没有可下载的最终音频文件')
+    return
+  }
+  
+  downloading.value = true
+  try {
+    const response = await readerAPI.downloadAudio(currentProject.value.id)
+    const url = window.URL.createObjectURL(new Blob([response.data]))
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${currentProject.value.name}_完整音频.wav`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.URL.revokeObjectURL(url)
+    message.success('下载成功')
+  } catch (error) {
+    console.error('下载失败:', error)
+    message.error('下载失败')
+  } finally {
+    downloading.value = false
+  }
+}
+
+// 播放段落音频
+const playSegmentAudio = async (segment) => {
+  if (!segment.audio_file_path) {
+    message.warning('此段落没有音频文件')
+    return
+  }
+  
+  try {
+    // 构建音频URL - 需要通过后端API获取
+    const audioUrl = `/api/v1/audio/segment/${segment.id}`
+    
+    // 创建音频对象并播放
+    const audio = new Audio(audioUrl)
+    currentAudio.value = {
+      filename: `段落${segment.paragraph_index || segment.id}`,
+      url: audioUrl,
+      duration: segment.processing_time || 0
+    }
+    
+    audio.addEventListener('loadeddata', () => {
+      message.success('开始播放段落音频')
+    })
+    
+    audio.addEventListener('error', () => {
+      message.error('音频播放失败')
+      currentAudio.value = null
+    })
+    
+    await audio.play()
+  } catch (error) {
+    console.error('播放段落音频失败:', error)
+    message.error('播放失败')
+  }
+}
+
+// 下载段落音频
+const downloadSegmentAudio = async (segment) => {
+  if (!segment.audio_file_path) {
+    message.warning('此段落没有音频文件')
+    return
+  }
+  
+  try {
+    const audioUrl = `/api/v1/audio/segment/${segment.id}?download=true`
+    const link = document.createElement('a')
+    link.href = audioUrl
+    link.download = `段落${segment.paragraph_index || segment.id}_${segment.speaker || '音频'}.wav`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    message.success('段落音频下载成功')
+  } catch (error) {
+    console.error('下载段落音频失败:', error)
+    message.error('下载失败')
+  }
 }
 
 // 生命周期
@@ -1615,6 +1922,251 @@ window.addEventListener('beforeunload', () => {
   .config-stats {
     width: 100%;
     justify-content: space-around;
+  }
+}
+
+/* 新增样式 - 合成配置部分 */
+.synthesis-config-section {
+  margin-bottom: 24px;
+}
+
+.config-card {
+  background: white;
+  padding: 24px;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+
+.config-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.config-header h3 {
+  margin: 0;
+  color: #1f2937;
+}
+
+.config-content {
+  margin-bottom: 16px;
+}
+
+.config-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.config-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.config-label {
+  font-size: 14px;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.config-value {
+  display: flex;
+  align-items: center;
+}
+
+.character-mapping {
+  border-top: 1px solid #e5e7eb;
+  padding-top: 20px;
+}
+
+.mapping-header {
+  margin-bottom: 12px;
+}
+
+.mapping-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.mapping-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 12px;
+}
+
+.mapping-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: #f9fafb;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+}
+
+.character-name {
+  font-weight: 500;
+  color: #1f2937;
+}
+
+.voice-name {
+  font-size: 14px;
+  color: #6b7280;
+}
+
+/* 合成统计样式 */
+.synthesis-stats {
+  margin-bottom: 24px;
+  padding: 20px;
+  background: #f8fafc;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 16px;
+}
+
+/* 段落详情列表样式 */
+.segments-list {
+  margin-bottom: 24px;
+}
+
+.segments-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.segments-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.segments-count {
+  font-size: 14px;
+  color: #6b7280;
+}
+
+.segments-content {
+  max-height: 400px;
+  overflow-y: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+
+.segment-item {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  border-bottom: 1px solid #f3f4f6;
+  transition: background-color 0.2s ease;
+}
+
+.segment-item:last-child {
+  border-bottom: none;
+}
+
+.segment-item:hover {
+  background-color: #f9fafb;
+}
+
+.segment-index {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #06b6d4;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.segment-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.segment-text {
+  font-size: 14px;
+  color: #1f2937;
+  margin-bottom: 8px;
+  line-height: 1.5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.segment-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+}
+
+.segment-speaker {
+  color: #06b6d4;
+  font-weight: 500;
+}
+
+.segment-duration {
+  color: #6b7280;
+}
+
+.segment-status {
+  margin-left: auto;
+}
+
+.segment-actions {
+  flex-shrink: 0;
+  display: flex;
+  gap: 4px;
+}
+
+/* 响应式优化 */
+@media (max-width: 768px) {
+  .config-row {
+    grid-template-columns: 1fr;
+  }
+  
+  .mapping-list {
+    grid-template-columns: 1fr;
+  }
+  
+  .stats-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .segment-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  
+  .segment-meta {
+    width: 100%;
+    justify-content: space-between;
+  }
+  
+  .segment-actions {
+    width: 100%;
+    justify-content: flex-end;
   }
 }
 </style>

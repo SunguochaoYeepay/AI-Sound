@@ -279,6 +279,7 @@ import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAppStore } from '../stores/app.js'
 import { useWebSocketStore } from '../stores/websocket.js'
+import { systemAPI } from '../api/v2.js'
 import dayjs from 'dayjs'
 import FeatureCard from '../components/FeatureCard.vue'
 
@@ -308,15 +309,22 @@ const lastCheckTime = computed(() => {
 const refreshStatus = async () => {
   refreshing.value = true
   try {
-    // 模拟刷新延迟
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    // 这里可以调用实际的API刷新状态
-    appStore.updateSystemStatus({
-      ...systemStatus.value,
-      last_check: new Date().toISOString()
-    })
+    const result = await systemAPI.healthCheck()
+    if (result.success && result.data) {
+      const services = result.data.services || {}
+      appStore.updateSystemStatus({
+        database: services.database?.status || 'unknown',
+        tts_service: Object.values(services.tts_client || {}).every(Boolean) ? 'healthy' : 'unhealthy',
+        websocket: services.websocket_manager?.status || 'unknown'
+      })
+    }
   } catch (error) {
     console.error('刷新状态失败:', error)
+    appStore.updateSystemStatus({
+      database: 'unhealthy',
+      tts_service: 'unhealthy',
+      websocket: 'unhealthy'
+    })
   } finally {
     refreshing.value = false
   }
@@ -351,7 +359,7 @@ const navigateTo = (route) => {
 
 <style scoped>
 .home-container {
-  max-width: 1200px;
+
   margin: 0 auto;
   padding: 0 24px;
 }

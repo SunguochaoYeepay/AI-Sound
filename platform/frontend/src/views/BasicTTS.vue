@@ -681,7 +681,7 @@ const saveToLibrary = () => {
 
 <style scoped>
 .voice-clone-container {
-  max-width: 1400px;
+  
   margin: 0 auto;
 }
 

@@ -109,7 +109,9 @@
 
               <!-- 操作按钮 -->
               <div class="action-buttons">
+                <!-- 开始合成按钮 - 只在未开始时显示 -->
                 <a-button
+                  v-if="project.status === 'pending' || project.status === 'failed'"
                   type="primary"
                   size="large"
                   block
@@ -120,6 +122,19 @@
                   🎯 开始合成
                 </a-button>
 
+                <!-- 重新合成按钮 - 完成时显示 -->
+                <a-button
+                  v-if="project.status === 'completed'"
+                  type="primary"
+                  size="large"
+                  block
+                  @click="restartSynthesis"
+                  :loading="synthesisStarting"
+                >
+                  🔄 重新合成
+                </a-button>
+
+                <!-- 暂停合成按钮 - 只在处理中时显示 -->
                 <a-button
                   v-if="project.status === 'processing'"
                   size="large"
@@ -130,6 +145,7 @@
                   ⏸️ 暂停合成
                 </a-button>
 
+                <!-- 继续合成按钮 - 只在暂停时显示 -->
                 <a-button
                   v-if="project.status === 'paused'"
                   type="primary"
@@ -206,16 +222,47 @@
                 </div>
               </div>
 
-              <!-- 下载按钮 -->
-              <div v-if="project.status === 'completed'" class="download-section">
-                <a-button
-                  type="primary"
-                  size="large"
-                  block
-                  @click="downloadAudio"
-                >
-                  📥 下载音频
-                </a-button>
+              <!-- 合成完成操作区 -->
+              <div v-if="project.status === 'completed'" class="completion-section">
+                <!-- 音频预览 -->
+                <div class="audio-preview">
+                  <div class="preview-header">
+                    <h4>🎵 音频预览</h4>
+                    <span class="audio-info">最终合成音频</span>
+                  </div>
+                  <div class="audio-player-container">
+                    <audio 
+                      ref="audioPlayer"
+                      controls
+                      style="width: 100%;"
+                      :src="audioPreviewUrl"
+                      @loadstart="handleAudioLoadStart"
+                      @error="handleAudioError"
+                    >
+                      您的浏览器不支持音频播放
+                    </audio>
+                  </div>
+                </div>
+                
+                <!-- 下载按钮 -->
+                <div class="download-section">
+                  <a-button
+                    type="primary"
+                    size="large"
+                    block
+                    @click="downloadAudio"
+                    style="margin-bottom: 8px;"
+                  >
+                    📥 下载完整音频
+                  </a-button>
+                  <a-button
+                    size="large"
+                    block
+                    @click="viewProjectDetail"
+                  >
+                    📋 查看详情
+                  </a-button>
+                </div>
               </div>
             </div>
           </a-card>
@@ -276,6 +323,13 @@ const progressPercent = computed(() => {
   const { totalSegments, completedSegments } = project.value.statistics
   if (totalSegments === 0) return 0
   return Math.round((completedSegments / totalSegments) * 100)
+})
+
+// 音频预览URL
+const audioPreviewUrl = computed(() => {
+  if (!project.value?.final_audio_path) return null
+  // 构建音频预览URL
+  return `/api/v1/novel-reader/projects/${project.value.id}/download-audio`
 })
 
 const allCharactersConfigured = computed(() => {
@@ -463,6 +517,24 @@ const loadProject = async () => {
     
     if (response.data.success) {
       project.value = response.data.data
+      
+      // 如果项目处于processing状态或有segments，加载统计信息
+      if (project.value.status === 'processing' || project.value.segments?.length > 0) {
+        const progressResponse = await readerAPI.getProgress(projectId)
+        if (progressResponse.data.success) {
+          const progress = progressResponse.data.progress
+          // 更新统计信息，映射字段名
+          project.value.statistics = {
+            totalSegments: progress.statistics.total,
+            completedSegments: progress.statistics.completed,
+            failedSegments: progress.statistics.failed,
+            processingSegments: progress.statistics.processing,
+            pendingSegments: progress.statistics.pending
+          }
+          project.value.status = progress.status
+        }
+      }
+      
       await analyzeCharacters()
     }
   } catch (error) {
@@ -754,7 +826,14 @@ const startProgressPolling = () => {
       const response = await readerAPI.getProgress(project.value.id)
       if (response.data.success) {
         const progress = response.data.progress
-        project.value.statistics = progress.statistics
+        // 映射统计数据字段名
+        project.value.statistics = {
+          totalSegments: progress.statistics.total,
+          completedSegments: progress.statistics.completed,
+          failedSegments: progress.statistics.failed,
+          processingSegments: progress.statistics.processing,
+          pendingSegments: progress.statistics.pending
+        }
         project.value.status = progress.status
         
         // 重置错误计数
@@ -772,6 +851,8 @@ const startProgressPolling = () => {
         if (shouldStop) {
           stopProgressPolling()
           if (progress.status === 'completed') {
+            // 重新加载项目以获取最新数据（包括音频文件）
+            await loadProject()
             message.success('合成完成！')
           } else if (progress.status === 'failed') {
             message.error('合成失败')

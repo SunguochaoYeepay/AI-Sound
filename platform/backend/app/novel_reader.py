@@ -1618,9 +1618,11 @@ async def check_project_completion(project_id: int, db: Session):
                 await merge_audio_files(project, segments, db)
                 project.status = 'completed'
                 project.completed_at = datetime.utcnow()
+                project.processed_segments = completed  # 更新已处理段落数
             else:
                 # 有失败的段落
                 project.status = 'failed'
+                project.processed_segments = completed  # 更新已处理段落数
             
             db.commit()
             

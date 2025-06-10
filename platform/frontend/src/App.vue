@@ -191,6 +191,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { useAppStore } from './stores/app.js'
 import { useUserStore } from './stores/user.js'
 import { useWebSocketStore } from './stores/websocket.js'
+import { systemAPI } from './api/v2.js'
 import DevConsole from './components/DevConsole.vue'
 
 const router = useRouter()
@@ -316,6 +317,11 @@ const getSystemStatusColor = () => {
   const ttsOk = status.tts_service === 'healthy'
   const wsOk = wsStore.connected
   
+  // 处理初始状态或未知状态
+  if (status.database === 'unknown' || status.tts_service === 'unknown') {
+    return '#1890ff' // 蓝色表示检查中
+  }
+  
   if (dbOk && ttsOk && wsOk) return '#52c41a'
   if (!dbOk || !ttsOk) return '#ff4d4f'
   return '#fa8c16'
@@ -328,6 +334,11 @@ const getSystemStatusText = () => {
   const ttsOk = status.tts_service === 'healthy'
   const wsOk = wsStore.connected
   
+  // 处理初始状态或未知状态
+  if (status.database === 'unknown' || status.tts_service === 'unknown') {
+    return 'AI-Sound 状态检查中...'
+  }
+  
   if (dbOk && ttsOk && wsOk) return 'AI-Sound 运行正常'
   if (!dbOk) return '数据库连接异常'
   if (!ttsOk) return 'TTS服务异常'
@@ -336,9 +347,38 @@ const getSystemStatusText = () => {
 }
 
 // 初始化应用
-const initializeApp = () => {
+const initializeApp = async () => {
   // 初始化应用状态
   appStore.initApp()
+  
+  // 立即执行一次健康检查
+  await checkSystemHealth()
+  
+  // 设置定期健康检查
+  setInterval(checkSystemHealth, 30000) // 每30秒检查一次
+}
+
+// 系统健康检查
+const checkSystemHealth = async () => {
+  try {
+    const result = await systemAPI.healthCheck()
+    if (result.success && result.data) {
+      const services = result.data.services || {}
+      appStore.updateSystemStatus({
+        database: services.database?.status || 'unknown',
+        tts_service: Object.values(services.tts_client || {}).every(Boolean) ? 'healthy' : 'unhealthy',
+        websocket: services.websocket_manager?.status || 'unknown'
+      })
+    }
+  } catch (error) {
+    console.error('系统健康检查失败:', error)
+    // 如果检查失败，设置为异常状态
+    appStore.updateSystemStatus({
+      database: 'unhealthy',
+      tts_service: 'unhealthy',
+      websocket: 'unhealthy'
+    })
+  }
 }
 </script>
 
