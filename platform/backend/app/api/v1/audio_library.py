@@ -7,11 +7,20 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import desc, asc, func, or_, and_
 from typing import Dict, List, Any, Optional
+import os
+import json
+import time
+import logging
+from datetime import datetime
 
 from app.database import get_db
 from app.models import AudioFile, NovelProject, TextSegment, VoiceProfile
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/audio-library", tags=["Audio Library"])
+
+# 音频文件存储路径
+AUDIO_DIR = "data/audio"
 
 @router.get("/files", summary="获取音频文件列表")
 async def get_audio_files(
@@ -269,3 +278,117 @@ async def toggle_favorite(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"切换收藏状态失败: {str(e)}")
+
+@router.post("/sync", summary="同步音频文件到数据库")
+async def sync_audio_files(
+    db: Session = Depends(get_db)
+):
+    """
+    扫描音频目录，将现有文件同步到数据库
+    """
+    try:
+        if not os.path.exists(AUDIO_DIR):
+            logger.warning(f"音频目录不存在: {AUDIO_DIR}")
+            # 创建目录而不是抛出异常
+            os.makedirs(AUDIO_DIR, exist_ok=True)
+            return {
+                "success": True,
+                "message": "音频目录已创建，当前无文件需要同步",
+                "synced_count": 0,
+                "skipped_count": 0
+            }
+        
+        synced_count = 0
+        skipped_count = 0
+        
+        # 获取音频时长的辅助函数
+        def get_audio_duration(file_path):
+            try:
+                import wave
+                with wave.open(file_path, 'r') as wav_file:
+                    frames = wav_file.getnframes()
+                    rate = wav_file.getframerate()
+                    return frames / float(rate)
+            except:
+                return 0.0
+        
+        for filename in os.listdir(AUDIO_DIR):
+            if not filename.lower().endswith(('.wav', '.mp3', '.flac', '.m4a')):
+                continue
+            
+            # 检查是否已存在
+            existing = db.query(AudioFile).filter(AudioFile.filename == filename).first()
+            if existing:
+                skipped_count += 1
+                continue
+            
+            file_path = os.path.join(AUDIO_DIR, filename)
+            file_size = os.path.getsize(file_path)
+            
+            # 获取音频时长
+            try:
+                duration = get_audio_duration(file_path)
+            except:
+                duration = 0.0
+            
+            # 解析文件名，尝试关联项目和段落
+            project_id = None
+            segment_id = None
+            audio_type = 'unknown'
+            
+            if filename.startswith('segment_'):
+                audio_type = 'segment'
+                # 尝试从文件名解析段落信息
+                parts = filename.split('_')
+                if len(parts) >= 2 and parts[1].isdigit():
+                    segment_order = int(parts[1])
+                    # 查找对应的段落
+                    segment = db.query(TextSegment).filter(
+                        TextSegment.paragraph_index == segment_order
+                    ).first()
+                    if segment:
+                        segment_id = segment.id
+                        project_id = segment.project_id
+            elif filename.startswith('project_'):
+                audio_type = 'project'
+                # 尝试从文件名解析项目ID
+                parts = filename.split('_')
+                if len(parts) >= 2 and parts[1].isdigit():
+                    project_id = int(parts[1])
+            elif filename.startswith('tts_'):
+                audio_type = 'single'
+            elif filename.startswith('test_'):
+                audio_type = 'test'
+            
+            # 创建数据库记录
+            audio_file = AudioFile(
+                filename=filename,
+                original_name=filename,
+                file_path=file_path,
+                file_size=file_size,
+                duration=duration,
+                project_id=project_id,
+                segment_id=segment_id,
+                audio_type=audio_type,
+                status='active',
+                created_at=datetime.fromtimestamp(os.path.getctime(file_path))
+            )
+            
+            db.add(audio_file)
+            synced_count += 1
+        
+        db.commit()
+        
+        logger.info(f"音频文件同步完成: 新增{synced_count}个，跳过{skipped_count}个")
+        
+        return {
+            "success": True,
+            "message": f"音频文件同步完成",
+            "synced_count": synced_count,
+            "skipped_count": skipped_count
+        }
+        
+    except Exception as e:
+        logger.error(f"音频文件同步失败: {str(e)}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"音频文件同步失败: {str(e)}")
