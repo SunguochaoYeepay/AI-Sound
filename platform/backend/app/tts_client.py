@@ -41,8 +41,10 @@ class MegaTTS3Client:
     MegaTTS3 HTTP 客户端 - 简化版
     """
     
-    def __init__(self, base_url: str = "http://localhost:7929"):
+    def __init__(self, base_url: str = None):
         # MegaTTS3 运行在7929端口
+        if base_url is None:
+            base_url = os.getenv("MEGATTS3_URL", "http://localhost:7929")
         self.base_url = base_url.rstrip('/')
         self.timeout = aiohttp.ClientTimeout(
             total=300,    # 总超时5分钟
