@@ -8,7 +8,7 @@ import logging
 from contextlib import asynccontextmanager
 from typing import Dict, Any
 
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
@@ -128,6 +128,39 @@ app.mount("/voice_profiles", StaticFiles(directory="data/voice_profiles"), name=
 
 # 注册API路由
 app.include_router(api_router, prefix="/api")
+
+
+# WebSocket端点
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    """WebSocket实时通信端点"""
+    import uuid
+    from fastapi import WebSocketDisconnect
+    
+    connection_id = str(uuid.uuid4())
+    logger.info(f"🔌 新的WebSocket连接请求: {connection_id}")
+    
+    try:
+        # 建立连接
+        await websocket_manager.connect(websocket, connection_id)
+        logger.info(f"✅ WebSocket连接建立成功: {connection_id}")
+        
+        # 保持连接并处理消息
+        while True:
+            # 接收消息
+            data = await websocket.receive_text()
+            logger.info(f"📨 收到WebSocket消息: {connection_id} -> {data}")
+            
+            # 处理消息
+            await websocket_manager.handle_message(connection_id, data)
+            
+    except WebSocketDisconnect:
+        # 正常断开连接
+        logger.info(f"🔌 WebSocket正常断开: {connection_id}")
+        await websocket_manager.disconnect(connection_id)
+    except Exception as e:
+        logger.error(f"❌ WebSocket连接异常: {connection_id} -> {e}")
+        await websocket_manager.disconnect(connection_id)
 
 
 # 异常处理器

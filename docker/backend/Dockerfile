@@ -23,6 +23,7 @@ RUN pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/ && \
 
 # 复制应用代码 (确保获取最新代码)
 COPY platform/backend/app/ ./app/
+COPY platform/backend/main.py ./main.py
 
 # 修正路径问题
 RUN find ./app -name "*.py" -exec sed -i "s|'../data/|'/app/data/|g" {} \; && \
@@ -46,4 +47,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
 # 启动应用 - 保持工作目录在 /app
-CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
