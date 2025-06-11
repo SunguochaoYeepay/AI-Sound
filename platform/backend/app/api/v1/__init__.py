@@ -23,7 +23,7 @@ from app.monitor import router as monitor_router
 
 # 导入需要的健康检查组件
 from app.database import health_check as db_health_check
-from app.clients.tts_client import tts_client
+from app.tts_client import get_tts_client
 from app.clients.file_manager import file_manager
 from app.websocket.manager import websocket_manager
 
@@ -41,6 +41,7 @@ async def v1_health_check() -> Dict[str, Any]:
         db_status = db_health_check()
         
         # TTS客户端健康检查
+        tts_client = get_tts_client()
         tts_status = await tts_client.health_check()
         
         # WebSocket管理器状态

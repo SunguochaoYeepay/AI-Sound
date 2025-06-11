@@ -18,7 +18,7 @@ from ..models import (
 )
 from ..exceptions import ServiceException, TTSException
 from ..utils.websocket_manager import ProgressWebSocketManager
-from ..clients.tts_client import TTSClient
+from ..tts_client import get_tts_client
 import logging
 
 logger = logging.getLogger(__name__)
@@ -30,7 +30,7 @@ class SynthesisTaskManager:
     def __init__(self, db: Session, websocket_manager: ProgressWebSocketManager):
         self.db = db
         self.websocket_manager = websocket_manager
-        self.tts_client = TTSClient()
+        self.tts_client = get_tts_client()
         
     async def create_task(
         self,

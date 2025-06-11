@@ -15,7 +15,7 @@ class Settings:
     DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://postgres:password@localhost:5432/aisound")
     
     # TTS服务配置
-    TTS_SERVER_URL: str = os.getenv("TTS_SERVER_URL", "http://localhost:7929")
+    TTS_SERVER_URL: str = os.getenv("MEGATTS3_URL", "http://localhost:7929")
     TTS_TIMEOUT: int = int(os.getenv("TTS_TIMEOUT", "300"))
     
     # Dify配置

@@ -20,7 +20,7 @@ import mimetypes
 # 应用组件导入
 from app.database import init_database, health_check as db_health_check
 from app.api import api_router
-from app.clients.tts_client import init_tts_client, tts_client
+from app.tts_client import get_tts_client
 from app.clients.audio_processor import audio_processor
 from app.clients.file_manager import file_manager
 from app.websocket.manager import websocket_manager
@@ -67,7 +67,7 @@ async def lifespan(app: FastAPI):
         
         # 初始化TTS客户端
         logger.info("🎵 初始化TTS客户端...")
-        await init_tts_client()
+        # 使用旧版TTS客户端，无需特殊初始化
         
         # 初始化WebSocket管理器
         logger.info("🔌 初始化WebSocket管理器...")
@@ -85,8 +85,7 @@ async def lifespan(app: FastAPI):
     logger.info("🛑 AI-Sound平台后端关闭中...")
     
     try:
-        # 关闭TTS客户端
-        await tts_client.close()
+        # 旧版TTS客户端无需特殊关闭逻辑
         
         # 关闭音频处理器
         await audio_processor.close()
@@ -254,6 +253,7 @@ async def health_check() -> Dict[str, Any]:
         db_status = db_health_check()
         
         # TTS客户端健康检查
+        tts_client = get_tts_client()
         tts_status = await tts_client.health_check()
         
         # WebSocket管理器状态
@@ -264,7 +264,7 @@ async def health_check() -> Dict[str, Any]:
         
         all_healthy = (
             db_status.get("status") == "healthy" and
-            all(tts_status.values()) and
+            tts_status.get("status") == "healthy" and
             ws_status.get("status") == "running"
         )
         
