@@ -32,7 +32,7 @@ if os.path.exists("/.dockerenv") or os.environ.get("DOCKER_ENV") == "true":
 else:
     # 本地开发环境 - 使用相对于backend目录的路径
     VOICE_PROFILES_DIR = "data/voice_profiles"
-    AUDIO_DIR = "data/audio"
+    AUDIO_DIR = os.getenv("AUDIO_DIR", "data/audio")
 
 # 确保路径使用正斜杠（用于URL）
 def normalize_path(path):

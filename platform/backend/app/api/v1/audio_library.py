@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/audio-library", tags=["Audio Library"])
 
 # 音频文件存储路径
-AUDIO_DIR = "data/audio"
+AUDIO_DIR = os.getenv("AUDIO_DIR", "data/audio")
 
 @router.get("/files", summary="获取音频文件列表")
 async def get_audio_files(

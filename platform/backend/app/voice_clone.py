@@ -25,9 +25,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/voice-clone", tags=["声音克隆"])
 
 # 音频文件存储路径
-AUDIO_DIR = "data/audio"
-UPLOAD_DIR = "data/uploads"
-VOICE_PROFILES_DIR = "data/voice_profiles"
+AUDIO_DIR = os.getenv("AUDIO_DIR", "data/audio")
+UPLOAD_DIR = os.getenv("UPLOADS_DIR", "data/uploads")
+VOICE_PROFILES_DIR = os.getenv("VOICE_PROFILES_DIR", "data/voice_profiles")
 
 @router.post("/upload-reference")
 async def upload_reference_audio(

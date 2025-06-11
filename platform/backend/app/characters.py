@@ -23,8 +23,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/characters", tags=["声音库管理"])
 
 # 音频文件存储路径
-VOICE_PROFILES_DIR = "/app/data/voice_profiles"
-AUDIO_DIR = "data/audio"
+VOICE_PROFILES_DIR = os.getenv("VOICE_PROFILES_DIR", "data/voice_profiles")
+AUDIO_DIR = os.getenv("AUDIO_DIR", "data/audio")
 
 @router.get("")
 @router.get("/")

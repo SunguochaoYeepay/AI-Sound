@@ -16,7 +16,8 @@ services:
       - DEBUG=false
     volumes:
       - ./data:/app/data
-      - ./platform/backend/app:/app/app  # 开发模式：代码热重载
+      # 生产模式：使用构建的镜像代码，不启用热重载
+      # - ./platform/backend/app:/app/app  # 开发模式：代码热重载
     depends_on:
       - database
       - redis
