@@ -153,7 +153,6 @@
             
             <div v-else class="no-chapters">
               <a-empty
-                image="/api/placeholder/100/80"
                 description="暂无章节"
               >
                 <a-button type="primary" @click="detectChapters" :loading="detectingChapters">
@@ -186,7 +185,6 @@
             
             <div v-else class="no-projects">
               <a-empty
-                image="/api/placeholder/100/80"
                 description="暂无相关项目"
               >
                 <a-button type="primary" @click="createProject" :disabled="!book.content">
