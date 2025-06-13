@@ -542,10 +542,17 @@ const updateCharactersFromAnalysis = () => {
     voice_name: char.voice_name
   }))
   
-  // 只初始化空的映射，让用户可以看到AI推荐并手动选择
-  // 不自动应用AI推荐，避免混淆
+  // 自动应用AI推荐的角色映射到characterVoiceMapping
+  // 这样在合成时就能找到正确的voice_id
+  mockResult.value.characters.forEach(char => {
+    if (char.voice_id) {
+      characterVoiceMapping[char.name] = char.voice_id
+    }
+  })
+  
   console.log('已更新角色配置:', {
     characters: detectedCharacters.value,
+    characterVoiceMapping: characterVoiceMapping,
     aiRecommendations: mockResult.value.characters.map(char => ({
       name: char.name,
       recommendedVoiceId: char.voice_id,
@@ -662,7 +669,42 @@ const validateJsonContent = () => {
       return
     }
     
-    const segmentCount = dataObj.synthesis_plan?.length || dataObj.segments?.length || 0
+    // 详细检查synthesis_plan的数据格式
+    const segmentData = dataObj.synthesis_plan || dataObj.segments
+    const segmentCount = segmentData.length
+    const formatErrors = []
+    
+    segmentData.forEach((segment, index) => {
+      const segmentNum = index + 1
+      
+      // 检查必要字段
+      if (!segment.text || segment.text.trim() === '') {
+        formatErrors.push(`第${segmentNum}段缺少text字段`)
+      }
+      
+      // 检查voice_id字段（支持多种格式）
+      const hasVoiceId = segment.voice_id || segment.voiceId || 
+                        segment.voice_config?.voice_id || segment.voice_config?.voiceId
+      const hasSpeaker = segment.speaker || segment.character
+      
+      if (!hasVoiceId && !hasSpeaker) {
+        formatErrors.push(`第${segmentNum}段缺少voice_id或speaker字段`)
+      }
+      
+      // 如果使用voice_config嵌套结构，给出格式建议
+      if (segment.voice_config && !segment.voice_id) {
+        formatErrors.push(`第${segmentNum}段使用了voice_config嵌套结构，建议改为直接的voice_id字段`)
+      }
+    })
+    
+    if (formatErrors.length > 0) {
+      jsonValidationResult.value = {
+        valid: false,
+        message: 'synthesis_plan格式错误',
+        description: `发现 ${formatErrors.length} 个问题:\n${formatErrors.join('\n')}\n\n推荐格式: 每个段落应包含 text, voice_id, speaker 字段`
+      }
+      return
+    }
     
     jsonValidationResult.value = {
       valid: true,
@@ -948,6 +990,32 @@ const synthesizeJsonDirectly = async (synthesisPlans) => {
     message.success('开始JSON测试数据合成')
     project.value.status = 'processing'
     
+    // 验证合成计划数据
+    if (!Array.isArray(synthesisPlans) || synthesisPlans.length === 0) {
+      throw new Error('合成计划数据为空或格式错误')
+    }
+    
+    console.log('=== 合成计划验证 ===')
+    console.log('合成计划数量:', synthesisPlans.length)
+    console.log('前3个计划样本:', synthesisPlans.slice(0, 3))
+    
+    // 预检查所有计划的必要字段
+    const invalidPlans = []
+    synthesisPlans.forEach((plan, index) => {
+      const voiceId = plan.voice_id || plan.voiceId || plan.character_id || plan.speaker_id
+      if (!voiceId) {
+        invalidPlans.push(`第${index + 1}段缺少voice_id`)
+      }
+      if (!plan.text || plan.text.trim() === '') {
+        invalidPlans.push(`第${index + 1}段缺少文本内容`)
+      }
+    })
+    
+    if (invalidPlans.length > 0) {
+      console.error('发现无效的合成计划:', invalidPlans)
+      throw new Error(`数据验证失败:\n${invalidPlans.join('\n')}`)
+    }
+    
     // 模拟进度统计
     const totalSegments = synthesisPlans.length
     let completedSegments = 0
@@ -968,9 +1036,37 @@ const synthesizeJsonDirectly = async (synthesisPlans) => {
       
       try {
         console.log(`正在合成第 ${i + 1}/${totalSegments} 段落:`, plan.text?.slice(0, 50))
+        console.log(`段落 ${i + 1} 详细信息:`, {
+          voice_id: plan.voice_id,
+          voiceId: plan.voiceId,
+          character: plan.character,
+          speaker: plan.speaker,
+          text_length: plan.text?.length
+        })
+        
+        // 获取voice_id，优先使用直接字段
+        let voiceId = plan.voice_id || plan.voiceId
+        
+        // 如果没有直接的voice_id，尝试从角色映射中查找
+        if (!voiceId && (plan.speaker || plan.character)) {
+          const characterName = plan.speaker || plan.character
+          voiceId = characterVoiceMapping[characterName]
+          console.log(`从角色映射中查找voice_id: ${characterName} -> ${voiceId}`)
+        }
+        
+        if (!voiceId) {
+          console.error(`第 ${i + 1} 段落缺少voice_id:`, plan)
+          console.error('可用的角色映射:', characterVoiceMapping)
+          throw new Error(`第 ${i + 1} 段落缺少voice_id字段。请确保JSON格式正确，每个段落都有voice_id或speaker字段`)
+        }
+        
+        if (!plan.text || plan.text.trim() === '') {
+          console.error(`第 ${i + 1} 段落缺少文本内容:`, plan)
+          throw new Error(`第 ${i + 1} 段落缺少文本内容`)
+        }
         
         // 调用TTS API
-        const response = await charactersAPI.testVoiceSynthesis(plan.voice_id, {
+        const response = await charactersAPI.testVoiceSynthesis(voiceId, {
           text: plan.text,
           time_step: plan.parameters?.timeStep || 20,
           p_weight: plan.parameters?.pWeight || 1.0,
@@ -986,7 +1082,17 @@ const synthesizeJsonDirectly = async (synthesisPlans) => {
         
       } catch (error) {
         console.error(`第 ${i + 1} 段落合成失败:`, error)
+        console.error(`失败段落详情:`, {
+          index: i + 1,
+          plan: plan,
+          error_message: error.message
+        })
         project.value.statistics.failedSegments++
+        
+        // 如果是关键错误（如voice_id缺失），显示更详细的错误信息
+        if (error.message.includes('voice_id') || error.message.includes('文本内容')) {
+          message.error(`第 ${i + 1} 段落: ${error.message}`)
+        }
       }
       
       // 更新进度
