@@ -587,26 +587,34 @@ async def test_voice_synthesis(
         # 确保音频输出目录存在
         os.makedirs(AUDIO_DIR, exist_ok=True)
         
-        # 简化的TTS实现 - 实际项目中应该调用真实的TTS服务
-        # 这里创建一个占位符音频文件
-        import wave
-        import numpy as np
+        # 调用真实的TTS服务进行合成
+        from app.tts_client import get_tts_client, TTSRequest
         
-        # 生成示例音频数据 (1秒的440Hz正弦波)
-        sample_rate = 44100
-        duration = 1.0
-        frequency = 440.0
+        # 获取TTS客户端
+        tts_client = get_tts_client()
         
-        t = np.linspace(0, duration, int(sample_rate * duration), False)
-        audio_data = np.sin(frequency * 2 * np.pi * t) * 0.3
-        audio_data = (audio_data * 32767).astype(np.int16)
+        # 调试日志：确认文件路径
+        logger.info(f"[TTS Test] 声音档案: {voice_profile.name}")
+        logger.info(f"[TTS Test] 参考音频: {voice_profile.reference_audio_path}")
+        logger.info(f"[TTS Test] Latent文件: {voice_profile.latent_file_path}")
+        logger.info(f"[TTS Test] 输出路径: {output_path}")
         
-        # 保存音频文件
-        with wave.open(output_path, 'w') as wav_file:
-            wav_file.setnchannels(1)
-            wav_file.setsampwidth(2)
-            wav_file.setframerate(sample_rate)
-            wav_file.writeframes(audio_data.tobytes())
+        # 创建TTS请求
+        tts_request = TTSRequest(
+            text=text,
+            reference_audio_path=voice_profile.reference_audio_path,
+            output_audio_path=output_path,
+            time_step=time_step,
+            p_weight=p_weight,
+            t_weight=t_weight,
+            latent_file_path=voice_profile.latent_file_path  # 添加latent文件路径
+        )
+        
+        # 执行TTS合成
+        response = await tts_client.synthesize_speech(tts_request)
+        
+        if not response.success:
+            raise HTTPException(status_code=500, detail=f"TTS合成失败: {response.message}")
         
         # 记录系统日志
         try:
@@ -618,7 +626,7 @@ async def test_voice_synthesis(
                 details={
                     "voice_id": voice_id,
                     "text": text,
-                    "processing_time": 1.5
+                    "processing_time": response.processing_time
                 }
             )
         except Exception as log_error:
@@ -633,7 +641,7 @@ async def test_voice_synthesis(
             "success": True,
             "message": "测试合成完成",
             "audioUrl": audio_url,
-            "processingTime": 1.5,
+            "processingTime": response.processing_time,
             "audioId": f"{audio_id}.wav"
         }
         

@@ -61,6 +61,13 @@
                   🎯 执行自动匹配
                 </a-button>
                 <a-button 
+                  type="dashed"
+                  @click="showJsonTestModal"
+                  :disabled="mockAnalyzing"
+                >
+                  🧪 测试JSON
+                </a-button>
+                <a-button 
                   v-if="mockResult"
                   @click="applyMockResult"
                   :loading="applyingMock"
@@ -281,6 +288,66 @@
         </template>
       </a-result>
     </div>
+
+    <!-- JSON测试弹窗 -->
+    <a-modal
+      v-model:open="jsonTestModalVisible"
+      title="🧪 JSON测试输入"
+      width="800px"
+      :destroyOnClose="true"
+      @ok="executeJsonTest"
+      @cancel="cancelJsonTest"
+      :okButtonProps="{ loading: jsonTestExecuting, disabled: !jsonTestContent.trim() }"
+      okText="自动执行匹配"
+      cancelText="取消"
+    >
+      <div class="json-test-container">
+        <div class="json-description">
+          <a-alert
+            message="JSON格式说明"
+            description="请粘贴包含project_info、characters、segments的完整JSON数据。系统将解析此JSON并应用到当前项目的角色配置中。"
+            type="info"
+            show-icon
+            style="margin-bottom: 16px;"
+          />
+        </div>
+        
+        <a-form layout="vertical">
+          <a-form-item label="JSON数据" required>
+            <a-textarea
+              v-model:value="jsonTestContent"
+              placeholder="请粘贴您的JSON数据..."
+              :rows="15"
+              style="font-family: 'Consolas', 'Monaco', 'Courier New', monospace;"
+            />
+          </a-form-item>
+          
+          <a-form-item>
+            <a-space>
+              <a-button @click="formatJsonContent" size="small">
+                🎨 格式化JSON
+              </a-button>
+              <a-button @click="validateJsonContent" size="small">
+                ✅ 验证格式
+              </a-button>
+              <a-button @click="clearJsonContent" size="small" type="dashed">
+                🗑️ 清空内容
+              </a-button>
+            </a-space>
+          </a-form-item>
+          
+          <!-- 验证结果显示 -->
+          <div v-if="jsonValidationResult" class="validation-result">
+            <a-alert
+              :type="jsonValidationResult.valid ? 'success' : 'error'"
+              :message="jsonValidationResult.message"
+              :description="jsonValidationResult.description"
+              show-icon
+            />
+          </div>
+        </a-form>
+      </div>
+    </a-modal>
   </div>
 </template>
 
@@ -311,6 +378,12 @@ const checkingService = ref(false)
 const mockAnalyzing = ref(false)
 const applyingMock = ref(false)
 const mockResult = ref(null)
+
+// JSON测试相关
+const jsonTestModalVisible = ref(false)
+const jsonTestContent = ref('')
+const jsonTestExecuting = ref(false)
+const jsonValidationResult = ref(null)
 
 const synthesisConfig = reactive({
   parallelTasks: 1, // 固定为1，避免GPU显存冲突
@@ -509,6 +582,151 @@ const clearMockResult = () => {
   message.info('匹配结果已清空')
 }
 
+// JSON测试方法
+const showJsonTestModal = () => {
+  jsonTestModalVisible.value = true
+  jsonTestContent.value = ''
+  jsonValidationResult.value = null
+}
+
+const cancelJsonTest = () => {
+  jsonTestModalVisible.value = false
+  jsonTestContent.value = ''
+  jsonValidationResult.value = null
+}
+
+const formatJsonContent = () => {
+  try {
+    if (!jsonTestContent.value.trim()) {
+      message.warning('请先输入JSON内容')
+      return
+    }
+    
+    const parsed = JSON.parse(jsonTestContent.value)
+    jsonTestContent.value = JSON.stringify(parsed, null, 2)
+    message.success('JSON格式化完成')
+  } catch (error) {
+    message.error('JSON格式错误: ' + error.message)
+  }
+}
+
+const validateJsonContent = () => {
+  try {
+    if (!jsonTestContent.value.trim()) {
+      jsonValidationResult.value = {
+        valid: false,
+        message: '请输入JSON内容',
+        description: '输入框不能为空'
+      }
+      return
+    }
+    
+    const parsed = JSON.parse(jsonTestContent.value)
+    
+    // 支持两种格式：直接包含字段 或 嵌套在data字段中
+    const dataObj = parsed.data || parsed
+    
+    // 验证必要字段
+    const requiredFields = ['project_info', 'characters']
+    // segments字段改为synthesis_plan，这是实际使用的字段名
+    const optionalFields = ['synthesis_plan', 'segments']
+    const missingRequired = requiredFields.filter(field => !dataObj[field])
+    const hasSegments = optionalFields.some(field => Array.isArray(dataObj[field]) && dataObj[field].length > 0)
+    
+    if (missingRequired.length > 0) {
+      jsonValidationResult.value = {
+        valid: false,
+        message: '缺少必要字段',
+        description: `缺少以下字段: ${missingRequired.join(', ')}`
+      }
+      return
+    }
+    
+    // 检查角色数据
+    if (!Array.isArray(dataObj.characters) || dataObj.characters.length === 0) {
+      jsonValidationResult.value = {
+        valid: false,
+        message: '角色数据无效',
+        description: 'characters字段必须是非空数组'
+      }
+      return
+    }
+    
+    // 检查分段数据 (synthesis_plan 或 segments)
+    if (!hasSegments) {
+      jsonValidationResult.value = {
+        valid: false,
+        message: '分段数据无效',
+        description: 'synthesis_plan 或 segments 字段必须是非空数组'
+      }
+      return
+    }
+    
+    const segmentCount = dataObj.synthesis_plan?.length || dataObj.segments?.length || 0
+    
+    jsonValidationResult.value = {
+      valid: true,
+      message: 'JSON格式验证通过',
+      description: `包含 ${dataObj.characters.length} 个角色，${segmentCount} 个文本段落`
+    }
+    
+  } catch (error) {
+    jsonValidationResult.value = {
+      valid: false,
+      message: 'JSON语法错误',
+      description: error.message
+    }
+  }
+}
+
+const clearJsonContent = () => {
+  jsonTestContent.value = ''
+  jsonValidationResult.value = null
+  message.info('内容已清空')
+}
+
+const executeJsonTest = async () => {
+  if (!jsonTestContent.value.trim()) {
+    message.error('请输入JSON内容')
+    return
+  }
+  
+  jsonTestExecuting.value = true
+  try {
+    console.log('=== 开始执行JSON测试 ===')
+    
+    // 先验证JSON格式
+    validateJsonContent()
+    if (!jsonValidationResult.value?.valid) {
+      message.error('JSON格式验证失败，请修正后重试')
+      return
+    }
+    
+    // 解析JSON数据
+    const parsed = JSON.parse(jsonTestContent.value)
+    console.log('解析的JSON数据:', parsed)
+    
+    // 支持两种格式：直接包含字段 或 嵌套在data字段中
+    const dataObj = parsed.data || parsed
+    mockResult.value = dataObj
+    
+    // 关闭弹窗
+    jsonTestModalVisible.value = false
+    
+    // 更新角色配置
+    updateCharactersFromAnalysis()
+    
+    message.success('JSON测试数据已加载！请查看匹配结果并应用配置')
+    console.log('JSON测试结果已设置:', mockResult.value)
+    
+  } catch (error) {
+    console.error('JSON测试执行错误:', error)
+    message.error('执行失败: ' + error.message)
+  } finally {
+    jsonTestExecuting.value = false
+  }
+}
+
 // 加载项目详情
 const loadProject = async () => {
   try {
@@ -652,12 +870,26 @@ const playVoicePreview = async (voiceId, sampleText) => {
     }
 
     // 使用统一的API调用替代直接fetch
-    const response = await charactersAPI.testVoiceSynthesis(selectedVoice.id, {
-      text: '这是声音预览测试',
+    const testParams = {
+      text: sampleText || '这是声音预览测试',
       time_step: 20,
       p_weight: 1.0,
       t_weight: 1.0
-    })
+    }
+    
+    console.log('=== 声音试听调试信息 ===')
+    console.log('voiceId:', selectedVoice.id)
+    console.log('voiceName:', selectedVoice.name)
+    console.log('sampleText:', sampleText)
+    console.log('testParams:', testParams)
+    console.log('========================')
+    
+    const response = await charactersAPI.testVoiceSynthesis(selectedVoice.id, testParams)
+    
+    console.log('=== API响应调试信息 ===')
+    console.log('response.data:', response.data)
+    console.log('audioUrl:', response.data?.audioUrl)
+    console.log('=====================')
 
     if (response.data && response.data.success && response.data.audioUrl) {
       // 构建完整的音频URL
@@ -710,18 +942,103 @@ const playVoicePreview = async (voiceId, sampleText) => {
   }
 }
 
+// 直接对JSON数据进行TTS合成
+const synthesizeJsonDirectly = async (synthesisPlans) => {
+  try {
+    message.success('开始JSON测试数据合成')
+    project.value.status = 'processing'
+    
+    // 模拟进度统计
+    const totalSegments = synthesisPlans.length
+    let completedSegments = 0
+    
+    project.value.statistics = {
+      totalSegments,
+      completedSegments: 0,
+      failedSegments: 0,
+      processingSegments: 0,
+      pendingSegments: totalSegments
+    }
+    
+    console.log(`开始合成 ${totalSegments} 个JSON段落`)
+    
+    // 逐个合成
+    for (let i = 0; i < synthesisPlans.length; i++) {
+      const plan = synthesisPlans[i]
+      
+      try {
+        console.log(`正在合成第 ${i + 1}/${totalSegments} 段落:`, plan.text?.slice(0, 50))
+        
+        // 调用TTS API
+        const response = await charactersAPI.testVoiceSynthesis(plan.voice_id, {
+          text: plan.text,
+          time_step: plan.parameters?.timeStep || 20,
+          p_weight: plan.parameters?.pWeight || 1.0,
+          t_weight: plan.parameters?.tWeight || 1.0
+        })
+        
+        if (response.data?.success) {
+          completedSegments++
+          console.log(`第 ${i + 1} 段落合成成功`)
+        } else {
+          throw new Error(response.data?.message || '合成失败')
+        }
+        
+      } catch (error) {
+        console.error(`第 ${i + 1} 段落合成失败:`, error)
+        project.value.statistics.failedSegments++
+      }
+      
+      // 更新进度
+      project.value.statistics.completedSegments = completedSegments
+      project.value.statistics.pendingSegments = totalSegments - completedSegments - project.value.statistics.failedSegments
+      
+      // 短暂等待，避免过快调用
+      if (i < synthesisPlans.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 1000))
+      }
+    }
+    
+    // 完成合成
+    project.value.status = 'completed'
+    const failedCount = project.value.statistics.failedSegments
+    
+    if (failedCount === 0) {
+      message.success(`JSON测试数据合成完成！成功 ${completedSegments} 个段落`)
+    } else {
+      message.warning(`JSON测试数据合成完成！成功 ${completedSegments} 个，失败 ${failedCount} 个段落`)
+    }
+    
+  } catch (error) {
+    console.error('JSON合成失败:', error)
+    project.value.status = 'failed'
+    message.error('JSON测试数据合成失败: ' + error.message)
+  }
+}
+
 // 开始合成
 const startSynthesis = async () => {
   synthesisStarting.value = true
   try {
-    const response = await readerAPI.startGeneration(project.value.id, {
-      parallel_tasks: synthesisConfig.parallelTasks
-    })
-    
-    if (response.data.success) {
-      message.success('合成任务已启动')
-      project.value.status = 'processing'
-      startProgressPolling()
+    // 检查是否有JSON测试数据需要优先使用
+    if (mockResult.value?.synthesis_plan?.length > 0) {
+      console.log('=== 使用JSON测试数据进行直接TTS合成 ===')
+      console.log('合成计划:', mockResult.value.synthesis_plan)
+      
+      // 直接对JSON中的文本进行TTS合成，不经过项目segments
+      await synthesizeJsonDirectly(mockResult.value.synthesis_plan)
+    } else {
+      // 使用项目原有segments进行合成
+      console.log('=== 使用项目原有数据进行合成 ===')
+      const response = await readerAPI.startGeneration(project.value.id, {
+        parallel_tasks: synthesisConfig.parallelTasks
+      })
+      
+      if (response.data.success) {
+        message.success('合成任务已启动')
+        project.value.status = 'processing'
+        startProgressPolling()
+      }
     }
   } catch (error) {
     console.error('启动合成失败:', error)
@@ -1134,5 +1451,37 @@ window.addEventListener('beforeunload', () => {
     align-items: flex-start;
     gap: 8px;
   }
+}
+
+/* JSON测试弹窗样式 */
+.json-test-container {
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+.json-test-container .ant-textarea {
+  font-size: 12px;
+  line-height: 1.4;
+  border-radius: 6px;
+  border: 2px dashed #d9d9d9;
+  transition: border-color 0.3s ease;
+}
+
+.json-test-container .ant-textarea:focus {
+  border-color: #1890ff;
+  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
+}
+
+.validation-result {
+  margin-top: 12px;
+}
+
+.json-description {
+  margin-bottom: 16px;
+}
+
+.json-test-container .ant-form-item-label > label {
+  font-weight: 600;
+  color: #1f2937;
 }
 </style>
