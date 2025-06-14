@@ -9,13 +9,13 @@
 ### 方式一：手动部署（每次修改后执行）
 ```bash
 # 运行自动部署脚本
-./deploy-frontend.ps1
+./scripts/deploy-frontend.ps1
 ```
 
 ### 方式二：自动监控（推荐开发时使用）
 ```bash
 # 启动文件监控，自动重新部署
-./dev-watch.ps1
+./scripts/dev-watch.ps1
 ```
 
 ### 方式三：手动操作
@@ -40,14 +40,14 @@ docker-compose restart nginx
 - **nginx-dist中转目录**：需要构建+复制+重启
 
 ### 开发环境设置
-- 使用 `dev-watch.ps1` 进行实时监控
+- 使用 `scripts/dev-watch.ps1` 进行实时监控
 - 支持文件变化自动重新部署
 - 包含防抖动机制，避免频繁构建
 
 ## 🎯 最佳实践
 
-1. **开发阶段**：使用 `./dev-watch.ps1` 自动监控
-2. **测试阶段**：使用 `./deploy-frontend.ps1` 手动部署
+1. **开发阶段**：使用 `./scripts/dev-watch.ps1` 自动监控
+2. **测试阶段**：使用 `./scripts/deploy-frontend.ps1` 手动部署
 3. **生产环境**：集成到CI/CD流程中
 
 ## ⚠️ 常见问题
@@ -68,6 +68,8 @@ AI-Sound/
 │   ├── src/           # 源代码
 │   └── dist/          # 构建输出
 ├── nginx-dist/        # nginx挂载目录（可选）
-├── deploy-frontend.ps1 # 部署脚本
-└── dev-watch.ps1      # 开发监控脚本
+├── scripts/
+│   ├── deploy-frontend.ps1 # 部署脚本
+│   └── dev-watch.ps1      # 开发监控脚本
+└── docs/              # 文档目录
 ``` 

@@ -710,6 +710,20 @@ const getSegmentStatusText = (status) => {
 
 // 下载完整音频
 const downloadFinalAudio = async () => {
+  // 检查项目状态
+  if (currentProject.value?.status !== 'completed') {
+    const statusText = {
+      'pending': '等待处理',
+      'configured': '已配置但未开始生成',
+      'processing': '正在生成中',
+      'paused': '已暂停',
+      'failed': '生成失败'
+    }[currentProject.value?.status] || '未知状态'
+    
+    message.warning(`无法下载：项目当前状态为"${statusText}"，只有已完成的项目才能下载音频文件`)
+    return
+  }
+  
   if (!currentProject.value?.final_audio_path) {
     message.error('没有可下载的最终音频文件')
     return
@@ -729,7 +743,18 @@ const downloadFinalAudio = async () => {
     message.success('下载成功')
   } catch (error) {
     console.error('下载失败:', error)
-    message.error('下载失败')
+    
+    // 改进错误处理，显示具体的错误信息
+    let errorMessage = '下载失败'
+    if (error.response?.data?.message) {
+      errorMessage = error.response.data.message
+    } else if (error.message === 'Network Error') {
+      errorMessage = '网络连接失败，请检查网络连接或稍后重试'
+    } else if (error.code === 'ERR_CONNECTION_RESET') {
+      errorMessage = '连接被重置，请检查后端服务状态'
+    }
+    
+    message.error(errorMessage)
   } finally {
     downloading.value = false
   }

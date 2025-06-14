@@ -1015,3 +1015,118 @@ async def get_popular_tags(
     except Exception as e:
         logger.error(f"获取热门标签失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"获取标签失败: {str(e)}")
+
+@router.get("/check-exists")
+async def check_character_exists(
+    name: str = Query(..., description="角色名称"),
+    db: Session = Depends(get_db)
+):
+    """
+    检查角色是否已存在于角色库中
+    用于智能角色发现功能，避免重复创建角色
+    """
+    try:
+        existing_character = db.query(VoiceProfile).filter(
+            VoiceProfile.name == name
+        ).first()
+        
+        if existing_character:
+            return {
+                "exists": True,
+                "config": {
+                    "id": existing_character.id,
+                    "name": existing_character.name,
+                    "type": existing_character.type,
+                    "description": existing_character.description,
+                    "usage_count": existing_character.usage_count,
+                    "quality_score": existing_character.quality_score,
+                    "color": existing_character.color,
+                    "status": existing_character.status,
+                    "created_at": existing_character.created_at.isoformat() if existing_character.created_at else None,
+                    "reference_audio_url": existing_character.reference_audio_path,
+                    "latent_file_url": existing_character.latent_file_path
+                }
+            }
+        else:
+            return {
+                "exists": False,
+                "message": f"角色 '{name}' 不存在于角色库中"
+            }
+            
+    except Exception as e:
+        logger.error(f"检查角色存在性失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"检查失败: {str(e)}")
+
+@router.get("/search-similar")
+async def search_similar_characters(
+    name: str = Query(..., description="角色名称"),
+    threshold: float = Query(0.7, description="相似度阈值"),
+    db: Session = Depends(get_db)
+):
+    """
+    搜索相似的角色名称
+    用于智能角色发现，提示可能的重复角色
+    """
+    try:
+        # 获取所有角色名称
+        all_characters = db.query(VoiceProfile.name).all()
+        character_names = [char.name for char in all_characters]
+        
+        # 简单的相似度计算（可以后续优化为更复杂的算法）
+        similar_characters = []
+        
+        for existing_name in character_names:
+            # 计算简单的字符串相似度
+            similarity = calculate_similarity(name, existing_name)
+            
+            if similarity >= threshold and name != existing_name:
+                similar_characters.append({
+                    "name": existing_name,
+                    "similarity": similarity
+                })
+        
+        # 按相似度排序
+        similar_characters.sort(key=lambda x: x['similarity'], reverse=True)
+        
+        return {
+            "success": True,
+            "query_name": name,
+            "similar_characters": similar_characters[:5],  # 最多返回5个相似角色
+            "message": f"找到 {len(similar_characters)} 个相似角色"
+        }
+        
+    except Exception as e:
+        logger.error(f"搜索相似角色失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"搜索失败: {str(e)}")
+
+def calculate_similarity(str1: str, str2: str) -> float:
+    """
+    计算两个字符串的相似度
+    使用简单的编辑距离算法
+    """
+    if not str1 or not str2:
+        return 0.0
+    
+    # 计算编辑距离
+    len1, len2 = len(str1), len(str2)
+    dp = [[0] * (len2 + 1) for _ in range(len1 + 1)]
+    
+    for i in range(len1 + 1):
+        dp[i][0] = i
+    for j in range(len2 + 1):
+        dp[0][j] = j
+    
+    for i in range(1, len1 + 1):
+        for j in range(1, len2 + 1):
+            if str1[i-1] == str2[j-1]:
+                dp[i][j] = dp[i-1][j-1]
+            else:
+                dp[i][j] = min(dp[i-1][j], dp[i][j-1], dp[i-1][j-1]) + 1
+    
+    # 转换为相似度（0-1之间）
+    max_len = max(len1, len2)
+    if max_len == 0:
+        return 1.0
+    
+    similarity = 1.0 - (dp[len1][len2] / max_len)
+    return similarity

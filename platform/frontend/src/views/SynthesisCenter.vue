@@ -1126,29 +1126,22 @@ const synthesizeJsonDirectly = async (synthesisPlans) => {
 const startSynthesis = async () => {
   synthesisStarting.value = true
   try {
-    // 检查是否有JSON测试数据需要优先使用
-    if (mockResult.value?.synthesis_plan?.length > 0) {
-      console.log('=== 使用JSON测试数据进行直接TTS合成 ===')
-      console.log('合成计划:', mockResult.value.synthesis_plan)
-      
-      // 直接对JSON中的文本进行TTS合成，不经过项目segments
-      await synthesizeJsonDirectly(mockResult.value.synthesis_plan)
+    // 优先使用项目的正式生成流程，而不是JSON测试数据
+    console.log('=== 启动项目正式合成流程 ===')
+    const response = await readerAPI.startGeneration(project.value.id, {
+      parallel_tasks: synthesisConfig.parallelTasks
+    })
+    
+    if (response.data.success) {
+      message.success('合成任务已启动')
+      project.value.status = 'processing'
+      startProgressPolling()
     } else {
-      // 使用项目原有segments进行合成
-      console.log('=== 使用项目原有数据进行合成 ===')
-      const response = await readerAPI.startGeneration(project.value.id, {
-        parallel_tasks: synthesisConfig.parallelTasks
-      })
-      
-      if (response.data.success) {
-        message.success('合成任务已启动')
-        project.value.status = 'processing'
-        startProgressPolling()
-      }
+      throw new Error(response.data.message || '启动失败')
     }
   } catch (error) {
     console.error('启动合成失败:', error)
-    message.error('启动合成失败')
+    message.error('启动合成失败: ' + error.message)
   } finally {
     synthesisStarting.value = false
   }
@@ -1184,6 +1177,20 @@ const resumeSynthesis = async () => {
 
 // 下载音频
 const downloadAudio = async () => {
+  // 检查项目状态
+  if (project.value?.status !== 'completed') {
+    const statusText = {
+      'pending': '等待处理',
+      'configured': '已配置但未开始生成',
+      'processing': '正在生成中',
+      'paused': '已暂停',
+      'failed': '生成失败'
+    }[project.value?.status] || '未知状态'
+    
+    message.warning(`无法下载：项目当前状态为"${statusText}"，请先完成音频生成`)
+    return
+  }
+  
   try {
     const response = await readerAPI.downloadAudio(project.value.id)
     // 处理文件下载
@@ -1193,9 +1200,21 @@ const downloadAudio = async () => {
     link.download = `${project.value.name}_final.wav`
     link.click()
     window.URL.revokeObjectURL(url)
+    message.success('下载成功')
   } catch (error) {
     console.error('下载失败:', error)
-    message.error('下载失败')
+    
+    // 改进错误处理
+    let errorMessage = '下载失败'
+    if (error.response?.data?.message) {
+      errorMessage = error.response.data.message
+    } else if (error.message === 'Network Error') {
+      errorMessage = '网络连接失败，请检查网络连接或稍后重试'
+    } else if (error.code === 'ERR_CONNECTION_RESET') {
+      errorMessage = '连接被重置，请检查后端服务状态'
+    }
+    
+    message.error(errorMessage)
   }
 }
 
