@@ -12,6 +12,7 @@ import logging
 from datetime import datetime
 import re
 import requests
+import os
 
 from app.database import get_db
 from app.models import BookChapter, Book, TextSegment
@@ -19,6 +20,312 @@ from app.utils import log_system_event
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/chapters", tags=["Chapters"])
+
+class ProgrammaticCharacterDetector:
+    """
+    编程规则角色识别器 - 可复用的角色识别引擎
+    基于小说角色编程识别规则.md的实现
+    """
+    
+    def __init__(self):
+        # 对话标识符模式
+        self.dialogue_patterns = {
+            'direct_quote': [
+                r'^([^""''「」『』：:，。！？\s]{2,6})[说道讲叫喊问答回复表示][:：]\s*[""''「」『』]',
+                r'^([^""''「」『』：:，。！？\s]{2,6})[说道讲叫喊问答回复表示]，\s*[""''「」『』]',
+                r'^([^""''「」『』：:，。！？\s]{2,6})[:：]\s*[""''「」『』]'
+            ],
+            'colon_marker': [
+                r'^([^：:，。！？\s]{2,6})[:：]'
+            ],
+            'quote_dialogue': [
+                r'^([^""''「」『』，。！？\s]{2,6})[^""''「」『』]{0,10}[""''「」『』]',
+                r'[""''「」『』][^""''「」『』]+[""''「」『』][^，。！？]*?([^，。！？\s]{2,6})[说道]'
+            ],
+            'mixed_separation': [
+                r'^(.+?)([一-龯]{2,4}[说道讲叫喊问答回复表示自言自语][:：])\s*[""''「」『』](.+?)[""''「」『』](.*)$'
+            ]
+        }
+        
+        # 排除词汇
+        self.excluded_words = [
+            '这个', '那个', '什么', '哪里', '为什么', '怎么',
+            '可是', '但是', '所以', '因为', '如果', '虽然',
+            '遇到', '慢慢', '而这', '这一', '那一', '当他', '当她',
+            '此时', '此后', '然后', '接着', '最后', '从那', '经过',
+            '神奇', '在一', '正发', '无奈', '尽管'
+        ]
+        
+        # 叙述词汇
+        self.narrative_words = [
+            '只见', '忽然', '此时', '这时', '突然', '接着', '然后', 
+            '于是', '一天', '师徒', '山势', '峰岩', '话说', '却说'
+        ]
+    
+    def segment_text_with_speakers(self, text: str) -> List[Dict]:
+        """将文本分段并识别说话者"""
+        segments = []
+        
+        # 按句号分割文本
+        sentences = [s.strip() for s in text.split('。') if s.strip()]
+        
+        for i, sentence in enumerate(sentences):
+            segment_info = self.identify_speaker(sentence)
+            segments.append({
+                'order': i + 1,
+                'text': sentence + '。',
+                'speaker': segment_info['speaker'],
+                'confidence': segment_info['confidence'],
+                'detection_rule': segment_info['rule'],
+                'text_type': segment_info['text_type']
+            })
+        
+        return segments
+    
+    def identify_speaker(self, text: str) -> Dict:
+        """识别单个句子的说话者"""
+        
+        # 规则1: 混合文本分离模式
+        mixed_result = self.detect_mixed_text(text)
+        if mixed_result:
+            return mixed_result
+        
+        # 规则2: 直接引语模式 - 增强版
+        direct_patterns = [
+            # 标准格式: 角色名+说话动词+冒号+引号
+            r'^([一-龯]{2,6})[说道讲叫喊问答回复表示][:：]\s*[""''「」『』]',
+            # 带逗号格式: 角色名+说话动词+逗号+引号  
+            r'^([一-龯]{2,6})[说道讲叫喊问答回复表示]，\s*[""''「」『』]',
+            # 简化格式: 角色名+冒号+引号
+            r'^([一-龯]{2,6})[:：]\s*[""''「」『』]',
+            # 后置格式: 引号+内容+引号+角色名+说话动词
+            r'[""''「」『』][^""''「」『』]+[""''「」『』][^，。！？]*?([一-龯]{2,6})[说道讲叫喊问答回复表示]'
+        ]
+        
+        for pattern in direct_patterns:
+            match = re.search(pattern, text)
+            if match:
+                potential_speaker = match.group(1)
+                # 从潜在说话者中提取角色名
+                speaker = self._extract_character_name_from_action(potential_speaker)
+                if not speaker:
+                    speaker = potential_speaker  # 如果提取失败，使用原始匹配
+                
+                if self.is_valid_character_name(speaker):
+                    return {
+                        'speaker': speaker,
+                        'confidence': 0.95,
+                        'rule': 'direct_quote',
+                        'text_type': 'dialogue'
+                    }
+        
+        # 规则3: 对话标记模式
+        for pattern in self.dialogue_patterns['colon_marker']:
+            match = re.search(pattern, text)
+            if match:
+                speaker = match.group(1)
+                if self.is_valid_character_name(speaker):
+                    return {
+                        'speaker': speaker,
+                        'confidence': 0.9,
+                        'rule': 'colon_marker',
+                        'text_type': 'dialogue'
+                    }
+        
+        # 规则4: 引号对话模式
+        if any(quote in text for quote in ['"', '"', '"', '「', '」', '『', '』', "'", "'"]):
+            for pattern in self.dialogue_patterns['quote_dialogue']:
+                match = re.search(pattern, text)
+                if match:
+                    speaker = match.group(1)
+                    if self.is_valid_character_name(speaker):
+                        return {
+                            'speaker': speaker,
+                            'confidence': 0.85,
+                            'rule': 'quote_dialogue',
+                            'text_type': 'dialogue'
+                        }
+        
+        # 规则5: 旁白识别模式
+        return self.detect_narration(text)
+    
+    def detect_mixed_text(self, text: str) -> Optional[Dict]:
+        """检测混合文本（叙述+对话）"""
+        # 先尝试提取说话动作部分 - 更精确的模式
+        action_patterns = [
+            # 模式1: 角色名+修饰词+说话动词+冒号+引号
+            r'([一-龯]{2,6})[^，。！？]*?[说道讲叫喊问答回复表示][:：]\s*[""''「」『』]',
+            # 模式2: 角色名+自言自语+冒号+引号 (特殊处理)
+            r'([一-龯]{2,6})[^，。！？]*?自言自语道[:：]\s*[""''「」『』]'
+        ]
+        
+        for pattern in action_patterns:
+            match = re.search(pattern, text)
+            if match:
+                potential_speaker = match.group(1)
+                
+                # 从潜在说话者中提取真正的角色名
+                speaker_name = self._extract_character_name_from_action(potential_speaker)
+                
+                if speaker_name and self.is_valid_character_name(speaker_name):
+                    return {
+                        'speaker': speaker_name,
+                        'confidence': 0.95,
+                        'rule': 'mixed_separation',
+                        'text_type': 'dialogue'
+                    }
+        return None
+    
+    def _extract_character_name_from_action(self, action_text: str) -> Optional[str]:
+        """从说话动作文本中提取角色名"""
+        # 常见的角色名模式
+        character_patterns = [
+            # 直接匹配常见角色名
+            r'(孙悟空|唐僧|猪八戒|沙僧|白骨精|观音|如来|玉帝)',
+            # 匹配以特定字开头的角色名
+            r'(白[一-龯]{1,2})',  # 白骨精、白娘子等
+            r'(孙[一-龯]{1,2})',  # 孙悟空等
+            r'(唐[一-龯]{0,2})',  # 唐僧等
+            # 通用模式：去掉修饰词后的2-4字角色名
+            r'(?:不胜|十分|非常|很是|颇为|甚是|极其)?([一-龯]{2,4})(?:不胜|十分|非常|很是|颇为|甚是|极其|欢喜|愤怒|高兴|悲伤|惊讶|害怕|着急|焦急)?'
+        ]
+        
+        for pattern in character_patterns:
+            match = re.search(pattern, action_text)
+            if match:
+                candidate = match.group(1)
+                # 验证候选角色名
+                if self.is_valid_character_name(candidate):
+                    return candidate
+        
+        return None
+    
+    def detect_narration(self, text: str) -> Dict:
+        """检测旁白/叙述文本"""
+        # 1. 不包含任何对话标记的文本
+        has_dialogue_markers = bool(re.search(r'[""''「」『』：:][说道讲叫喊问答回复表示]', text))
+        
+        # 2. 不以角色名开头的描述性文本  
+        starts_with_character = bool(re.search(r'^[一-龯]{2,4}[说道讲叫喊问答回复表示]', text))
+        
+        # 3. 包含描述性词汇的文本
+        has_narrative_words = any(word in text for word in self.narrative_words)
+        
+        if not has_dialogue_markers and not starts_with_character and (has_narrative_words or len(text) > 50):
+            return {
+                'speaker': '旁白',
+                'confidence': 0.9,
+                'rule': 'narration',
+                'text_type': 'narration'
+            }
+        
+        # 默认归类为旁白
+        return {
+            'speaker': '旁白',
+            'confidence': 0.7,
+            'rule': 'default_narration',
+            'text_type': 'narration'
+        }
+    
+    def is_valid_character_name(self, name: str) -> bool:
+        """验证角色名是否有效"""
+        if not name or len(name) < 2 or len(name) > 6:
+            return False
+        
+        if name in self.excluded_words:
+            return False
+        
+        # 检查是否包含标点符号
+        if any(punct in name for punct in ['。', '，', '！', '？', '；']):
+            return False
+        
+        # 检查是否为中文姓名
+        if not re.match(r'^[一-龯]{2,6}$', name):
+            return False
+        
+        return True
+    
+    def extract_dialogue_characters(self, segments: List[Dict]) -> Dict[str, int]:
+        """提取有对话的角色及其频次"""
+        dialogue_characters = {}
+        
+        for segment in segments:
+            if segment['text_type'] == 'dialogue' and segment['speaker'] != '旁白':
+                speaker = segment['speaker']
+                dialogue_characters[speaker] = dialogue_characters.get(speaker, 0) + 1
+        
+        return dialogue_characters
+    
+    def analyze_text_segments(self, text: str) -> Dict:
+        """分析文本并返回完整的分段和角色信息"""
+        segments = self.segment_text_with_speakers(text)
+        dialogue_characters = self.extract_dialogue_characters(segments)
+        
+        # 统计旁白段落
+        narrator_segments = [s for s in segments if s['speaker'] == '旁白']
+        
+        # 构建角色列表（只包含有对话的角色 + 旁白）
+        characters = []
+        
+        # 添加对话角色
+        for char_name, frequency in dialogue_characters.items():
+            characters.append({
+                'name': char_name,
+                'frequency': frequency,
+                'character_trait': {
+                    'trait': 'calm',  # 默认性格
+                    'confidence': 0.8,
+                    'description': f'{char_name}角色，需要进一步分析性格特征'
+                },
+                'first_appearance': 1,
+                'is_main_character': frequency >= 3,
+                'recommended_config': {
+                    'gender': 'unknown',
+                    'personality': 'calm',
+                    'personality_description': '性格特征待分析',
+                    'personality_confidence': 0.8,
+                    'description': f'{char_name}角色，在文本中有{frequency}次对话。',
+                    'recommended_tts_params': {'time_step': 32, 'p_w': 1.4, 't_w': 3.0},
+                    'voice_type': 'unknown',
+                    'color': '#007bff'
+                }
+            })
+        
+        # 添加旁白角色（如果有旁白内容）
+        if narrator_segments:
+            characters.append({
+                'name': '旁白',
+                'frequency': len(narrator_segments),
+                'character_trait': {
+                    'trait': 'calm',
+                    'confidence': 1.0,
+                    'description': '小说叙述者，负责描述场景和情节发展'
+                },
+                'first_appearance': 1,
+                'is_main_character': True,
+                'recommended_config': {
+                    'gender': 'neutral',
+                    'personality': 'calm',
+                    'personality_description': '专业旁白，声音清晰稳定，适合叙述',
+                    'personality_confidence': 1.0,
+                    'description': '旁白角色，负责小说的叙述部分，需要专业、清晰的声音。',
+                    'recommended_tts_params': {'time_step': 32, 'p_w': 1.4, 't_w': 3.0},
+                    'voice_type': 'narrator',
+                    'color': '#6c757d'
+                }
+            })
+        
+        return {
+            'segments': segments,
+            'detected_characters': characters,
+            'processing_stats': {
+                'total_segments': len(segments),
+                'dialogue_segments': len([s for s in segments if s['text_type'] == 'dialogue']),
+                'narration_segments': len(narrator_segments),
+                'characters_found': len(characters),
+                'analysis_method': 'programming_rules'
+            }
+        }
 
 @router.get("")
 async def get_chapters(
@@ -551,11 +858,18 @@ async def analyze_chapter_characters(chapter: BookChapter, detection_method: str
             detector = AdvancedCharacterDetector()
         
         # 执行角色分析
-        analysis_result = detector.analyze_text(content, {
-            'chapter_id': chapter.id,
-            'chapter_title': chapter.chapter_title,
-            'chapter_number': chapter.chapter_number
-        })
+        if isinstance(detector, OllamaCharacterDetector):
+            analysis_result = await detector.analyze_text(content, {
+                'chapter_id': chapter.id,
+                'chapter_title': chapter.chapter_title,
+                'chapter_number': chapter.chapter_number
+            })
+        else:
+            analysis_result = detector.analyze_text(content, {
+                'chapter_id': chapter.id,
+                'chapter_title': chapter.chapter_title,
+                'chapter_number': chapter.chapter_number
+            })
         
         return analysis_result
         
@@ -888,93 +1202,173 @@ class AdvancedCharacterDetector:
         return any(indicator in segment for indicator in dialogue_indicators)
 
 class OllamaCharacterDetector:
-    """
-    基于Ollama大模型的智能角色检测器
-    """
+    """使用Ollama进行角色分析的检测器 - 主力方案"""
     
     def __init__(self, model_name: str = "gemma3:27b", ollama_url: str = "http://localhost:11434"):
         self.model_name = model_name
-        self.ollama_url = ollama_url
         self.api_url = f"{ollama_url}/api/generate"
         
-    def analyze_text(self, text: str, chapter_info: dict) -> dict:
-        """使用Ollama分析文本中的角色"""
+    async def analyze_text(self, text: str, chapter_info: dict) -> dict:
+        """使用Ollama分析文本中的角色 - 直接AI分析，简单高效"""
+        import time
+        from ...utils.websocket_manager import send_analysis_progress
+        
+        start_time = time.time()
+        session_id = chapter_info.get('session_id', chapter_info['chapter_id'])
+        
         try:
-            # 构建提示词
-            prompt = self._build_character_analysis_prompt(text)
+            # 发送开始分析进度
+            await send_analysis_progress(session_id, 10, f"开始分析章节: {chapter_info['chapter_title']}")
             
-            # 调用Ollama API
+            # 1. 直接调用Ollama进行全文分析（包括角色识别和文本分段）
+            await send_analysis_progress(session_id, 30, "正在调用AI模型进行角色识别...")
+            
+            prompt = self._build_comprehensive_analysis_prompt(text)
             response = self._call_ollama(prompt)
             
+            processing_time = time.time() - start_time
+            
             if response:
-                # 解析Ollama返回的结果
-                characters = self._parse_ollama_response(response)
+                await send_analysis_progress(session_id, 80, "正在解析AI分析结果...")
+                
+                # 解析Ollama返回的完整结果
+                result = self._parse_comprehensive_response(response)
+                
+                await send_analysis_progress(session_id, 100, f"分析完成，识别到{len(result['characters'])}个角色")
+                
+                # 检查角色是否已存在于角色库中
+                filtered_characters = await self._filter_existing_characters(result['characters'])
                 
                 return {
                     "chapter_id": chapter_info['chapter_id'],
                     "chapter_title": chapter_info['chapter_title'],
                     "chapter_number": chapter_info['chapter_number'],
-                    "detected_characters": characters,
-                    "segments": [],
+                    "detected_characters": filtered_characters,
+                    "segments": result['segments'],
                     "processing_stats": {
-                        "total_segments": len(text.split('。')),
-                        "dialogue_segments": len([s for s in text.split('。') if any(marker in s for marker in ['"', '说', '道', '：'])]),
-                        "characters_found": len(characters),
-                        "analysis_method": "ollama_ai"
+                        "total_segments": len(result['segments']),
+                        "dialogue_segments": len([s for s in result['segments'] if s['text_type'] == 'dialogue']),
+                        "narration_segments": len([s for s in result['segments'] if s['text_type'] == 'narration']),
+                        "characters_found": len(result['characters']),
+                        "new_characters_found": len(filtered_characters),
+                        "analysis_method": "ollama_ai_primary",
+                        "processing_time": round(processing_time, 2),
+                        "text_length": len(text),
+                        "ai_model": self.model_name
                     }
                 }
             else:
-                # 如果Ollama调用失败，回退到规则方法
-                logger.warning("Ollama调用失败，回退到规则方法")
-                fallback_detector = AdvancedCharacterDetector()
-                return fallback_detector.analyze_text(text, chapter_info)
+                # Ollama调用失败，回退到简单规则方法
+                await send_analysis_progress(session_id, 50, "AI分析失败，使用回退方案...")
+                return self._fallback_simple_analysis(text, chapter_info, processing_time)
                 
         except Exception as e:
+            processing_time = time.time() - start_time
             logger.error(f"Ollama角色分析失败: {str(e)}")
-            # 回退到规则方法
-            fallback_detector = AdvancedCharacterDetector()
-            return fallback_detector.analyze_text(text, chapter_info)
+            await send_analysis_progress(session_id, 0, f"分析失败: {str(e)}")
+            return self._fallback_simple_analysis(text, chapter_info, processing_time)
     
-    def _build_character_analysis_prompt(self, text: str) -> str:
-        """构建角色分析提示词"""
-        prompt = f"""请分析以下文本中的所有角色，并以JSON格式返回结果。
+    def _fallback_simple_analysis(self, text: str, chapter_info: dict, processing_time: float = 0) -> dict:
+        """简单回退方案 - 基础规则识别"""
+        logger.warning("使用简单回退方案")
+        
+        # 简单分段：按句号分割
+        sentences = [s.strip() + '。' for s in text.split('。') if s.strip()]
+        
+        # 简单角色识别：查找引号对话
+        characters = {'旁白': 0}  # 默认有旁白
+        segments = []
+        
+        for i, sentence in enumerate(sentences):
+            if any(quote in sentence for quote in ['"', '"', '"', '「', '」', '『', '』']):
+                # 简单对话识别
+                speaker = "未知角色"
+                text_type = "dialogue"
+            else:
+                # 默认为旁白
+                speaker = "旁白"
+                text_type = "narration"
+                characters['旁白'] += 1
+            
+            segments.append({
+                'order': i + 1,
+                'text': sentence,
+                'speaker': speaker,
+                'confidence': 0.6,
+                'detection_rule': 'simple_fallback',
+                'text_type': text_type
+            })
+        
+        # 构建角色列表
+        character_list = []
+        for name, freq in characters.items():
+            if freq > 0:
+                character_list.append({
+                    'name': name,
+                    'frequency': freq,
+                    'character_trait': {'trait': 'calm', 'confidence': 0.6, 'description': '简单识别'},
+                    'first_appearance': 1,
+                    'is_main_character': freq >= 3,
+                    'recommended_config': {
+                        'gender': 'neutral' if name == '旁白' else 'unknown',
+                        'personality': 'calm',
+                        'personality_description': '简单识别，需要手动配置',
+                        'personality_confidence': 0.6,
+                        'description': f'{name}角色，简单识别结果',
+                        'recommended_tts_params': {'time_step': 32, 'p_w': 1.4, 't_w': 3.0},
+                        'voice_type': 'narrator' if name == '旁白' else 'unknown',
+                        'color': '#6c757d' if name == '旁白' else '#007bff'
+                    }
+                })
+        
+        return {
+            "chapter_id": chapter_info['chapter_id'],
+            "chapter_title": chapter_info['chapter_title'],
+            "chapter_number": chapter_info['chapter_number'],
+            "detected_characters": character_list,
+            "segments": segments,
+            "processing_stats": {
+                "total_segments": len(segments),
+                "dialogue_segments": len([s for s in segments if s['text_type'] == 'dialogue']),
+                "narration_segments": len([s for s in segments if s['text_type'] == 'narration']),
+                "characters_found": len(character_list),
+                "analysis_method": "simple_fallback"
+            }
+        }
+    
 
-文本内容：
-{text[:2000]}  # 限制文本长度避免token过多
 
-请识别文本中的所有角色，并为每个角色提供以下信息：
-1. 完整的角色名称（如"孙悟空"而不是"悟空说"或"空"）
-2. 在文本中的出现频次
-3. 性别（male/female）
-4. 性格特征（从以下选择：gentle温柔、fierce刚烈、calm沉稳、lively活泼、wise智慧、brave勇敢）
-5. 性格描述
-6. 是否为主要角色（出现5次以上）
+    def _build_comprehensive_analysis_prompt(self, text: str) -> str:
+        """构建综合分析提示词 - 优化版本，减少处理复杂度"""
+        # 限制文本长度，避免超时
+        limited_text = text[:1500] if len(text) > 1500 else text
+        
+        prompt = f"""分析小说文本，识别角色和分段。
 
-注意事项：
-- 忽略标点符号和动作描述词
-- 合并相同角色的不同称呼（如"悟空"和"孙悟空"）
-- 排除非角色词汇（如"这个"、"那个"、"什么"等）
-- 确保角色名称完整且准确
+文本：
+{limited_text}
 
-请严格按照以下JSON格式返回：
-```json
-[
-  {{
-    "name": "角色完整名称",
-    "frequency": 出现次数,
-    "gender": "male/female",
-    "personality": "性格类型",
-    "personality_description": "性格描述",
-    "is_main_character": true/false,
-    "confidence": 0.8
-  }}
-]
-```
+任务：
+1. 识别有对话的角色（包括旁白）
+2. 按句子分段，标记说话者
 
-只返回JSON数据，不要其他解释文字。"""
+返回JSON格式：
+{{
+  "segments": [
+    {{"order": 1, "text": "句子内容", "speaker": "说话者", "text_type": "dialogue/narration", "confidence": 0.9}}
+  ],
+  "characters": [
+    {{"name": "角色名", "frequency": 次数, "gender": "male/female/neutral", "personality": "calm/brave/gentle", "personality_description": "描述", "is_main_character": true/false, "confidence": 0.8}}
+  ]
+}}
+
+注意：
+- 旁白处理叙述，角色处理对话
+- 角色名要完整（如"孙悟空"不是"悟空说"）
+- 只返回JSON，无其他文字"""
         
         return prompt
-    
+
     def _call_ollama(self, prompt: str) -> Optional[str]:
         """调用Ollama API"""
         try:
@@ -992,7 +1386,7 @@ class OllamaCharacterDetector:
             response = requests.post(
                 self.api_url,
                 json=payload,
-                timeout=60  # 60秒超时
+                timeout=180  # 3分钟超时，适应长文本分析
             )
             
             if response.status_code == 200:
@@ -1009,6 +1403,79 @@ class OllamaCharacterDetector:
             logger.error(f"Ollama API调用异常: {str(e)}")
             return None
     
+    def _parse_comprehensive_response(self, response: str) -> Dict:
+        """解析Ollama返回的综合分析结果"""
+        try:
+            # 记录原始响应用于调试
+            logger.info(f"Ollama原始响应: {response[:500]}...")
+            
+            # 提取JSON部分
+            json_start = response.find('{')
+            json_end = response.rfind('}') + 1
+            
+            if json_start != -1 and json_end != -1:
+                json_str = response[json_start:json_end]
+                data = json.loads(json_str)
+                
+                logger.info(f"解析的JSON数据: {json.dumps(data, ensure_ascii=False, indent=2)}")
+                
+                # 处理segments
+                segments = []
+                for i, seg_data in enumerate(data.get('segments', [])):
+                    segments.append({
+                        'order': seg_data.get('order', i + 1),
+                        'text': seg_data.get('text', ''),
+                        'speaker': seg_data.get('speaker', '旁白'),
+                        'confidence': seg_data.get('confidence', 0.8),
+                        'detection_rule': 'ollama_ai',
+                        'text_type': seg_data.get('text_type', 'narration')
+                    })
+                
+                # 处理characters
+                characters = []
+                for char_data in data.get('characters', []):
+                    if isinstance(char_data, dict) and 'name' in char_data:
+                        name = char_data.get('name', '')
+                        if name and len(name) >= 2:
+                            characters.append({
+                                'name': name,
+                                'frequency': char_data.get('frequency', 1),
+                                'character_trait': {
+                                    'trait': char_data.get('personality', 'calm'),
+                                    'confidence': char_data.get('confidence', 0.8),
+                                    'description': char_data.get('personality_description', '性格特征待分析')
+                                },
+                                'first_appearance': 1,
+                                'is_main_character': char_data.get('is_main_character', False),
+                                'recommended_config': {
+                                    'gender': self._infer_gender_smart(name, char_data.get('gender', 'unknown')),
+                                    'personality': char_data.get('personality', 'calm'),
+                                    'personality_description': char_data.get('personality_description', '性格特征待分析'),
+                                    'personality_confidence': char_data.get('confidence', 0.8),
+                                    'description': f"{name}，{self._infer_gender_smart(name, char_data.get('gender', 'unknown'))}角色，{char_data.get('personality_description', '性格特征待分析')}，在文本中出现{char_data.get('frequency', 1)}次。",
+                                    'recommended_tts_params': self._get_tts_params(char_data.get('personality', 'calm')),
+                                    'voice_type': f"{self._infer_gender_smart(name, char_data.get('gender', 'unknown'))}_{char_data.get('personality', 'calm')}",
+                                    'color': self._get_character_color(char_data.get('personality', 'calm'))
+                                }
+                            })
+                
+                return {
+                    'segments': segments,
+                    'characters': characters
+                }
+            
+            else:
+                logger.error("无法从Ollama响应中提取JSON数据")
+                return {'segments': [], 'characters': []}
+                
+        except json.JSONDecodeError as e:
+            logger.error(f"解析Ollama JSON响应失败: {str(e)}")
+            logger.error(f"原始响应: {response}")
+            return {'segments': [], 'characters': []}
+        except Exception as e:
+            logger.error(f"处理Ollama响应异常: {str(e)}")
+            return {'segments': [], 'characters': []}
+
     def _parse_ollama_response(self, response: str) -> List[Dict]:
         """解析Ollama返回的JSON结果"""
         try:
@@ -1110,4 +1577,99 @@ class OllamaCharacterDetector:
             'wise': '#9370DB',   # 紫色
             'brave': '#FF8C00'   # 橙色
         }
-        return color_map.get(personality, '#06b6d4') 
+        return color_map.get(personality, '#06b6d4')
+    
+    async def _filter_existing_characters(self, characters: List[Dict]) -> List[Dict]:
+        """过滤已存在于角色库中的角色"""
+        from ...database import get_db
+        from ...models import VoiceProfile
+        from sqlalchemy.orm import Session
+        
+        # 获取数据库会话
+        db_gen = get_db()
+        db: Session = next(db_gen)
+        
+        try:
+            filtered_characters = []
+            
+            for char in characters:
+                char_name = char.get('name', '')
+                
+                # 检查角色是否已存在
+                existing_character = db.query(VoiceProfile).filter(
+                    VoiceProfile.name == char_name
+                ).first()
+                
+                if not existing_character:
+                    # 角色不存在，添加到结果中
+                    filtered_characters.append(char)
+                    logger.info(f"新角色发现: {char_name}")
+                else:
+                    logger.info(f"角色已存在，跳过: {char_name} (ID: {existing_character.id})")
+            
+            return filtered_characters
+            
+        except Exception as e:
+            logger.error(f"过滤已存在角色失败: {str(e)}")
+            # 出错时返回所有角色
+            return characters
+        finally:
+            db.close()
+    
+    def _infer_gender_smart(self, name: str, ai_gender: str) -> str:
+        """智能推断角色性别"""
+        # 如果AI已经正确识别了性别，直接使用
+        if ai_gender and ai_gender in ['male', 'female', 'neutral']:
+            return ai_gender
+        
+        # 基于角色名称的性别推断
+        male_names = {
+            '唐僧', '孙悟空', '猪八戒', '沙僧', '如来佛祖', '观音菩萨', '玉皇大帝',
+            '太上老君', '二郎神', '哪吒', '龙王', '土地公', '城隍', '判官',
+            '牛魔王', '红孩儿', '铁扇公主', '白龙马', '弥勒佛', '文殊菩萨',
+            '普贤菩萨', '地藏菩萨', '韦陀', '四大天王', '托塔李天王', '巨灵神'
+        }
+        
+        female_names = {
+            '白骨精', '蜘蛛精', '玉兔精', '嫦娥', '王母娘娘', '七仙女',
+            '织女', '白素贞', '小青', '许仙', '法海', '观音', '妈祖',
+            '九天玄女', '西王母', '瑶池金母', '太阴星君', '月宫嫦娥'
+        }
+        
+        neutral_names = {
+            '旁白', '叙述者', '说书人', '作者'
+        }
+        
+        # 精确匹配
+        if name in male_names:
+            return 'male'
+        elif name in female_names:
+            return 'female'
+        elif name in neutral_names:
+            return 'neutral'
+        
+        # 基于名称特征推断
+        # 包含"精"、"妖"等字的女性角色
+        if any(char in name for char in ['精', '仙子', '娘娘', '公主', '夫人', '娘子']):
+            return 'female'
+        
+        # 包含"王"、"神"、"佛"等字的男性角色
+        if any(char in name for char in ['王', '神', '佛', '仙', '君', '帝', '公', '爷']):
+            return 'male'
+        
+        # 基于常见姓名模式
+        # 两字名称的性别推断
+        if len(name) == 2:
+            # 常见男性名字特征
+            male_chars = ['强', '伟', '军', '华', '明', '刚', '勇', '峰', '磊', '涛']
+            if any(char in name for char in male_chars):
+                return 'male'
+            
+            # 常见女性名字特征  
+            female_chars = ['美', '丽', '娜', '婷', '雅', '静', '芳', '莉', '红', '燕']
+            if any(char in name for char in female_chars):
+                return 'female'
+        
+        # 默认返回unknown，让用户手动选择
+        logger.warning(f"无法推断角色 '{name}' 的性别，AI返回: {ai_gender}")
+        return 'unknown' 
