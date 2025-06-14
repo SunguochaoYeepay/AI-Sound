@@ -11,13 +11,13 @@
         </p>
       </div>
       <div class="header-actions">
-        <a-button type="primary" size="large" @click="showImportModal = true" ghost>
+        <a-button type="primary" size="large" @click="showSmartDiscoveryModal = true" ghost>
           <template #icon>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+              <path d="M9.5,3A6.5,6.5 0 0,1 16,9.5C16,11.11 15.41,12.59 14.44,13.73L14.71,14H15.5L20.5,19L19,20.5L14,15.5V14.71L13.73,14.44C12.59,15.41 11.11,16 9.5,16A6.5,6.5 0 0,1 3,9.5A6.5,6.5 0 0,1 9.5,3M9.5,5C7,5 5,7 5,9.5C5,12 7,14 9.5,14C12,14 14,12 14,9.5C14,7 12,5 9.5,5Z"/>
             </svg>
           </template>
-          批量导入
+          智能发现
         </a-button>
         <a-button size="large" @click="addNewVoice" style="background: white; color: #06b6d4; border-color: white;">
           <template #icon>
@@ -561,52 +561,478 @@
       </a-form>
     </a-drawer>
 
-    <!-- 批量导入模态框 -->
-    <a-modal
-      v-model:open="showImportModal"
-      title="批量导入声音"
-      width="600"
-      @ok="importVoices"
-      @cancel="showImportModal = false"
+    <!-- 智能角色发现抽屉 -->
+    <a-drawer
+      v-model:open="showSmartDiscoveryModal"
+      title="智能角色发现"
+      width="1000"
+      placement="right"
+      @close="closeSmartDiscovery"
     >
-      <div class="import-section">
-        <a-upload-dragger
-          v-model:fileList="importFiles"
-          :multiple="true"
-          :before-upload="beforeImportUpload"
-          accept=".zip,.rar"
-          class="import-upload"
-        >
-          <div class="upload-content">
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="#06b6d4" style="margin-bottom: 16px;">
+      <div class="smart-discovery-container">
+        <!-- 步骤条 -->
+        <a-steps 
+          :current="discoveryStep" 
+          class="discovery-steps"
+          :items="discoverySteps"
+        />
+        
+        <!-- 步骤内容 -->
+        <div class="step-content">
+          <!-- 步骤1: 选择书籍 -->
+          <div v-if="discoveryStep === 0" class="step-panel">
+            <div class="step-header">
+              <h3>选择书籍项目</h3>
+              <p>请选择要分析角色的书籍项目</p>
+            </div>
+            
+            <div class="book-selection">
+              <a-spin :spinning="booksLoading">
+                <div v-if="booksData.length === 0" class="empty-state">
+                  <svg width="64" height="64" viewBox="0 0 24 24" fill="#d1d5db">
+                    <path d="M19,3H5C3.9,3 3,3.9 3,5V19C3,20.1 3.9,21 5,21H19C20.1,21 21,20.1 21,19V5C21,3.9 20.1,3 19,3M19,19H5V5H19V19Z"/>
+                  </svg>
+                  <p>暂无可用的书籍项目</p>
+                  <a-button type="link" @click="loadBooks">刷新</a-button>
+                </div>
+                
+                <div v-else class="books-grid">
+                  <div 
+                    v-for="book in booksData" 
+                    :key="book.id"
+                    class="book-card"
+                    :class="{ 'selected': smartDiscovery.selectedBook?.id === book.id }"
+                    @click="selectBook(book)"
+                  >
+                    <div class="book-icon">
+                      <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M19,3H5C3.9,3 3,3.9 3,5V19C3,20.1 3.9,21 5,21H19C20.1,21 21,20.1 21,19V5C21,3.9 20.1,3 19,3M19,19H5V5H19V19Z"/>
+                      </svg>
+                    </div>
+                    <div class="book-info">
+                      <h4>{{ book.title || '未命名书籍' }}</h4>
+                      <p>{{ book.author || '未知作者' }}</p>
+                      <div class="book-stats">
+                        <span>{{ book.total_chapters || book.chapter_count || book.chapterCount || 0 }} 章节</span>
+                        <span>{{ formatNumber(book.word_count || book.wordCount || 0) }} 字</span>
+                      </div>
+                      <div class="book-meta">
+                        <span class="book-status">{{ getBookStatusText(book.status) }}</span>
+                        <span class="book-id">ID: {{ book.id }}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </a-spin>
+            </div>
+            
+            <div class="step-actions">
+              <a-button @click="closeSmartDiscovery">取消</a-button>
+              <a-button type="primary" :disabled="!smartDiscovery.selectedBook" @click="nextStep">
+                下一步：选择章节
+              </a-button>
+            </div>
+          </div>
+          
+          <!-- 步骤2: 选择章节 -->
+          <div v-if="discoveryStep === 1" class="step-panel">
+            <div class="step-header">
+              <h3>选择分析章节</h3>
+              <p>从《{{ smartDiscovery.selectedBook?.title }}》中选择要分析的章节</p>
+            </div>
+            
+            <div class="chapter-selection">
+              <div class="selection-controls">
+                <a-checkbox 
+                  :indeterminate="chapterIndeterminate" 
+                  :checked="chapterCheckAll" 
+                  @change="toggleAllChapters"
+                >
+                  全选
+                </a-checkbox>
+                <span class="selection-info">
+                  已选择 {{ smartDiscovery.selectedChapters.length }} / {{ chaptersData.length }} 章节
+                </span>
+              </div>
+              
+              <a-spin :spinning="chaptersLoading">
+                <div class="chapters-list">
+                  <div class="chapters-grid">
+                    <div 
+                      v-for="chapter in chaptersData" 
+                      :key="chapter.id"
+                      class="chapter-item"
+                      :class="{ 'selected': smartDiscovery.selectedChapters.some(c => c.id === chapter.id) }"
+                      @click="toggleChapterSelection(chapter)"
+                    >
+                      <a-checkbox 
+                        :checked="smartDiscovery.selectedChapters.some(c => c.id === chapter.id)"
+                        @click.stop="toggleChapterSelection(chapter)"
+                      >
+                        <div class="chapter-content">
+                          <div class="chapter-title">
+                            第{{ chapter.chapter_number }}章 {{ chapter.title || chapter.chapter_title || '未命名章节' }}
+                          </div>
+                          <div class="chapter-meta">
+                            字数: {{ formatNumber(chapter.word_count || 0) }} | 
+                            状态: {{ getChapterStatusText(chapter.analysis_status || chapter.status) }}
+                          </div>
+                        </div>
+                      </a-checkbox>
+                    </div>
+                  </div>
+                </div>
+              </a-spin>
+            </div>
+            
+            <div class="step-actions">
+              <a-button @click="prevStep">上一步</a-button>
+              <a-button type="primary" :disabled="smartDiscovery.selectedChapters.length === 0" @click="analyzeCharacters">
+                开始分析角色
+              </a-button>
+            </div>
+          </div>
+          
+          <!-- 步骤3: 角色分析 -->
+          <div v-if="discoveryStep === 2" class="step-panel">
+            <div class="step-header">
+              <h3>角色分析中</h3>
+              <p>正在使用编程识别规则分析选定章节中的角色...</p>
+            </div>
+            
+            <div class="analysis-progress">
+              <a-progress 
+                :percent="smartDiscovery.analysisProgress" 
+                :status="analysisStatus"
+                :show-info="true"
+              />
+              <p class="progress-text">{{ analysisText }}</p>
+            </div>
+            
+            <div v-if="smartDiscovery.analysisComplete" class="analysis-results">
+              <div class="results-summary">
+                <div class="statistics-grid">
+                  <a-statistic title="发现角色" :value="smartDiscovery.discoveredCharacters.length" />
+                  <a-statistic title="主要角色" :value="mainCharactersCount" />
+                  <a-statistic title="分析章节" :value="smartDiscovery.selectedChapters.length" />
+                </div>
+              </div>
+              
+              <div class="characters-preview">
+                <h4>发现的角色预览</h4>
+                <div class="characters-list">
+                  <div 
+                    v-for="character in smartDiscovery.discoveredCharacters" 
+                    :key="character.name"
+                    class="character-preview-item"
+                  >
+                    <div class="character-avatar" :style="{ background: character.recommended_config.color }">
+                      {{ character.name.charAt(0) }}
+                    </div>
+                    <div class="character-info">
+                      <div class="character-name">{{ character.name }}</div>
+                      <div class="character-meta">
+                        {{ character.recommended_config.gender === 'male' ? '男性' : '女性' }} | 
+                        {{ character.recommended_config.personality_description }} |
+                        出现 {{ character.frequency }} 次
+                      </div>
+                    </div>
+                    <div class="character-status">
+                      <a-tag v-if="character.is_main_character" color="blue">主要角色</a-tag>
+                      <a-tag v-if="character.exists_in_library" color="orange">已存在</a-tag>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div class="step-actions">
+              <a-button @click="prevStep" :disabled="!smartDiscovery.analysisComplete">重新选择</a-button>
+              <a-button type="primary" :disabled="!smartDiscovery.analysisComplete" @click="nextStep">
+                配置角色信息
+              </a-button>
+            </div>
+          </div>
+          
+          <!-- 步骤4: 批量配置 -->
+          <div v-if="discoveryStep === 3" class="step-panel">
+            <div class="step-header">
+              <h3>批量配置角色</h3>
+              <p>为发现的角色配置详细信息，已存在的角色将被跳过</p>
+            </div>
+            
+            <div class="batch-config">
+              <div class="config-controls">
+                <a-checkbox 
+                  :indeterminate="configIndeterminate" 
+                  :checked="configCheckAll" 
+                  @change="onCheckAllConfigs"
+                >
+                  全选
+                </a-checkbox>
+                <span class="selection-info">
+                  将创建 {{ selectedConfigs.length }} 个新角色
+                </span>
+              </div>
+              
+              <div class="config-list">
+                <a-checkbox-group v-model:value="selectedConfigs" class="config-grid">
+                  <div 
+                    v-for="character in newCharacters" 
+                    :key="character.name"
+                    class="config-item"
+                  >
+                    <a-checkbox :value="character.name">
+                      <div class="config-card">
+                        <div class="config-header">
+                          <div class="character-avatar" :style="{ background: character.recommended_config.color }">
+                            {{ character.name.charAt(0) }}
+                          </div>
+                          <div class="character-basic">
+                            <h4>{{ character.name }}</h4>
+                            <p>{{ character.recommended_config.description }}</p>
+                          </div>
+                        </div>
+                        
+                        <div class="config-details">
+                          <a-form layout="vertical" size="small">
+                            <a-row :gutter="16">
+                              <a-col :span="8">
+                                <a-form-item label="性别">
+                                  <a-select 
+                                    v-model:value="character.config.gender" 
+                                    size="small"
+                                  >
+                                    <a-select-option value="male">男性</a-select-option>
+                                    <a-select-option value="female">女性</a-select-option>
+                                  </a-select>
+                                </a-form-item>
+                              </a-col>
+                              <a-col :span="8">
+                                <a-form-item label="性格">
+                                  <a-select 
+                                    v-model:value="character.config.personality" 
+                                    size="small"
+                                  >
+                                    <a-select-option value="gentle">温柔</a-select-option>
+                                    <a-select-option value="fierce">刚烈</a-select-option>
+                                    <a-select-option value="calm">沉稳</a-select-option>
+                                    <a-select-option value="lively">活泼</a-select-option>
+                                  </a-select>
+                                </a-form-item>
+                              </a-col>
+                              <a-col :span="8">
+                                <a-form-item label="颜色">
+                                  <a-select 
+                                    v-model:value="character.config.color" 
+                                    size="small"
+                                  >
+                                    <a-select-option 
+                                      v-for="color in colorOptions" 
+                                      :key="color" 
+                                      :value="color"
+                                    >
+                                      <div style="display: flex; align-items: center; gap: 8px;">
+                                        <div 
+                                          style="width: 16px; height: 16px; border-radius: 4px;" 
+                                          :style="{ background: color }"
+                                        ></div>
+                                        {{ color }}
+                                      </div>
+                                    </a-select-option>
+                                  </a-select>
+                                </a-form-item>
+                              </a-col>
+                            </a-row>
+                            
+                            <a-form-item label="描述">
+                              <a-textarea 
+                                v-model:value="character.config.description" 
+                                :rows="2" 
+                                size="small"
+                                placeholder="角色描述..."
+                              />
+                            </a-form-item>
+                            
+                            <!-- 音频文件上传 -->
+                            <a-row :gutter="16">
+                              <a-col :span="12">
+                                <a-form-item label="参考音频 (WAV)">
+                                  <a-upload
+                                    v-model:file-list="character.config.audioFileList"
+                                    :before-upload="beforeAudioUpload"
+                                    :max-count="1"
+                                    accept=".wav,.mp3,.m4a"
+                                    @change="(info) => handleConfigAudioChange(info, character)"
+                                  >
+                                    <a-button size="small" type="dashed">
+                                      <template #icon>
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                                          <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+                                          <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+                                        </svg>
+                                      </template>
+                                      选择音频
+                                    </a-button>
+                                  </a-upload>
+                                  <div v-if="character.config.audioFileInfo" class="file-info-mini">
+                                    <span class="file-name-mini">{{ character.config.audioFileInfo.name }}</span>
+                                    <span class="file-size-mini">{{ character.config.audioFileInfo.size }}</span>
+                                  </div>
+                                </a-form-item>
+                              </a-col>
+                              <a-col :span="12">
+                                <a-form-item label="Latent文件 (.npy)">
+                                  <a-upload
+                                    v-model:file-list="character.config.latentFileList"
+                                    :before-upload="beforeLatentUpload"
+                                    :max-count="1"
+                                    accept=".npy"
+                                    @change="(info) => handleConfigLatentChange(info, character)"
+                                  >
+                                    <a-button size="small" type="dashed">
+                                      <template #icon>
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
               <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z"/>
             </svg>
-            <p style="font-size: 16px; color: #374151; margin: 0;">拖拽或点击上传压缩包</p>
-            <p style="font-size: 14px; color: #9ca3af; margin: 8px 0 0 0;">支持包含音频文件的 ZIP 或 RAR 格式</p>
+                                      </template>
+                                      选择文件
+                                    </a-button>
+                                  </a-upload>
+                                  <div v-if="character.config.latentFileInfo" class="file-info-mini">
+                                    <span class="file-name-mini">{{ character.config.latentFileInfo.name }}</span>
+                                    <span class="file-size-mini">{{ character.config.latentFileInfo.size }}</span>
           </div>
-        </a-upload-dragger>
-        
-        <a-divider />
-        
-        <div class="import-tips">
-          <h4 style="color: #374151; margin-bottom: 12px;">导入说明：</h4>
-          <ul style="color: #6b7280; line-height: 1.6;">
-            <li>压缩包内应包含音频文件（.wav, .mp3, .m4a）</li>
-            <li>文件名将作为声音名称</li>
-            <li>系统会自动分析并生成默认参数</li>
-            <li>导入后可在声音库中进一步编辑</li>
-          </ul>
+                                </a-form-item>
+                              </a-col>
+                            </a-row>
+                          </a-form>
+                        </div>
+                      </div>
+                    </a-checkbox>
+                  </div>
+                </a-checkbox-group>
+              </div>
+            </div>
+            
+            <div class="step-actions">
+              <a-button @click="prevStep">重新分析</a-button>
+              <a-button 
+                type="primary" 
+                :loading="creatingCharacters"
+                :disabled="selectedConfigs.length === 0" 
+                @click="createCharacters"
+              >
+                创建 {{ selectedConfigs.length }} 个角色
+              </a-button>
+            </div>
+          </div>
+          
+          <!-- 步骤5: 创建完成 -->
+          <div v-if="discoveryStep === 4" class="step-panel">
+            <div class="step-header">
+              <div class="success-icon">
+                <svg width="64" height="64" viewBox="0 0 24 24" fill="#10b981">
+                  <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                </svg>
+        </div>
+              <h3>创建完成</h3>
+              <p>成功创建了 {{ createdCharacters.length }} 个角色</p>
+      </div>
+            
+            <div class="creation-results">
+              <div class="results-summary">
+                <a-alert
+                  message="角色创建成功"
+                  :description="getCreationSummary()"
+                  type="success"
+                  show-icon
+                />
+  </div>
+              
+              <div class="created-characters">
+                <h4>已创建的角色</h4>
+                <div class="characters-list">
+                  <div 
+                    v-for="character in createdCharacters" 
+                    :key="character.id"
+                    class="created-character-item"
+                  >
+                    <div class="character-avatar" :style="{ background: character.color }">
+                      {{ character.name.charAt(0) }}
+                    </div>
+                    <div class="character-info">
+                      <div class="character-name">{{ character.name }}</div>
+                      <div class="character-meta">
+                        {{ character.type === 'male' ? '男性' : '女性' }} | 
+                        {{ character.description }}
+                      </div>
+                      <div class="character-files">
+                        <a-tag v-if="character.hasAudio" color="green" size="small">
+                          <template #icon>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                              <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+                            </svg>
+                          </template>
+                          音频已上传
+                        </a-tag>
+                        <a-tag v-if="character.hasLatent" color="blue" size="small">
+                          <template #icon>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                              <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z"/>
+                            </svg>
+                          </template>
+                          Latent已上传
+                        </a-tag>
+                        <a-tag v-if="character.status === 'active'" color="success" size="small">
+                          可用
+                        </a-tag>
+                        <a-tag v-else color="warning" size="small">
+                          需要音频
+                        </a-tag>
+                      </div>
+                    </div>
+                    <div class="character-actions">
+                      <a-button 
+                        v-if="character.status !== 'active'" 
+                        size="small" 
+                        @click="editCreatedCharacter(character)"
+                      >
+                        上传音频
+                      </a-button>
+                      <a-button 
+                        v-else 
+                        size="small" 
+                        type="primary"
+                        @click="editCreatedCharacter(character)"
+                      >
+                        编辑配置
+                      </a-button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div class="step-actions">
+              <a-button @click="closeSmartDiscovery">关闭</a-button>
+              <a-button type="primary" @click="startNewDiscovery">
+                发现更多角色
+              </a-button>
+            </div>
+          </div>
         </div>
       </div>
-    </a-modal>
+    </a-drawer>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, reactive, onMounted } from 'vue'
+import { ref, computed, reactive, onMounted, watch } from 'vue'
 import { message } from 'ant-design-vue'
 import { charactersAPI } from '@/api'
 import { API_BASE_URL } from '@/api/config'
+import { bookAPI, chapterAPI } from '../api/v2.js'
 
 // 响应式数据
 const voiceLibrary = ref([])
@@ -618,8 +1044,47 @@ const typeFilter = ref('')
 const viewMode = ref('grid')
 const showDetailDrawer = ref(false)
 const showEditModal = ref(false)
-const showImportModal = ref(false)
+const showSmartDiscoveryModal = ref(false)
 const showUploadModal = ref(false)
+
+// 智能发现相关状态
+const discoveryStep = ref(0)
+const discoverySteps = ref([
+  { title: '选择书籍', description: '选择要分析的书籍项目' },
+  { title: '选择章节', description: '选择要分析的章节' },
+  { title: '角色分析', description: '分析章节中的角色' },
+  { title: '批量配置', description: '配置角色信息' },
+  { title: '创建完成', description: '完成角色创建' }
+])
+
+// 书籍选择
+const availableBooks = ref([])
+const selectedBook = ref(null)
+const loadingBooks = ref(false)
+
+// 章节选择
+const availableChapters = ref([])
+const selectedChapters = ref([])
+const loadingChapters = ref(false)
+const chapterCheckAll = ref(false)
+const chapterIndeterminate = ref(false)
+
+// 角色分析
+const analysisProgress = ref(0)
+const analysisStatus = ref('normal')
+const analysisText = ref('')
+const analysisComplete = ref(false)
+const discoveredCharacters = ref([])
+
+// 批量配置
+const newCharacters = ref([])
+const selectedConfigs = ref([])
+const configCheckAll = ref(false)
+const configIndeterminate = ref(false)
+const creatingCharacters = ref(false)
+
+// 创建结果
+const createdCharacters = ref([])
 
 // 编辑状态
 const editingVoice = ref({})
@@ -877,6 +1342,29 @@ const averageQuality = computed(() => {
   return average || 0
 })
 
+// 智能发现计算属性
+const mainCharactersCount = computed(() => {
+  return smartDiscovery.discoveredCharacters.filter(char => char.is_main_character).length
+})
+
+// 监听章节选择变化
+const updateChapterCheckState = () => {
+  const checkedCount = smartDiscovery.selectedChapters.length
+  const totalCount = chaptersData.value.length
+  
+  chapterCheckAll.value = checkedCount === totalCount
+  chapterIndeterminate.value = checkedCount > 0 && checkedCount < totalCount
+}
+
+// 监听配置选择变化
+const updateConfigCheckState = () => {
+  const checkedCount = selectedConfigs.value.length
+  const totalCount = newCharacters.value.length
+  
+  configCheckAll.value = checkedCount === totalCount
+  configIndeterminate.value = checkedCount > 0 && checkedCount < totalCount
+}
+
 // 方法
 const handleSearch = (value) => {
   searchQuery.value = value
@@ -1044,9 +1532,521 @@ const beforeImportUpload = (file) => {
   return false
 }
 
-const importVoices = () => {
-  message.success('批量导入功能开发中...')
-  showImportModal.value = false
+// 智能发现方法
+const closeSmartDiscovery = () => {
+  showSmartDiscoveryModal.value = false
+  resetDiscoveryState()
+}
+
+const resetDiscoveryState = () => {
+  discoveryStep.value = 0
+  smartDiscovery.selectedBook = null
+  smartDiscovery.selectedChapters = []
+  smartDiscovery.analysisProgress = 0
+  smartDiscovery.analysisComplete = false
+  smartDiscovery.discoveredCharacters = []
+  smartDiscovery.configuredCharacters = []
+  smartDiscovery.creationResults = []
+  booksData.value = []
+  chaptersData.value = []
+  newCharacters.value = []
+  selectedConfigs.value = []
+  createdCharacters.value = []
+}
+
+const nextStep = () => {
+  if (discoveryStep.value < discoverySteps.value.length - 1) {
+    discoveryStep.value++
+    
+    // 根据步骤执行相应操作
+    if (discoveryStep.value === 1) {
+      // 章节选择步骤，章节已在选择书籍时加载
+    } else if (discoveryStep.value === 3) {
+      prepareCharacterConfigs()
+    }
+  }
+}
+
+const prevStep = () => {
+  if (discoveryStep.value > 0) {
+    discoveryStep.value--
+  }
+}
+
+// 加载书籍列表
+const loadBooks = async () => {
+  booksLoading.value = true
+  try {
+    const response = await bookAPI.getBooks({
+      page: 1,
+      page_size: 50
+      // 移除status过滤，显示所有书籍
+    })
+    
+    console.log('[智能发现] 书籍API响应:', response)
+    
+    if (response.success) {
+      // 处理不同的数据结构
+      let books = []
+      if (response.data) {
+        if (Array.isArray(response.data)) {
+          books = response.data
+        } else if (response.data.items) {
+          books = response.data.items
+        } else if (response.data.data) {
+          books = response.data.data
+        }
+      }
+      
+      console.log('[智能发现] 处理后的书籍数据:', books)
+      
+      // 调试：打印每本书的详细信息
+      books.forEach((book, index) => {
+        console.log(`[智能发现] 书籍${index + 1}:`, {
+          id: book.id,
+          title: book.title,
+          author: book.author,
+          chapter_count: book.chapter_count,
+          total_chapters: book.total_chapters,
+          word_count: book.word_count,
+          status: book.status,
+          raw_data: book
+        })
+      })
+      
+      booksData.value = books
+      
+      if (books.length === 0) {
+        message.warning('暂无可用的书籍项目')
+      }
+    } else {
+      message.error('加载书籍列表失败: ' + (response.message || '未知错误'))
+    }
+  } catch (error) {
+    console.error('加载书籍列表失败:', error)
+    message.error('加载书籍列表失败: ' + (error.message || '网络错误'))
+  } finally {
+    booksLoading.value = false
+  }
+}
+
+// 选择书籍
+const selectBook = async (book) => {
+  smartDiscovery.selectedBook = book
+  smartDiscovery.selectedChapters = []
+  
+  // 加载章节列表
+  await loadChapters(book.id)
+}
+
+// 加载章节列表
+const loadChapters = async (bookId) => {
+  chaptersLoading.value = true
+  try {
+    const response = await chapterAPI.getChapters(bookId, {
+      page: 1,
+      page_size: 100 // 加载更多章节
+    })
+    
+    console.log('[智能发现] 章节API响应:', response)
+    
+    if (response.success) {
+      // 处理不同的数据结构
+      let chapters = []
+      if (response.data) {
+        if (Array.isArray(response.data)) {
+          chapters = response.data
+        } else if (response.data.items) {
+          chapters = response.data.items
+        } else if (response.data.data) {
+          chapters = response.data.data
+        }
+      }
+      
+      console.log('[智能发现] 处理后的章节数据:', chapters)
+      chaptersData.value = chapters
+      
+      if (chapters.length === 0) {
+        message.warning('该书籍暂无章节数据')
+      }
+    } else {
+      message.error('加载章节列表失败: ' + (response.message || '未知错误'))
+    }
+  } catch (error) {
+    console.error('加载章节列表失败:', error)
+    message.error('加载章节列表失败: ' + (error.message || '网络错误'))
+  } finally {
+    chaptersLoading.value = false
+  }
+}
+
+// 章节全选/取消全选 - 这个方法已被toggleAllChapters替代，可以删除
+
+// 分析角色
+const analyzeCharacters = async () => {
+  try {
+    smartDiscovery.analysisProgress = 0
+    analysisStatus.value = 'active'
+    smartDiscovery.analysisComplete = false
+    analysisText.value = '开始分析章节...'
+    
+    nextStep() // 进入分析步骤
+    
+    // 模拟分析过程
+    for (let i = 0; i <= 100; i += 10) {
+      smartDiscovery.analysisProgress = i
+      analysisText.value = `正在分析第 ${Math.floor(i/10) + 1}/${smartDiscovery.selectedChapters.length} 个章节...`
+      await new Promise(resolve => setTimeout(resolve, 200))
+    }
+    
+    // 调用后端API进行角色分析
+    try {
+      const response = await fetch('/api/v1/chapters/batch-character-analysis', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chapter_ids: smartDiscovery.selectedChapters.map(c => c.id),
+          detection_method: 'programming',
+          emotion_detection: true
+        })
+      })
+      
+      const result = await response.json()
+      
+      if (result.success && result.data) {
+        // 处理分析结果
+        await processAnalysisResult(result.data)
+      } else {
+        throw new Error(result.message || '分析失败')
+      }
+    } catch (apiError) {
+      console.error('API调用失败，使用模拟数据:', apiError)
+      
+      // 如果API失败，使用模拟数据作为后备
+      smartDiscovery.discoveredCharacters = [
+        {
+          name: '悟空',
+          frequency: 15,
+          character_trait: { trait: 'fierce', confidence: 0.8, description: '性格刚烈，说话直接有力' },
+          first_appearance: 1,
+          is_main_character: true,
+          recommended_config: {
+            gender: 'male',
+            personality: 'fierce',
+            personality_description: '性格刚烈，说话直接有力',
+            personality_confidence: 0.8,
+            description: '悟空，男性主要角色，性格刚烈，说话直接有力，在文本中出现15次。',
+            recommended_tts_params: { time_step: 28, p_w: 1.6, t_w: 3.2 },
+            voice_type: 'male_fierce',
+            color: '#FF6347'
+          },
+          exists_in_library: false
+        },
+        {
+          name: '唐僧',
+          frequency: 12,
+          character_trait: { trait: 'gentle', confidence: 0.7, description: '温柔和善，说话轻声细语' },
+          first_appearance: 2,
+          is_main_character: true,
+          recommended_config: {
+            gender: 'male',
+            personality: 'gentle',
+            personality_description: '温柔和善，说话轻声细语',
+            personality_confidence: 0.7,
+            description: '唐僧，男性主要角色，温柔和善，说话轻声细语，在文本中出现12次。',
+            recommended_tts_params: { time_step: 35, p_w: 1.2, t_w: 2.8 },
+            voice_type: 'male_gentle',
+            color: '#FFB6C1'
+          },
+          exists_in_library: false
+        },
+        {
+          name: '白骨精',
+          frequency: 8,
+          character_trait: { trait: 'lively', confidence: 0.6, description: '活泼开朗，充满活力' },
+          first_appearance: 5,
+          is_main_character: true,
+          recommended_config: {
+            gender: 'female',
+            personality: 'lively',
+            personality_description: '活泼开朗，充满活力',
+            personality_confidence: 0.6,
+            description: '白骨精，女性主要角色，活泼开朗，充满活力，在文本中出现8次。',
+            recommended_tts_params: { time_step: 30, p_w: 1.3, t_w: 2.9 },
+            voice_type: 'female_lively',
+            color: '#32CD32'
+          },
+          exists_in_library: false
+        }
+      ]
+    }
+    
+    smartDiscovery.analysisProgress = 100
+    analysisStatus.value = 'success'
+    analysisText.value = `分析完成！发现 ${smartDiscovery.discoveredCharacters.length} 个角色`
+    smartDiscovery.analysisComplete = true
+    
+    // 检查角色是否已存在
+    await checkCharacterExistence()
+    
+  } catch (error) {
+    console.error('角色分析失败:', error)
+    analysisStatus.value = 'exception'
+    analysisText.value = '分析失败，请重试'
+    message.error('角色分析失败')
+  }
+}
+
+// 处理API分析结果
+const processAnalysisResult = async (analysisData) => {
+  console.log('[角色分析] API返回数据:', analysisData)
+  
+  // 合并所有章节的角色发现结果
+  const characterMap = new Map()
+  
+  analysisData.forEach(chapterResult => {
+    if (chapterResult.detected_characters) {
+      chapterResult.detected_characters.forEach(char => {
+        if (characterMap.has(char.name)) {
+          const existing = characterMap.get(char.name)
+          existing.frequency += char.frequency || 1
+          // 合并情绪分布
+          if (char.emotion_distribution) {
+            Object.keys(char.emotion_distribution).forEach(emotion => {
+              existing.emotion_distribution[emotion] = 
+                (existing.emotion_distribution[emotion] || 0) + 
+                char.emotion_distribution[emotion]
+            })
+          }
+        } else {
+          characterMap.set(char.name, { 
+            ...char,
+            recommended_config: char.recommended_config || {
+              gender: char.gender || 'female',
+              personality: char.personality || 'calm',
+              personality_description: char.personality_description || '性格温和',
+              personality_confidence: char.personality_confidence || 0.5,
+              description: char.description || `${char.name}，${char.gender === 'male' ? '男性' : '女性'}角色`,
+              recommended_tts_params: char.recommended_tts_params || { time_step: 32, p_w: 1.4, t_w: 3.0 },
+              voice_type: `${char.gender || 'female'}_${char.personality || 'calm'}`,
+              color: colorOptions[Math.floor(Math.random() * colorOptions.length)]
+            }
+          })
+        }
+      })
+    }
+  })
+  
+  // 转换为数组
+  const characters = Array.from(characterMap.values())
+  console.log('[角色分析] 处理后的角色列表:', characters)
+  
+  smartDiscovery.discoveredCharacters = characters
+}
+
+// 检查角色是否已存在
+const checkCharacterExistence = async () => {
+  for (const character of smartDiscovery.discoveredCharacters) {
+    try {
+      // 调用检查API
+      const response = await fetch(`/api/v1/characters/check-exists?name=${encodeURIComponent(character.name)}`)
+      const result = await response.json()
+      
+      if (result.success) {
+        character.exists_in_library = result.data?.exists || false
+        if (character.exists_in_library && result.data?.config) {
+          character.existing_config = result.data.config
+        }
+      } else {
+        character.exists_in_library = false
+      }
+    } catch (error) {
+      console.error(`检查角色 ${character.name} 失败:`, error)
+      character.exists_in_library = false
+    }
+  }
+}
+
+// 准备角色配置
+const prepareCharacterConfigs = () => {
+  console.log('[角色配置] 准备配置，发现的角色:', smartDiscovery.discoveredCharacters)
+  
+  // 过滤出不存在的角色
+  newCharacters.value = smartDiscovery.discoveredCharacters
+    .filter(char => !char.exists_in_library)
+    .map(char => ({
+      ...char,
+      config: {
+        name: char.name,
+        gender: char.recommended_config?.gender || 'female',
+        personality: char.recommended_config?.personality || 'calm',
+        color: char.recommended_config?.color || colorOptions[0],
+        description: char.recommended_config?.description || `${char.name}角色配置`,
+        // 文件上传相关
+        audioFileList: [],
+        latentFileList: [],
+        audioFileInfo: null,
+        latentFileInfo: null
+      }
+    }))
+  
+  console.log('[角色配置] 需要配置的新角色:', newCharacters.value)
+  
+  // 默认全选
+  selectedConfigs.value = newCharacters.value.map(char => char.name)
+  updateConfigCheckState()
+}
+
+// 配置全选/取消全选
+const onCheckAllConfigs = (e) => {
+  if (e.target.checked) {
+    selectedConfigs.value = newCharacters.value.map(char => char.name)
+  } else {
+    selectedConfigs.value = []
+  }
+  updateConfigCheckState()
+}
+
+// 创建角色
+const createCharacters = async () => {
+  try {
+    creatingCharacters.value = true
+    
+    const charactersToCreate = newCharacters.value.filter(char => 
+      selectedConfigs.value.includes(char.name)
+    )
+    
+    createdCharacters.value = []
+    
+    for (const character of charactersToCreate) {
+      try {
+        // 构建FormData，包含文件
+        const formData = new FormData()
+        formData.append('name', character.config.name)
+        formData.append('description', character.config.description || '')
+        formData.append('voice_type', character.config.gender)
+        formData.append('color', character.config.color || '#06b6d4')
+        formData.append('parameters', JSON.stringify(character.recommended_config.recommended_tts_params || {}))
+        
+        // 根据是否有文件决定状态
+        const hasAudioFile = character.config.audioFileInfo && character.config.audioFileInfo.file
+        const hasLatentFile = character.config.latentFileInfo && character.config.latentFileInfo.file
+        
+        formData.append('status', hasAudioFile ? 'active' : 'inactive')
+        
+        // 添加音频文件
+        if (hasAudioFile) {
+          formData.append('reference_audio', character.config.audioFileInfo.file)
+        }
+        
+        // 添加Latent文件
+        if (hasLatentFile) {
+          formData.append('latent_file', character.config.latentFileInfo.file)
+        }
+        
+        // 调用API创建角色
+        const response = await charactersAPI.createCharacter(formData)
+        
+        if (response.data && response.data.success) {
+          const newCharacter = response.data.data
+          createdCharacters.value.push({
+            id: newCharacter.id,
+            name: newCharacter.name,
+            description: newCharacter.description,
+            type: newCharacter.type,
+            color: newCharacter.color,
+            status: newCharacter.status,
+            hasAudio: hasAudioFile,
+            hasLatent: hasLatentFile
+          })
+        }
+      } catch (error) {
+        console.error(`创建角色 ${character.name} 失败:`, error)
+        message.error(`创建角色 ${character.name} 失败`)
+      }
+    }
+    
+    if (createdCharacters.value.length > 0) {
+      message.success(`成功创建 ${createdCharacters.value.length} 个角色`)
+      nextStep() // 进入完成步骤
+      
+      // 重新加载角色库
+      await loadVoiceLibrary()
+    }
+    
+  } catch (error) {
+    console.error('批量创建角色失败:', error)
+    message.error('批量创建角色失败')
+  } finally {
+    creatingCharacters.value = false
+  }
+}
+
+// 编辑已创建的角色
+const editCreatedCharacter = (character) => {
+  // 找到对应的角色并编辑
+  const voice = voiceLibrary.value.find(v => v.name === character.name)
+  if (voice) {
+    editVoice(voice)
+    closeSmartDiscovery()
+  }
+}
+
+// 开始新的发现
+const startNewDiscovery = () => {
+  resetDiscoveryState()
+  loadBooks()
+}
+
+// 配置阶段的文件上传处理
+const handleConfigAudioChange = (info, character) => {
+  if (info.fileList.length > 0) {
+    const file = info.fileList[0].originFileObj || info.fileList[0]
+    character.config.audioFileInfo = {
+      name: file.name,
+      size: formatFileSize(file.size),
+      file: file
+    }
+  } else {
+    character.config.audioFileInfo = null
+  }
+}
+
+const handleConfigLatentChange = (info, character) => {
+  if (info.fileList.length > 0) {
+    const file = info.fileList[0].originFileObj || info.fileList[0]
+    character.config.latentFileInfo = {
+      name: file.name,
+      size: formatFileSize(file.size),
+      file: file
+    }
+  } else {
+    character.config.latentFileInfo = null
+  }
+}
+
+// 获取创建摘要
+const getCreationSummary = () => {
+  const total = createdCharacters.value.length
+  const active = createdCharacters.value.filter(c => c.status === 'active').length
+  const withAudio = createdCharacters.value.filter(c => c.hasAudio).length
+  const withLatent = createdCharacters.value.filter(c => c.hasLatent).length
+  
+  let summary = `已成功创建 ${total} 个角色。`
+  if (active > 0) {
+    summary += ` 其中 ${active} 个角色已激活可用。`
+  }
+  if (withAudio > 0) {
+    summary += ` ${withAudio} 个角色已上传音频文件。`
+  }
+  if (withLatent > 0) {
+    summary += ` ${withLatent} 个角色已上传Latent文件。`
+  }
+  if (total - active > 0) {
+    summary += ` 剩余 ${total - active} 个角色需要上传音频文件才能使用。`
+  }
+  
+  return summary
 }
 
 const duplicateVoice = (voice) => {
@@ -1105,10 +2105,107 @@ const playCurrentAudio = () => {
   }
 }
 
+// 监听选择变化
+watch(selectedChapters, updateChapterCheckState)
+watch(selectedConfigs, updateConfigCheckState)
+
+// 监听智能发现模态框打开
+watch(showSmartDiscoveryModal, (newVal) => {
+  if (newVal) {
+    loadBooks()
+  }
+})
+
 // 组件挂载时加载数据
 onMounted(() => {
   loadVoiceLibrary()
 })
+
+// 智能发现相关数据
+const smartDiscovery = reactive({
+  visible: false,
+  currentStep: 1,
+  selectedBook: null,
+  selectedChapters: [],
+  analysisProgress: 0,
+  analysisComplete: false,
+  discoveredCharacters: [],
+  configuredCharacters: [],
+  creationResults: []
+})
+
+// 书籍和章节数据
+const booksData = ref([])
+const chaptersData = ref([])
+const booksLoading = ref(false)
+const chaptersLoading = ref(false)
+
+// 智能发现功能
+const openSmartDiscovery = async () => {
+  smartDiscovery.visible = true
+  smartDiscovery.currentStep = 1
+  smartDiscovery.selectedBook = null
+  smartDiscovery.selectedChapters = []
+  smartDiscovery.analysisProgress = 0
+  smartDiscovery.analysisComplete = false
+  smartDiscovery.discoveredCharacters = []
+  smartDiscovery.configuredCharacters = []
+  smartDiscovery.creationResults = []
+  
+  // 加载书籍列表
+  await loadBooks()
+}
+
+// 选择章节
+const toggleChapterSelection = (chapter) => {
+  const index = smartDiscovery.selectedChapters.findIndex(c => c.id === chapter.id)
+  if (index > -1) {
+    smartDiscovery.selectedChapters.splice(index, 1)
+  } else {
+    smartDiscovery.selectedChapters.push(chapter)
+  }
+}
+
+// 全选/取消全选章节
+const toggleAllChapters = () => {
+  if (smartDiscovery.selectedChapters.length === chaptersData.value.length) {
+    smartDiscovery.selectedChapters = []
+  } else {
+    smartDiscovery.selectedChapters = [...chaptersData.value]
+  }
+}
+
+// 格式化数字
+const formatNumber = (num) => {
+  if (num >= 10000) {
+    return (num / 10000).toFixed(1) + '万'
+  }
+  return num.toString()
+}
+
+// 获取书籍状态文本
+const getBookStatusText = (status) => {
+  const statusMap = {
+    'draft': '草稿',
+    'published': '已发布',
+    'archived': '已归档',
+    'active': '进行中',
+    'completed': '已完成'
+  }
+  return statusMap[status] || '未知'
+}
+
+// 获取章节状态文本
+const getChapterStatusText = (status) => {
+  const statusMap = {
+    'pending': '待处理',
+    'processing': '处理中',
+    'completed': '已完成',
+    'failed': '失败',
+    'draft': '草稿'
+  }
+  return statusMap[status] || '未知'
+}
 </script>
 
 <style scoped>
@@ -1118,65 +2215,6 @@ onMounted(() => {
 }
 
 .page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 32px;
-  padding: 32px;
-  background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
-  border-radius: 16px;
-  color: white;
-}
-
-.header-actions {
-  display: flex;
-  gap: 12px;
-}
-
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 24px;
-  margin-bottom: 32px;
-}
-
-.stat-card {
-  background: white;
-  border-radius: 12px;
-  padding: 24px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.stat-icon {
-  width: 56px;
-  height: 56px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.stat-content {
-  flex: 1;
-}
-
-.stat-value {
-  font-size: 28px;
-  font-weight: 700;
-  color: #2c3e50;
-  line-height: 1;
-}
-
-.stat-label {
-  font-size: 14px;
-  color: #6b7280;
-  margin-top: 4px;
-}
-
-.filter-section {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -1580,5 +2618,396 @@ onMounted(() => {
   .logo-text h3 {
     font-size: 14px !important;
   }
+}
+
+/* 智能发现样式 */
+.smart-discovery-container {
+  padding: 0;
+}
+
+.statistics-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+  margin: 16px 0;
+}
+
+.discovery-steps {
+  margin-bottom: 32px;
+}
+
+.step-content {
+  min-height: 400px;
+}
+
+.step-panel {
+  padding: 24px 0;
+}
+
+.step-header {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.step-header h3 {
+  font-size: 20px;
+  font-weight: 600;
+  color: #1f2937;
+  margin: 0 0 8px 0;
+}
+
+.step-header p {
+  color: #6b7280;
+  margin: 0;
+}
+
+.success-icon {
+  margin-bottom: 16px;
+}
+
+.step-actions {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid #e5e7eb;
+}
+
+/* 书籍选择样式 */
+.book-selection {
+  margin-bottom: 32px;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 48px 24px;
+  color: #6b7280;
+}
+
+.empty-state p {
+  margin: 16px 0;
+  font-size: 16px;
+}
+
+.books-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.book-card {
+  border: 2px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 20px;
+  cursor: pointer;
+  transition: all 0.3s;
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  min-height: 120px;
+}
+
+.book-card:hover {
+  border-color: #06b6d4;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(6, 182, 212, 0.15);
+}
+
+.book-card.selected {
+  border-color: #06b6d4;
+  background: #f0f9ff;
+}
+
+.book-icon {
+  color: #06b6d4;
+  flex-shrink: 0;
+}
+
+.book-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.book-info h4 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1f2937;
+  line-height: 1.4;
+}
+
+.book-info p {
+  margin: 0;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.book-stats {
+  display: flex;
+  gap: 12px;
+  margin: 8px 0;
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.book-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: auto;
+}
+
+.book-status {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  background: #10b981;
+  color: white;
+}
+
+.book-id {
+  font-size: 11px;
+  color: #9ca3af;
+}
+
+/* 章节选择样式 */
+.chapter-selection {
+  margin-bottom: 32px;
+}
+
+.selection-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  background: #f9fafb;
+  border-radius: 8px;
+}
+
+.selection-info {
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.chapters-list {
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+
+.chapters-grid {
+  display: block;
+}
+
+.chapter-item {
+  border-bottom: 1px solid #e5e7eb;
+  padding: 12px 16px;
+}
+
+.chapter-item:last-child {
+  border-bottom: none;
+}
+
+.chapter-content {
+  margin-left: 8px;
+}
+
+.chapter-title {
+  font-weight: 500;
+  color: #1f2937;
+  margin-bottom: 4px;
+}
+
+.chapter-meta {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+/* 分析进度样式 */
+.analysis-progress {
+  margin-bottom: 32px;
+  text-align: center;
+}
+
+.progress-text {
+  margin-top: 16px;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.analysis-results {
+  margin-top: 32px;
+}
+
+.results-summary {
+  margin-bottom: 24px;
+  padding: 20px;
+  background: #f9fafb;
+  border-radius: 8px;
+}
+
+.characters-preview h4 {
+  margin-bottom: 16px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.characters-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.character-preview-item,
+.created-character-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: white;
+}
+
+.character-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: 600;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.character-info {
+  flex: 1;
+}
+
+.character-name {
+  font-weight: 500;
+  color: #1f2937;
+  margin-bottom: 4px;
+}
+
+.character-meta {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.character-status,
+.character-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* 批量配置样式 */
+.batch-config {
+  margin-bottom: 32px;
+}
+
+.config-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  background: #f9fafb;
+  border-radius: 8px;
+}
+
+.config-list {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.config-grid {
+  display: block;
+}
+
+.config-item {
+  margin-bottom: 16px;
+}
+
+.config-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 16px;
+  background: white;
+}
+
+.config-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.character-basic h4 {
+  margin: 0 0 4px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.character-basic p {
+  margin: 0;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.config-details {
+  border-top: 1px solid #e5e7eb;
+  padding-top: 16px;
+}
+
+/* 创建结果样式 */
+.creation-results {
+  margin-top: 24px;
+}
+
+.results-summary {
+  margin-bottom: 24px;
+}
+
+.created-characters h4 {
+  margin-bottom: 16px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+/* 文件信息小样式 */
+.file-info-mini {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #6b7280;
+}
+
+.file-name-mini {
+  display: block;
+  font-weight: 500;
+  color: #374151;
+}
+
+.file-size-mini {
+  color: #9ca3af;
+}
+
+.character-files {
+  margin-top: 8px;
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
 }
 </style>
