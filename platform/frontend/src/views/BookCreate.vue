@@ -410,6 +410,34 @@ const detectChapters = async () => {
     return
   }
 
+  // 如果是编辑模式且有书籍ID，使用后端API检测
+  if (isEditing.value && route.params.id) {
+    detectingChapters.value = true
+    try {
+      console.log('[BookCreate] 使用后端API检测章节，书籍ID:', route.params.id)
+      const response = await booksAPI.detectChapters(route.params.id, { force_reprocess: true })
+      
+      if (response.data && response.data.success) {
+        message.success(response.data.message || '章节检测完成')
+        // 更新检测到的章节数据用于预览
+        if (response.data.chapters) {
+          detectedChapters.value = response.data.chapters.map(ch => ({
+            number: ch.number,
+            title: ch.title,
+            wordCount: ch.word_count
+          }))
+        }
+      }
+    } catch (error) {
+      console.error('[BookCreate] 后端章节检测失败:', error)
+      message.error('章节检测失败: ' + (error.response?.data?.detail || '未知错误'))
+    } finally {
+      detectingChapters.value = false
+    }
+    return
+  }
+
+  // 创建模式使用前端检测逻辑
   detectingChapters.value = true
   try {
     // 简单的章节检测逻辑（前端实现）
@@ -563,8 +591,8 @@ const loadBook = async () => {
       bookForm.tags = book.tags || []
       bookForm.status = book.status
       
-      // 自动检测章节
-      await detectChapters()
+      // 不自动检测章节，避免覆盖已有的后端章节数据
+      // await detectChapters()
     }
   } catch (error) {
     console.error('加载书籍数据失败:', error)

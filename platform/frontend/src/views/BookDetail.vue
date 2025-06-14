@@ -215,7 +215,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { message } from 'ant-design-vue'
+import { message, Modal } from 'ant-design-vue'
 import { booksAPI } from '@/api'
 
 const router = useRouter()
@@ -325,91 +325,111 @@ const downloadTxt = () => {
 
 // 章节检测
 const detectChapters = async () => {
-  if (!book.value?.content) {
-    message.warning('暂无内容，无法检测章节')
+  if (!book.value?.id) {
+    message.warning('书籍信息不完整')
     return
   }
 
   detectingChapters.value = true
   try {
-    // 简单的章节检测逻辑
-    const content = book.value.content
-    const lines = content.split('\n')
-    const detectedChapters = []
+    console.log('[BookDetail] 开始检测章节，书籍ID:', book.value.id)
     
-    const chapterPatterns = [
-      /^第[一二三四五六七八九十百千万\d]+章\s*[：:：]?(.*)$/,
-      /^第[一二三四五六七八九十百千万\d]+节\s*[：:：]?(.*)$/,
-      /^Chapter\s+\d+\s*[：:：]?(.*)$/i,
-      /^\d+[\.、]\s*(.*)$/,
-      /^[一二三四五六七八九十百千万]+[、\.]\s*(.*)$/
-    ]
+    // 使用后端API检测章节
+    const response = await booksAPI.detectChapters(book.value.id, { force_reprocess: false })
+    console.log('[BookDetail] 章节检测响应:', response)
     
-    let currentChapter = 1
-    let chapterStart = 0
-    
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim()
-      if (!line) continue
-      
-      let isChapter = false
-      let chapterTitle = line
-      
-      for (const pattern of chapterPatterns) {
-        const match = pattern.exec(line)
-        if (match) {
-          isChapter = true
-          chapterTitle = match[1]?.trim() || line
-          break
-        }
-      }
-      
-      if (isChapter && currentChapter > 1) {
-        // 保存上一章节
-        const chapterContent = lines.slice(chapterStart, i).join('\n')
-        detectedChapters[detectedChapters.length - 1].wordCount = chapterContent.replace(/\s/g, '').length
-        chapterStart = i
-      }
-      
-      if (isChapter) {
-        detectedChapters.push({
-          number: currentChapter,
-          title: chapterTitle,
-          start: chapterStart,
-          end: 0,
-          wordCount: 0,
-          line: i
-        })
-        currentChapter++
-      }
+    if (response.data && response.data.success) {
+      message.success(response.data.message || '章节检测完成')
+      // 重新加载章节列表和书籍信息
+      await Promise.all([loadChapters(), loadBook()])
     }
-    
-    // 处理最后一章
-    if (detectedChapters.length > 0) {
-      const lastChapterContent = lines.slice(chapterStart).join('\n')
-      detectedChapters[detectedChapters.length - 1].wordCount = lastChapterContent.replace(/\s/g, '').length
-    }
-    
-    // 如果没有检测到章节，创建默认章节
-    if (detectedChapters.length === 0) {
-      detectedChapters.push({
-        number: 1,
-        title: '全文',
-        start: 0,
-        end: content.length,
-        wordCount: content.replace(/\s/g, '').length,
-        line: 0
-      })
-    }
-    
-    chapters.value = detectedChapters
-    message.success(`检测到 ${detectedChapters.length} 个章节`)
-    
   } catch (error) {
-    console.error('章节检测失败:', error)
-    message.error('章节检测失败')
+    console.error('[BookDetail] 章节检测失败:', error)
+    console.error('[BookDetail] 错误详情:', error.response?.data)
+    
+    if (error.response?.status === 400) {
+      // 如果已有章节，询问是否强制重新处理
+      const errorMsg = error.response.data?.detail || '检测失败'
+      if (errorMsg.includes('已有') && errorMsg.includes('章节')) {
+        const confirmed = await new Promise((resolve) => {
+          Modal.confirm({
+            title: '检测到已有章节',
+            content: `${errorMsg}，是否强制重新检测？这将覆盖现有章节数据。`,
+            onOk: () => resolve(true),
+            onCancel: () => resolve(false)
+          })
+        })
+        
+        if (confirmed) {
+          try {
+            console.log('[BookDetail] 开始强制重新检测章节')
+            const forceResponse = await booksAPI.detectChapters(book.value.id, { force_reprocess: true })
+            console.log('[BookDetail] 强制检测响应:', forceResponse)
+            
+            if (forceResponse.data && forceResponse.data.success) {
+              message.success(forceResponse.data.message || '强制章节检测完成')
+              // 重新加载章节列表和书籍信息
+              await Promise.all([loadChapters(), loadBook()])
+            }
+          } catch (forceError) {
+            console.error('[BookDetail] 强制章节检测失败:', forceError)
+            message.error('强制章节检测失败: ' + (forceError.response?.data?.detail || '未知错误'))
+          }
+        }
+      } else {
+        message.error(errorMsg)
+      }
+    } else {
+      message.error('章节检测失败: ' + (error.response?.data?.detail || '网络错误'))
+    }
   } finally {
     detectingChapters.value = false
+  }
+}
+
+// 加载章节列表
+const loadChapters = async () => {
+  if (!book.value?.id) return
+  
+  try {
+    console.log('[BookDetail] 开始加载章节列表，书籍ID:', book.value.id)
+    const response = await booksAPI.getBookChapters(book.value.id)
+    console.log('[BookDetail] 章节API响应:', response)
+    
+    if (response.data && response.data.success) {
+      // 转换章节数据格式
+      const chaptersData = response.data.data || []
+      console.log('[BookDetail] 原始章节数据:', chaptersData)
+      
+      chapters.value = chaptersData.map(chapter => ({
+        id: chapter.id,
+        number: chapter.chapter_number,
+        title: chapter.chapter_title || `第${chapter.chapter_number}章`,
+        wordCount: chapter.word_count || 0,
+        status: chapter.analysis_status,
+        content: chapter.content
+      }))
+      
+      console.log('[BookDetail] 转换后的章节数据:', chapters.value)
+      console.log('[BookDetail] 章节数量:', chapters.value.length)
+    } else {
+      console.warn('[BookDetail] API响应格式异常:', response)
+      chapters.value = []
+    }
+  } catch (error) {
+    console.error('[BookDetail] 加载章节列表失败:', error)
+    console.error('[BookDetail] 错误详情:', error.response?.data)
+    
+    // 重置章节数据
+    chapters.value = []
+    
+    // 如果是404错误，说明没有章节数据
+    if (error.response?.status === 404) {
+      console.log('[BookDetail] 未找到章节数据，可能需要检测章节')
+    } else {
+      // 其他错误显示提示
+      message.warning('加载章节列表失败，请尝试检测章节')
+    }
   }
 }
 
@@ -431,8 +451,8 @@ const loadBook = async () => {
     if (response.data.success) {
       book.value = response.data.data
       
-      // 自动检测章节
-      await detectChapters()
+      // 加载章节列表
+      await loadChapters()
       
       // 加载相关项目
       loadRelatedProjects()

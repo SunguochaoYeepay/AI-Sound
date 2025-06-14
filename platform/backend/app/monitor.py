@@ -127,6 +127,86 @@ async def get_system_status(db: Session = Depends(get_db)):
         logger.error(f"获取系统状态失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"获取系统状态失败: {str(e)}")
 
+@router.get("/analysis-progress/{session_id}")
+async def get_analysis_progress(session_id: int, db: Session = Depends(get_db)):
+    """
+    获取角色分析进度
+    专门用于监控AI角色识别的进度
+    """
+    try:
+        # 获取GPU使用情况（如果可用）
+        gpu_info = {}
+        try:
+            import nvidia_ml_py3 as nvml
+            nvml.nvmlInit()
+            device_count = nvml.nvmlDeviceGetCount()
+            
+            for i in range(device_count):
+                handle = nvml.nvmlDeviceGetHandleByIndex(i)
+                gpu_name = nvml.nvmlDeviceGetName(handle).decode('utf-8')
+                
+                # GPU使用率
+                utilization = nvml.nvmlDeviceGetUtilizationRates(handle)
+                
+                # 显存信息
+                memory_info = nvml.nvmlDeviceGetMemoryInfo(handle)
+                
+                # 温度
+                temperature = nvml.nvmlDeviceGetTemperature(handle, nvml.NVML_TEMPERATURE_GPU)
+                
+                gpu_info[f"gpu_{i}"] = {
+                    "name": gpu_name,
+                    "utilization": utilization.gpu,
+                    "memory_utilization": utilization.memory,
+                    "memory_used": round(memory_info.used / 1024 / 1024, 2),  # MB
+                    "memory_total": round(memory_info.total / 1024 / 1024, 2),  # MB
+                    "memory_percent": round((memory_info.used / memory_info.total) * 100, 1),
+                    "temperature": temperature
+                }
+        except Exception as e:
+            logger.warning(f"无法获取GPU信息: {e}")
+            gpu_info = {"error": "GPU监控不可用"}
+        
+        # 获取Ollama进程信息
+        ollama_process = None
+        try:
+            import psutil
+            for proc in psutil.process_iter(['pid', 'name', 'cpu_percent', 'memory_info']):
+                if 'ollama' in proc.info['name'].lower():
+                    ollama_process = {
+                        "pid": proc.info['pid'],
+                        "name": proc.info['name'],
+                        "cpu_percent": proc.info['cpu_percent'],
+                        "memory_mb": round(proc.info['memory_info'].rss / 1024 / 1024, 2)
+                    }
+                    break
+        except Exception as e:
+            logger.warning(f"无法获取Ollama进程信息: {e}")
+        
+        # 系统资源使用情况
+        cpu_percent = psutil.cpu_percent(interval=0.1)
+        memory = psutil.virtual_memory()
+        
+        return {
+            "success": True,
+            "data": {
+                "session_id": session_id,
+                "timestamp": datetime.utcnow().isoformat(),
+                "system_resources": {
+                    "cpu_percent": round(cpu_percent, 1),
+                    "memory_percent": round(memory.percent, 1),
+                    "memory_available_gb": round(memory.available / 1024 / 1024 / 1024, 2)
+                },
+                "gpu_info": gpu_info,
+                "ollama_process": ollama_process,
+                "analysis_status": "monitoring"  # 可以从WebSocket管理器获取实际状态
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"获取分析进度失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取分析进度失败: {str(e)}")
+
 @router.get("/performance-history")
 async def get_performance_history(
     hours: int = Query(24, ge=1, le=168, description="历史小时数"),

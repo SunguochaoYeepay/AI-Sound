@@ -365,7 +365,31 @@ export const booksAPI = {
   },
   
   // 获取书籍统计
-  getBookStats: (bookId) => apiClient.get(`/books/${bookId}/stats`)
+  getBookStats: (bookId) => apiClient.get(`/books/${bookId}/stats`),
+  
+  // 检测章节结构
+  detectChapters: (bookId, config = {}) => {
+    const params = new URLSearchParams()
+    params.append('force_reprocess', config.force_reprocess || false)
+    if (config.detection_config) {
+      params.append('detection_config', JSON.stringify(config.detection_config))
+    }
+    
+    return apiClient.post(`/books/${bookId}/detect-chapters?${params.toString()}`)
+  },
+  
+  // 获取书籍章节列表
+  getBookChapters: (bookId, params = {}) => {
+    const queryParams = new URLSearchParams()
+    if (params.skip) queryParams.append('skip', params.skip)
+    if (params.limit) queryParams.append('limit', params.limit)
+    if (params.status_filter) queryParams.append('status_filter', params.status_filter)
+    
+    const queryString = queryParams.toString()
+    const url = queryString ? `/books/${bookId}/chapters?${queryString}` : `/books/${bookId}/chapters`
+    
+    return apiClient.get(url)
+  }
 }
 
 // 音频库API
@@ -422,7 +446,13 @@ export const monitorAPI = {
   getSystemStatus: () => apiClient.get('/monitor/system-status'),
   
   // 获取服务状态
-  getServiceStatus: () => apiClient.get('/monitor/service-health')
+  getServiceStatus: () => apiClient.get('/monitor/service-health'),
+  
+  // 获取角色分析进度（包含GPU监控）
+  getAnalysisProgress: (sessionId) => apiClient.get(`/monitor/analysis-progress/${sessionId}`),
+  
+  // 获取性能历史
+  getPerformanceHistory: (hours = 24) => apiClient.get(`/monitor/performance-history?hours=${hours}`)
 }
 
 // 智能分析API (Mock)

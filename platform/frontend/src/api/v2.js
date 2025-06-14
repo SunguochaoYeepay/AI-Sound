@@ -105,6 +105,13 @@ export const bookAPI = {
     return apiRequest(() => 
       apiClient.get(`${API_V2_PREFIX}/books/${bookId}/structure`)
     )
+  },
+  
+  // 获取书籍章节列表
+  async getBookChapters(bookId, params = {}) {
+    return apiRequest(() => 
+      apiClient.get(`${API_V2_PREFIX}/books/${bookId}/chapters`, { params })
+    )
   }
 }
 

@@ -10,6 +10,8 @@ from typing import List, Optional
 import asyncio
 import logging
 import json
+import re
+from datetime import datetime
 from pydantic import BaseModel
 
 from app.database import get_db
@@ -20,6 +22,85 @@ from app.models import Book, BookChapter
 router = APIRouter(prefix="/books")
 
 logger = logging.getLogger(__name__)
+
+
+def detect_chapters_from_content(content: str) -> List[dict]:
+    """
+    从书籍内容中检测章节
+    返回章节列表，每个章节包含：title, content, word_count
+    """
+    if not content or not content.strip():
+        return []
+    
+    chapters = []
+    lines = content.split('\n')
+    current_chapter = None
+    chapter_content = []
+    chapter_number = 0
+    
+    # 章节标题检测模式
+    chapter_patterns = [
+        r'^#{1,6}\s+',  # Markdown标题 # ## ### 等
+        r'^第[一二三四五六七八九十\d]+[章节回]',  # 第一章、第1章、第一节等
+        r'^Chapter\s+\d+',  # Chapter 1
+        r'^\d+\.',  # 1.
+        r'^[一二三四五六七八九十]+、',  # 一、二、三、
+        r'^【.*?】',  # 【章节标题】
+        r'^（第.*?）',  # （第一章）
+    ]
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        
+        # 检测是否为章节标题
+        is_chapter_title = False
+        for pattern in chapter_patterns:
+            if re.match(pattern, line):
+                is_chapter_title = True
+                break
+        
+        if is_chapter_title:
+            # 保存上一章节
+            if current_chapter and chapter_content:
+                chapter_text = '\n'.join(chapter_content)
+                if chapter_text.strip():  # 确保章节内容不为空
+                    chapters.append({
+                        'number': chapter_number,
+                        'title': current_chapter,
+                        'content': chapter_text,
+                        'word_count': len(chapter_text.replace(' ', '').replace('\n', ''))
+                    })
+            
+            # 开始新章节
+            chapter_number += 1
+            current_chapter = line
+            chapter_content = []
+        else:
+            chapter_content.append(line)
+    
+    # 保存最后一章
+    if current_chapter and chapter_content:
+        chapter_text = '\n'.join(chapter_content)
+        if chapter_text.strip():
+            chapters.append({
+                'number': chapter_number,
+                'title': current_chapter,
+                'content': chapter_text,
+                'word_count': len(chapter_text.replace(' ', '').replace('\n', ''))
+            })
+    
+    # 如果没有检测到章节，将整个内容作为一个章节
+    if not chapters and content.strip():
+        chapters.append({
+            'number': 1,
+            'title': '全文',
+            'content': content.strip(),
+            'word_count': len(content.replace(' ', '').replace('\n', ''))
+        })
+    
+    return chapters
 
 
 @router.post("")
@@ -83,12 +164,39 @@ async def upload_book(
         
         # 如果启用自动章节检测且内容不为空
         if auto_detect_chapters and book_content.strip():
-            # 这里可以添加章节检测逻辑
-            pass
+            try:
+                # 检测章节
+                chapters_data = detect_chapters_from_content(book_content)
+                
+                # 保存章节到数据库
+                for chapter_data in chapters_data:
+                    chapter = BookChapter(
+                        book_id=new_book.id,
+                        chapter_number=chapter_data['number'],
+                        chapter_title=chapter_data['title'],
+                        content=chapter_data['content'],
+                        word_count=chapter_data['word_count'],
+                        analysis_status='pending',
+                        synthesis_status='pending',
+                        created_at=datetime.utcnow(),
+                        updated_at=datetime.utcnow()
+                    )
+                    db.add(chapter)
+                
+                # 更新书籍的章节数
+                new_book.chapter_count = len(chapters_data)
+                db.commit()
+                
+                logger.info(f"书籍 '{title}' 自动检测到 {len(chapters_data)} 个章节")
+                
+            except Exception as e:
+                logger.error(f"章节检测失败: {str(e)}")
+                # 章节检测失败不影响书籍创建
         
         return {
             "success": True,
-            "data": new_book.to_dict()
+            "data": new_book.to_dict(),
+            "message": f"书籍创建成功，检测到 {new_book.chapter_count} 个章节"
         }
         
     except HTTPException:
@@ -216,42 +324,57 @@ async def detect_chapters(
         if not book:
             raise HTTPException(status_code=404, detail=f"书籍 ID {book_id} 不存在")
         
-        # 简单的章节检测逻辑（基础实现）
-        content = book.content or ""
-        chapters = []
+        # 检查是否已有章节数据
+        existing_chapters = db.query(BookChapter).filter(BookChapter.book_id == book_id).count()
+        if existing_chapters > 0 and not force_reprocess:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"书籍已有 {existing_chapters} 个章节，使用 force_reprocess=true 强制重新处理"
+            )
         
-        # 基础的章节分割（按"第"开头的行）
-        lines = content.split('\n')
-        current_chapter = {"title": "序章", "content": ""}
-        chapter_num = 0
+        # 如果强制重新处理，删除现有章节
+        if force_reprocess and existing_chapters > 0:
+            db.query(BookChapter).filter(BookChapter.book_id == book_id).delete()
+            db.commit()
         
-        for line in lines:
-            line = line.strip()
-            if line and (line.startswith('第') and ('章' in line or '节' in line)):
-                # 保存当前章节
-                if current_chapter["content"].strip():
-                    chapters.append(current_chapter)
-                
-                # 开始新章节
-                chapter_num += 1
-                current_chapter = {"title": line, "content": ""}
-            else:
-                current_chapter["content"] += line + "\n"
+        # 检测章节
+        chapters_data = detect_chapters_from_content(book.content or "")
         
-        # 保存最后一个章节
-        if current_chapter["content"].strip():
-            chapters.append(current_chapter)
+        if not chapters_data:
+            raise HTTPException(status_code=400, detail="未检测到有效章节")
+        
+        # 保存章节到数据库
+        for chapter_data in chapters_data:
+            chapter = BookChapter(
+                book_id=book_id,
+                chapter_number=chapter_data['number'],
+                chapter_title=chapter_data['title'],
+                content=chapter_data['content'],
+                word_count=chapter_data['word_count'],
+                analysis_status='pending',
+                synthesis_status='pending',
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow()
+            )
+            db.add(chapter)
         
         # 更新书籍信息
-        book.chapter_count = len(chapters)
-        book.total_chapters = len(chapters)
+        book.chapter_count = len(chapters_data)
         db.commit()
         
         return {
             "success": True,
-            "message": f"章节检测完成，发现 {len(chapters)} 个章节",
-            "chapters_found": len(chapters),
-            "book_id": book_id
+            "message": f"章节检测完成，发现 {len(chapters_data)} 个章节",
+            "chapters_found": len(chapters_data),
+            "book_id": book_id,
+            "chapters": [
+                {
+                    "number": ch['number'],
+                    "title": ch['title'],
+                    "word_count": ch['word_count']
+                }
+                for ch in chapters_data
+            ]
         }
         
     except HTTPException:
