@@ -143,11 +143,56 @@
                 v-for="(chapter, index) in chapters"
                 :key="index"
                 class="chapter-item"
-                @click="scrollToChapter(chapter)"
               >
-                <div class="chapter-number">第{{ chapter.number }}章</div>
-                <div class="chapter-title">{{ chapter.title }}</div>
-                <div class="chapter-stats">{{ chapter.wordCount }} 字</div>
+                <div class="chapter-content" @click="scrollToChapter(chapter)">
+                  <div class="chapter-number">第{{ chapter.number }}章</div>
+                  <div class="chapter-title">{{ chapter.title }}</div>
+                  <div class="chapter-stats">{{ chapter.wordCount }} 字</div>
+                  <!-- 智能准备状态指示器 -->
+                  <div v-if="chapterPreparationStatus[chapter.id]" class="preparation-status">
+                    <a-tag 
+                      :color="getPreparationStatusColor(chapterPreparationStatus[chapter.id])"
+                      size="small"
+                    >
+                      {{ getPreparationStatusText(chapterPreparationStatus[chapter.id]) }}
+                    </a-tag>
+                  </div>
+                </div>
+                <div class="chapter-actions">
+                  <!-- 根据准备状态显示不同按钮 -->
+                  <template v-if="chapterPreparationStatus[chapter.id]?.preparation_complete">
+                    <!-- 已完成智能准备 -->
+                    <a-button 
+                      type="default" 
+                      size="small"
+                      @click.stop="viewPreparationResult(chapter)"
+                      title="查看智能准备结果"
+                    >
+                      📋 查看结果
+                    </a-button>
+                    <a-button 
+                      type="primary" 
+                      size="small"
+                      @click.stop="prepareChapterForSynthesis(chapter, true)"
+                      :loading="preparingChapters.has(chapter.id)"
+                      title="重新执行智能准备"
+                    >
+                      🔄 再次准备
+                    </a-button>
+                  </template>
+                  <template v-else>
+                    <!-- 未完成智能准备 -->
+                    <a-button 
+                      type="primary" 
+                      size="small"
+                      @click.stop="prepareChapterForSynthesis(chapter)"
+                      :loading="preparingChapters.has(chapter.id)"
+                      title="智能准备章节内容用于语音合成"
+                    >
+                      🎭 智能准备
+                    </a-button>
+                  </template>
+                </div>
               </div>
             </div>
             
@@ -213,7 +258,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, h } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { message, Modal } from 'ant-design-vue'
 import { booksAPI } from '@/api'
@@ -226,6 +271,8 @@ const loading = ref(true)
 const detectingChapters = ref(false)
 const loadingProjects = ref(false)
 const showFullContent = ref(false)
+const preparingChapters = ref(new Set()) // 正在准备的章节ID集合
+const chapterPreparationStatus = ref({}) // 章节智能准备状态
 
 const book = ref(null)
 const chapters = ref([])
@@ -412,6 +459,9 @@ const loadChapters = async () => {
       
       console.log('[BookDetail] 转换后的章节数据:', chapters.value)
       console.log('[BookDetail] 章节数量:', chapters.value.length)
+      
+      // 加载所有章节的智能准备状态
+      await loadAllChapterPreparationStatus()
     } else {
       console.warn('[BookDetail] API响应格式异常:', response)
       chapters.value = []
@@ -441,6 +491,182 @@ const scrollToChapter = (chapter) => {
   
   // 简单实现：暂时只提示
   message.info(`跳转到第${chapter.number}章：${chapter.title}`)
+}
+
+// 智能准备章节
+const prepareChapterForSynthesis = async (chapter, force = false) => {
+  if (!chapter?.id) {
+    message.warning('章节信息不完整')
+    return
+  }
+
+  // 检查是否正在准备
+  if (preparingChapters.value.has(chapter.id)) {
+    message.warning('该章节正在准备中，请稍候')
+    return
+  }
+
+  // 添加到准备中的集合
+  preparingChapters.value.add(chapter.id)
+
+  try {
+    console.log('[BookDetail] 开始智能准备章节:', chapter)
+    
+    // 调用智能准备API
+    const response = await booksAPI.prepareChapterForSynthesis(chapter.id, { force })
+    console.log('[BookDetail] 智能准备响应:', response)
+    
+    if (response.data && response.data.success) {
+      const result = response.data.data
+      
+      // 显示准备结果
+      Modal.success({
+        title: '智能准备完成',
+        content: `
+          章节：${chapter.title}
+          检测到 ${result.character_count || 0} 个角色
+          生成 ${result.segments?.length || 0} 个语音片段
+          自动添加旁白角色：${result.narrator_added ? '是' : '否'}
+        `,
+        width: 500
+      })
+      
+      message.success('章节智能准备完成')
+      
+      // 刷新该章节的准备状态
+      await loadChapterPreparationStatus(chapter.id)
+    }
+  } catch (error) {
+    console.error('[BookDetail] 智能准备失败:', error)
+    console.error('[BookDetail] 错误详情:', error.response?.data)
+    
+    const errorMsg = error.response?.data?.detail || '智能准备失败'
+    message.error(errorMsg)
+  } finally {
+    // 从准备中的集合移除
+    preparingChapters.value.delete(chapter.id)
+  }
+}
+
+// 获取章节智能准备状态
+const loadChapterPreparationStatus = async (chapterId) => {
+  try {
+    const response = await booksAPI.getPreparationStatus(chapterId)
+    if (response.data && response.data.success) {
+      chapterPreparationStatus.value[chapterId] = response.data.data
+    }
+  } catch (error) {
+    console.error(`获取章节 ${chapterId} 准备状态失败:`, error)
+  }
+}
+
+// 批量加载所有章节的准备状态
+const loadAllChapterPreparationStatus = async () => {
+  if (!chapters.value.length) return
+  
+  const promises = chapters.value.map(chapter => 
+    loadChapterPreparationStatus(chapter.id)
+  )
+  
+  await Promise.allSettled(promises)
+}
+
+// 查看智能准备结果
+const viewPreparationResult = async (chapter) => {
+  try {
+    console.log('[BookDetail] 查看智能准备结果:', chapter)
+    
+    // 首先尝试获取已有结果
+    let response
+    try {
+      response = await booksAPI.getPreparationResult(chapter.id)
+    } catch (error) {
+      // 如果获取已有结果失败，提示用户
+      console.warn('[BookDetail] 获取已有结果失败，可能需要重新执行智能准备:', error)
+      message.warning('未找到该章节的智能准备结果，请先执行智能准备')
+      return
+    }
+    
+    if (response.data && response.data.success) {
+      const result = response.data.data
+      const processingInfo = result.processing_info || {}
+      const synthesisJson = result.synthesis_json || {}
+      
+      // 显示详细结果
+      Modal.info({
+        title: `📋 智能准备结果 - ${chapter.title}`,
+        content: h('div', { style: 'max-height: 400px; overflow-y: auto;' }, [
+          h('div', { class: 'result-section' }, [
+            h('h4', { style: 'color: #1890ff; margin-bottom: 12px;' }, '🎯 处理信息'),
+            h('p', { style: 'margin: 4px 0;' }, `处理模式: ${processingInfo.mode || '未知'}`),
+            h('p', { style: 'margin: 4px 0;' }, `生成片段: ${processingInfo.total_segments || synthesisJson.synthesis_plan?.length || 0} 个`),
+            h('p', { style: 'margin: 4px 0;' }, `检测角色: ${processingInfo.characters_found || synthesisJson.characters?.length || 0} 个`),
+            h('p', { style: 'margin: 4px 0;' }, `估算tokens: ${processingInfo.estimated_tokens || '未知'}`),
+            h('p', { style: 'margin: 4px 0;' }, `旁白角色: ${processingInfo.narrator_added ? '已添加' : '未添加'}`),
+            h('p', { style: 'margin: 4px 0;' }, `数据库存储: ${processingInfo.saved_to_database ? '已保存' : '未保存'}`),
+            h('p', { style: 'margin: 4px 0; color: #666; font-size: 12px;' }, `最后更新: ${result.last_updated || '未知'}`),
+          ]),
+          h('div', { class: 'result-section', style: 'margin-top: 16px;' }, [
+            h('h4', { style: 'color: #52c41a; margin-bottom: 12px;' }, '🎭 检测到的角色'),
+            ...(synthesisJson.characters || []).length > 0 ? 
+              (synthesisJson.characters || []).map(char => 
+                h('p', { style: 'margin: 4px 0; padding-left: 16px;' }, `• ${char.name} (语音ID: ${char.voice_id})`)
+              ) : 
+              [h('p', { style: 'margin: 4px 0; padding-left: 16px; color: #999;' }, '暂无角色信息')]
+          ]),
+          h('div', { class: 'result-section', style: 'margin-top: 16px;' }, [
+            h('h4', { style: 'color: #fa8c16; margin-bottom: 12px;' }, '📝 合成片段预览'),
+            ...(synthesisJson.synthesis_plan || []).length > 0 ?
+              (synthesisJson.synthesis_plan || []).slice(0, 5).map((segment, index) => 
+                h('div', { 
+                  style: 'margin-bottom: 8px; padding: 8px; background: #f5f5f5; border-radius: 4px; border-left: 3px solid #1890ff;' 
+                }, [
+                  h('strong', { style: 'color: #1890ff;' }, `片段 ${index + 1}: ${segment.speaker}`),
+                  h('p', { 
+                    style: 'margin: 4px 0 0 0; color: #666; font-size: 13px; line-height: 1.4;' 
+                  }, segment.text.length > 80 ? segment.text.substring(0, 80) + '...' : segment.text)
+                ])
+              ) :
+              [h('p', { style: 'margin: 4px 0; color: #999;' }, '暂无合成片段信息')],
+            ...(synthesisJson.synthesis_plan?.length > 5 ? [
+              h('p', { 
+                style: 'color: #999; font-style: italic; text-align: center; margin-top: 12px;' 
+              }, `... 还有 ${synthesisJson.synthesis_plan.length - 5} 个片段`)
+            ] : [])
+          ])
+        ]),
+        width: 700,
+        okText: '关闭',
+        class: 'preparation-result-modal'
+      })
+    } else {
+      message.error('获取智能准备结果失败')
+    }
+  } catch (error) {
+    console.error('[BookDetail] 查看智能准备结果失败:', error)
+    message.error('获取智能准备结果失败')
+  }
+}
+
+// 获取准备状态颜色
+const getPreparationStatusColor = (status) => {
+  if (!status) return 'default'
+  
+  if (status.preparation_complete) return 'green'
+  if (status.analysis_status === 'analyzing') return 'blue'
+  if (status.analysis_status === 'failed') return 'red'
+  return 'orange'
+}
+
+// 获取准备状态文本
+const getPreparationStatusText = (status) => {
+  if (!status) return '未知'
+  
+  if (status.preparation_complete) return '已完成'
+  if (status.analysis_status === 'analyzing') return '分析中'
+  if (status.analysis_status === 'failed') return '失败'
+  if (status.analysis_status === 'completed' && !status.preparation_complete) return '部分完成'
+  return '待处理'
 }
 
 // 加载书籍详情
@@ -637,39 +863,52 @@ onMounted(() => {
 
 .chapter-item {
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  padding: 12px 0;
-  border-bottom: 1px solid #f0f0f0;
-  cursor: pointer;
-  transition: background-color 0.2s;
+  padding: 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  background: white;
+  transition: all 0.2s ease;
 }
 
 .chapter-item:hover {
-  background-color: #f8fafc;
+  border-color: #3b82f6;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.1);
 }
 
-.chapter-item:last-child {
-  border-bottom: none;
+.chapter-content {
+  flex: 1;
+  cursor: pointer;
 }
 
 .chapter-number {
   font-size: 12px;
   color: #6b7280;
-  min-width: 70px;
+  margin-bottom: 4px;
 }
 
 .chapter-title {
-  flex: 1;
   font-size: 14px;
-  margin: 0 12px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-weight: 500;
+  color: #1f2937;
+  margin-bottom: 4px;
 }
 
 .chapter-stats {
   font-size: 12px;
   color: #9ca3af;
+}
+
+.preparation-status {
+  margin-top: 8px;
+}
+
+.chapter-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 
 .project-item {

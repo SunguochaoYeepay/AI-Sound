@@ -389,7 +389,27 @@ export const booksAPI = {
     const url = queryString ? `/books/${bookId}/chapters?${queryString}` : `/books/${bookId}/chapters`
     
     return apiClient.get(url)
-  }
+  },
+
+  // 智能准备章节用于语音合成
+  prepareChapterForSynthesis: (chapterId) => 
+    apiClient.post(`/content-preparation/prepare-synthesis/${chapterId}`),
+
+  // 获取章节智能准备状态
+  getPreparationStatus: (chapterId) => 
+    apiClient.get(`/content-preparation/preparation-status/${chapterId}`),
+
+  // 获取章节内容统计
+  getContentStats: (chapterId) => 
+    apiClient.get(`/content-preparation/content-stats/${chapterId}`),
+
+  // 获取章节合成预览
+  getSynthesisPreview: (chapterId) => 
+    apiClient.get(`/content-preparation/synthesis-preview/${chapterId}`),
+
+  // 获取已有的智能准备结果（不重新执行）
+  getPreparationResult: (chapterId) => 
+    apiClient.get(`/content-preparation/result/${chapterId}`)
 }
 
 // 音频库API

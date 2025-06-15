@@ -17,6 +17,7 @@ from .projects import router as projects_router
 from .characters import router as characters_router
 from .audio_library import router as audio_library_router
 from .intelligent_analysis import router as intelligent_analysis_router
+from .content_preparation import router as content_preparation_router
 from app.novel_reader import router as novel_reader_router
 from app.voice_clone import router as voice_clone_router
 from app.monitor import router as monitor_router
@@ -88,4 +89,5 @@ api.include_router(audio_library_router, tags=["Audio Library"])
 api.include_router(novel_reader_router, tags=["Novel Reader"])
 api.include_router(voice_clone_router, tags=["Voice Clone"])
 api.include_router(monitor_router, tags=["System Monitor"])
-api.include_router(intelligent_analysis_router, tags=["Intelligent Analysis"]) 
+api.include_router(intelligent_analysis_router, tags=["Intelligent Analysis"])
+api.include_router(content_preparation_router, tags=["Content Preparation"]) 

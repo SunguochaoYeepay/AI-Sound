@@ -17,6 +17,7 @@ import os
 from app.database import get_db
 from app.models import BookChapter, Book, TextSegment
 from app.utils import log_system_event
+from app.services.content_preparation_service import ContentPreparationService
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/chapters", tags=["Chapters"])
@@ -1672,4 +1673,200 @@ class OllamaCharacterDetector:
         
         # 默认返回unknown，让用户手动选择
         logger.warning(f"无法推断角色 '{name}' 的性别，AI返回: {ai_gender}")
-        return 'unknown' 
+        return 'unknown'
+
+
+@router.post("/{chapter_id}/prepare-synthesis")
+async def prepare_chapter_for_synthesis(
+    chapter_id: int,
+    include_emotion: bool = Query(True, description="是否包含情绪识别"),
+    processing_mode: str = Query("auto", description="处理模式: auto/single/distributed"),
+    db: Session = Depends(get_db)
+):
+    """
+    准备章节内容用于语音合成（输出兼容现有格式）
+    
+    这是智能内容准备的核心API，实现：
+    - 🎭 智能角色识别与分离
+    - 🔒 原文内容100%保持不变
+    - 🎭 自动添加旁白角色
+    - 📋 输出完全兼容现有合成系统的JSON格式
+    - 🧠 支持大文本分布式处理
+    """
+    
+    try:
+        # 创建内容准备服务
+        content_service = ContentPreparationService(db)
+        
+        # 执行智能内容准备
+        result = await content_service.prepare_chapter_for_synthesis(
+            chapter_id=chapter_id,
+            user_preferences={
+                "include_emotion": include_emotion,
+                "processing_mode": processing_mode
+            }
+        )
+        
+        # 记录系统事件
+        log_system_event(
+            db, 
+            "chapter_synthesis_prepared", 
+            f"章节 {chapter_id} 智能内容准备完成",
+            {
+                "chapter_id": chapter_id,
+                "processing_mode": result["processing_info"]["mode"],
+                "total_segments": result["processing_info"]["total_segments"],
+                "characters_found": result["processing_info"]["characters_found"]
+            }
+        )
+        
+        return {
+            "success": True,
+            "message": f"章节内容准备完成，共识别 {result['processing_info']['characters_found']} 个角色，{result['processing_info']['total_segments']} 个段落",
+            "data": result["synthesis_json"],  # 兼容现有格式的JSON
+            "processing_info": result["processing_info"]
+        }
+        
+    except Exception as e:
+        logger.error(f"章节 {chapter_id} 内容准备失败: {str(e)}")
+        
+        # 记录错误事件
+        log_system_event(
+            db, 
+            "chapter_synthesis_preparation_failed", 
+            f"章节 {chapter_id} 智能内容准备失败: {str(e)}",
+            {"chapter_id": chapter_id, "error": str(e)}
+        )
+        
+        raise HTTPException(
+            status_code=500, 
+            detail=f"内容准备失败: {str(e)}"
+        )
+
+
+@router.get("/{chapter_id}/synthesis-preview")
+async def get_synthesis_preview(
+    chapter_id: int,
+    max_segments: int = Query(10, ge=1, le=50, description="预览段落数量"),
+    db: Session = Depends(get_db)
+):
+    """
+    获取章节合成预览
+    
+    快速预览章节的智能分析结果，不进行完整处理
+    """
+    
+    try:
+        # 获取章节
+        chapter = db.query(BookChapter).filter(BookChapter.id == chapter_id).first()
+        if not chapter:
+            raise HTTPException(status_code=404, detail="章节不存在")
+        
+        # 使用简单的角色检测器进行快速预览
+        detector = ProgrammaticCharacterDetector()
+        
+        # 取前1000字符进行预览分析
+        preview_text = chapter.content[:1000] if len(chapter.content) > 1000 else chapter.content
+        
+        # 分析文本段落
+        segments = detector.segment_text_with_speakers(preview_text)
+        
+        # 提取角色信息
+        character_stats = detector.extract_dialogue_characters(segments)
+        
+        # 限制预览段落数量
+        preview_segments = segments[:max_segments]
+        
+        return {
+            "success": True,
+            "chapter_info": {
+                "id": chapter.id,
+                "title": chapter.chapter_title,
+                "content_length": len(chapter.content),
+                "preview_length": len(preview_text)
+            },
+            "preview_segments": preview_segments,
+            "detected_characters": [
+                {"name": name, "segment_count": count}
+                for name, count in character_stats.items()
+            ],
+            "statistics": {
+                "total_segments": len(segments),
+                "preview_segments": len(preview_segments),
+                "character_count": len(character_stats),
+                "is_truncated": len(chapter.content) > 1000
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"章节 {chapter_id} 预览失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"预览失败: {str(e)}")
+
+
+@router.get("/{chapter_id}/content-stats")
+async def get_chapter_content_stats(
+    chapter_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    获取章节内容统计信息
+    
+    用于判断处理策略和预估处理时间
+    """
+    
+    try:
+        # 获取章节
+        chapter = db.query(BookChapter).filter(BookChapter.id == chapter_id).first()
+        if not chapter:
+            raise HTTPException(status_code=404, detail="章节不存在")
+        
+        content = chapter.content
+        
+        # 基本统计
+        char_count = len(content)
+        chinese_chars = len(re.findall(r'[\u4e00-\u9fff]', content))
+        english_words = len(re.findall(r'[a-zA-Z]+', content))
+        
+        # 估算token数量
+        estimated_tokens = int(chinese_chars * 1.5 + english_words)
+        
+        # 段落统计
+        paragraphs = re.split(r'\n\s*\n', content.strip())
+        paragraph_count = len([p for p in paragraphs if p.strip()])
+        
+        # 对话统计
+        dialogue_markers = ['"', '"', '"', '「', '」', '『', '』', "'", "'"]
+        dialogue_count = sum(content.count(marker) for marker in dialogue_markers)
+        
+        # 推荐处理模式
+        if estimated_tokens <= 3000:
+            recommended_mode = "single"
+            estimated_time = "30-60秒"
+        else:
+            recommended_mode = "distributed"
+            estimated_time = "60-120秒"
+        
+        return {
+            "success": True,
+            "chapter_info": {
+                "id": chapter.id,
+                "title": chapter.chapter_title
+            },
+            "content_stats": {
+                "total_characters": char_count,
+                "chinese_characters": chinese_chars,
+                "english_words": english_words,
+                "estimated_tokens": estimated_tokens,
+                "paragraph_count": paragraph_count,
+                "dialogue_markers": dialogue_count
+            },
+            "processing_recommendation": {
+                "recommended_mode": recommended_mode,
+                "estimated_time": estimated_time,
+                "complexity": "simple" if estimated_tokens <= 1500 else "medium" if estimated_tokens <= 3000 else "complex"
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"章节 {chapter_id} 统计失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"统计失败: {str(e)}") 
