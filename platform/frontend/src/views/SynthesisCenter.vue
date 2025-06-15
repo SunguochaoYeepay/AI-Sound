@@ -692,24 +692,71 @@ const applyMockResult = async () => {
 
 // 从智能分析结果更新角色配置
 const updateCharactersFromAnalysis = () => {
-  if (!mockResult.value?.characters) return
+  if (!mockResult.value) return
   
   // 清空现有角色数据
   detectedCharacters.value = []
   
-  // 使用智能分析的角色数据，添加简单的示例文本
-  detectedCharacters.value = mockResult.value.characters.map(char => ({
+  // 优先从synthesis_plan中提取实际的角色
+  const characterStats = {}
+  
+  if (mockResult.value.synthesis_plan) {
+    mockResult.value.synthesis_plan.forEach(segment => {
+      const speaker = segment.speaker
+      if (speaker && speaker.trim()) {
+        if (!characterStats[speaker]) {
+          characterStats[speaker] = {
+            name: speaker,
+            count: 0,
+            samples: [],
+            voice_id: segment.voice_id,
+            voice_name: segment.voice_name || '未分配'
+          }
+        }
+        characterStats[speaker].count++
+        
+        // 收集示例文本（最多3个）
+        if (characterStats[speaker].samples.length < 3 && segment.text) {
+          const sampleText = segment.text.slice(0, 30) + (segment.text.length > 30 ? '...' : '')
+          if (!characterStats[speaker].samples.includes(sampleText)) {
+            characterStats[speaker].samples.push(sampleText)
+          }
+        }
+        
+        // 更新voice_id（如果segment中有更新的）
+        if (segment.voice_id && !characterStats[speaker].voice_id) {
+          characterStats[speaker].voice_id = segment.voice_id
+          characterStats[speaker].voice_name = segment.voice_name || '未分配'
+        }
+      }
+    })
+  }
+  
+  // 如果synthesis_plan中没有角色，则使用characters数组作为备选
+  if (Object.keys(characterStats).length === 0 && mockResult.value.characters) {
+    mockResult.value.characters.forEach(char => {
+      characterStats[char.name] = {
+        name: char.name,
+        count: 1,
+        samples: [getCharacterSampleText(char.name)],
+        voice_id: char.voice_id,
+        voice_name: char.voice_name || '未分配'
+      }
+    })
+  }
+  
+  // 转换为detectedCharacters格式
+  detectedCharacters.value = Object.values(characterStats).map(char => ({
     name: char.name,
-    character_id: char.name, // 使用名称作为ID
-    count: 1,
-    samples: [getCharacterSampleText(char.name)],
+    character_id: char.name,
+    count: char.count,
+    samples: char.samples.length > 0 ? char.samples : [getCharacterSampleText(char.name)],
     voice_id: char.voice_id,
     voice_name: char.voice_name
   }))
   
   // 自动应用AI推荐的角色映射到characterVoiceMapping
-  // 这样在合成时就能找到正确的voice_id
-  mockResult.value.characters.forEach(char => {
+  Object.values(characterStats).forEach(char => {
     if (char.voice_id) {
       characterVoiceMapping[char.name] = char.voice_id
     }
@@ -718,11 +765,8 @@ const updateCharactersFromAnalysis = () => {
   console.log('已更新角色配置:', {
     characters: detectedCharacters.value,
     characterVoiceMapping: characterVoiceMapping,
-    aiRecommendations: mockResult.value.characters.map(char => ({
-      name: char.name,
-      recommendedVoiceId: char.voice_id,
-      recommendedVoiceName: char.voice_name
-    }))
+    extractedFromSynthesisPlan: Object.keys(characterStats).length,
+    totalSegments: mockResult.value.synthesis_plan?.length || 0
   })
 }
 
