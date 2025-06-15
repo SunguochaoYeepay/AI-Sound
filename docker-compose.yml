@@ -10,6 +10,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://ai_sound_user:ai_sound_password@database:5432/ai_sound
       - MEGATTS3_URL=http://megatts3:7929
+      - OLLAMA_URL=http://host.docker.internal:11434  # Windows宿主机Ollama服务
       - AUDIO_DIR=/app/data/audio
       - UPLOADS_DIR=/app/data/uploads
       - VOICE_PROFILES_DIR=/app/data/voice_profiles
@@ -107,7 +108,7 @@ services:
     volumes:
       - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./docker/nginx/ssl:/etc/nginx/ssl:ro
-      - ./platform/frontend/dist:/usr/share/nginx/html:ro
+      - ./nginx-dist:/usr/share/nginx/html:ro  # 前端构建产物
       - ./data/audio:/usr/share/nginx/audio:ro
       - ./data/voice_profiles:/usr/share/nginx/voice_profiles:ro
       - ./data/logs/nginx:/var/log/nginx

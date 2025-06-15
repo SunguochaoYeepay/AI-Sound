@@ -1205,9 +1205,12 @@ class AdvancedCharacterDetector:
 class OllamaCharacterDetector:
     """使用Ollama进行角色分析的检测器 - 主力方案"""
     
-    def __init__(self, model_name: str = "gemma3:27b", ollama_url: str = "http://localhost:11434"):
+    def __init__(self, model_name: str = "gemma3:27b", ollama_url: str = None):
+        import os
         self.model_name = model_name
-        self.api_url = f"{ollama_url}/api/generate"
+        # 优先使用环境变量，支持Docker部署
+        self.ollama_url = ollama_url or os.getenv("OLLAMA_URL", "http://localhost:11434")
+        self.api_url = f"{self.ollama_url}/api/generate"
         
     async def analyze_text(self, text: str, chapter_info: dict) -> dict:
         """使用Ollama分析文本中的角色 - 直接AI分析，简单高效"""
