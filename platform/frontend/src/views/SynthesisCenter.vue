@@ -49,6 +49,79 @@
             </a-descriptions>
           </a-card>
 
+          <!-- 章节选择 -->
+          <a-card title="📚 章节选择" :bordered="false" class="chapter-selection-card" style="margin-bottom: 16px;">
+            <div class="chapter-selection-content">
+              <div class="selection-mode">
+                <a-radio-group v-model:value="synthesisMode" @change="onSynthesisModeChange">
+                  <a-radio-button value="all">整本书</a-radio-button>
+                  <a-radio-button value="chapters">选择章节</a-radio-button>
+                </a-radio-group>
+              </div>
+              
+              <div v-if="synthesisMode === 'chapters'" class="chapter-list" style="margin-top: 16px;">
+                <div class="chapter-controls">
+                  <a-space>
+                    <a-checkbox 
+                      :indeterminate="chapterIndeterminate" 
+                      :checked="chapterCheckAll" 
+                      @change="toggleAllChapters"
+                    >
+                      全选
+                    </a-checkbox>
+                    <span class="selection-info">
+                      已选择 {{ selectedChapters.length }} / {{ availableChapters.length }} 章节
+                    </span>
+                    <a-button size="small" @click="loadChapters" :loading="loadingChapters">
+                      🔄 刷新章节
+                    </a-button>
+                  </a-space>
+                </div>
+                
+                <div v-if="loadingChapters" class="loading-chapters">
+                  <a-spin tip="加载章节列表...">
+                    <div style="height: 100px;"></div>
+                  </a-spin>
+                </div>
+                
+                <div v-else-if="availableChapters.length > 0" class="chapters-grid">
+                  <div 
+                    v-for="chapter in availableChapters" 
+                    :key="chapter.id"
+                    class="chapter-item"
+                    :class="{ 'selected': selectedChapters.includes(chapter.id) }"
+                    @click="toggleChapterSelection(chapter.id)"
+                  >
+                    <a-checkbox 
+                      :checked="selectedChapters.includes(chapter.id)"
+                      @click.stop="toggleChapterSelection(chapter.id)"
+                    >
+                      <div class="chapter-content">
+                        <div class="chapter-title">
+                          第{{ chapter.chapter_number }}章 {{ chapter.title || chapter.chapter_title || '未命名章节' }}
+                        </div>
+                        <div class="chapter-meta">
+                          <span>字数: {{ formatNumber(chapter.word_count || 0) }}</span>
+                          <span class="chapter-status" :class="getChapterStatusClass(chapter)">
+                            {{ getChapterStatusText(chapter) }}
+                          </span>
+                        </div>
+                      </div>
+                    </a-checkbox>
+                  </div>
+                </div>
+                
+                <div v-else class="no-chapters">
+                  <a-empty description="暂无章节数据">
+                    <a-button type="primary" @click="loadChapters">
+                      重新加载
+                    </a-button>
+                  </a-empty>
+                </div>
+              </div>
+            </div>
+          </a-card>
+
           <!-- 自动匹配规则区域 -->
           <a-card title="🤖 自动匹配规则" :bordered="false" class="analysis-card" style="margin-bottom: 16px;">
             <div class="debug-controls">
@@ -355,7 +428,7 @@
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute, onBeforeRouteLeave } from 'vue-router'
 import { message } from 'ant-design-vue'
-import { readerAPI, charactersAPI, intelligentAnalysisAPI, systemAPI } from '@/api'
+import { readerAPI, charactersAPI, intelligentAnalysisAPI, systemAPI, booksAPI } from '@/api'
 import IntelligentAnalysisDisplay from '@/components/IntelligentAnalysisDisplay.vue'
 
 const router = useRouter()
@@ -373,6 +446,12 @@ const previewLoading = ref(null)
 const currentPlayingVoice = ref(null)
 const currentAudio = ref(null)
 const checkingService = ref(false)
+
+// 章节选择相关
+const synthesisMode = ref('all') // 'all' | 'chapters'
+const availableChapters = ref([])
+const selectedChapters = ref([])
+const loadingChapters = ref(false)
 
 // Mock分析相关
 const mockAnalyzing = ref(false)
@@ -423,9 +502,21 @@ const allCharactersConfigured = computed(() => {
 
 const canStartSynthesis = computed(() => {
   const hasCharacters = mockResult.value?.characters?.length > 0 || detectedCharacters.value.length > 0
+  const hasValidSelection = synthesisMode.value === 'all' || 
+                           (synthesisMode.value === 'chapters' && selectedChapters.value.length > 0)
   return allCharactersConfigured.value && 
          project.value?.status !== 'processing' &&
-         hasCharacters
+         hasCharacters &&
+         hasValidSelection
+})
+
+// 章节选择相关计算属性
+const chapterCheckAll = computed(() => {
+  return availableChapters.value.length > 0 && selectedChapters.value.length === availableChapters.value.length
+})
+
+const chapterIndeterminate = computed(() => {
+  return selectedChapters.value.length > 0 && selectedChapters.value.length < availableChapters.value.length
 })
 
 // 方法
@@ -464,7 +555,81 @@ const getStartHint = () => {
   if (!allCharactersConfigured.value) {
     return '请为所有角色配置声音'
   }
+  if (synthesisMode.value === 'chapters' && selectedChapters.value.length === 0) {
+    return '请选择要合成的章节'
+  }
   return '可以开始合成'
+}
+
+// 章节选择相关方法
+const loadChapters = async () => {
+  if (!project.value?.book?.id) {
+    message.warning('项目未关联书籍，无法加载章节')
+    return
+  }
+  
+  loadingChapters.value = true
+  try {
+    const response = await booksAPI.getBookChapters(project.value.book.id)
+    if (response.data.success) {
+      availableChapters.value = response.data.data || []
+      message.success(`加载了 ${availableChapters.value.length} 个章节`)
+    } else {
+      message.error('加载章节失败: ' + response.data.message)
+    }
+  } catch (error) {
+    console.error('加载章节失败:', error)
+    message.error('加载章节失败: ' + error.message)
+  } finally {
+    loadingChapters.value = false
+  }
+}
+
+const onSynthesisModeChange = () => {
+  if (synthesisMode.value === 'chapters' && availableChapters.value.length === 0) {
+    loadChapters()
+  }
+}
+
+const toggleChapterSelection = (chapterId) => {
+  const index = selectedChapters.value.indexOf(chapterId)
+  if (index > -1) {
+    selectedChapters.value.splice(index, 1)
+  } else {
+    selectedChapters.value.push(chapterId)
+  }
+}
+
+const toggleAllChapters = () => {
+  if (selectedChapters.value.length === availableChapters.value.length) {
+    selectedChapters.value = []
+  } else {
+    selectedChapters.value = availableChapters.value.map(chapter => chapter.id)
+  }
+}
+
+const formatNumber = (num) => {
+  if (num >= 10000) {
+    return (num / 10000).toFixed(1) + '万'
+  }
+  return num.toString()
+}
+
+const getChapterStatusText = (chapter) => {
+  const status = chapter.analysis_status || chapter.synthesis_status || 'pending'
+  const statusMap = {
+    'pending': '待处理',
+    'processing': '处理中',
+    'completed': '已完成',
+    'failed': '失败',
+    'ready': '准备就绪'
+  }
+  return statusMap[status] || '未知'
+}
+
+const getChapterStatusClass = (chapter) => {
+  const status = chapter.analysis_status || chapter.synthesis_status || 'pending'
+  return `status-${status}`
 }
 
 // Mock分析方法
@@ -1126,11 +1291,25 @@ const synthesizeJsonDirectly = async (synthesisPlans) => {
 const startSynthesis = async () => {
   synthesisStarting.value = true
   try {
-    // 优先使用项目的正式生成流程，而不是JSON测试数据
-    console.log('=== 启动项目正式合成流程 ===')
-    const response = await readerAPI.startGeneration(project.value.id, {
-      parallel_tasks: synthesisConfig.parallelTasks
-    })
+    console.log('=== 启动合成流程 ===')
+    console.log('合成模式:', synthesisMode.value)
+    console.log('选中章节:', selectedChapters.value)
+    
+    // 构建合成参数
+    const synthesisParams = {
+      parallel_tasks: synthesisConfig.parallelTasks,
+      synthesis_mode: synthesisMode.value
+    }
+    
+    // 如果是章节模式，添加章节ID列表
+    if (synthesisMode.value === 'chapters') {
+      synthesisParams.chapter_ids = selectedChapters.value
+      message.info(`开始合成选中的 ${selectedChapters.value.length} 个章节`)
+    } else {
+      message.info('开始合成整本书')
+    }
+    
+    const response = await readerAPI.startGeneration(project.value.id, synthesisParams)
     
     if (response.data.success) {
       message.success('合成任务已启动')
@@ -1399,6 +1578,118 @@ window.addEventListener('beforeunload', () => {
   padding: 24px;
   background: #f5f5f5;
   min-height: 100vh;
+}
+
+/* 章节选择样式 */
+.chapter-selection-card {
+  margin-bottom: 16px;
+}
+
+.chapter-selection-content {
+  .selection-mode {
+    margin-bottom: 16px;
+  }
+  
+  .chapter-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+    padding: 12px;
+    background: #fafafa;
+    border-radius: 6px;
+  }
+  
+  .selection-info {
+    color: #666;
+    font-size: 14px;
+  }
+  
+  .chapters-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 12px;
+    max-height: 400px;
+    overflow-y: auto;
+  }
+  
+  .chapter-item {
+    border: 1px solid #e8e8e8;
+    border-radius: 8px;
+    padding: 12px;
+    cursor: pointer;
+    transition: all 0.3s;
+    background: white;
+    
+    &:hover {
+      border-color: #1890ff;
+      box-shadow: 0 2px 8px rgba(24, 144, 255, 0.1);
+    }
+    
+    &.selected {
+      border-color: #1890ff;
+      background: #f6ffed;
+    }
+  }
+  
+  .chapter-content {
+    .chapter-title {
+      font-weight: 500;
+      margin-bottom: 8px;
+      color: #333;
+      line-height: 1.4;
+    }
+    
+    .chapter-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      color: #999;
+      
+      .chapter-status {
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 11px;
+        
+        &.status-pending {
+          background: #fff7e6;
+          color: #fa8c16;
+        }
+        
+        &.status-processing {
+          background: #e6f7ff;
+          color: #1890ff;
+        }
+        
+        &.status-completed {
+          background: #f6ffed;
+          color: #52c41a;
+        }
+        
+        &.status-failed {
+          background: #fff2f0;
+          color: #ff4d4f;
+        }
+        
+        &.status-ready {
+          background: #f0f5ff;
+          color: #2f54eb;
+        }
+      }
+    }
+  }
+  
+  .loading-chapters {
+    text-align: center;
+    padding: 40px;
+  }
+  
+  .no-chapters {
+    text-align: center;
+    padding: 40px;
+    color: #999;
+  }
 }
 
 .page-header {
