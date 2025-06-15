@@ -1,4 +1,4 @@
-<!-- 自动匹配规则结果显示组件 -->
+<!-- 智能分析结果显示组件 -->
 <template>
   <div v-if="analysisResult" class="analysis-result-display">
     <a-tabs>

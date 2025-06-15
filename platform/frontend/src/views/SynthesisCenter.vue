@@ -53,13 +53,16 @@
           <a-card title="📚 章节选择" :bordered="false" class="chapter-selection-card" style="margin-bottom: 16px;">
             <div class="chapter-selection-content">
               <div class="selection-mode">
-                <a-radio-group v-model:value="synthesisMode" @change="onSynthesisModeChange">
-                  <a-radio-button value="all">整本书</a-radio-button>
-                  <a-radio-button value="chapters">选择章节</a-radio-button>
-                </a-radio-group>
+                <a-alert
+                  message="按章节合成"
+                  description="为确保合成质量和系统稳定性，现在只支持按章节进行合成"
+                  type="info"
+                  show-icon
+                  style="margin-bottom: 16px;"
+                />
               </div>
               
-              <div v-if="synthesisMode === 'chapters'" class="chapter-list" style="margin-top: 16px;">
+              <div class="chapter-list">
                 <div class="chapter-controls">
                   <a-space>
                     <a-checkbox 
@@ -122,16 +125,16 @@
             </div>
           </a-card>
 
-          <!-- 自动匹配规则区域 -->
-          <a-card title="🤖 自动匹配规则" :bordered="false" class="analysis-card" style="margin-bottom: 16px;">
+          <!-- 智能分析区域 -->
+          <a-card title="🤖 智能分析" :bordered="false" class="analysis-card" style="margin-bottom: 16px;">
             <div class="debug-controls">
               <a-space>
                 <a-button 
                   type="primary" 
-                  @click="testMockAnalysis"
+                  @click="runMockAnalysis"
                   :loading="mockAnalyzing"
                 >
-                  🎯 执行自动匹配
+                  🎯 执行智能分析
                 </a-button>
                 <a-button 
                   type="dashed"
@@ -145,7 +148,7 @@
                   @click="applyMockResult"
                   :loading="applyingMock"
                 >
-                  ✅ 应用匹配结果
+                  ✅ 应用分析结果
                 </a-button>
                 <a-button 
                   v-if="mockResult"
@@ -157,7 +160,7 @@
               </a-space>
             </div>
             
-            <!-- 使用新的自动匹配显示组件 -->
+            <!-- 使用新的智能分析显示组件 -->
             <IntelligentAnalysisDisplay
               v-if="mockResult"
               :analysisResult="mockResult"
@@ -425,9 +428,9 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
+  import { ref, reactive, computed, onMounted, onUnmounted, h } from 'vue'
 import { useRouter, useRoute, onBeforeRouteLeave } from 'vue-router'
-import { message } from 'ant-design-vue'
+import { message, Modal } from 'ant-design-vue'
 import { readerAPI, charactersAPI, intelligentAnalysisAPI, systemAPI, booksAPI } from '@/api'
 import IntelligentAnalysisDisplay from '@/components/IntelligentAnalysisDisplay.vue'
 
@@ -447,8 +450,8 @@ const currentPlayingVoice = ref(null)
 const currentAudio = ref(null)
 const checkingService = ref(false)
 
-// 章节选择相关
-const synthesisMode = ref('all') // 'all' | 'chapters'
+// 章节选择相关 - 固定为章节模式
+const synthesisMode = ref('chapters') // 固定为 'chapters'
 const availableChapters = ref([])
 const selectedChapters = ref([])
 const loadingChapters = ref(false)
@@ -502,12 +505,11 @@ const allCharactersConfigured = computed(() => {
 
 const canStartSynthesis = computed(() => {
   const hasCharacters = mockResult.value?.characters?.length > 0 || detectedCharacters.value.length > 0
-  const hasValidSelection = synthesisMode.value === 'all' || 
-                           (synthesisMode.value === 'chapters' && selectedChapters.value.length > 0)
+  const hasValidChapterSelection = selectedChapters.value.length > 0
   return allCharactersConfigured.value && 
          project.value?.status !== 'processing' &&
          hasCharacters &&
-         hasValidSelection
+         hasValidChapterSelection
 })
 
 // 章节选择相关计算属性
@@ -550,12 +552,12 @@ const getStartHint = () => {
   const hasCharacters = mockResult.value?.characters?.length > 0 || detectedCharacters.value.length > 0
   
   if (!hasCharacters) {
-    return '请先进行自动匹配'
+    return '请先进行智能分析'
   }
   if (!allCharactersConfigured.value) {
     return '请为所有角色配置声音'
   }
-  if (synthesisMode.value === 'chapters' && selectedChapters.value.length === 0) {
+  if (selectedChapters.value.length === 0) {
     return '请选择要合成的章节'
   }
   return '可以开始合成'
@@ -585,8 +587,9 @@ const loadChapters = async () => {
   }
 }
 
-const onSynthesisModeChange = () => {
-  if (synthesisMode.value === 'chapters' && availableChapters.value.length === 0) {
+// 自动加载章节（因为现在固定为章节模式）
+const autoLoadChapters = () => {
+  if (availableChapters.value.length === 0) {
     loadChapters()
   }
 }
@@ -633,27 +636,96 @@ const getChapterStatusClass = (chapter) => {
 }
 
 // Mock分析方法
-const testMockAnalysis = async () => {
+const runMockAnalysis = async () => {
   if (!project.value?.id) {
-    message.error('项目信息不完整')
+    message.error('请先选择项目')
     return
   }
   
   mockAnalyzing.value = true
   try {
-    console.log('=== 开始自动匹配规则测试 ===')
+    console.log('=== 开始智能分析测试 ===')
     const response = await intelligentAnalysisAPI.analyzeProject(project.value.id)
     
     if (response.data.success) {
       mockResult.value = response.data.data
-      message.success('自动匹配完成！AI已生成可直接执行的合成计划')
-      console.log('自动匹配结果:', mockResult.value)
+      message.success('智能分析完成！AI已生成可直接执行的合成计划')
+      console.log('智能分析结果:', mockResult.value)
+      
+      // 记录数据源信息
+      const source = response.data.source || 'unknown'
+      if (source === 'chapter_analysis') {
+        console.log('✅ 使用章节分析结果 (已去除Dify依赖)')
+        
+        // 显示新的统计信息
+        const voiceSummary = mockResult.value.voice_assignment_summary
+        if (voiceSummary) {
+          message.info(`角色分析完成：${voiceSummary.assigned_voices}/${voiceSummary.total_characters} 个角色已分配声音`)
+        }
+      }
     } else {
-      message.error('自动匹配失败: ' + response.data.message)
+      // 增强错误处理：特别处理章节未分析的情况
+      const errorData = response.data.data || {}
+      const errorStatus = errorData.status
+      
+      if (errorStatus === 'pending_analysis') {
+        // 章节分析未完成的特殊处理
+        const pendingCount = errorData.pending_chapters || 0
+        const totalCount = errorData.total_chapters || 0
+        const analyzedCount = errorData.analyzed_chapters || 0
+        
+        console.warn('❌ 章节分析未完成:', {
+          total: totalCount,
+          analyzed: analyzedCount,
+          pending: pendingCount,
+          pendingList: errorData.pending_chapter_list
+        })
+        
+        // 显示详细的错误信息和解决方案
+        Modal.warning({
+          title: '需要先完成章节分析',
+          width: 600,
+          content: h('div', [
+            h('p', `项目共有 ${totalCount} 个章节，已完成 ${analyzedCount} 个，还需要分析 ${pendingCount} 个章节。`),
+            h('p', { style: 'margin-top: 12px; font-weight: bold;' }, '解决方案：'),
+            h('ol', { style: 'margin: 8px 0; padding-left: 20px;' }, [
+              h('li', '前往书籍管理页面'),
+              h('li', '找到对应的书籍，点击"查看详情"'),
+              h('li', '对未分析的章节点击"🎭 智能准备"按钮'),
+              h('li', '等待所有章节分析完成后，再回到合成中心'),
+            ]),
+            errorData.pending_chapter_list && errorData.pending_chapter_list.length > 0 ? 
+              h('div', { style: 'margin-top: 12px;' }, [
+                h('p', { style: 'font-weight: bold; margin-bottom: 8px;' }, '待分析章节：'),
+                h('ul', { style: 'margin: 0; padding-left: 20px; max-height: 120px; overflow-y: auto;' }, 
+                  errorData.pending_chapter_list.slice(0, 10).map(ch => 
+                    h('li', { key: ch.id }, `第${ch.chapter_number}章: ${ch.chapter_title}`)
+                  )
+                ),
+                errorData.pending_chapter_list.length > 10 ? 
+                  h('p', { style: 'color: #999; font-size: 12px; margin-top: 4px;' }, 
+                    `... 等其他 ${errorData.pending_chapter_list.length - 10} 个章节`
+                  ) : null
+              ]) : null
+          ]),
+          okText: '我知道了'
+        })
+      } else {
+        // 其他类型的错误
+        message.error('智能分析失败: ' + response.data.message)
+      }
     }
   } catch (error) {
-    console.error('自动匹配错误:', error)
-    message.error('自动匹配失败: ' + error.message)
+    console.error('智能分析错误:', error)
+    
+    // 增强错误处理
+    if (error.response && error.response.status === 500) {
+      message.error('服务器内部错误，请稍后重试或联系管理员')
+    } else if (error.response && error.response.status === 404) {
+      message.error('项目不存在，请检查项目是否有效')
+    } else {
+      message.error('智能分析失败: ' + error.message)
+    }
   } finally {
     mockAnalyzing.value = false
   }
@@ -667,12 +739,24 @@ const applyMockResult = async () => {
   
   applyingMock.value = true
   try {
-    console.log('=== 应用自动匹配结果 ===')
+    console.log('=== 应用智能分析结果 ===')
     const response = await intelligentAnalysisAPI.applyAnalysis(project.value.id, mockResult.value)
     
     if (response.data.success) {
-      message.success('匹配结果已应用！')
+      message.success('智能分析结果已应用！')
       console.log('应用结果:', response.data.applied_mapping)
+      
+      // 检查是否有章节映射信息
+      if (mockResult.value.chapter_mapping) {
+        const chapterCount = Object.keys(mockResult.value.chapter_mapping).length
+        console.log(`✅ 应用了 ${chapterCount} 个章节的分析结果`)
+      }
+      
+      // 检查声音分配统计
+      if (mockResult.value.voice_assignment_summary) {
+        const summary = mockResult.value.voice_assignment_summary
+        message.info(`角色配置已更新：${summary.assigned_voices}/${summary.total_characters} 个角色已分配声音`)
+      }
       
       // 使用智能分析的角色结果更新角色配置
       updateCharactersFromAnalysis()
@@ -683,7 +767,7 @@ const applyMockResult = async () => {
       message.error('应用失败: ' + response.data.message)
     }
   } catch (error) {
-    console.error('应用自动匹配结果错误:', error)
+    console.error('应用智能分析结果错误:', error)
     message.error('应用失败: ' + error.message)
   } finally {
     applyingMock.value = false
@@ -795,7 +879,7 @@ const getCharacterSampleText = (characterName) => {
 
 const clearMockResult = () => {
   mockResult.value = null
-  message.info('匹配结果已清空')
+  message.info('智能分析结果已清空')
 }
 
 // JSON测试方法
@@ -1335,23 +1419,17 @@ const synthesizeJsonDirectly = async (synthesisPlans) => {
 const startSynthesis = async () => {
   synthesisStarting.value = true
   try {
-    console.log('=== 启动合成流程 ===')
-    console.log('合成模式:', synthesisMode.value)
+    console.log('=== 启动章节合成流程 ===')
     console.log('选中章节:', selectedChapters.value)
     
-    // 构建合成参数
+    // 构建合成参数 - 固定为章节模式
     const synthesisParams = {
       parallel_tasks: synthesisConfig.parallelTasks,
-      synthesis_mode: synthesisMode.value
+      synthesis_mode: 'chapters',
+      chapter_ids: selectedChapters.value
     }
     
-    // 如果是章节模式，添加章节ID列表
-    if (synthesisMode.value === 'chapters') {
-      synthesisParams.chapter_ids = selectedChapters.value
-      message.info(`开始合成选中的 ${selectedChapters.value.length} 个章节`)
-    } else {
-      message.info('开始合成整本书')
-    }
+    message.info(`开始合成选中的 ${selectedChapters.value.length} 个章节`)
     
     const response = await readerAPI.startGeneration(project.value.id, synthesisParams)
     
@@ -1593,6 +1671,9 @@ const stopProgressPolling = () => {
 onMounted(async () => {
   await loadProject()
   await loadVoices()
+  
+  // 自动加载章节（因为现在固定为章节模式）
+  autoLoadChapters()
   
   // 如果正在处理中，启动进度轮询
   if (project.value?.status === 'processing') {
