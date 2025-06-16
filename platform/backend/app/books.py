@@ -12,6 +12,7 @@ import os
 import json
 import uuid
 import re
+import difflib
 from datetime import datetime
 
 from database import get_db
@@ -303,12 +304,124 @@ async def update_book(
         book.status = status
         book.updated_at = datetime.utcnow()
         
-        # 如果内容发生变化，重新检测章节
-        if content and content != book.content:
+        # 只有在内容真正发生变化时才重新检测章节
+        # 这样可以保护已有的智能准备结果不丢失
+        content_changed = content and content.strip() != (book.content or '').strip()
+        if content_changed:
+            logger.warning(f"书籍 {book_id} 内容发生变化，将重新检测章节")
+            
+            # 检查是否有现有的智能准备结果
+            try:
+                from app.models import AnalysisResult, BookChapter
+                existing_results_count = db.query(AnalysisResult).join(BookChapter).filter(
+                    BookChapter.book_id == book_id,
+                    AnalysisResult.status == 'completed'
+                ).count()
+                
+                if existing_results_count > 0:
+                    logger.warning(f"检测到 {existing_results_count} 个已完成的智能准备结果")
+                    # 这里可以考虑实现智能章节匹配，尝试保留相似章节的智能准备结果
+                    # 但为了简化，暂时只记录警告
+            except Exception as e:
+                logger.error(f"检查智能准备结果时出错: {str(e)}")
+            
+            # 智能更新章节：保护现有章节ID和智能准备结果
             book.content = content
-            chapters = auto_detect_chapters(content)
-            book.set_chapters(chapters)
+            
+            # 获取现有章节记录
+            try:
+                from app.models import BookChapter
+                existing_chapters = db.query(BookChapter).filter(BookChapter.book_id == book_id).order_by(BookChapter.chapter_number).all()
+                logger.info(f"找到 {len(existing_chapters)} 个现有章节记录")
+            except Exception as e:
+                logger.error(f"获取现有章节记录时出错: {str(e)}")
+                existing_chapters = []
+            
+            # 重新检测章节
+            new_chapters_data = auto_detect_chapters(content)
+            logger.info(f"重新检测到 {len(new_chapters_data)} 个章节")
+            for i, ch in enumerate(new_chapters_data):
+                logger.info(f"  章节 {i+1}: {ch.get('title', '未知')} (字数: {ch.get('wordCount', 0)})")
+            
+            book.set_chapters(new_chapters_data)
             book.update_word_count()
+            logger.info(f"Book模型更新完成，章节数: {book.chapter_count}")
+            
+            # 智能匹配和更新章节
+            try:
+                updated_count = 0
+                created_count = 0
+                
+                for chapter_data in new_chapters_data:
+                    chapter_number = chapter_data['number']
+                    chapter_title = chapter_data['title']
+                    chapter_content = content[chapter_data['start']:chapter_data['end']]
+                    chapter_word_count = chapter_data['wordCount']
+                    
+                    # 查找对应的现有章节（按章节号匹配）
+                    existing_chapter = next(
+                        (ch for ch in existing_chapters if ch.chapter_number == chapter_number), 
+                        None
+                    )
+                    
+                    if existing_chapter:
+                        # 更新现有章节（保持ID不变）
+                        existing_chapter.chapter_title = chapter_title
+                        existing_chapter.content = chapter_content
+                        existing_chapter.word_count = chapter_word_count
+                        existing_chapter.updated_at = datetime.utcnow()
+                        
+                        # 如果内容发生显著变化，重置分析状态
+                        old_content = existing_chapter.content or ""
+                        content_similarity = calculate_content_similarity(old_content, chapter_content)
+                        if content_similarity < 0.8:  # 相似度低于80%认为内容有显著变化
+                            logger.warning(f"章节 {chapter_number} 内容发生显著变化 (相似度: {content_similarity:.2f})，重置分析状态")
+                            existing_chapter.analysis_status = 'pending'
+                            existing_chapter.synthesis_status = 'pending'
+                        else:
+                            logger.info(f"章节 {chapter_number} 内容相似 (相似度: {content_similarity:.2f})，保持分析状态")
+                        
+                        updated_count += 1
+                    else:
+                        # 创建新章节
+                        new_chapter = BookChapter(
+                            book_id=book_id,
+                            chapter_number=chapter_number,
+                            chapter_title=chapter_title,
+                            content=chapter_content,
+                            word_count=chapter_word_count,
+                            analysis_status='pending',
+                            synthesis_status='pending',
+                            created_at=datetime.utcnow(),
+                            updated_at=datetime.utcnow()
+                        )
+                        db.add(new_chapter)
+                        created_count += 1
+                
+                # 删除不再存在的章节（章节号大于新检测到的最大章节号）
+                max_new_chapter_number = max(ch['number'] for ch in new_chapters_data) if new_chapters_data else 0
+                deleted_chapters = [ch for ch in existing_chapters if ch.chapter_number > max_new_chapter_number]
+                deleted_count = 0
+                
+                for deleted_chapter in deleted_chapters:
+                    logger.warning(f"删除不再存在的章节 {deleted_chapter.chapter_number}: {deleted_chapter.chapter_title}")
+                    db.delete(deleted_chapter)
+                    deleted_count += 1
+                
+                db.flush()  # 确保所有更改被应用
+                
+                logger.info(f"章节更新完成: 更新 {updated_count} 个，新增 {created_count} 个，删除 {deleted_count} 个")
+                
+                # 确保Book模型的chapters_data也被更新
+                db.add(book)  # 标记book对象为需要更新
+                db.flush()  # 再次确保Book模型的更改被保存
+                
+            except Exception as e:
+                logger.error(f"智能更新章节时出错: {str(e)}")
+                raise HTTPException(status_code=500, detail=f"章节更新失败: {str(e)}")
+        else:
+            # 内容没有变化，只更新基本信息，保护智能准备结果
+            logger.info(f"书籍 {book_id} 仅更新基本信息，保留现有章节结构和智能准备结果")
         
         # 更新标签
         book.set_tags(tags_list)
@@ -573,4 +686,25 @@ def auto_detect_chapters(content: str) -> List[Dict[str, Any]]:
             "wordCount": len(content.replace(' ', '').replace('\n', ''))
         })
     
-    return chapters 
+    return chapters
+
+
+def calculate_content_similarity(content1: str, content2: str) -> float:
+    """
+    计算两个文本内容的相似度
+    使用序列匹配算法，返回0-1之间的相似度分数
+    """
+    if not content1 and not content2:
+        return 1.0
+    
+    if not content1 or not content2:
+        return 0.0
+    
+    # 清理文本：去除多余空白字符
+    clean_content1 = re.sub(r'\s+', ' ', content1.strip())
+    clean_content2 = re.sub(r'\s+', ' ', content2.strip())
+    
+    # 使用difflib计算相似度
+    similarity = difflib.SequenceMatcher(None, clean_content1, clean_content2).ratio()
+    
+    return similarity 
