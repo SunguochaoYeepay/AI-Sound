@@ -194,6 +194,53 @@ async def get_voice_statistics(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"获取统计失败: {str(e)}")
 
+@router.get("/check-exists")
+async def check_character_exists(
+    name: str = Query(..., description="角色名称"),
+    db: Session = Depends(get_db)
+):
+    """
+    检查角色是否已存在于角色库中
+    用于智能角色发现功能，避免重复创建角色
+    """
+    try:
+        existing_character = db.query(VoiceProfile).filter(
+            VoiceProfile.name == name
+        ).first()
+        
+        if existing_character:
+            return {
+                "success": True,
+                "data": {
+                    "exists": True,
+                    "config": {
+                        "id": existing_character.id,
+                        "name": existing_character.name,
+                        "type": existing_character.type,
+                        "description": existing_character.description,
+                        "usage_count": existing_character.usage_count,
+                        "quality_score": existing_character.quality_score,
+                        "color": existing_character.color,
+                        "status": existing_character.status,
+                        "created_at": existing_character.created_at.isoformat() if existing_character.created_at else None,
+                        "reference_audio_url": existing_character.reference_audio_path,
+                        "latent_file_url": existing_character.latent_file_path
+                    }
+                }
+            }
+        else:
+            return {
+                "success": True,
+                "data": {
+                    "exists": False,
+                    "message": f"角色 '{name}' 不存在于角色库中"
+                }
+            }
+            
+    except Exception as e:
+        logger.error(f"检查角色存在性失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"检查失败: {str(e)}")
+
 @router.get("/{voice_id}")
 async def get_voice_profile(
     voice_id: int,
@@ -1015,47 +1062,6 @@ async def get_popular_tags(
     except Exception as e:
         logger.error(f"获取热门标签失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"获取标签失败: {str(e)}")
-
-@router.get("/check-exists")
-async def check_character_exists(
-    name: str = Query(..., description="角色名称"),
-    db: Session = Depends(get_db)
-):
-    """
-    检查角色是否已存在于角色库中
-    用于智能角色发现功能，避免重复创建角色
-    """
-    try:
-        existing_character = db.query(VoiceProfile).filter(
-            VoiceProfile.name == name
-        ).first()
-        
-        if existing_character:
-            return {
-                "exists": True,
-                "config": {
-                    "id": existing_character.id,
-                    "name": existing_character.name,
-                    "type": existing_character.type,
-                    "description": existing_character.description,
-                    "usage_count": existing_character.usage_count,
-                    "quality_score": existing_character.quality_score,
-                    "color": existing_character.color,
-                    "status": existing_character.status,
-                    "created_at": existing_character.created_at.isoformat() if existing_character.created_at else None,
-                    "reference_audio_url": existing_character.reference_audio_path,
-                    "latent_file_url": existing_character.latent_file_path
-                }
-            }
-        else:
-            return {
-                "exists": False,
-                "message": f"角色 '{name}' 不存在于角色库中"
-            }
-            
-    except Exception as e:
-        logger.error(f"检查角色存在性失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"检查失败: {str(e)}")
 
 @router.get("/search-similar")
 async def search_similar_characters(
