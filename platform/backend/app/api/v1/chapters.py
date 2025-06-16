@@ -1205,7 +1205,7 @@ class AdvancedCharacterDetector:
 class OllamaCharacterDetector:
     """使用Ollama进行角色分析的检测器 - 主力方案"""
     
-    def __init__(self, model_name: str = "gemma3:27b", ollama_url: str = None):
+    def __init__(self, model_name: str = "qwen3:30b", ollama_url: str = None):
         import os
         self.model_name = model_name
         # 优先使用环境变量，支持Docker部署
@@ -1343,33 +1343,43 @@ class OllamaCharacterDetector:
 
 
     def _build_comprehensive_analysis_prompt(self, text: str) -> str:
-        """构建综合分析提示词 - 优化版本，减少处理复杂度"""
+        """构建综合分析提示词 - 优化版本，正确处理混合对话分段"""
         # 限制文本长度，避免超时
         limited_text = text[:1500] if len(text) > 1500 else text
         
-        prompt = f"""分析小说文本，识别角色和分段。
+        prompt = f"""你是一个专业的中文小说文本分析专家。请分析以下小说文本，识别角色并正确分段。
 
 文本：
 {limited_text}
 
-任务：
-1. 识别有对话的角色（包括旁白）
-2. 按句子分段，标记说话者
+分析要求：
+1. 识别所有说话的角色（包括旁白）
+2. 将文本按句子分段，每段标记正确的说话者
+3. **核心要求**：正确分离混合对话文本
 
-返回JSON格式：
+关键分段规则：
+- 混合文本如"项羽冷笑一声："你又是何人？""必须分为两段：
+  第一段："项羽冷笑一声：" → 说话者：旁白
+  第二段："你又是何人？" → 说话者：项羽
+- 所有"某某说："、"某某道："、"某某低声道："等描述性动作文字都是旁白
+- 只有引号""内的实际对话内容才是角色发言
+- 纯叙述文字（如"只见山势险峻"、"此时天色已晚"）都是旁白
+
+输出格式（严格JSON）：
 {{
   "segments": [
-    {{"order": 1, "text": "句子内容", "speaker": "说话者", "text_type": "dialogue/narration", "confidence": 0.9}}
+    {{"order": 1, "text": "文本内容", "speaker": "说话者", "text_type": "dialogue/narration", "confidence": 0.9}}
   ],
   "characters": [
-    {{"name": "角色名", "frequency": 次数, "gender": "male/female/neutral", "personality": "calm/brave/gentle", "personality_description": "描述", "is_main_character": true/false, "confidence": 0.8}}
+    {{"name": "角色名", "frequency": 出现次数, "gender": "male/female/neutral", "personality": "calm/brave/gentle", "personality_description": "性格描述", "is_main_character": true/false, "confidence": 0.8}}
   ]
 }}
 
-注意：
-- 旁白处理叙述，角色处理对话
-- 角色名要完整（如"孙悟空"不是"悟空说"）
-- 只返回JSON，无其他文字"""
+重要提醒：
+- 角色名必须完整（如"孙悟空"而不是"悟空"）
+- 严格区分叙述（旁白）和对话（角色）
+- 必须正确分离动作描述和实际对话
+- 只输出JSON，不要任何其他文字"""
         
         return prompt
 
@@ -1381,9 +1391,10 @@ class OllamaCharacterDetector:
                 "prompt": prompt,
                 "stream": False,
                 "options": {
-                    "temperature": 0.1,  # 降低随机性，提高一致性
-                    "top_p": 0.9,
-                    "max_tokens": 2000
+                    "temperature": 0.2,  # Qwen3适合稍高一点的温度
+                    "top_p": 0.8,
+                    "max_tokens": 2000,
+                    "num_ctx": 4096  # 增加上下文长度
                 }
             }
             

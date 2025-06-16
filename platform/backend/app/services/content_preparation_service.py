@@ -744,12 +744,12 @@ class ContentPreparationService:
         """获取可用语音列表"""
         try:
             from app.models import VoiceProfile
-            voices = self.db.query(VoiceProfile).filter(VoiceProfile.is_active == True).all()
+            voices = self.db.query(VoiceProfile).filter(VoiceProfile.status == 'active').all()
             return [
                 {
                     'id': voice.id,
                     'name': voice.name,
-                    'voice_type': voice.voice_type,
+                    'voice_type': voice.type,
                     'description': voice.description or ""
                 }
                 for voice in voices

@@ -98,14 +98,18 @@
                     style="width: 200px;"
                     @change="(value) => onVoiceAssign(character, value)"
                     allowClear
+                    showSearch
+                    :filterOption="filterVoiceOption"
+                    optionFilterProp="children"
                   >
                     <a-select-option value="">未分配</a-select-option>
                     <a-select-option 
                       v-for="voice in availableVoices" 
                       :key="voice.id"
                       :value="voice.id"
+                      :title="`${voice.name} - ${getVoiceTypeLabel(voice.type)} - ${voice.description || '暂无描述'}`"
                     >
-                      {{ voice.name }} ({{ voice.type }})
+                      {{ voice.name }} ({{ getVoiceTypeLabel(voice.type) }})
                     </a-select-option>
                   </a-select>
                   
@@ -162,23 +166,7 @@
                 <span class="segment-count">
                   共 {{ editableSegments.length }} 个片段
                 </span>
-                <a-button 
-                  type="primary" 
-                  size="small" 
-                  @click="smartCorrection"
-                  title="智能修正描述性文字为旁白"
-                >
-                  🤖 智能修正
-                </a-button>
-                <a-button 
-                  type="primary" 
-                  size="small" 
-                  @click="aiResegmentation"
-                  title="使用AI重新分段，正确分离对话和旁白"
-                  :loading="resegmenting"
-                >
-                  🧠 AI重新分段
-                </a-button>
+
               </a-space>
             </div>
 
@@ -205,14 +193,6 @@
                       {{ character.name }}
                     </a-select-option>
                   </a-select>
-                  <a-button 
-                    type="text" 
-                    danger 
-                    size="small"
-                    @click="removeSegment(index)"
-                  >
-                    🗑️
-                  </a-button>
                 </div>
                 <a-textarea
                   v-model:value="segment.text"
@@ -220,44 +200,8 @@
                   :rows="3"
                   style="margin-top: 8px;"
                   @change="markChanged"
+                  readonly
                 />
-                <div class="segment-params" style="margin-top: 8px;">
-                  <a-row :gutter="8">
-                    <a-col :span="8">
-                      <a-input-number
-                        v-model:value="segment.parameters.timeStep"
-                        placeholder="时间步长"
-                        :min="0"
-                        :max="1"
-                        :step="0.1"
-                        style="width: 100%;"
-                        @change="markChanged"
-                      />
-                    </a-col>
-                    <a-col :span="8">
-                      <a-input-number
-                        v-model:value="segment.parameters.pWeight"
-                        placeholder="P权重"
-                        :min="0"
-                        :max="1"
-                        :step="0.1"
-                        style="width: 100%;"
-                        @change="markChanged"
-                      />
-                    </a-col>
-                    <a-col :span="8">
-                      <a-input-number
-                        v-model:value="segment.parameters.tWeight"
-                        placeholder="T权重"
-                        :min="0"
-                        :max="1"
-                        :step="0.1"
-                        style="width: 100%;"
-                        @change="markChanged"
-                      />
-                    </a-col>
-                  </a-row>
-                </div>
               </div>
             </div>
           </div>
@@ -314,7 +258,7 @@ const emit = defineEmits(['update:visible', 'saved'])
 // 响应式数据
 const loading = ref(false)
 const saving = ref(false)
-const resegmenting = ref(false)
+
 const activeTab = ref('info')
 const analysisData = ref(null)
 const originalData = ref(null)
@@ -535,31 +479,7 @@ const removeCharacter = (index) => {
   markChanged()
 }
 
-// 添加片段
-const addSegment = () => {
-  editableSegments.value.push({
-    segment_id: editableSegments.value.length + 1,
-    speaker: '',
-    text: '',
-    voice_name: '',
-    parameters: {
-      timeStep: 0.5,
-      pWeight: 0.5,
-      tWeight: 0.5
-    }
-  })
-  markChanged()
-}
 
-// 删除片段
-const removeSegment = (index) => {
-  editableSegments.value.splice(index, 1)
-  // 重新编号
-  editableSegments.value.forEach((segment, idx) => {
-    segment.segment_id = idx + 1
-  })
-  markChanged()
-}
 
 // 声音分配
 const onVoiceAssign = (character, voiceId) => {
@@ -571,11 +491,27 @@ const onVoiceAssign = (character, voiceId) => {
       character.voice_id = voiceId
       character.voice_name = voice.name
       console.log('[EditableAnalysisDrawer] 声音分配成功:', character.name, '→', voice.name)
+      
+      // 同步更新synthesis_plan中对应的segments
+      editableSegments.value.forEach(segment => {
+        if (segment.speaker === character.name) {
+          segment.voice_id = voiceId
+          segment.voice_name = voice.name
+        }
+      })
     }
   } else {
     character.voice_id = ''
     character.voice_name = '未分配'
     console.log('[EditableAnalysisDrawer] 取消声音分配:', character.name)
+    
+    // 同步更新synthesis_plan中对应的segments
+    editableSegments.value.forEach(segment => {
+      if (segment.speaker === character.name) {
+        segment.voice_id = ''
+        segment.voice_name = '未分配'
+      }
+    })
   }
   
   markChanged()
@@ -614,111 +550,29 @@ const testVoice = async (character) => {
   }
 }
 
-// 智能修正
-const smartCorrection = () => {
-  let correctedCount = 0
+// 声音搜索过滤
+const filterVoiceOption = (input, option) => {
+  if (!input) return true
   
-  // 确保有旁白角色
-  if (!editableCharacters.value.some(c => c.name === '旁白')) {
-    addNarratorCharacter()
-  }
+  const searchText = input.toLowerCase()
   
-  // 修正规则：包含描述性词语的文本应该是旁白
-  const narrativePatterns = [
-    /道：/,           // "xxx道："
-    /说道/,          // "xxx说道"
-    /自言自语/,      // "自言自语道"
-    /心想/,          // "xxx心想"
-    /暗想/,          // "xxx暗想"
-    /想到/,          // "xxx想到"
-    /见状/,          // "xxx见状"
-    /只见/,          // "只见xxx"
-    /却见/,          // "却见xxx"
-    /看见/,          // "xxx看见"
-    /听见/,          // "xxx听见"
-    /感到/,          // "xxx感到"
-    /不禁/,          // "xxx不禁"
-    /忙道/,          // "xxx忙道"
-    /急道/,          // "xxx急道"
-    /叫道/,          // "xxx叫道"
-    /喝道/,          // "xxx喝道"
-    /喊道/,          // "xxx喊道"
-    /笑道/,          // "xxx笑道"
-    /骂道/,          // "xxx骂道"
-    /答道/,          // "xxx答道"
-    /回道/,          // "xxx回道"
-    /问道/,          // "xxx问道"
-  ]
+  // 获取对应的声音数据
+  const voice = availableVoices.value.find(v => v.id == option.value)
+  if (!voice) return false
   
-  editableSegments.value.forEach(segment => {
-    // 检查文本是否包含描述性模式
-    const hasNarrativePattern = narrativePatterns.some(pattern => pattern.test(segment.text))
-    
-    if (hasNarrativePattern && segment.speaker !== '旁白') {
-      segment.speaker = '旁白'
-      correctedCount++
-    }
-  })
+  // 多维度搜索：名称、类型、描述
+  const searchFields = [
+    voice.name || '',
+    voice.type || '',
+    getVoiceTypeLabel(voice.type) || '',
+    voice.description || '',
+    voice.tags ? voice.tags.join(' ') : ''
+  ].join(' ').toLowerCase()
   
-  if (correctedCount > 0) {
-    markChanged()
-    message.success(`智能修正完成，已修正 ${correctedCount} 个片段为旁白`)
-  } else {
-    message.info('未找到需要修正的片段')
-  }
+  return searchFields.includes(searchText)
 }
 
-// AI重新分段
-const aiResegmentation = async () => {
-  try {
-    resegmenting.value = true
-    
-    // 确保有旁白角色
-    if (!editableCharacters.value.some(c => c.name === '旁白')) {
-      addNarratorCharacter()
-    }
-    
-    // 构建合并后的文本，用于重新分段
-    const fullText = editableSegments.value.map(segment => segment.text).join('')
-    
-    console.log('[AI重新分段] 开始重新分段，原文本长度:', fullText.length)
-    
-    // 调用后端的AI重新分段接口
-    const response = await booksAPI.aiResegmentText({
-      text: fullText,
-      characters: editableCharacters.value.map(c => c.name),
-      chapter_id: props.chapterId
-    })
-    
-    if (response.data && response.data.success) {
-      const newSegments = response.data.data.segments
-      
-      // 更新片段数据
-      editableSegments.value = newSegments.map((segment, index) => ({
-        segment_id: index + 1,
-        speaker: segment.speaker || '旁白',
-        text: segment.text || '',
-        voice_name: segment.voice_name || '',
-        parameters: {
-          timeStep: segment.parameters?.timeStep || 0.5,
-          pWeight: segment.parameters?.pWeight || 0.5,
-          tWeight: segment.parameters?.tWeight || 0.5
-        }
-      }))
-      
-      markChanged()
-      message.success(`AI重新分段完成，生成 ${newSegments.length} 个片段`)
-    } else {
-      message.error('AI重新分段失败')
-    }
-    
-  } catch (error) {
-    console.error('AI重新分段失败:', error)
-    message.error('AI重新分段失败，请稍后重试')
-  } finally {
-    resegmenting.value = false
-  }
-}
+
 
 // 重置修改
 const handleReset = () => {
