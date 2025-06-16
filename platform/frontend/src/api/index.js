@@ -206,7 +206,23 @@ export const readerAPI = {
   },
   
   // 获取项目详情
+  getProject: (projectId) => apiClient.get(`/novel-reader/projects/${projectId}`),
+  
   getProjectDetail: (projectId) => apiClient.get(`/novel-reader/projects/${projectId}`),
+  
+  // 获取项目音频文件（基于项目详情）
+  getProjectAudioFiles: async (projectId) => {
+    const response = await apiClient.get(`/novel-reader/projects/${projectId}`)
+    if (response.data.success) {
+      return {
+        data: {
+          success: true,
+          data: response.data.data.audio_files || []
+        }
+      }
+    }
+    return response
+  },
   
   // 更新项目
   updateProject: (projectId, data) => {
@@ -239,11 +255,11 @@ export const readerAPI = {
     apiClient.delete(`/novel-reader/projects/${projectId}?force=${force}`),
   
   // 开始音频生成
-  startGeneration: (projectId, data) => {
+  startGeneration: (projectId, data = {}) => {
     const formData = new FormData()
-    formData.append('parallel_tasks', data.parallel_tasks || 2)
+    formData.append('parallel_tasks', data.parallel_tasks || 1)
     
-    return apiClient.post(`/novel-reader/projects/${projectId}/start-generation`, formData, {
+    return apiClient.post(`/novel-reader/projects/${projectId}/start`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data'
       }

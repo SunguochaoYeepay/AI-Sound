@@ -9,6 +9,7 @@ import NovelReader from '../views/NovelReader.vue'
 import NovelProjects from '../views/NovelProjects.vue'
 import NovelProjectCreate from '../views/NovelProjectCreate.vue'
 import SynthesisCenter from '../views/SynthesisCenter.vue'
+import SynthesisResults from '../views/SynthesisResults.vue'
 import AudioLibrary from '../views/AudioLibrary.vue'
 import Settings from '../views/Settings.vue'
 
@@ -80,6 +81,12 @@ const routes = [
     path: '/synthesis/:projectId',
     name: 'SynthesisCenter',
     component: SynthesisCenter
+  },
+  // 合成结果路由
+  {
+    path: '/synthesis-results/:projectId',
+    name: 'SynthesisResults',
+    component: SynthesisResults
   },
   {
     path: '/audio-library',

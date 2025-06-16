@@ -83,7 +83,7 @@ async def get_projects(
                 "created_at": project.created_at.isoformat() if project.created_at else None,
                 "started_at": project.started_at.isoformat() if project.started_at else None,
                 "completed_at": project.completed_at.isoformat() if project.completed_at else None,
-                "estimated_completion": project.estimated_completion.isoformat() if project.estimated_completion else None
+                "estimated_completion": None  # 字段不存在于模型中
             }
             project_list.append(project_data)
         
@@ -172,12 +172,12 @@ async def get_project_detail(
             "total_segments": project.total_segments,
             "processed_segments": project.processed_segments,
             "current_segment": project.current_segment,
-            "character_mapping": project.character_mapping,
+            "character_mapping": project.get_character_mapping(),
             "final_audio_path": project.final_audio_path,
             "created_at": project.created_at.isoformat() if project.created_at else None,
             "started_at": project.started_at.isoformat() if project.started_at else None,
             "completed_at": project.completed_at.isoformat() if project.completed_at else None,
-            "estimated_completion": project.estimated_completion.isoformat() if project.estimated_completion else None,
+            "estimated_completion": None,  # 字段不存在于模型中
             "character_stats": character_stats,
             "audio_files": audio_files_data,
             "segments_preview": [
@@ -217,22 +217,30 @@ async def get_generation_progress(
         if not project:
             raise HTTPException(status_code=404, detail="项目不存在")
         
-        # 获取最新的分段状态统计
-        segment_stats = db.query(
-            TextSegment.status,
-            func.count(TextSegment.id).label('count')
-        ).filter(TextSegment.project_id == project_id).group_by(TextSegment.status).all()
-        
-        stats_dict = {stat.status: stat.count for stat in segment_stats}
+        # 使用项目级别的统计数据（智能准备模式）
+        total = project.total_segments or 0
+        processed = project.processed_segments or 0
         
         # 计算进度
-        total = project.total_segments
-        processed = stats_dict.get('completed', 0)
-        processing = stats_dict.get('processing', 0)
-        failed = stats_dict.get('failed', 0)
-        pending = stats_dict.get('pending', 0)
-        
         progress_percentage = round((processed / total) * 100, 1) if total > 0 else 0
+        
+        # 计算其他状态的段落数量
+        if project.status == 'processing':
+            processing = total - processed
+            pending = 0
+            failed = 0
+        elif project.status == 'completed':
+            processing = 0
+            pending = 0
+            failed = 0
+        elif project.status == 'failed':
+            processing = 0
+            pending = 0
+            failed = total - processed
+        else:  # pending
+            processing = 0
+            pending = total
+            failed = 0
         
         return {
             "success": True,
@@ -250,7 +258,7 @@ async def get_generation_progress(
                 },
                 "timestamps": {
                     "started_at": project.started_at.isoformat() if project.started_at else None,
-                    "estimated_completion": project.estimated_completion.isoformat() if project.estimated_completion else None
+                    "estimated_completion": None  # 字段不存在于模型中
                 }
             }
         }
@@ -274,8 +282,16 @@ async def start_project_generation(
         if not project:
             raise HTTPException(status_code=404, detail="项目不存在")
         
-        if project.status not in ['pending', 'paused']:
+        if project.status not in ['pending', 'paused', 'completed', 'failed', 'processing']:
             raise HTTPException(status_code=400, detail=f"项目状态为 {project.status}，无法启动")
+        
+        # 如果是已完成、失败或正在处理的项目，重置进度（防止卡住）
+        if project.status in ['completed', 'failed', 'processing']:
+            project.processed_segments = 0
+            project.current_segment = 0
+            project.started_at = None
+            project.completed_at = None
+            # project.estimated_completion = None  # 字段不存在于模型中
         
         # 更新项目状态
         project.status = 'processing'
@@ -399,8 +415,9 @@ async def update_project(
             project.set_character_mapping(char_mapping)
             logger.info(f"[DEBUG] 使用set_character_mapping方法")
         else:
-            project.character_mapping = json.dumps(char_mapping)
-            logger.info(f"[DEBUG] 直接设置character_mapping字段")
+            # 由于模型没有character_mapping字段，使用set_character_mapping方法
+            project.set_character_mapping(char_mapping)
+            logger.info(f"[DEBUG] 使用set_character_mapping方法作为备选")
         
         # 最终一次性提交所有更改
         try:
@@ -420,7 +437,7 @@ async def update_project(
                 "name": project.name,
                 "description": project.description,
                 "status": project.status,
-                "character_mapping": project.character_mapping,
+                "character_mapping": project.get_character_mapping(),
                 "updated_at": project.updated_at.isoformat() if project.updated_at else None
             }
         }

@@ -516,87 +516,9 @@ async def delete_project(
         logger.error(f"删除项目失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"删除失败: {str(e)}")
 
-@router.post("/projects/{project_id}/segments")
-async def regenerate_segments(
-    project_id: int,
-    strategy: str = Form("auto", description="分段策略"),
-    custom_rules: str = Form("", description="自定义规则"),
-    db: Session = Depends(get_db)
-):
-    """
-    重新生成文本段落
-    对应前端重新分段功能
-    """
-    try:
-        project = db.query(NovelProject).filter(NovelProject.id == project_id).first()
-        
-        if not project:
-            raise HTTPException(status_code=404, detail="项目不存在")
-        
-        if project.status == 'processing':
-            raise HTTPException(status_code=400, detail="项目正在处理中，无法重新分段")
-        
-        # 删除现有段落
-        db.query(TextSegment).filter(TextSegment.project_id == project_id).delete()
-        db.commit()
-        
-        # 获取文本内容 - 支持书籍引用和直接文本
-        text_content = ""
-        if project.book_id:
-            # 从关联的书籍获取内容
-            book = db.query(Book).filter(Book.id == project.book_id).first()
-            if book and book.content:
-                text_content = book.content
-                logger.info(f"[DEBUG] 从书籍获取内容: {len(text_content)}字符")
-            else:
-                raise HTTPException(status_code=400, detail="关联的书籍内容为空")
-        elif hasattr(project, 'original_text') and project.original_text:
-            # 使用直接输入的文本
-            text_content = project.original_text
-            logger.info(f"[DEBUG] 使用项目原始文本: {len(text_content)}字符")
-        else:
-            raise HTTPException(status_code=400, detail="项目没有可用的文本内容")
-        
-        # 重新分段
-        segments_created = await segment_text_by_strategy(
-            text_content, 
-            project_id, 
-            strategy, 
-            custom_rules,
-            db
-        )
-        
-        # 更新项目状态
-        project.total_segments = segments_created
-        project.processed_segments = 0
-        project.current_segment = 0
-        project.status = 'pending'
-        db.commit()
-        
-        # 记录重新分段日志
-        await log_system_event(
-            db=db,
-            level="info",
-            message=f"项目重新分段: {project.name}",
-            module="novel_reader",
-            details={
-                "project_id": project_id,
-                "strategy": strategy,
-                "segments_created": segments_created
-            }
-        )
-        
-        return {
-            "success": True,
-            "message": f"重新分段完成，生成 {segments_created} 个段落",
-            "segmentsCount": segments_created
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"重新分段失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"分段失败: {str(e)}")
+# 传统分段功能已废弃 - 统一使用智能准备模式
+# @router.post("/projects/{project_id}/segments")
+# async def regenerate_segments(...): 已删除
 
 @router.post("/projects/{project_id}/start-generation")
 async def start_audio_generation(
@@ -606,8 +528,8 @@ async def start_audio_generation(
     db: Session = Depends(get_db)
 ):
     """
-    开始音频生成
-    对应前端开始生成功能
+    开始音频生成 - 智能准备唯一策略
+    只支持使用智能准备结果进行合成
     """
     logger.info(f"[DEBUG] 开始音频生成请求: project_id={project_id}, parallel_tasks={parallel_tasks}")
     
@@ -626,160 +548,100 @@ async def start_audio_generation(
             logger.warning(f"[DEBUG] 项目已在处理中: {project.id}")
             raise HTTPException(status_code=400, detail="项目已在处理中")
         
-        # 检查段落
-        logger.info(f"[DEBUG] 检查项目段落...")
-        segments = db.query(TextSegment).filter(TextSegment.project_id == project_id).all()
-        logger.info(f"[DEBUG] 找到 {len(segments)} 个段落")
-        
-        if not segments:
-            logger.error(f"[DEBUG] 项目 {project_id} 没有段落")
-            raise HTTPException(status_code=400, detail="项目没有文本段落，请先进行分段")
-        
-        # 检查是否有智能准备结果 - 优先使用智能准备的synthesis_plan
+        # 检查智能准备结果（唯一数据源）
         logger.info(f"[DEBUG] 检查智能准备结果...")
-        has_synthesis_plan = False
+        if not project.book_id:
+            logger.error(f"[DEBUG] 项目未关联书籍")
+            raise HTTPException(status_code=400, detail="项目未关联书籍，无法使用智能准备")
+        
+        # 获取智能准备结果
+        from .models import AnalysisResult
+        analysis_results = db.query(AnalysisResult).join(
+            BookChapter, AnalysisResult.chapter_id == BookChapter.id
+        ).filter(
+            BookChapter.book_id == project.book_id,
+            AnalysisResult.status == 'completed',
+            AnalysisResult.synthesis_plan.isnot(None)
+        ).all()
+        
+        logger.info(f"[DEBUG] 找到 {len(analysis_results)} 个智能准备结果")
+        
+        if not analysis_results:
+            logger.error(f"[DEBUG] 未找到智能准备结果")
+            raise HTTPException(
+                status_code=400, 
+                detail="未找到智能准备结果，请先在书籍管理页面完成智能准备"
+            )
+        
+        # 收集所有合成段落数据
         synthesis_data = []
+        for result in analysis_results:
+            if result.synthesis_plan and 'synthesis_plan' in result.synthesis_plan:
+                plan_segments = result.synthesis_plan['synthesis_plan']
+                synthesis_data.extend(plan_segments)
         
-        if project.book_id:
-            # 获取书籍的智能准备结果
-            from .models import AnalysisResult
-            analysis_results = db.query(AnalysisResult).join(
-                BookChapter, AnalysisResult.chapter_id == BookChapter.id
-            ).filter(
-                BookChapter.book_id == project.book_id,
-                AnalysisResult.status == 'completed',
-                AnalysisResult.synthesis_plan.isnot(None)
-            ).all()
-            
-            logger.info(f"[DEBUG] 找到 {len(analysis_results)} 个智能准备结果")
-            
-            if analysis_results:
-                has_synthesis_plan = True
-                # 直接收集所有 synthesis_plan 数据
-                for result in analysis_results:
-                    if result.synthesis_plan and 'synthesis_plan' in result.synthesis_plan:
-                        plan_segments = result.synthesis_plan['synthesis_plan']
-                        synthesis_data.extend(plan_segments)
-                
-                logger.info(f"[DEBUG] 从智能准备结果获取 {len(synthesis_data)} 个合成段落")
-                
-                # 验证智能准备结果中的声音ID有效性
-                logger.info(f"[DEBUG] 验证智能准备结果中的声音映射...")
-                voice_ids_to_check = set()
-                for segment in synthesis_data:
-                    voice_id = segment.get('voice_id')
-                    if voice_id:
-                        voice_ids_to_check.add(voice_id)
-                
-                # 批量验证声音档案
-                for voice_id in voice_ids_to_check:
-                    voice = db.query(VoiceProfile).filter(VoiceProfile.id == voice_id).first()
-                    if not voice or voice.status != 'active':
-                        logger.error(f"[DEBUG] 声音档案无效: voice_id={voice_id}, voice={voice}, status={voice.status if voice else None}")
-                        raise HTTPException(status_code=400, detail=f"声音档案 {voice_id} 无效或未激活")
-                    logger.info(f"[DEBUG] 声音档案验证通过: {voice.name} (ID: {voice_id})")
-        
-        # 如果有智能准备结果，直接使用JSON数据；否则检查项目角色映射
-        if has_synthesis_plan and synthesis_data:
-            logger.info(f"[DEBUG] 使用智能准备结果，共 {len(synthesis_data)} 个段落")
-            
-            # 更新项目状态
-            project.status = 'processing'
-            project.started_at = datetime.utcnow()
-            project.current_segment = 0
-            project.processed_segments = 0
-            project.total_segments = len(synthesis_data)
-            
-            logger.info(f"[DEBUG] 提交数据库更改...")
-            db.commit()
-            
-            logger.info(f"[DEBUG] 启动智能准备模式的后台任务...")
-            # 启动后台任务，传递 synthesis_data
-            background_tasks.add_task(
-                process_audio_generation_from_synthesis_plan,
-                project_id,
-                synthesis_data,
-                parallel_tasks
+        if not synthesis_data:
+            logger.error(f"[DEBUG] 智能准备结果中没有合成段落数据")
+            raise HTTPException(
+                status_code=400, 
+                detail="智能准备结果中没有合成段落数据，请重新进行智能准备"
             )
-            
-            # 记录开始生成日志
-            await log_system_event(
-                db=db,
-                level="info",
-                message=f"开始音频生成（智能准备模式）: {project.name}",
-                module="novel_reader",
-                details={
-                    "project_id": project_id,
-                    "total_segments": len(synthesis_data),
-                    "parallel_tasks": parallel_tasks,
-                    "data_source": "智能准备结果"
-                }
+        
+        logger.info(f"[DEBUG] 从智能准备结果获取 {len(synthesis_data)} 个合成段落")
+        
+        # 验证智能准备结果中的声音ID有效性
+        logger.info(f"[DEBUG] 验证声音档案...")
+        voice_ids_to_check = set()
+        segments_without_voice = []
+        
+        for i, segment in enumerate(synthesis_data):
+            voice_id = segment.get('voice_id')
+            if voice_id:
+                voice_ids_to_check.add(voice_id)
+            else:
+                segments_without_voice.append(i + 1)
+        
+        if segments_without_voice:
+            logger.error(f"[DEBUG] 部分段落缺少声音配置: {segments_without_voice[:10]}...")  # 只显示前10个
+            raise HTTPException(
+                status_code=400, 
+                detail=f"有 {len(segments_without_voice)} 个段落缺少声音配置，请在书籍管理页面重新进行智能准备"
             )
-            
-            logger.info(f"[DEBUG] 智能准备模式任务启动成功")
-            return {
-                "success": True,
-                "message": "音频生成已启动（智能准备模式）",
-                "total_segments": len(synthesis_data),
-                "parallel_tasks": parallel_tasks
-            }
-        else:
-            # 回退到传统的项目角色映射检查
-            logger.info(f"[DEBUG] 没有智能准备结果，检查项目角色映射...")
-            logger.info(f"[DEBUG] 项目配置: {project.config}")
-            
-            char_mapping = project.get_character_mapping()
-            logger.info(f"[DEBUG] 解析后的角色映射: {char_mapping}")
-            logger.info(f"[DEBUG] 角色映射类型: {type(char_mapping)}")
-            logger.info(f"[DEBUG] 角色映射是否为空: {not char_mapping}")
-            
-            if not char_mapping:
-                logger.error(f"[DEBUG] 角色映射为空，拒绝请求")
-                # 详细显示段落信息
-                for segment in segments[:3]:  # 只显示前3个段落
-                    logger.error(f"[DEBUG] 段落 {segment.paragraph_index}: speaker='{segment.speaker}', voice_id={segment.voice_id}")
-                raise HTTPException(status_code=400, detail="请先设置角色声音映射或完成智能准备")
-            
-            # 验证传统角色映射的有效性
-            logger.info(f"[DEBUG] 验证传统角色映射有效性...")
-            for character, voice_id in char_mapping.items():
-                logger.info(f"[DEBUG] 验证角色 '{character}' -> 声音ID {voice_id}")
-                voice = db.query(VoiceProfile).filter(VoiceProfile.id == voice_id).first()
-                if not voice or voice.status != 'active':
-                    logger.error(f"[DEBUG] 角色 '{character}' 的声音档案无效: voice={voice}, status={voice.status if voice else None}")
-                    raise HTTPException(status_code=400, detail=f"角色 '{character}' 的声音档案无效")
-                logger.info(f"[DEBUG] 声音档案验证通过: {voice.name}")
         
-        logger.info(f"[DEBUG] 所有验证通过，开始更新项目状态...")
-        logger.info(f"[DEBUG] 最终使用的角色映射: {char_mapping}")
-        logger.info(f"[DEBUG] 角色映射来源: 项目配置")
+        # 批量验证声音档案
+        invalid_voices = []
+        for voice_id in voice_ids_to_check:
+            voice = db.query(VoiceProfile).filter(VoiceProfile.id == voice_id).first()
+            if not voice or voice.status != 'active':
+                invalid_voices.append(voice_id)
+                logger.error(f"[DEBUG] 声音档案无效: voice_id={voice_id}")
+            else:
+                logger.info(f"[DEBUG] 声音档案验证通过: {voice.name} (ID: {voice_id})")
         
-        # 使用传统方式，更新现有段落的voice_id
-        logger.info(f"[DEBUG] 使用传统方式，更新现有段落的voice_id...")
-        await update_segments_voice_mapping_no_commit(project_id, char_mapping, db)
+        if invalid_voices:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"声音档案无效或未激活: {invalid_voices}，请检查声音配置"
+            )
+        
+        logger.info(f"[DEBUG] 所有验证通过，开始启动合成...")
         
         # 更新项目状态
         project.status = 'processing'
         project.started_at = datetime.utcnow()
         project.current_segment = 0
         project.processed_segments = 0
-        project.total_segments = len(segments)
-        
-        # 重置所有段落状态
-        logger.info(f"[DEBUG] 重置段落状态...")
-        for segment in segments:
-            if segment.status in ['completed', 'failed']:
-                segment.status = 'pending'
-                segment.error_message = None
+        project.total_segments = len(synthesis_data)
         
         logger.info(f"[DEBUG] 提交数据库更改...")
         db.commit()
         
-        logger.info(f"[DEBUG] 启动后台任务...")
-        # 启动后台任务
+        logger.info(f"[DEBUG] 启动智能准备模式的后台任务...")
+        # 启动后台任务，直接传递 synthesis_data
         background_tasks.add_task(
-            process_audio_generation,
+            process_audio_generation_from_synthesis_plan,
             project_id,
+            synthesis_data,
             parallel_tasks
         )
         
@@ -787,32 +649,29 @@ async def start_audio_generation(
         await log_system_event(
             db=db,
             level="info",
-            message=f"开始音频生成: {project.name}",
+            message=f"开始音频生成（智能准备模式）: {project.name}",
             module="novel_reader",
             details={
                 "project_id": project_id,
-                "total_segments": len(segments),
+                "total_segments": len(synthesis_data),
                 "parallel_tasks": parallel_tasks,
-                "character_mapping": char_mapping
+                "data_source": "智能准备结果"
             }
         )
         
-        logger.info(f"[DEBUG] 音频生成启动成功")
-        
+        logger.info(f"[DEBUG] 智能准备模式任务启动成功")
         return {
             "success": True,
-            "message": "音频生成已开始",
-            "totalSegments": len(segments),
-            "parallelTasks": parallel_tasks
+            "message": "音频生成已启动（智能准备模式）",
+            "total_segments": len(synthesis_data),
+            "parallel_tasks": parallel_tasks
         }
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[DEBUG] 开始音频生成异常: {str(e)}")
-        import traceback
-        logger.error(f"[DEBUG] 详细错误信息: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=f"启动失败: {str(e)}")
+        logger.error(f"[DEBUG] 启动音频生成失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"启动音频生成失败: {str(e)}")
 
 @router.post("/projects/{project_id}/pause")
 async def pause_generation(
@@ -929,15 +788,13 @@ async def get_generation_progress(
         if not project:
             raise HTTPException(status_code=404, detail="项目不存在")
         
-        # 获取段落统计
-        segments = db.query(TextSegment).filter(TextSegment.project_id == project_id).all()
-        
+        # 智能准备模式：直接从项目字段获取统计信息
         stats = {
-            "total": len(segments),
-            "completed": len([s for s in segments if s.status == 'completed']),
-            "failed": len([s for s in segments if s.status == 'failed']),
-            "processing": len([s for s in segments if s.status == 'processing']),
-            "pending": len([s for s in segments if s.status == 'pending'])
+            "total": project.total_segments or 0,
+            "completed": project.processed_segments or 0,
+            "failed": 0,  # 智能准备模式中，失败信息在 error_message 中
+            "processing": 1 if project.status == 'processing' else 0,
+            "pending": max(0, (project.total_segments or 0) - (project.processed_segments or 0))
         }
         
         # 计算进度百分比
@@ -1048,15 +905,7 @@ async def download_final_audio(
         logger.error(f"下载音频失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"下载失败: {str(e)}")
 
-# 工具函数
-
-async def auto_segment_text(project_id: int, db: Session):
-    """自动分段"""
-    return await segment_text_by_strategy("", project_id, "auto", "", db)
-
-async def auto_segment_text_no_commit(project_id: int, text: str, db: Session):
-    """自动分段 - 不提交版本，用于项目创建流程"""
-    return await segment_text_by_strategy_no_commit(text, project_id, "auto", "", db)
+# 传统分段工具函数已废弃 - 统一使用智能准备模式
 
 async def segment_text_by_strategy_no_commit(
     text: str, 
@@ -1873,3 +1722,359 @@ async def update_segments_voice_mapping_no_commit(project_id: int, char_mapping:
             "unmapped_speakers": [],
             "error": str(e)
         } 
+
+async def process_audio_generation_from_synthesis_plan(
+    project_id: int, 
+    synthesis_data: List[Dict], 
+    parallel_tasks: int = 1
+):
+    """
+    基于智能准备结果直接进行音频合成
+    不依赖 TextSegment 表，直接使用 JSON 数据
+    """
+    logger.info(f"[SYNTHESIS_PLAN] 开始处理项目 {project_id} 的音频合成，共 {len(synthesis_data)} 个段落")
+    
+    try:
+        # 获取数据库连接
+        db = next(get_db())
+        
+        # 获取项目信息
+        project = db.query(NovelProject).filter(NovelProject.id == project_id).first()
+        if not project:
+            logger.error(f"[SYNTHESIS_PLAN] 项目 {project_id} 不存在")
+            return
+        
+        # 初始化TTS客户端
+        tts_client = get_tts_client()
+        
+        logger.info(f"[SYNTHESIS_PLAN] TTS服务状态检查...")
+        health_status = await tts_client.health_check()
+        if health_status.get("status") != "healthy":
+            logger.error(f"[SYNTHESIS_PLAN] TTS服务不可用: {health_status}")
+            project.status = 'failed'
+            project.error_message = f"TTS服务不可用: {health_status.get('error', '未知错误')}"
+            db.commit()
+            return
+        
+        # 确保输出目录存在
+        project_output_dir = f"outputs/projects/{project_id}"
+        os.makedirs(project_output_dir, exist_ok=True)
+        
+        # 创建信号量控制并发
+        semaphore = asyncio.Semaphore(parallel_tasks)
+        
+        # 初始化WebSocket管理器用于进度推送
+        from .utils.websocket_manager import get_websocket_manager
+        websocket_manager = get_websocket_manager()
+        
+        # 处理每个段落
+        completed_count = 0
+        failed_segments = []
+        output_files = []
+        
+        async def process_segment(segment_data, segment_index):
+            """处理单个段落"""
+            async with semaphore:
+                try:
+                    segment_id = segment_data.get('segment_id', segment_index + 1)
+                    text = segment_data.get('text', '')
+                    speaker = segment_data.get('speaker', '未知')
+                    voice_id = segment_data.get('voice_id')
+                    parameters = segment_data.get('parameters', {})
+                    
+                    logger.info(f"[SYNTHESIS_PLAN] 处理段落 {segment_id}: {speaker} - {text[:50]}...")
+                    
+                    if not text.strip():
+                        logger.warning(f"[SYNTHESIS_PLAN] 段落 {segment_id} 文本为空，跳过")
+                        return None
+                    
+                    if not voice_id:
+                        logger.error(f"[SYNTHESIS_PLAN] 段落 {segment_id} 缺少 voice_id")
+                        return {"error": f"段落 {segment_id} 缺少声音配置"}
+                    
+                    # 获取声音档案
+                    voice = db.query(VoiceProfile).filter(VoiceProfile.id == voice_id).first()
+                    if not voice:
+                        logger.error(f"[SYNTHESIS_PLAN] 段落 {segment_id} 声音档案不存在: {voice_id}")
+                        return {"error": f"段落 {segment_id} 声音档案不存在"}
+                    
+                    # 验证声音文件
+                    file_validation = voice.validate_files()
+                    if not file_validation['valid']:
+                        logger.error(f"[SYNTHESIS_PLAN] 段落 {segment_id} 声音文件缺失: {file_validation['missing_files']}")
+                        return {"error": f"段落 {segment_id} 声音文件缺失"}
+                    
+                    # 生成音频文件路径
+                    safe_speaker = "".join(c for c in speaker if c.isalnum() or c in (' ', '-', '_')).rstrip()
+                    audio_filename = f"segment_{segment_id:04d}_{safe_speaker}_{voice_id}.wav"
+                    audio_path = os.path.join(project_output_dir, audio_filename)
+                    
+                    # 准备TTS请求
+                    tts_request = TTSRequest(
+                        text=text,
+                        reference_audio_path=voice.reference_audio_path,
+                        output_audio_path=audio_path,
+                        time_step=parameters.get('timeStep', 32),
+                        p_weight=parameters.get('pWeight', 1.4),
+                        t_weight=parameters.get('tWeight', 3.0),
+                        latent_file_path=voice.latent_file_path
+                    )
+                    
+                    # 调用TTS合成
+                    start_time = time.time()
+                    response = await tts_client.synthesize_speech(tts_request)
+                    processing_time = time.time() - start_time
+                    
+                    if response.success:
+                        # 验证生成的音频文件
+                        if os.path.exists(audio_path):
+                            file_size = os.path.getsize(audio_path)
+                            
+                            # 获取音频时长
+                            try:
+                                from app.utils import get_audio_duration
+                                duration = get_audio_duration(audio_path)
+                            except:
+                                duration = 0.0
+                            
+                            # 保存AudioFile记录（智能准备模式不关联segment_id）
+                            audio_file = AudioFile(
+                                filename=audio_filename,
+                                original_name=f"段落{segment_id}_{speaker}",
+                                file_path=audio_path,
+                                file_size=file_size,
+                                duration=duration,
+                                project_id=project_id,
+                                voice_profile_id=voice_id,
+                                text_content=text,
+                                audio_type='segment',
+                                processing_time=processing_time,
+                                model_used='MegaTTS3',
+                                status='active',
+                                created_at=datetime.utcnow()
+                            )
+                            db.add(audio_file)
+                            db.commit()
+                            
+                            logger.info(f"[SYNTHESIS_PLAN] 段落 {segment_id} 合成成功，耗时 {processing_time:.2f}s")
+                            
+                            return {
+                                "segment_id": segment_id,
+                                "audio_file_id": audio_file.id,
+                                "file_path": audio_path,
+                                "duration": duration,
+                                "speaker": speaker,
+                                "voice_id": voice_id
+                            }
+                        else:
+                            logger.error(f"[SYNTHESIS_PLAN] 段落 {segment_id} 音频文件未生成")
+                            return {"error": f"段落 {segment_id} 音频文件未生成"}
+                    else:
+                        logger.error(f"[SYNTHESIS_PLAN] 段落 {segment_id} TTS合成失败: {response.message}")
+                        return {"error": f"段落 {segment_id} TTS合成失败: {response.message}"}
+                        
+                except Exception as e:
+                    logger.error(f"[SYNTHESIS_PLAN] 段落 {segment_index + 1} 处理异常: {str(e)}")
+                    return {"error": f"段落 {segment_index + 1} 处理异常: {str(e)}"}
+        
+        # 批量处理段落
+        logger.info(f"[SYNTHESIS_PLAN] 开始批量处理 {len(synthesis_data)} 个段落...")
+        tasks = [process_segment(segment, i) for i, segment in enumerate(synthesis_data)]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # 统计处理结果
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                logger.error(f"[SYNTHESIS_PLAN] 段落 {i + 1} 处理异常: {str(result)}")
+                failed_segments.append({
+                    "segment_index": i + 1,
+                    "error": str(result),
+                    "timestamp": datetime.utcnow().isoformat()
+                })
+            elif result and "error" in result:
+                logger.error(f"[SYNTHESIS_PLAN] 段落处理失败: {result['error']}")
+                failed_segments.append({
+                    "segment_index": i + 1,
+                    "error": result["error"],
+                    "timestamp": datetime.utcnow().isoformat()
+                })
+            elif result:
+                completed_count += 1
+                output_files.append(result)
+                logger.info(f"[SYNTHESIS_PLAN] 段落 {result['segment_id']} 完成")
+                
+                # 实时更新项目的 processed_segments
+                project.processed_segments = completed_count
+                project.current_segment = result['segment_id']
+                db.commit()
+                
+                # 发送进度更新到前端
+                await websocket_manager.send_progress_update(
+                    session_id=f"synthesis_{project_id}",
+                    data={
+                        "type": "synthesis",
+                        "project_id": project_id,
+                        "status": "running",
+                        "progress": round((completed_count / len(synthesis_data)) * 100),
+                        "completed_segments": completed_count,
+                        "total_segments": len(synthesis_data),
+                        "failed_segments": len(failed_segments),
+                        "current_processing": f"段落 {result['segment_id']} 合成完成 - {result.get('speaker', '未知角色')}",
+                        "timestamp": datetime.utcnow().isoformat()
+                    }
+                )
+        
+        logger.info(f"[SYNTHESIS_PLAN] 处理完成: 成功 {completed_count}/{len(synthesis_data)} 个段落")
+        
+        # 如果有成功的段落，尝试合并音频
+        final_audio_path = None
+        if output_files:
+            try:
+                logger.info(f"[SYNTHESIS_PLAN] 开始合并 {len(output_files)} 个音频文件...")
+                final_audio_path = await merge_audio_files_from_plan(project, output_files, db)
+                logger.info(f"[SYNTHESIS_PLAN] 音频合并完成: {final_audio_path}")
+            except Exception as e:
+                logger.error(f"[SYNTHESIS_PLAN] 音频合并失败: {str(e)}")
+        
+        # 更新项目状态
+        if completed_count == len(synthesis_data):
+            project.status = 'completed'
+        elif completed_count > 0:
+            project.status = 'partial_completed'
+        else:
+            project.status = 'failed'
+        
+        project.processed_segments = completed_count
+        project.completed_at = datetime.utcnow()
+        project.final_audio_path = final_audio_path
+        
+        if failed_segments:
+            project.error_message = f"有 {len(failed_segments)} 个段落处理失败"
+        
+        db.commit()
+        
+        # 发送最终状态更新到前端
+        await websocket_manager.send_progress_update(
+            session_id=f"synthesis_{project_id}",
+            data={
+                "type": "synthesis",
+                "project_id": project_id,
+                "status": project.status,
+                "progress": 100 if project.status == 'completed' else round((completed_count / len(synthesis_data)) * 100),
+                "completed_segments": completed_count,
+                "total_segments": len(synthesis_data),
+                "failed_segments": len(failed_segments),
+                "current_processing": f"合成{'完成' if project.status == 'completed' else '结束'}",
+                "final_audio_path": final_audio_path,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+        )
+        
+        # 记录完成日志
+        await log_system_event(
+            db=db,
+            level="info",
+            message=f"音频生成完成: {project.name}",
+            module="novel_reader",
+            details={
+                "project_id": project_id,
+                "total_segments": len(synthesis_data),
+                "completed_segments": completed_count,
+                "failed_segments": len(failed_segments),
+                "final_audio_path": final_audio_path,
+                "data_source": "智能准备结果"
+            }
+        )
+        
+        logger.info(f"[SYNTHESIS_PLAN] 项目 {project_id} 音频合成任务完成")
+        
+    except Exception as e:
+        logger.error(f"[SYNTHESIS_PLAN] 项目 {project_id} 音频合成任务异常: {str(e)}")
+        try:
+            db = next(get_db())
+            project = db.query(NovelProject).filter(NovelProject.id == project_id).first()
+            if project:
+                project.status = 'failed'
+                project.error_message = f"合成任务异常: {str(e)}"
+                project.completed_at = datetime.utcnow()
+                db.commit()
+        except:
+            pass
+    finally:
+        try:
+            db.close()
+        except:
+            pass
+
+
+async def merge_audio_files_from_plan(
+    project: NovelProject, 
+    output_files: List[Dict], 
+    db: Session
+) -> str:
+    """
+    基于合成计划结果合并音频文件
+    """
+    try:
+        from pydub import AudioSegment
+        import os
+        
+        # 按segment_id排序
+        sorted_files = sorted(output_files, key=lambda x: x.get('segment_id', 0))
+        
+        logger.info(f"[MERGE] 开始合并 {len(sorted_files)} 个音频文件...")
+        
+        # 初始化合并音频
+        merged_audio = None
+        silence = AudioSegment.silent(duration=500)  # 500ms间隔
+        
+        for file_info in sorted_files:
+            file_path = file_info.get('file_path')
+            if file_path and os.path.exists(file_path):
+                try:
+                    segment_audio = AudioSegment.from_wav(file_path)
+                    if merged_audio is None:
+                        merged_audio = segment_audio
+                    else:
+                        merged_audio = merged_audio + silence + segment_audio
+                    logger.debug(f"[MERGE] 已添加音频: {file_path}")
+                except Exception as e:
+                    logger.error(f"[MERGE] 读取音频文件失败: {file_path}, 错误: {str(e)}")
+            else:
+                logger.warning(f"[MERGE] 音频文件不存在: {file_path}")
+        
+        if merged_audio is None:
+            raise Exception("没有有效的音频文件可合并")
+        
+        # 导出最终音频文件
+        final_filename = f"final_audio_{project.id}_{int(time.time())}.wav"
+        final_path = f"outputs/projects/{project.id}/{final_filename}"
+        
+        merged_audio.export(final_path, format="wav")
+        
+        file_size = os.path.getsize(final_path)
+        duration = len(merged_audio) / 1000.0  # 转换为秒
+        
+        # 保存最终音频文件记录
+        final_audio_file = AudioFile(
+            filename=final_filename,
+            original_name=f"{project.name}_完整音频",
+            file_path=final_path,
+            file_size=file_size,
+            duration=duration,
+            project_id=project.id,
+            audio_type='final',
+            model_used='MegaTTS3',
+            status='active',
+            created_at=datetime.utcnow()
+        )
+        db.add(final_audio_file)
+        db.commit()
+        
+        logger.info(f"[MERGE] 音频合并完成: {final_path} ({duration:.1f}s, {file_size} bytes)")
+        
+        return final_path
+        
+    except Exception as e:
+        logger.error(f"[MERGE] 音频合并失败: {str(e)}")
+        raise e 

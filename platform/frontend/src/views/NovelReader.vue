@@ -432,7 +432,7 @@ const startSynthesis = async () => {
       synthesis: 'pending'
     }
 
-    const response = await readerAPI.startGeneration(currentProject.value.id)
+    const response = await readerAPI.startGeneration(currentProject.value.id, {})
     if (response.data.success) {
       message.success('开始语音合成')
       currentProject.value.status = 'processing'

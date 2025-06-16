@@ -193,22 +193,54 @@
                 {{ getStatusText(project.status) }}
               </a-tag>
               <div class="project-actions">
-                <a-button 
-                  type="text" 
-                  size="small" 
-                  @click.stop="viewAudioFiles(project)"
-                  title="查看音频文件"
-                >
-                  音频
-                </a-button>
-                <a-button 
-                  type="primary" 
-                  size="small"
-                  @click.stop="openProject(project)"
-                  :disabled="project.status === 'failed'"
-                >
-                  {{ project.status === 'completed' ? '查看' : '合成' }}
-                </a-button>
+                <!-- 已完成项目的操作 -->
+                <template v-if="project.status === 'completed'">
+                  <a-button 
+                    type="text" 
+                    size="small" 
+                    @click.stop="openProject(project)"
+                    title="查看合成结果"
+                  >
+                    查看
+                  </a-button>
+                  <a-button 
+                    type="text" 
+                    size="small" 
+                    @click.stop="viewAudioFiles(project)"
+                    title="查看音频文件"
+                  >
+                    音频
+                  </a-button>
+                  <a-button 
+                    type="primary" 
+                    size="small"
+                    @click.stop="restartSynthesis(project)"
+                    title="重新合成"
+                  >
+                    重新合成
+                  </a-button>
+                </template>
+                
+                <!-- 其他状态项目的操作 -->
+                <template v-else>
+                  <a-button 
+                    type="text" 
+                    size="small" 
+                    @click.stop="viewAudioFiles(project)"
+                    title="查看音频文件"
+                    v-if="project.status === 'processing' || project.status === 'failed'"
+                  >
+                    音频
+                  </a-button>
+                  <a-button 
+                    type="primary" 
+                    size="small"
+                    @click.stop="openProject(project)"
+                    :disabled="project.status === 'failed'"
+                  >
+                    {{ project.status === 'processing' ? '监控' : '合成' }}
+                  </a-button>
+                </template>
               </div>
             </div>
           </div>
@@ -249,13 +281,41 @@
 
               <template v-if="column.key === 'actions'">
                 <div style="display: flex; gap: 8px;">
-                  <a-button type="text" size="small" @click.stop="viewAudioFiles(record)" title="查看音频文件">
-                    音频
-                  </a-button>
-                  <a-button type="text" size="small" @click.stop="openProject(record)">
-                    {{ record.status === 'completed' ? '查看' : '合成' }}
-                  </a-button>
-                  <a-button type="text" size="small" danger @click.stop="deleteProject(record)">
+                  <!-- 已完成项目的操作 -->
+                  <template v-if="record.status === 'completed'">
+                    <a-button type="text" size="small" @click.stop="openProject(record)" title="查看合成结果">
+                      查看
+                    </a-button>
+                    <a-button type="text" size="small" @click.stop="viewAudioFiles(record)" title="查看音频文件">
+                      音频
+                    </a-button>
+                    <a-button type="primary" size="small" @click.stop="restartSynthesis(record)" title="重新合成">
+                      重新合成
+                    </a-button>
+                  </template>
+                  
+                  <!-- 其他状态项目的操作 -->
+                  <template v-else>
+                    <a-button 
+                      type="text" 
+                      size="small" 
+                      @click.stop="viewAudioFiles(record)" 
+                      title="查看音频文件"
+                      v-if="record.status === 'processing' || record.status === 'failed'"
+                    >
+                      音频
+                    </a-button>
+                    <a-button 
+                      type="primary" 
+                      size="small" 
+                      @click.stop="openProject(record)"
+                      :disabled="record.status === 'failed'"
+                    >
+                      {{ record.status === 'processing' ? '监控' : '合成' }}
+                    </a-button>
+                  </template>
+                  
+                  <a-button type="text" size="small" danger @click.stop="confirmDeleteProject(record)">
                     删除
                   </a-button>
                 </div>
@@ -401,27 +461,29 @@ const goToCreatePage = () => {
 }
 
 const openProject = (project) => {
-  // 添加调试信息
   console.log('打开项目:', project.name, '状态:', project.status, '项目ID:', project.id)
   
-  // 根据项目状态和内容决定跳转位置
+  // 根据项目状态决定跳转位置
   if (project.status === 'completed') {
-    // 已完成的项目跳转到详情页
-    console.log('跳转到详情页:', `/novel-reader/detail/${project.id}`)
-    router.push(`/novel-reader/detail/${project.id}`)
+    // 已完成项目跳转到合成结果页面
+    console.log('跳转到合成结果页面:', `/synthesis-results/${project.id}`)
+    router.push(`/synthesis-results/${project.id}`)
+  } else if (project.status === 'processing') {
+    // 处理中项目跳转到合成中心监控
+    console.log('跳转到合成监控:', `/synthesis/${project.id}`)
+    router.push(`/synthesis/${project.id}`)
   } else {
     // 其他状态跳转到合成中心
     console.log('跳转到合成中心:', `/synthesis/${project.id}`)
-    
-    // 尝试使用name和params的方式跳转
-    router.push({
-      name: 'SynthesisCenter',
-      params: { projectId: project.id }
-    }).catch(err => {
-      console.error('路由跳转失败:', err)
-      message.error('跳转失败，请检查项目ID是否正确')
-    })
+    router.push(`/synthesis/${project.id}`)
   }
+}
+
+const restartSynthesis = (project) => {
+  console.log('重新合成项目:', project.name, '项目ID:', project.id)
+  
+  // 重新合成直接跳转到合成中心
+  router.push(`/synthesis/${project.id}`)
 }
 
 const viewAudioFiles = (project) => {
