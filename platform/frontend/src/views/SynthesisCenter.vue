@@ -125,52 +125,92 @@
             </div>
           </a-card>
 
-          <!-- 智能分析区域 -->
-          <a-card title="🤖 智能分析" :bordered="false" class="analysis-card" style="margin-bottom: 16px;">
-            <div class="debug-controls">
+          <!-- 智能准备结果 -->
+          <a-card title="📋 智能准备结果" :bordered="false" class="analysis-card" style="margin-bottom: 16px;">
+            <div class="preparation-controls">
               <a-space>
                 <a-button 
                   type="primary" 
-                  @click="runMockAnalysis"
-                  :loading="mockAnalyzing"
+                  @click="loadPreparationResults"
+                  :loading="loadingResults"
                 >
-                  🎯 执行智能分析
+                  📥 加载智能准备结果
                 </a-button>
                 <a-button 
-                  type="dashed"
-                  @click="showJsonTestModal"
-                  :disabled="mockAnalyzing"
+                  v-if="preparationResults"
+                  @click="refreshPreparationResults"
+                  :loading="loadingResults"
                 >
-                  🧪 测试JSON
+                  🔄 刷新结果
                 </a-button>
                 <a-button 
-                  v-if="mockResult"
-                  @click="applyMockResult"
-                  :loading="applyingMock"
-                >
-                  ✅ 应用分析结果
-                </a-button>
-                <a-button 
-                  v-if="mockResult"
-                  @click="clearMockResult"
+                  v-if="preparationResults"
+                  @click="clearPreparationResults"
                   type="dashed"
                 >
                   🗑️ 清空结果
                 </a-button>
+                <a-button 
+                  type="dashed"
+                  @click="showJsonTestModal"
+                  :disabled="loadingResults"
+                >
+                  🧪 测试JSON
+                </a-button>
               </a-space>
             </div>
             
-            <!-- 使用新的智能分析显示组件 -->
-            <IntelligentAnalysisDisplay
-              v-if="mockResult"
-              :analysisResult="mockResult"
-              :availableVoices="availableVoices"
-              :voiceMapping="characterVoiceMapping"
-              :previewLoading="previewLoading"
-              :currentPlayingVoice="currentPlayingVoice"
-              @updateVoiceMapping="updateVoiceMapping"
-              @playVoicePreview="playVoicePreview"
-            />
+            <!-- 智能准备结果显示 -->
+            <div v-if="preparationResults" class="preparation-results">
+              <a-alert
+                :message="`已加载 ${preparationResults.book_info?.analyzed_chapters || 0} 个章节的智能准备结果`"
+                :description="`书籍: ${preparationResults.book_info?.title} | 总角色: ${detectedCharacters.length} 个 | 总段落: ${getTotalSegments()} 个`"
+                type="success"
+                show-icon
+                style="margin: 16px 0;"
+              />
+              
+              <!-- 合成片段预览 -->
+              <div class="synthesis-segments-preview">
+                <div class="segments-header">
+                  <h4>📝 要合成的片段内容</h4>
+                  <a-tag color="blue">共 {{ getTotalSegments() }} 个段落</a-tag>
+                </div>
+                
+                <div class="segments-list">
+                  <div v-for="(chapterResult, chapterIndex) in preparationResults.data" :key="chapterIndex" class="chapter-segments">
+                    <div class="chapter-header">
+                      <h5>第{{ chapterResult.chapter_number }}章 {{ chapterResult.chapter_title }}</h5>
+                      <a-tag>{{ chapterResult.synthesis_json?.synthesis_plan?.length || 0 }} 个段落</a-tag>
+                    </div>
+                    
+                    <div class="segments-container">
+                      <div 
+                        v-for="(segment, segmentIndex) in (chapterResult.synthesis_json?.synthesis_plan || []).slice(0, showAllSegments ? undefined : 10)" 
+                        :key="segmentIndex"
+                        class="segment-item"
+                      >
+                        <div class="segment-meta">
+                          <span class="segment-number">{{ segmentIndex + 1 }}</span>
+                          <span class="segment-speaker" :class="getCharacterClass(segment.speaker)">
+                            {{ segment.speaker }}
+                          </span>
+                        </div>
+                        <div class="segment-text">{{ segment.text }}</div>
+                      </div>
+                      
+                      <div v-if="!showAllSegments && (chapterResult.synthesis_json?.synthesis_plan?.length || 0) > 10" class="show-more">
+                        <a-button type="link" @click="showAllSegments = true">
+                          显示全部 {{ chapterResult.synthesis_json?.synthesis_plan?.length }} 个段落
+                        </a-button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+
           </a-card>
 
         </a-col>
@@ -305,6 +345,71 @@
                 </div>
               </div>
 
+              <!-- 当前处理段落 -->
+              <div v-if="project.status === 'processing' && currentProcessingSegment" class="current-segment">
+                <div class="current-segment-header">
+                  <h4>🎯 当前合成段落</h4>
+                  <a-tag color="processing">处理中</a-tag>
+                </div>
+                <div class="current-segment-content">
+                  <div class="segment-info">
+                    <span class="segment-speaker">{{ currentProcessingSegment.speaker }}</span>
+                    <span class="segment-position">第 {{ project.current_segment || 1 }} 段</span>
+                  </div>
+                  <div class="segment-text">{{ currentProcessingSegment.text }}</div>
+                </div>
+              </div>
+
+              <!-- 已完成片段 -->
+              <div v-if="completedSegments.length > 0" class="completed-segments">
+                <div class="completed-header">
+                  <h4>✅ 已完成片段</h4>
+                  <a-space>
+                    <a-tag color="green">{{ completedSegments.length }} 个</a-tag>
+                    <a-button size="small" @click="refreshCompletedSegments" :loading="loadingCompletedSegments">
+                      🔄 刷新
+                    </a-button>
+                  </a-space>
+                </div>
+                
+                <div class="completed-list">
+                  <div 
+                    v-for="(segment, index) in completedSegments.slice(-10)" 
+                    :key="segment.id" 
+                    class="completed-item"
+                  >
+                    <div class="segment-meta">
+                      <span class="segment-number">{{ completedSegments.length - 9 + index }}</span>
+                      <span class="segment-speaker">{{ segment.speaker }}</span>
+                      <span class="segment-duration" v-if="segment.duration">{{ formatDuration(segment.duration) }}</span>
+                    </div>
+                    <div class="segment-content">
+                      <div class="segment-text">{{ segment.text?.slice(0, 80) }}{{ segment.text?.length > 80 ? '...' : '' }}</div>
+                      <div class="segment-controls">
+                        <a-button 
+                          v-if="segment.audio_url" 
+                          size="small" 
+                          type="link"
+                          :loading="playingSegment === segment.id"
+                          @click="playSegmentAudio(segment)"
+                        >
+                          {{ playingSegment === segment.id ? '⏸️' : '▶️' }} 播放
+                        </a-button>
+                        <a-button v-else size="small" type="link" disabled>
+                          🔄 处理中
+                        </a-button>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div v-if="completedSegments.length > 10" class="show-all-completed">
+                    <a-button type="link" @click="showAllCompleted = !showAllCompleted">
+                      {{ showAllCompleted ? '收起' : `查看全部 ${completedSegments.length} 个` }}
+                    </a-button>
+                  </div>
+                </div>
+              </div>
+
               <!-- 合成完成操作区 -->
               <div v-if="project.status === 'completed'" class="completion-section">
                 <!-- 音频预览 -->
@@ -368,51 +473,43 @@
     <!-- JSON测试弹窗 -->
     <a-modal
       v-model:open="jsonTestModalVisible"
-      title="🧪 JSON测试输入"
+      title="🧪 JSON测试"
       width="800px"
-      :destroyOnClose="true"
-      @ok="executeJsonTest"
       @cancel="cancelJsonTest"
-      :okButtonProps="{ loading: jsonTestExecuting, disabled: !jsonTestContent.trim() }"
-      okText="自动执行匹配"
-      cancelText="取消"
     >
-      <div class="json-test-container">
-        <div class="json-description">
-          <a-alert
-            message="JSON格式说明"
-            description="请粘贴包含project_info、characters、segments的完整JSON数据。系统将解析此JSON并应用到当前项目的角色配置中。"
-            type="info"
-            show-icon
-            style="margin-bottom: 16px;"
-          />
-        </div>
-        
+      <div class="json-test-modal">
         <a-form layout="vertical">
-          <a-form-item label="JSON数据" required>
+          <a-form-item label="JSON内容">
             <a-textarea
               v-model:value="jsonTestContent"
-              placeholder="请粘贴您的JSON数据..."
               :rows="15"
-              style="font-family: 'Consolas', 'Monaco', 'Courier New', monospace;"
+              placeholder="请输入或粘贴JSON数据..."
+              style="font-family: 'Courier New', monospace;"
             />
           </a-form-item>
           
           <a-form-item>
             <a-space>
-              <a-button @click="formatJsonContent" size="small">
-                🎨 格式化JSON
+              <a-button @click="formatJsonContent">
+                🎨 格式化
               </a-button>
-              <a-button @click="validateJsonContent" size="small">
+              <a-button @click="validateJsonContent">
                 ✅ 验证格式
               </a-button>
-              <a-button @click="clearJsonContent" size="small" type="dashed">
-                🗑️ 清空内容
+              <a-button @click="clearJsonContent" type="dashed">
+                🗑️ 清空
+              </a-button>
+              <a-button 
+                type="primary" 
+                @click="executeJsonTest"
+                :loading="jsonTestExecuting"
+                :disabled="!jsonTestContent.trim()"
+              >
+                🚀 执行测试
               </a-button>
             </a-space>
           </a-form-item>
           
-          <!-- 验证结果显示 -->
           <div v-if="jsonValidationResult" class="validation-result">
             <a-alert
               :type="jsonValidationResult.valid ? 'success' : 'error'"
@@ -432,7 +529,6 @@
 import { useRouter, useRoute, onBeforeRouteLeave } from 'vue-router'
 import { message, Modal } from 'ant-design-vue'
 import { readerAPI, charactersAPI, intelligentAnalysisAPI, systemAPI, booksAPI } from '@/api'
-import IntelligentAnalysisDisplay from '@/components/IntelligentAnalysisDisplay.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -461,6 +557,19 @@ const mockAnalyzing = ref(false)
 const applyingMock = ref(false)
 const mockResult = ref(null)
 
+// 智能准备结果相关
+const preparationResults = ref(null)
+const loadingResults = ref(false)
+
+// 合成进度和片段相关
+const currentProcessingSegment = ref(null)
+const completedSegments = ref([])
+const loadingCompletedSegments = ref(false)
+const playingSegment = ref(null)
+const showAllSegments = ref(false)
+const showAllCompleted = ref(false)
+const segmentAudioPlayer = ref(null)
+
 // JSON测试相关
 const jsonTestModalVisible = ref(false)
 const jsonTestContent = ref('')
@@ -487,30 +596,18 @@ const audioPreviewUrl = computed(() => {
   return `/api/v1/novel-reader/projects/${project.value.id}/download`
 })
 
-const allCharactersConfigured = computed(() => {
-  // 如果有智能分析结果，基于智能分析的角色
-  if (mockResult.value?.characters) {
-    return mockResult.value.characters.every(char => {
-      // 检查用户是否手动选择了声音，如果没有，则检查AI是否推荐了声音
-      const userSelected = characterVoiceMapping[char.name]
-      const aiRecommended = char.voice_id
-      return userSelected || aiRecommended
-    })
-  }
-  // 否则基于原始检测的角色
-  return detectedCharacters.value.every(char => 
-    characterVoiceMapping[char.name]
-  )
+const canStartSynthesis = computed(() => {
+  const hasValidChapterSelection = selectedChapters.value.length > 0
+  const hasPreparationResults = preparationResults.value?.data?.length > 0
+  const hasSegments = getTotalSegments() > 0
+  
+  return project.value?.status !== 'processing' &&
+         hasValidChapterSelection &&
+         hasPreparationResults &&
+         hasSegments
 })
 
-const canStartSynthesis = computed(() => {
-  const hasCharacters = mockResult.value?.characters?.length > 0 || detectedCharacters.value.length > 0
-  const hasValidChapterSelection = selectedChapters.value.length > 0
-  return allCharactersConfigured.value && 
-         project.value?.status !== 'processing' &&
-         hasCharacters &&
-         hasValidChapterSelection
-})
+
 
 // 章节选择相关计算属性
 const chapterCheckAll = computed(() => {
@@ -549,16 +646,14 @@ const getStatusText = (status) => {
 }
 
 const getStartHint = () => {
-  const hasCharacters = mockResult.value?.characters?.length > 0 || detectedCharacters.value.length > 0
-  
-  if (!hasCharacters) {
-    return '请先进行智能分析'
-  }
-  if (!allCharactersConfigured.value) {
-    return '请为所有角色配置声音'
-  }
   if (selectedChapters.value.length === 0) {
     return '请选择要合成的章节'
+  }
+  if (!preparationResults.value?.data?.length) {
+    return '请先加载智能准备结果'
+  }
+  if (getTotalSegments() === 0) {
+    return '没有可合成的片段'
   }
   return '可以开始合成'
 }
@@ -1151,28 +1246,7 @@ const loadVoices = async () => {
   }
 }
 
-// 更新声音映射
-const updateVoiceMapping = async (characterName, voiceId) => {
-  try {
-    // 更新本地映射
-    if (voiceId) {
-      characterVoiceMapping[characterName] = voiceId
-    } else {
-      delete characterVoiceMapping[characterName]
-    }
-    
-    // 保存到后端
-    await readerAPI.updateProject(project.value.id, {
-      name: project.value.name,
-      description: project.value.description || '',
-      character_mapping: JSON.stringify(characterVoiceMapping)
-    })
-    message.success('角色配置已保存')
-  } catch (error) {
-    console.error('保存角色配置失败:', error)
-    message.error('保存角色配置失败')
-  }
-}
+
 
 // 试听声音
 const playVoicePreview = async (voiceId, sampleText) => {
@@ -1219,19 +1293,7 @@ const playVoicePreview = async (voiceId, sampleText) => {
       t_weight: 1.0
     }
     
-    console.log('=== 声音试听调试信息 ===')
-    console.log('voiceId:', selectedVoice.id)
-    console.log('voiceName:', selectedVoice.name)
-    console.log('sampleText:', sampleText)
-    console.log('testParams:', testParams)
-    console.log('========================')
-    
     const response = await charactersAPI.testVoiceSynthesis(selectedVoice.id, testParams)
-    
-    console.log('=== API响应调试信息 ===')
-    console.log('response.data:', response.data)
-    console.log('audioUrl:', response.data?.audioUrl)
-    console.log('=====================')
 
     if (response.data && response.data.success && response.data.audioUrl) {
       // 构建完整的音频URL
@@ -1281,144 +1343,6 @@ const playVoicePreview = async (voiceId, sampleText) => {
     }
   } finally {
     previewLoading.value = null
-  }
-}
-
-// 直接对JSON数据进行TTS合成
-const synthesizeJsonDirectly = async (synthesisPlans) => {
-  try {
-    message.success('开始JSON测试数据合成')
-    project.value.status = 'processing'
-    
-    // 验证合成计划数据
-    if (!Array.isArray(synthesisPlans) || synthesisPlans.length === 0) {
-      throw new Error('合成计划数据为空或格式错误')
-    }
-    
-    console.log('=== 合成计划验证 ===')
-    console.log('合成计划数量:', synthesisPlans.length)
-    console.log('前3个计划样本:', synthesisPlans.slice(0, 3))
-    
-    // 预检查所有计划的必要字段
-    const invalidPlans = []
-    synthesisPlans.forEach((plan, index) => {
-      const voiceId = plan.voice_id || plan.voiceId || plan.character_id || plan.speaker_id
-      if (!voiceId) {
-        invalidPlans.push(`第${index + 1}段缺少voice_id`)
-      }
-      if (!plan.text || plan.text.trim() === '') {
-        invalidPlans.push(`第${index + 1}段缺少文本内容`)
-      }
-    })
-    
-    if (invalidPlans.length > 0) {
-      console.error('发现无效的合成计划:', invalidPlans)
-      throw new Error(`数据验证失败:\n${invalidPlans.join('\n')}`)
-    }
-    
-    // 模拟进度统计
-    const totalSegments = synthesisPlans.length
-    let completedSegments = 0
-    
-    project.value.statistics = {
-      totalSegments,
-      completedSegments: 0,
-      failedSegments: 0,
-      processingSegments: 0,
-      pendingSegments: totalSegments
-    }
-    
-    console.log(`开始合成 ${totalSegments} 个JSON段落`)
-    
-    // 逐个合成
-    for (let i = 0; i < synthesisPlans.length; i++) {
-      const plan = synthesisPlans[i]
-      
-      try {
-        console.log(`正在合成第 ${i + 1}/${totalSegments} 段落:`, plan.text?.slice(0, 50))
-        console.log(`段落 ${i + 1} 详细信息:`, {
-          voice_id: plan.voice_id,
-          voiceId: plan.voiceId,
-          character: plan.character,
-          speaker: plan.speaker,
-          text_length: plan.text?.length
-        })
-        
-        // 获取voice_id，优先使用直接字段
-        let voiceId = plan.voice_id || plan.voiceId
-        
-        // 如果没有直接的voice_id，尝试从角色映射中查找
-        if (!voiceId && (plan.speaker || plan.character)) {
-          const characterName = plan.speaker || plan.character
-          voiceId = characterVoiceMapping[characterName]
-          console.log(`从角色映射中查找voice_id: ${characterName} -> ${voiceId}`)
-        }
-        
-        if (!voiceId) {
-          console.error(`第 ${i + 1} 段落缺少voice_id:`, plan)
-          console.error('可用的角色映射:', characterVoiceMapping)
-          throw new Error(`第 ${i + 1} 段落缺少voice_id字段。请确保JSON格式正确，每个段落都有voice_id或speaker字段`)
-        }
-        
-        if (!plan.text || plan.text.trim() === '') {
-          console.error(`第 ${i + 1} 段落缺少文本内容:`, plan)
-          throw new Error(`第 ${i + 1} 段落缺少文本内容`)
-        }
-        
-        // 调用TTS API
-        const response = await charactersAPI.testVoiceSynthesis(voiceId, {
-          text: plan.text,
-          time_step: plan.parameters?.timeStep || 20,
-          p_weight: plan.parameters?.pWeight || 1.0,
-          t_weight: plan.parameters?.tWeight || 1.0
-        })
-        
-        if (response.data?.success) {
-          completedSegments++
-          console.log(`第 ${i + 1} 段落合成成功`)
-        } else {
-          throw new Error(response.data?.message || '合成失败')
-        }
-        
-      } catch (error) {
-        console.error(`第 ${i + 1} 段落合成失败:`, error)
-        console.error(`失败段落详情:`, {
-          index: i + 1,
-          plan: plan,
-          error_message: error.message
-        })
-        project.value.statistics.failedSegments++
-        
-        // 如果是关键错误（如voice_id缺失），显示更详细的错误信息
-        if (error.message.includes('voice_id') || error.message.includes('文本内容')) {
-          message.error(`第 ${i + 1} 段落: ${error.message}`)
-        }
-      }
-      
-      // 更新进度
-      project.value.statistics.completedSegments = completedSegments
-      project.value.statistics.pendingSegments = totalSegments - completedSegments - project.value.statistics.failedSegments
-      
-      // 短暂等待，避免过快调用
-      if (i < synthesisPlans.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 1000))
-      }
-    }
-    
-    // 完成合成
-    project.value.status = 'completed'
-    const failedCount = project.value.statistics.failedSegments
-    
-    if (failedCount === 0) {
-      message.success(`JSON测试数据合成完成！成功 ${completedSegments} 个段落`)
-    } else {
-      message.warning(`JSON测试数据合成完成！成功 ${completedSegments} 个，失败 ${failedCount} 个段落`)
-    }
-    
-  } catch (error) {
-    console.error('JSON合成失败:', error)
-    project.value.status = 'failed'
-    message.error('JSON测试数据合成失败: ' + error.message)
   }
 }
 
@@ -1627,6 +1551,14 @@ const startProgressPolling = () => {
         // 重置错误计数
         errorCount = 0
         
+        // 更新当前处理段落信息
+        currentProcessingSegment.value = getCurrentProcessingSegment()
+        
+        // 如果有新完成的片段，加载已完成片段列表
+        if (progress.statistics.completed > (completedSegments.value.length || 0)) {
+          await loadCompletedSegments()
+        }
+        
         // 检查停止条件
         const shouldStop = progress.status === 'completed' || 
                           progress.status === 'failed' ||
@@ -1674,6 +1606,220 @@ const stopProgressPolling = () => {
   }
 }
 
+// 加载智能准备结果
+const loadPreparationResults = async () => {
+  if (!project.value?.book?.id) {
+    message.warning('项目未关联书籍，无法加载智能准备结果')
+    return
+  }
+  
+  loadingResults.value = true
+  try {
+    const response = await booksAPI.getBookAnalysisResults(project.value.book.id)
+    
+    if (response.data.success) {
+      preparationResults.value = response.data
+      
+      // 聚合所有章节的角色数据
+      const allCharacters = {}
+      let totalSegments = 0
+      
+      response.data.data.forEach(chapterResult => {
+        const synthesisJson = chapterResult.synthesis_json
+        
+        // 聚合角色
+        if (synthesisJson.characters) {
+          synthesisJson.characters.forEach(char => {
+            const charName = char.name
+            if (!allCharacters[charName]) {
+              allCharacters[charName] = {
+                name: charName,
+                voice_id: char.voice_id,
+                voice_name: char.voice_name,
+                frequency: 0,
+                samples: []
+              }
+            }
+            allCharacters[charName].frequency += 1
+            
+            // 收集示例文本
+            if (synthesisJson.synthesis_plan) {
+              const characterSegments = synthesisJson.synthesis_plan.filter(seg => seg.speaker === charName)
+              characterSegments.slice(0, 3).forEach(seg => {
+                if (seg.text && !allCharacters[charName].samples.includes(seg.text.slice(0, 30))) {
+                  allCharacters[charName].samples.push(seg.text.slice(0, 30) + '...')
+                }
+              })
+            }
+          })
+        }
+        
+        // 统计段落数
+        if (synthesisJson.synthesis_plan) {
+          totalSegments += synthesisJson.synthesis_plan.length
+        }
+      })
+      
+      // 更新检测到的角色
+      detectedCharacters.value = Object.values(allCharacters)
+      
+      // 自动应用AI推荐的角色映射
+      Object.values(allCharacters).forEach(char => {
+        if (char.voice_id) {
+          characterVoiceMapping[char.name] = char.voice_id
+        }
+      })
+      
+      message.success(`成功加载智能准备结果：${detectedCharacters.value.length} 个角色，${totalSegments} 个段落`)
+      
+    } else {
+      message.error('加载智能准备结果失败: ' + response.data.message)
+    }
+  } catch (error) {
+    console.error('加载智能准备结果失败:', error)
+    message.error('加载智能准备结果失败: ' + error.message)
+  } finally {
+    loadingResults.value = false
+  }
+}
+
+// 刷新智能准备结果
+const refreshPreparationResults = async () => {
+  preparationResults.value = null
+  await loadPreparationResults()
+}
+
+// 清空智能准备结果
+const clearPreparationResults = () => {
+  preparationResults.value = null
+  detectedCharacters.value = []
+  Object.keys(characterVoiceMapping).forEach(key => {
+    delete characterVoiceMapping[key]
+  })
+  message.info('智能准备结果已清空')
+}
+
+// 获取总段落数
+const getTotalSegments = () => {
+  if (!preparationResults.value?.data) return 0
+  
+  return preparationResults.value.data.reduce((total, chapterResult) => {
+    const synthesisJson = chapterResult.synthesis_json
+    return total + (synthesisJson.synthesis_plan?.length || 0)
+  }, 0)
+}
+
+// 获取角色样式类
+const getCharacterClass = (speaker) => {
+  const colors = ['primary', 'warning', 'success', 'info', 'error']
+  const hash = speaker.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
+  return `character-${colors[hash % colors.length]}`
+}
+
+// 获取当前处理段落信息
+const getCurrentProcessingSegment = () => {
+  if (!preparationResults.value?.data || !project.value?.current_segment) {
+    return null
+  }
+  
+  let segmentCounter = 0
+  for (const chapterResult of preparationResults.value.data) {
+    const segments = chapterResult.synthesis_json?.synthesis_plan || []
+    for (const segment of segments) {
+      segmentCounter++
+      if (segmentCounter === project.value.current_segment) {
+        return segment
+      }
+    }
+  }
+  return null
+}
+
+// 加载已完成的片段
+const loadCompletedSegments = async () => {
+  if (!project.value?.id) return
+  
+  try {
+    // 这里应该调用API获取已完成的片段
+    // 暂时使用模拟数据
+    const mockCompletedSegments = []
+    for (let i = 0; i < (project.value.statistics?.completedSegments || 0); i++) {
+      mockCompletedSegments.push({
+        id: i + 1,
+        speaker: '角色' + ((i % 3) + 1),
+        text: `这是第${i + 1}个已完成的合成片段，内容会在这里显示...`,
+        audio_url: `/api/v1/novel-reader/projects/${project.value.id}/segments/${i + 1}/audio`,
+        duration: 3.5 + Math.random() * 2 // 模拟时长
+      })
+    }
+    completedSegments.value = mockCompletedSegments
+  } catch (error) {
+    console.error('加载已完成片段失败:', error)
+  }
+}
+
+// 刷新已完成片段
+const refreshCompletedSegments = async () => {
+  loadingCompletedSegments.value = true
+  try {
+    await loadCompletedSegments()
+  } finally {
+    loadingCompletedSegments.value = false
+  }
+}
+
+// 播放片段音频
+const playSegmentAudio = async (segment) => {
+  try {
+    // 停止当前播放
+    if (segmentAudioPlayer.value) {
+      segmentAudioPlayer.value.pause()
+      segmentAudioPlayer.value.currentTime = 0
+    }
+    
+    if (playingSegment.value === segment.id) {
+      // 如果点击的是正在播放的，则停止播放
+      playingSegment.value = null
+      return
+    }
+    
+    playingSegment.value = segment.id
+    
+    // 创建新的音频播放器
+    segmentAudioPlayer.value = new Audio(segment.audio_url)
+    
+    segmentAudioPlayer.value.addEventListener('ended', () => {
+      playingSegment.value = null
+    })
+    
+    segmentAudioPlayer.value.addEventListener('error', (e) => {
+      console.error('音频播放失败:', e)
+      message.error('音频播放失败')
+      playingSegment.value = null
+    })
+    
+    await segmentAudioPlayer.value.play()
+    
+  } catch (error) {
+    console.error('播放片段音频失败:', error)
+    message.error('音频播放失败: ' + error.message)
+    playingSegment.value = null
+  }
+}
+
+// 格式化时长
+const formatDuration = (seconds) => {
+  if (!seconds) return '0:00'
+  const mins = Math.floor(seconds / 60)
+  const secs = Math.floor(seconds % 60)
+  return `${mins}:${secs.toString().padStart(2, '0')}`
+}
+
+// 声音选项过滤
+const filterVoiceOption = (input, option) => {
+  return option.children.toLowerCase().indexOf(input.toLowerCase()) >= 0
+}
+
 // 生命周期
 onMounted(async () => {
   await loadProject()
@@ -1682,8 +1828,14 @@ onMounted(async () => {
   // 自动加载章节（因为现在固定为章节模式）
   autoLoadChapters()
   
-  // 如果正在处理中，启动进度轮询
+  // 如果有已完成的片段，加载它们
+  if (project.value?.statistics?.completedSegments > 0) {
+    await loadCompletedSegments()
+  }
+  
+  // 如果正在处理中，启动进度轮询并更新当前段落
   if (project.value?.status === 'processing') {
+    currentProcessingSegment.value = getCurrentProcessingSegment()
     startProgressPolling()
   }
 })
@@ -2001,13 +2153,94 @@ window.addEventListener('beforeunload', () => {
   }
 }
 
+/* 智能准备结果样式 */
+.preparation-results {
+  margin-top: 16px;
+}
+
+.synthesis-segments-preview {
+  margin-top: 16px;
+}
+
+.segments-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.segments-header h4 {
+  margin: 0;
+  color: #1f2937;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.segments-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.chapter-segments {
+  padding: 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+
+.chapter-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.chapter-header h5 {
+  margin: 0;
+  color: #1f2937;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.segments-container {
+  margin-top: 8px;
+}
+
+.segment-item {
+  display: flex;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.segment-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.segment-number {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.segment-speaker {
+  font-size: 12px;
+  color: #1f2937;
+  font-weight: 600;
+}
+
+.show-more {
+  margin-top: 8px;
+}
+
 /* JSON测试弹窗样式 */
-.json-test-container {
+.json-test-modal {
   max-height: 600px;
   overflow-y: auto;
 }
 
-.json-test-container .ant-textarea {
+.json-test-modal .ant-textarea {
   font-size: 12px;
   line-height: 1.4;
   border-radius: 6px;
@@ -2015,7 +2248,7 @@ window.addEventListener('beforeunload', () => {
   transition: border-color 0.3s ease;
 }
 
-.json-test-container .ant-textarea:focus {
+.json-test-modal .ant-textarea:focus {
   border-color: #1890ff;
   box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
 }
@@ -2024,12 +2257,166 @@ window.addEventListener('beforeunload', () => {
   margin-top: 12px;
 }
 
-.json-description {
-  margin-bottom: 16px;
+/* 角色样式类 */
+.character-primary .segment-speaker {
+  color: #1890ff !important;
 }
 
-.json-test-container .ant-form-item-label > label {
+.character-warning .segment-speaker {
+  color: #fa8c16 !important;
+}
+
+.character-success .segment-speaker {
+  color: #52c41a !important;
+}
+
+.character-info .segment-speaker {
+  color: #13c2c2 !important;
+}
+
+.character-error .segment-speaker {
+  color: #f5222d !important;
+}
+
+/* 当前处理段落样式 */
+.current-segment {
+  margin: 16px 0;
+  padding: 16px;
+  background: linear-gradient(135deg, #e6f7ff 0%, #f0f9ff 100%);
+  border: 1px solid #91d5ff;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(24, 144, 255, 0.1);
+}
+
+.current-segment-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.current-segment-header h4 {
+  margin: 0;
+  color: #1890ff;
+  font-size: 16px;
   font-weight: 600;
-  color: #1f2937;
+}
+
+.current-segment-content {
+  .segment-info {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 8px;
+  }
+  
+  .segment-speaker {
+    font-weight: 600;
+    color: #1890ff;
+    font-size: 14px;
+  }
+  
+  .segment-position {
+    color: #666;
+    font-size: 12px;
+  }
+  
+  .segment-text {
+    color: #374151;
+    line-height: 1.6;
+    padding: 8px 12px;
+    background: white;
+    border-radius: 6px;
+    border: 1px solid #e8f4f8;
+  }
+}
+
+/* 已完成片段样式 */
+.completed-segments {
+  margin: 16px 0;
+  padding: 16px;
+  background: #f6ffed;
+  border: 1px solid #b7eb8f;
+  border-radius: 8px;
+}
+
+.completed-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.completed-header h4 {
+  margin: 0;
+  color: #52c41a;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.completed-list {
+  .completed-item {
+    margin-bottom: 8px;
+    padding: 8px 12px;
+    background: white;
+    border: 1px solid #e8f5e8;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+    
+    &:hover {
+      border-color: #b7eb8f;
+      box-shadow: 0 2px 4px rgba(82, 196, 26, 0.1);
+    }
+  }
+  
+  .segment-meta {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 4px;
+    font-size: 12px;
+  }
+  
+  .segment-number {
+    background: #52c41a;
+    color: white;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: 600;
+    min-width: 24px;
+    text-align: center;
+  }
+  
+  .segment-speaker {
+    color: #1890ff;
+    font-weight: 600;
+  }
+  
+  .segment-duration {
+    color: #666;
+    margin-left: auto;
+  }
+  
+  .segment-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+  }
+  
+  .segment-text {
+    flex: 1;
+    color: #374151;
+    line-height: 1.4;
+    font-size: 13px;
+  }
+  
+  .segment-controls {
+    flex-shrink: 0;
+  }
+  
+  .show-all-completed {
+    margin-top: 8px;
+    text-align: center;
+  }
 }
 </style>

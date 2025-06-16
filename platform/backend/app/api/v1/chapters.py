@@ -328,6 +328,79 @@ class ProgrammaticCharacterDetector:
             }
         }
 
+@router.post("")
+async def create_chapter(
+    book_id: int = Form(..., description="书籍ID"),
+    title: str = Form(..., description="章节标题"),
+    content: str = Form(..., description="章节内容"),
+    chapter_number: Optional[int] = Form(None, description="章节序号"),
+    db: Session = Depends(get_db)
+):
+    """创建新章节"""
+    try:
+        # 检查书籍是否存在
+        book = db.query(Book).filter(Book.id == book_id).first()
+        if not book:
+            raise HTTPException(status_code=404, detail="书籍不存在")
+        
+        # 如果没有指定章节序号，自动分配
+        if chapter_number is None:
+            max_chapter = db.query(func.max(BookChapter.chapter_number)).filter(
+                BookChapter.book_id == book_id
+            ).scalar()
+            chapter_number = (max_chapter or 0) + 1
+        else:
+            # 检查章节序号是否已存在
+            existing_chapter = db.query(BookChapter).filter(
+                BookChapter.book_id == book_id,
+                BookChapter.chapter_number == chapter_number
+            ).first()
+            if existing_chapter:
+                raise HTTPException(status_code=400, detail=f"章节序号 {chapter_number} 已存在")
+        
+        # 创建新章节
+        new_chapter = BookChapter(
+            book_id=book_id,
+            chapter_number=chapter_number,
+            chapter_title=title.strip(),
+            content=content,
+            word_count=len(content.strip()),
+            analysis_status='pending',
+            synthesis_status='pending',
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow()
+        )
+        
+        db.add(new_chapter)
+        db.commit()
+        db.refresh(new_chapter)
+        
+        # 更新书籍的章节数
+        chapter_count = db.query(BookChapter).filter(BookChapter.book_id == book_id).count()
+        book.chapter_count = chapter_count
+        db.commit()
+        
+        # 记录创建日志
+        await log_system_event(
+            db=db,
+            level="info",
+            message=f"新章节创建: {title}",
+            module="chapters",
+            details={"chapter_id": new_chapter.id, "book_id": book_id}
+        )
+        
+        return {
+            "success": True,
+            "message": "章节创建成功",
+            "data": new_chapter.to_dict()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"创建章节失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"创建章节失败: {str(e)}")
+
 @router.get("")
 async def get_chapters(
     book_id: Optional[int] = Query(None, description="书籍ID过滤"),
@@ -437,9 +510,8 @@ async def get_chapter(
             }
         
         # 添加关联的文本分段信息
-        segments = db.query(TextSegment).filter(
-            TextSegment.book_chapter_id == chapter_id
-        ).order_by(TextSegment.segment_order).all()
+        # 注意：TextSegment模型使用project_id而不是chapter_id，这里先返回空列表
+        segments = []
         
         chapter_data['segments'] = [
             {
@@ -469,7 +541,6 @@ async def update_chapter(
     title: Optional[str] = Form(None),
     content: Optional[str] = Form(None),
     analysis_status: Optional[str] = Form(None),
-    summary: Optional[str] = Form(None),
     db: Session = Depends(get_db)
 ):
     """更新章节信息"""
@@ -482,7 +553,7 @@ async def update_chapter(
         if title is not None:
             if not title.strip():
                 raise HTTPException(status_code=400, detail="章节标题不能为空")
-            chapter.title = title.strip()
+            chapter.chapter_title = title.strip()
         
         if content is not None:
             chapter.content = content
@@ -494,9 +565,6 @@ async def update_chapter(
                 raise HTTPException(status_code=400, detail="无效的分析状态")
             chapter.analysis_status = analysis_status
         
-        if summary is not None:
-            chapter.summary = summary
-        
         chapter.updated_at = datetime.utcnow()
         db.commit()
         
@@ -504,7 +572,7 @@ async def update_chapter(
         await log_system_event(
             db=db,
             level="info",
-            message=f"章节更新: {chapter.title}",
+            message=f"章节更新: {chapter.chapter_title}",
             module="chapters",
             details={"chapter_id": chapter_id}
         )
@@ -533,21 +601,8 @@ async def delete_chapter(
         if not chapter:
             raise HTTPException(status_code=404, detail="章节不存在")
         
-        # 检查是否有关联的文本分段
-        segment_count = db.query(func.count(TextSegment.id)).filter(
-            TextSegment.book_chapter_id == chapter_id
-        ).scalar()
-        
-        if not force and segment_count > 0:
-            raise HTTPException(
-                status_code=400, 
-                detail=f"章节关联了 {segment_count} 个文本分段，请使用强制删除"
-            )
-        
-        chapter_title = chapter.title
-        
-        # 删除关联的文本分段
-        db.query(TextSegment).filter(TextSegment.book_chapter_id == chapter_id).delete()
+        # 注意：TextSegment模型使用project_id而不是chapter_id，这里跳过分段检查
+        chapter_title = chapter.chapter_title
         
         # 删除章节
         db.delete(chapter)
@@ -609,7 +664,7 @@ async def split_chapter(
         new_chapter = BookChapter(
             book_id=chapter.book_id,
             chapter_number=chapter.chapter_number + 1,
-            title=new_title.strip(),
+            chapter_title=new_title.strip(),
             content=new_content,
             word_count=len(new_content.strip()),
             analysis_status='pending',
@@ -633,7 +688,7 @@ async def split_chapter(
         await log_system_event(
             db=db,
             level="info",
-            message=f"章节分割: {chapter.title} -> {new_title}",
+            message=f"章节分割: {chapter.chapter_title} -> {new_title}",
             module="chapters",
             details={
                 "original_chapter_id": chapter_id,

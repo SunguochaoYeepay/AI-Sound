@@ -15,7 +15,7 @@ from datetime import datetime
 from pydantic import BaseModel
 
 from app.database import get_db
-from app.models import Book, BookChapter
+from app.models import Book, BookChapter, AnalysisResult
 
 # 注意：PUT端点现在使用Form参数而不是JSON请求
 
@@ -288,7 +288,7 @@ async def get_books(
 
 
 @router.get("/{book_id}")
-def get_book(book_id: int, db: Session = Depends(get_db)):
+async def get_book(book_id: int, db: Session = Depends(get_db)):
     """获取书籍详情"""
     try:
         book = db.query(Book).filter(Book.id == book_id).first()
@@ -543,4 +543,66 @@ def update_book_patch(
     return {
         "success": True,
         "data": book.to_dict()
-    } 
+    }
+
+
+@router.get("/{book_id}/analysis-results")
+async def get_book_analysis_results(
+    book_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    获取书籍的所有智能准备结果
+    用于合成中心加载已完成的分析数据
+    """
+    try:
+        # 检查书籍是否存在
+        book = db.query(Book).filter(Book.id == book_id).first()
+        if not book:
+            raise HTTPException(status_code=404, detail="书籍不存在")
+        
+        # 获取书籍的所有章节及其分析结果
+        chapters_with_analysis = db.query(BookChapter, AnalysisResult).join(
+            AnalysisResult, BookChapter.id == AnalysisResult.chapter_id, isouter=True
+        ).filter(
+            BookChapter.book_id == book_id
+        ).order_by(BookChapter.chapter_number).all()
+        
+        analysis_results = []
+        
+        for chapter, analysis in chapters_with_analysis:
+            if analysis and analysis.synthesis_plan:
+                # 构建分析结果数据
+                result_data = {
+                    "chapter_id": chapter.id,
+                    "chapter_number": chapter.chapter_number,
+                    "chapter_title": chapter.chapter_title,
+                    "word_count": chapter.word_count,
+                    "analysis_id": analysis.id,
+                    "synthesis_json": analysis.synthesis_plan,
+                    "confidence_score": analysis.confidence_score,
+                    "processing_time": analysis.processing_time,
+                    "created_at": analysis.created_at.isoformat() if analysis.created_at else None,
+                    "updated_at": analysis.updated_at.isoformat() if analysis.updated_at else None
+                }
+                analysis_results.append(result_data)
+        
+        logger.info(f"获取书籍 {book_id} 的分析结果: 找到 {len(analysis_results)} 个已分析章节")
+        
+        return {
+            "success": True,
+            "data": analysis_results,
+            "book_info": {
+                "id": book.id,
+                "title": book.title,
+                "author": book.author,
+                "total_chapters": len(chapters_with_analysis),
+                "analyzed_chapters": len(analysis_results)
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取书籍分析结果失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取分析结果失败: {str(e)}") 

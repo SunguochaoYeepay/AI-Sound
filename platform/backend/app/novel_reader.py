@@ -17,7 +17,7 @@ import re
 from datetime import datetime, timedelta
 
 from app.database import get_db
-from .models import NovelProject, TextSegment, VoiceProfile, Book, SystemLog, AudioFile
+from .models import NovelProject, TextSegment, VoiceProfile, Book, SystemLog, AudioFile, BookChapter
 from app.tts_client import MegaTTS3Client, TTSRequest, get_tts_client
 from app.utils import log_system_event, update_usage_stats, save_upload_file
 # from tts_memory_optimizer import synthesis_context, optimize_tts_memory  # 暂时禁用以避免torch依赖
@@ -635,40 +635,135 @@ async def start_audio_generation(
             logger.error(f"[DEBUG] 项目 {project_id} 没有段落")
             raise HTTPException(status_code=400, detail="项目没有文本段落，请先进行分段")
         
-        # 检查角色映射 - 增加详细日志
-        logger.info(f"[DEBUG] 检查角色映射...")
-        logger.info(f"[DEBUG] 项目配置: {project.config}")
+        # 检查是否有智能准备结果 - 优先使用智能准备的synthesis_plan
+        logger.info(f"[DEBUG] 检查智能准备结果...")
+        has_synthesis_plan = False
+        synthesis_data = []
         
-        char_mapping = project.get_character_mapping()
-        logger.info(f"[DEBUG] 解析后的角色映射: {char_mapping}")
-        logger.info(f"[DEBUG] 角色映射类型: {type(char_mapping)}")
-        logger.info(f"[DEBUG] 角色映射是否为空: {not char_mapping}")
+        if project.book_id:
+            # 获取书籍的智能准备结果
+            from .models import AnalysisResult
+            analysis_results = db.query(AnalysisResult).join(
+                BookChapter, AnalysisResult.chapter_id == BookChapter.id
+            ).filter(
+                BookChapter.book_id == project.book_id,
+                AnalysisResult.status == 'completed',
+                AnalysisResult.synthesis_plan.isnot(None)
+            ).all()
+            
+            logger.info(f"[DEBUG] 找到 {len(analysis_results)} 个智能准备结果")
+            
+            if analysis_results:
+                has_synthesis_plan = True
+                # 直接收集所有 synthesis_plan 数据
+                for result in analysis_results:
+                    if result.synthesis_plan and 'synthesis_plan' in result.synthesis_plan:
+                        plan_segments = result.synthesis_plan['synthesis_plan']
+                        synthesis_data.extend(plan_segments)
+                
+                logger.info(f"[DEBUG] 从智能准备结果获取 {len(synthesis_data)} 个合成段落")
+                
+                # 验证智能准备结果中的声音ID有效性
+                logger.info(f"[DEBUG] 验证智能准备结果中的声音映射...")
+                voice_ids_to_check = set()
+                for segment in synthesis_data:
+                    voice_id = segment.get('voice_id')
+                    if voice_id:
+                        voice_ids_to_check.add(voice_id)
+                
+                # 批量验证声音档案
+                for voice_id in voice_ids_to_check:
+                    voice = db.query(VoiceProfile).filter(VoiceProfile.id == voice_id).first()
+                    if not voice or voice.status != 'active':
+                        logger.error(f"[DEBUG] 声音档案无效: voice_id={voice_id}, voice={voice}, status={voice.status if voice else None}")
+                        raise HTTPException(status_code=400, detail=f"声音档案 {voice_id} 无效或未激活")
+                    logger.info(f"[DEBUG] 声音档案验证通过: {voice.name} (ID: {voice_id})")
         
-        if not char_mapping:
-            logger.error(f"[DEBUG] 角色映射为空，拒绝请求")
-            # 详细显示段落信息
-            for segment in segments[:3]:  # 只显示前3个段落
-                logger.error(f"[DEBUG] 段落 {segment.paragraph_index}: speaker='{segment.speaker}', voice_id={segment.voice_id}")
-            raise HTTPException(status_code=400, detail="请先设置角色声音映射")
-        
-        # 验证声音映射的有效性
-        logger.info(f"[DEBUG] 验证声音映射有效性...")
-        for character, voice_id in char_mapping.items():
-            logger.info(f"[DEBUG] 验证角色 '{character}' -> 声音ID {voice_id}")
-            voice = db.query(VoiceProfile).filter(VoiceProfile.id == voice_id).first()
-            if not voice or voice.status != 'active':
-                logger.error(f"[DEBUG] 角色 '{character}' 的声音档案无效: voice={voice}, status={voice.status if voice else None}")
-                raise HTTPException(status_code=400, detail=f"角色 '{character}' 的声音档案无效")
-            logger.info(f"[DEBUG] 声音档案验证通过: {voice.name}")
+        # 如果有智能准备结果，直接使用JSON数据；否则检查项目角色映射
+        if has_synthesis_plan and synthesis_data:
+            logger.info(f"[DEBUG] 使用智能准备结果，共 {len(synthesis_data)} 个段落")
+            
+            # 更新项目状态
+            project.status = 'processing'
+            project.started_at = datetime.utcnow()
+            project.current_segment = 0
+            project.processed_segments = 0
+            project.total_segments = len(synthesis_data)
+            
+            logger.info(f"[DEBUG] 提交数据库更改...")
+            db.commit()
+            
+            logger.info(f"[DEBUG] 启动智能准备模式的后台任务...")
+            # 启动后台任务，传递 synthesis_data
+            background_tasks.add_task(
+                process_audio_generation_from_synthesis_plan,
+                project_id,
+                synthesis_data,
+                parallel_tasks
+            )
+            
+            # 记录开始生成日志
+            await log_system_event(
+                db=db,
+                level="info",
+                message=f"开始音频生成（智能准备模式）: {project.name}",
+                module="novel_reader",
+                details={
+                    "project_id": project_id,
+                    "total_segments": len(synthesis_data),
+                    "parallel_tasks": parallel_tasks,
+                    "data_source": "智能准备结果"
+                }
+            )
+            
+            logger.info(f"[DEBUG] 智能准备模式任务启动成功")
+            return {
+                "success": True,
+                "message": "音频生成已启动（智能准备模式）",
+                "total_segments": len(synthesis_data),
+                "parallel_tasks": parallel_tasks
+            }
+        else:
+            # 回退到传统的项目角色映射检查
+            logger.info(f"[DEBUG] 没有智能准备结果，检查项目角色映射...")
+            logger.info(f"[DEBUG] 项目配置: {project.config}")
+            
+            char_mapping = project.get_character_mapping()
+            logger.info(f"[DEBUG] 解析后的角色映射: {char_mapping}")
+            logger.info(f"[DEBUG] 角色映射类型: {type(char_mapping)}")
+            logger.info(f"[DEBUG] 角色映射是否为空: {not char_mapping}")
+            
+            if not char_mapping:
+                logger.error(f"[DEBUG] 角色映射为空，拒绝请求")
+                # 详细显示段落信息
+                for segment in segments[:3]:  # 只显示前3个段落
+                    logger.error(f"[DEBUG] 段落 {segment.paragraph_index}: speaker='{segment.speaker}', voice_id={segment.voice_id}")
+                raise HTTPException(status_code=400, detail="请先设置角色声音映射或完成智能准备")
+            
+            # 验证传统角色映射的有效性
+            logger.info(f"[DEBUG] 验证传统角色映射有效性...")
+            for character, voice_id in char_mapping.items():
+                logger.info(f"[DEBUG] 验证角色 '{character}' -> 声音ID {voice_id}")
+                voice = db.query(VoiceProfile).filter(VoiceProfile.id == voice_id).first()
+                if not voice or voice.status != 'active':
+                    logger.error(f"[DEBUG] 角色 '{character}' 的声音档案无效: voice={voice}, status={voice.status if voice else None}")
+                    raise HTTPException(status_code=400, detail=f"角色 '{character}' 的声音档案无效")
+                logger.info(f"[DEBUG] 声音档案验证通过: {voice.name}")
         
         logger.info(f"[DEBUG] 所有验证通过，开始更新项目状态...")
+        logger.info(f"[DEBUG] 最终使用的角色映射: {char_mapping}")
+        logger.info(f"[DEBUG] 角色映射来源: 项目配置")
+        
+        # 使用传统方式，更新现有段落的voice_id
+        logger.info(f"[DEBUG] 使用传统方式，更新现有段落的voice_id...")
+        await update_segments_voice_mapping_no_commit(project_id, char_mapping, db)
         
         # 更新项目状态
         project.status = 'processing'
         project.started_at = datetime.utcnow()
         project.current_segment = 0
         project.processed_segments = 0
-        project.total_segments = len(segments)  # 重要：设置总段落数
+        project.total_segments = len(segments)
         
         # 重置所有段落状态
         logger.info(f"[DEBUG] 重置段落状态...")

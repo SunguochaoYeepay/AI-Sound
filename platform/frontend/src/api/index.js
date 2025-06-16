@@ -417,7 +417,116 @@ export const booksAPI = {
 
   // AI重新分段
   aiResegmentText: (data) => 
-    apiClient.post(`/content-preparation/ai-resegment`, data)
+    apiClient.post(`/content-preparation/ai-resegment`, data),
+
+  // 获取书籍的所有智能准备结果
+  getBookAnalysisResults: (bookId) => 
+    apiClient.get(`/books/${bookId}/analysis-results`)
+}
+
+// 章节管理API
+export const chaptersAPI = {
+  // 获取章节列表
+  getChapters: (params = {}) => {
+    const queryParams = new URLSearchParams()
+    if (params.book_id) queryParams.append('book_id', params.book_id)
+    if (params.page) queryParams.append('page', params.page)
+    if (params.page_size) queryParams.append('page_size', params.page_size)
+    if (params.search) queryParams.append('search', params.search)
+    if (params.status) queryParams.append('status', params.status)
+    if (params.sort_by) queryParams.append('sort_by', params.sort_by)
+    if (params.sort_order) queryParams.append('sort_order', params.sort_order)
+    
+    const queryString = queryParams.toString()
+    const url = queryString ? `/chapters?${queryString}` : '/chapters'
+    
+    return apiClient.get(url)
+  },
+
+  // 获取章节详情
+  getChapter: (chapterId) => apiClient.get(`/chapters/${chapterId}`),
+
+  // 创建章节
+  createChapter: (data) => {
+    const formData = new FormData()
+    formData.append('book_id', data.book_id)
+    formData.append('title', data.title)
+    formData.append('content', data.content)
+    if (data.chapter_number) formData.append('chapter_number', data.chapter_number)
+    
+    return apiClient.post('/chapters', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    })
+  },
+
+  // 更新章节
+  updateChapter: (chapterId, data) => {
+    const formData = new FormData()
+    if (data.title !== undefined) formData.append('title', data.title)
+    if (data.content !== undefined) formData.append('content', data.content)
+    if (data.analysis_status !== undefined) formData.append('analysis_status', data.analysis_status)
+    
+    return apiClient.patch(`/chapters/${chapterId}`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    })
+  },
+
+  // 删除章节
+  deleteChapter: (chapterId, force = false) => 
+    apiClient.delete(`/chapters/${chapterId}?force=${force}`),
+
+  // 分割章节
+  splitChapter: (chapterId, data) => {
+    const formData = new FormData()
+    formData.append('split_position', data.split_position)
+    formData.append('new_title', data.new_title)
+    
+    return apiClient.post(`/chapters/${chapterId}/split`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    })
+  },
+
+  // 合并章节
+  mergeChapters: (chapterId, data) => {
+    const formData = new FormData()
+    formData.append('target_chapter_id', data.target_chapter_id)
+    formData.append('merge_direction', data.merge_direction || 'after')
+    
+    return apiClient.post(`/chapters/${chapterId}/merge`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    })
+  },
+
+  // 获取章节统计
+  getChapterStats: (chapterId) => apiClient.get(`/chapters/${chapterId}/statistics`),
+
+  // 智能准备章节
+  prepareChapter: (chapterId, params = {}) => {
+    const queryParams = new URLSearchParams()
+    if (params.include_emotion !== undefined) queryParams.append('include_emotion', params.include_emotion)
+    if (params.processing_mode) queryParams.append('processing_mode', params.processing_mode)
+    
+    const queryString = queryParams.toString()
+    const url = queryString ? `/chapters/${chapterId}/prepare-synthesis?${queryString}` : `/chapters/${chapterId}/prepare-synthesis`
+    
+    return apiClient.post(url)
+  },
+
+  // 获取合成预览
+  getSynthesisPreview: (chapterId, maxSegments = 10) => 
+    apiClient.get(`/chapters/${chapterId}/synthesis-preview?max_segments=${maxSegments}`),
+
+  // 获取内容统计
+  getContentStats: (chapterId) => 
+    apiClient.get(`/chapters/${chapterId}/content-stats`)
 }
 
 // 音频库API

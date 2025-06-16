@@ -97,9 +97,33 @@
 
           <!-- 内容输入 -->
           <a-card title="📄 书籍内容" :bordered="false" class="form-card">
-            <a-tabs v-model:activeKey="contentInputMethod" @change="onContentMethodChange">
-              <a-tab-pane key="file" tab="📁 文件上传">
+            <a-tabs v-model:activeKey="contentInputMethod" @change="handleContentTabChange">
+              <a-tab-pane key="file" tab="📁 小说文件上传">
                 <div class="upload-section">
+                  <!-- 章节识别规则提示 -->
+                  <a-alert
+                    message="章节识别规则说明"
+                    type="info"
+                    show-icon
+                    closable
+                    style="margin-bottom: 16px;"
+                  >
+                    <template #description>
+                      <div class="chapter-rules">
+                        <p><strong>系统将自动识别以下格式的章节标题：</strong></p>
+                        <ul>
+                          <li>📖 <code>第一章</code>、<code>第1章</code>、<code>第十章</code> 等</li>
+                          <li>📖 <code>第一节</code>、<code>第1节</code>、<code>第十节</code> 等</li>
+                          <li>📖 <code>Chapter 1</code>、<code>Chapter One</code> 等英文格式</li>
+                          <li>📖 <code># 章节标题</code>、<code>## 章节标题</code> 等Markdown格式</li>
+                          <li>📖 <code>1. 章节标题</code>、<code>一、章节标题</code> 等序号格式</li>
+                          <li>📖 <code>【章节标题】</code>、<code>（第一章）</code> 等括号格式</li>
+                        </ul>
+                        <p><strong>提示：</strong>上传后系统会自动检测章节，您可以预览和确认后再导入。</p>
+                      </div>
+                    </template>
+                  </a-alert>
+
                   <a-upload-dragger
                     v-model:fileList="fileList"
                     name="file"
@@ -112,9 +136,9 @@
                     <p class="ant-upload-drag-icon">
                       <InboxOutlined style="font-size: 48px; color: #06b6d4;" />
                     </p>
-                    <p class="ant-upload-text">点击或拖拽文件到此区域上传</p>
+                    <p class="ant-upload-text">点击或拖拽小说文件到此区域上传</p>
                     <p class="ant-upload-hint">
-                      支持 .txt 和 .md 格式文件，单次只能上传一个文件
+                      支持 .txt 和 .md 格式文件，上传后自动检测章节结构
                     </p>
                   </a-upload-dragger>
                   
@@ -126,19 +150,113 @@
                     <div class="preview-content">
                       {{ fileContent.substring(0, 500) }}{{ fileContent.length > 500 ? '...' : '' }}
                     </div>
+                    
+                    <!-- 章节检测结果预览 -->
+                    <div v-if="detectedChapters.length > 0" class="chapters-detection-result">
+                      <div class="detection-header">
+                        <span>🔍 检测到 {{ detectedChapters.length }} 个章节</span>
+                        <a-button type="link" size="small" @click="showAllChapters = !showAllChapters">
+                          {{ showAllChapters ? '收起' : '查看全部' }}
+                        </a-button>
+                      </div>
+                      <div class="chapters-list">
+                        <div
+                          v-for="(chapter, index) in (showAllChapters ? detectedChapters : detectedChapters.slice(0, 5))"
+                          :key="index"
+                          class="chapter-item-preview"
+                        >
+                          <div class="chapter-number">第{{ chapter.number }}章</div>
+                          <div class="chapter-title">{{ chapter.title }}</div>
+                          <div class="chapter-stats">{{ chapter.wordCount }} 字</div>
+                        </div>
+                        <div v-if="!showAllChapters && detectedChapters.length > 5" class="more-chapters">
+                          还有 {{ detectedChapters.length - 5 }} 个章节...
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </a-tab-pane>
 
-              <a-tab-pane key="input" tab="✏️ 直接输入">
-                <div class="input-section">
-                  <a-textarea
-                    v-model:value="bookForm.content"
-                    placeholder="请输入或粘贴书籍内容..."
-                    :rows="20"
-                    show-count
-                    class="content-textarea"
-                  />
+              <a-tab-pane key="chapters" tab="📚 章节管理" v-if="isEditing">
+                <div class="chapters-management">
+                  <!-- 章节列表 -->
+                  <div class="chapters-list-section">
+                    <div class="section-header">
+                      <h3>📖 现有章节</h3>
+                      <a-button type="primary" @click="showCreateChapterModal" :loading="loadingChapters">
+                        ➕ 新增章节
+                      </a-button>
+                    </div>
+                    
+                    <div v-if="loadingChapters" class="loading-chapters">
+                      <a-spin size="small" />
+                      <span style="margin-left: 8px;">加载章节列表...</span>
+                    </div>
+                    
+                    <div v-else-if="existingChapters.length > 0" class="chapters-list">
+                      <div
+                        v-for="chapter in existingChapters"
+                        :key="chapter.id"
+                        class="chapter-item"
+                        :class="{ 'selected': selectedChapter?.id === chapter.id }"
+                        @click="selectChapter(chapter)"
+                      >
+                        <div class="chapter-info">
+                          <div class="chapter-number">第{{ chapter.chapter_number }}章</div>
+                          <div class="chapter-title">{{ chapter.chapter_title }}</div>
+                          <div class="chapter-stats">{{ chapter.word_count }} 字</div>
+                        </div>
+                        <div class="chapter-actions">
+                          <a-button type="link" size="small" @click.stop="editChapter(chapter)">
+                            ✏️ 编辑
+                          </a-button>
+                          <a-button type="link" size="small" danger @click.stop="deleteChapter(chapter)">
+                            🗑️ 删除
+                          </a-button>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div v-else class="no-chapters">
+                      <a-empty description="暂无章节">
+                        <a-button type="primary" @click="showCreateChapterModal">
+                          ➕ 创建第一个章节
+                        </a-button>
+                      </a-empty>
+                    </div>
+                  </div>
+
+                  <!-- 章节编辑区域 -->
+                  <div v-if="selectedChapter" class="chapter-editor">
+                    <div class="editor-header">
+                      <h3>✏️ 编辑章节：{{ selectedChapter.chapter_title }}</h3>
+                      <a-space>
+                        <a-button @click="cancelChapterEdit">取消</a-button>
+                        <a-button type="primary" @click="saveChapterChanges" :loading="savingChapter">
+                          💾 保存修改
+                        </a-button>
+                      </a-space>
+                    </div>
+                    
+                    <a-form layout="vertical">
+                      <a-form-item label="章节标题">
+                        <a-input v-model:value="chapterEditForm.title" placeholder="请输入章节标题" />
+                      </a-form-item>
+                      
+                      <a-form-item label="章节内容">
+                        <a-textarea
+                          v-model:value="chapterEditForm.content"
+                          placeholder="请输入章节内容..."
+                          :rows="15"
+                          show-count
+                          class="content-textarea"
+                        />
+                      </a-form-item>
+                      
+
+                    </a-form>
+                  </div>
                 </div>
               </a-tab-pane>
             </a-tabs>
@@ -217,6 +335,7 @@
               </a-button>
               
               <a-button
+                v-if="contentInputMethod !== 'chapters'"
                 size="large"
                 block
                 @click="detectChapters"
@@ -245,13 +364,56 @@
         {{ previewModal.content }}
       </div>
     </a-modal>
+
+    <!-- 创建章节弹窗 -->
+    <a-modal
+      v-model:open="createChapterModal.visible"
+      title="➕ 创建新章节"
+      width="600px"
+      @ok="createNewChapter"
+      @cancel="cancelCreateChapter"
+      :confirmLoading="creatingChapter"
+    >
+      <a-form :model="createChapterModal.form" layout="vertical">
+        <a-form-item label="章节标题" required>
+          <a-input
+            v-model:value="createChapterModal.form.title"
+            placeholder="请输入章节标题"
+            :maxlength="200"
+            show-count
+          />
+        </a-form-item>
+        
+        <a-form-item label="章节序号">
+          <a-input-number
+            v-model:value="createChapterModal.form.chapter_number"
+            placeholder="留空自动分配"
+            :min="1"
+            :max="9999"
+            style="width: 100%"
+          />
+          <div class="form-hint">留空将自动分配为下一个序号</div>
+        </a-form-item>
+        
+        <a-form-item label="章节内容" required>
+          <a-textarea
+            v-model:value="createChapterModal.form.content"
+            placeholder="请输入章节内容..."
+            :rows="10"
+            show-count
+          />
+        </a-form-item>
+        
+
+      </a-form>
+    </a-modal>
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, computed, onMounted, nextTick, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { message } from 'ant-design-vue'
+import { message, Modal } from 'ant-design-vue'
 import {
   PlusOutlined,
   InboxOutlined,
@@ -259,7 +421,7 @@ import {
   EyeOutlined,
   BookOutlined
 } from '@ant-design/icons-vue'
-import { booksAPI } from '@/api'
+import { booksAPI, chaptersAPI } from '@/api'
 
 const router = useRouter()
 const route = useRoute()
@@ -307,6 +469,29 @@ const previewModal = reactive({
   visible: false,
   content: ''
 })
+
+// 章节管理相关状态
+const loadingChapters = ref(false)
+const existingChapters = ref([])
+const selectedChapter = ref(null)
+const savingChapter = ref(false)
+
+// 章节编辑表单
+const chapterEditForm = reactive({
+  title: '',
+  content: ''
+})
+
+// 创建章节弹窗
+const createChapterModal = reactive({
+  visible: false,
+  form: {
+    title: '',
+    chapter_number: null,
+    content: ''
+  }
+})
+const creatingChapter = ref(false)
 
 // 计算属性
 const currentContent = computed(() => {
@@ -403,10 +588,21 @@ const onContentMethodChange = (key) => {
   contentInputMethod.value = key
 }
 
+const handleContentTabChange = (key) => {
+  onContentMethodChange(key)
+  handleTabChange(key)
+}
+
 // 章节检测
 const detectChapters = async () => {
   if (!currentContent.value) {
     message.warning('请先输入内容')
+    return
+  }
+
+  // 如果当前在章节管理模式下，不执行自动检测，避免覆盖已有章节
+  if (contentInputMethod.value === 'chapters') {
+    console.log('[BookCreate] 章节管理模式下跳过自动检测')
     return
   }
 
@@ -603,17 +799,177 @@ const loadBook = async () => {
   }
 }
 
-// 监听内容变化，自动检测章节
+// 监听内容变化，自动检测章节（仅在文件上传模式下）
 watch(currentContent, async (newContent) => {
-  if (newContent && newContent.length > 100) {
+  // 只在文件上传模式下自动检测章节，避免在章节管理模式下覆盖已有章节
+  if (newContent && newContent.length > 100 && contentInputMethod.value === 'file') {
     // 延迟检测，避免频繁触发
     setTimeout(() => {
-      if (currentContent.value === newContent) {
+      if (currentContent.value === newContent && contentInputMethod.value === 'file') {
         detectChapters()
       }
     }, 2000)
   }
 }, { debounce: 1000 })
+
+// 章节管理方法
+const loadExistingChapters = async () => {
+  if (!isEditing.value || !route.params.id) return
+
+  loadingChapters.value = true
+  try {
+    const response = await chaptersAPI.getChapters({
+      book_id: route.params.id,
+      page_size: 100,
+      sort_by: 'chapter_number',
+      sort_order: 'asc'
+    })
+    
+    if (response.data.success) {
+      existingChapters.value = response.data.data
+    }
+  } catch (error) {
+    console.error('加载章节列表失败:', error)
+    message.error('加载章节列表失败')
+  } finally {
+    loadingChapters.value = false
+  }
+}
+
+const showCreateChapterModal = () => {
+  createChapterModal.form.title = ''
+  createChapterModal.form.chapter_number = null
+  createChapterModal.form.content = ''
+  createChapterModal.visible = true
+}
+
+const cancelCreateChapter = () => {
+  createChapterModal.visible = false
+}
+
+const createNewChapter = async () => {
+  if (!createChapterModal.form.title.trim()) {
+    message.error('请输入章节标题')
+    return
+  }
+  
+  if (!createChapterModal.form.content.trim()) {
+    message.error('请输入章节内容')
+    return
+  }
+
+  creatingChapter.value = true
+  try {
+    const chapterData = {
+      book_id: route.params.id,
+      title: createChapterModal.form.title.trim(),
+      content: createChapterModal.form.content
+    }
+    
+    if (createChapterModal.form.chapter_number) {
+      chapterData.chapter_number = createChapterModal.form.chapter_number
+    }
+
+    const response = await chaptersAPI.createChapter(chapterData)
+    
+    if (response.data.success) {
+      message.success('章节创建成功')
+      createChapterModal.visible = false
+      await loadExistingChapters() // 重新加载章节列表
+    }
+  } catch (error) {
+    console.error('创建章节失败:', error)
+    const errorMsg = error.response?.data?.detail || '创建章节失败'
+    message.error(errorMsg)
+  } finally {
+    creatingChapter.value = false
+  }
+}
+
+const selectChapter = (chapter) => {
+  selectedChapter.value = chapter
+  chapterEditForm.title = chapter.chapter_title
+  chapterEditForm.content = chapter.content
+}
+
+const editChapter = (chapter) => {
+  selectChapter(chapter)
+}
+
+const cancelChapterEdit = () => {
+  selectedChapter.value = null
+  chapterEditForm.title = ''
+  chapterEditForm.content = ''
+}
+
+const saveChapterChanges = async () => {
+  if (!selectedChapter.value) return
+  
+  if (!chapterEditForm.title.trim()) {
+    message.error('请输入章节标题')
+    return
+  }
+  
+  if (!chapterEditForm.content.trim()) {
+    message.error('请输入章节内容')
+    return
+  }
+
+  savingChapter.value = true
+  try {
+    const updateData = {
+      title: chapterEditForm.title.trim(),
+      content: chapterEditForm.content
+    }
+
+    const response = await chaptersAPI.updateChapter(selectedChapter.value.id, updateData)
+    
+    if (response.data.success) {
+      message.success('章节更新成功')
+      cancelChapterEdit()
+      await loadExistingChapters() // 重新加载章节列表
+    }
+  } catch (error) {
+    console.error('更新章节失败:', error)
+    const errorMsg = error.response?.data?.detail || '更新章节失败'
+    message.error(errorMsg)
+  } finally {
+    savingChapter.value = false
+  }
+}
+
+const deleteChapter = async (chapter) => {
+  Modal.confirm({
+    title: '确认删除章节',
+    content: `确定要删除章节"${chapter.chapter_title}"吗？此操作不可撤销。`,
+    okText: '确认删除',
+    okType: 'danger',
+    cancelText: '取消',
+    onOk: async () => {
+      try {
+        const response = await chaptersAPI.deleteChapter(chapter.id)
+        if (response.data) {
+          message.success('章节删除成功')
+          if (selectedChapter.value?.id === chapter.id) {
+            cancelChapterEdit()
+          }
+          await loadExistingChapters() // 重新加载章节列表
+        }
+      } catch (error) {
+        console.error('删除章节失败:', error)
+        const errorMsg = error.response?.data?.detail || '删除章节失败'
+        message.error(errorMsg)
+      }
+    }
+  })
+}
+
+// 监听Tab切换，加载章节数据
+const handleTabChange = (activeKey) => {
+  if (activeKey === 'chapters' && isEditing.value) {
+    loadExistingChapters()
+  }
+}
 
 // 生命周期
 onMounted(() => {
@@ -795,5 +1151,137 @@ onMounted(() => {
   padding: 16px;
   background: #f8fafc;
   border-radius: 6px;
+}
+
+/* 章节管理样式 */
+.chapters-management {
+  display: flex;
+  gap: 24px;
+  min-height: 600px;
+}
+
+.chapters-list-section {
+  flex: 1;
+  min-width: 300px;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.section-header h3 {
+  margin: 0;
+  color: #1f2937;
+  font-size: 16px;
+}
+
+.loading-chapters {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  color: #6b7280;
+}
+
+.chapters-management .chapters-list {
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.chapters-management .chapter-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.chapters-management .chapter-item:hover {
+  border-color: #06b6d4;
+  background-color: #f0f9ff;
+}
+
+.chapters-management .chapter-item.selected {
+  border-color: #06b6d4;
+  background-color: #e0f2fe;
+  box-shadow: 0 2px 4px rgba(6, 182, 212, 0.1);
+}
+
+.chapter-info {
+  flex: 1;
+}
+
+.chapters-management .chapter-number {
+  font-weight: 600;
+  color: #1f2937;
+  font-size: 14px;
+  min-width: auto;
+}
+
+.chapters-management .chapter-title {
+  color: #374151;
+  margin: 4px 0;
+  font-size: 13px;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: initial;
+}
+
+.chapters-management .chapter-stats {
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.chapter-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.no-chapters {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  text-align: center;
+}
+
+.chapter-editor {
+  flex: 2;
+  min-width: 400px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 20px;
+  background: #fafafa;
+}
+
+.editor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.editor-header h3 {
+  margin: 0;
+  color: #1f2937;
+  font-size: 16px;
+}
+
+.form-hint {
+  font-size: 12px;
+  color: #6b7280;
+  margin-top: 4px;
 }
 </style> 

@@ -758,7 +758,7 @@
           <div v-if="discoveryStep === 3" class="step-panel">
             <div class="step-header">
               <h3>批量配置角色</h3>
-              <p>为发现的角色配置详细信息，已存在的角色将被跳过</p>
+              <p>为发现的角色配置详细信息，已存在的角色会显示当前配置（无法选择创建）</p>
             </div>
             
             <div class="batch-config">
@@ -781,21 +781,52 @@
                     v-for="character in newCharacters" 
                     :key="character.name"
                     class="config-item"
+                    :class="{ 'existing-character': character.exists_in_library }"
                   >
-                    <a-checkbox :value="character.name">
+                    <a-checkbox 
+                      :value="character.name" 
+                      :disabled="character.exists_in_library"
+                    >
                       <div class="config-card">
                         <div class="config-header">
                           <div class="character-avatar" :style="{ background: character.recommended_config.color }">
                             {{ character.name.charAt(0) }}
                           </div>
                           <div class="character-basic">
-                            <h4>{{ character.name }}</h4>
+                            <h4>
+                              {{ character.name }}
+                              <a-tag v-if="character.exists_in_library" color="orange" size="small">已存在</a-tag>
+                            </h4>
                             <p>{{ character.recommended_config.description }}</p>
                           </div>
                         </div>
                         
                         <div class="config-details">
-                          <a-form layout="vertical" size="small">
+                          <div v-if="character.exists_in_library" class="existing-character-info">
+                            <a-alert 
+                              message="角色已存在于角色库中" 
+                              type="info" 
+                              show-icon 
+                              :closable="false"
+                              style="margin-bottom: 16px;"
+                            />
+                            <div class="existing-config-display">
+                              <a-descriptions :column="2" size="small">
+                                <a-descriptions-item label="性别">
+                                  {{ character.existing_config?.type === 'male' ? '男性' : '女性' }}
+                                </a-descriptions-item>
+                                <a-descriptions-item label="状态">
+                                  <a-tag :color="character.existing_config?.status === 'active' ? 'green' : 'orange'">
+                                    {{ character.existing_config?.status === 'active' ? '可用' : '需配置' }}
+                                  </a-tag>
+                                </a-descriptions-item>
+                                <a-descriptions-item label="描述" :span="2">
+                                  {{ character.existing_config?.description || '暂无描述' }}
+                                </a-descriptions-item>
+                              </a-descriptions>
+                            </div>
+                          </div>
+                          <a-form v-else layout="vertical" size="small">
                             <a-row :gutter="16">
                               <a-col :span="8">
                                 <a-form-item label="性别">
@@ -1871,29 +1902,29 @@ const checkCharacterExistence = async () => {
 const prepareCharacterConfigs = () => {
   console.log('[角色配置] 准备配置，发现的角色:', smartDiscovery.discoveredCharacters)
   
-  // 过滤出不存在的角色
-  newCharacters.value = smartDiscovery.discoveredCharacters
+  // 显示所有角色，包括已存在的
+  newCharacters.value = smartDiscovery.discoveredCharacters.map(char => ({
+    ...char,
+    config: {
+      name: char.name,
+      gender: char.recommended_config?.gender || 'female',
+      personality: char.recommended_config?.personality || 'calm',
+      color: char.recommended_config?.color || colorOptions[0],
+      description: char.recommended_config?.description || `${char.name}角色配置`,
+      // 文件上传相关
+      audioFileList: [],
+      latentFileList: [],
+      audioFileInfo: null,
+      latentFileInfo: null
+    }
+  }))
+  
+  console.log('[角色配置] 所有角色（包括已存在）:', newCharacters.value)
+  
+  // 默认只选中不存在的角色
+  selectedConfigs.value = newCharacters.value
     .filter(char => !char.exists_in_library)
-    .map(char => ({
-      ...char,
-      config: {
-        name: char.name,
-        gender: char.recommended_config?.gender || 'female',
-        personality: char.recommended_config?.personality || 'calm',
-        color: char.recommended_config?.color || colorOptions[0],
-        description: char.recommended_config?.description || `${char.name}角色配置`,
-        // 文件上传相关
-        audioFileList: [],
-        latentFileList: [],
-        audioFileInfo: null,
-        latentFileInfo: null
-      }
-    }))
-  
-  console.log('[角色配置] 需要配置的新角色:', newCharacters.value)
-  
-  // 默认全选
-  selectedConfigs.value = newCharacters.value.map(char => char.name)
+    .map(char => char.name)
   updateConfigCheckState()
 }
 
@@ -2816,6 +2847,26 @@ const getChapterStatusText = (status) => {
 
 .chapter-content {
   margin-left: 8px;
+}
+
+/* 已存在角色样式 */
+.existing-character {
+  opacity: 0.7;
+}
+
+.existing-character .config-card {
+  background: #f8f9fa !important;
+  border: 1px dashed #d1d5db !important;
+}
+
+.existing-character-info {
+  padding: 16px;
+  background: #f8f9fa;
+  border-radius: 8px;
+}
+
+.existing-config-display {
+  margin-top: 12px;
 }
 
 .chapter-title {

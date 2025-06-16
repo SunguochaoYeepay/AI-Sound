@@ -204,37 +204,8 @@
           </a-card>
         </a-col>
 
-        <!-- 右侧：配置和操作 -->
+        <!-- 右侧：预览和操作 -->
         <a-col :span="10">
-          <!-- 朗读设置 -->
-          <a-card title="🎯 朗读设置" :bordered="false" class="config-card">
-            <a-form layout="vertical">
-              <a-form-item label="分段方式">
-                <a-radio-group v-model:value="projectSettings.segmentMode" size="small">
-                  <a-radio-button value="paragraph">段落</a-radio-button>
-                  <a-radio-button value="sentence">句子</a-radio-button>
-                </a-radio-group>
-              </a-form-item>
-
-              <a-form-item label="音质设置">
-                <a-select v-model:value="projectSettings.audioQuality" size="large">
-                  <a-select-option value="high">高音质 (推荐)</a-select-option>
-                  <a-select-option value="standard">标准音质</a-select-option>
-                </a-select>
-              </a-form-item>
-
-              <a-form-item label="智能功能">
-                <div style="display: flex; flex-direction: column; gap: 8px;">
-                  <a-checkbox v-model:checked="projectSettings.enableSmartDetection">
-                    🤖 智能角色识别
-                  </a-checkbox>
-                  <a-checkbox v-model:checked="projectSettings.enableBgMusic">
-                    🎵 背景音乐
-                  </a-checkbox>
-                </div>
-              </a-form-item>
-            </a-form>
-          </a-card>
 
           <!-- 项目统计预览 -->
           <a-card v-if="selectedBook" title="📊 项目预览" :bordered="false" class="config-card">
@@ -263,29 +234,16 @@
           <!-- 快速操作 -->
           <a-card title="🚀 快速创建" :bordered="false" class="config-card">
             <div class="quick-actions">
-              <a-space direction="vertical" style="width: 100%;">
-                <a-button 
-                  type="primary" 
-                  size="large" 
-                  block 
-                  @click="createProject" 
-                  :loading="creating"
-                  :disabled="!canCreate"
-                >
-                  {{ isEditing ? '💾 保存修改' : '✨ 创建项目' }}
-                </a-button>
-                
-                <a-button 
-                  size="large" 
-                  block 
-                  @click="createAndStart" 
-                  :loading="creating"
-                  :disabled="!canCreate"
-                  style="background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%); border: none; color: white;"
-                >
-                  🎙️ 创建并开始合成
-                </a-button>
-              </a-space>
+              <a-button 
+                type="primary" 
+                size="large" 
+                block 
+                @click="createProject" 
+                :loading="creating"
+                :disabled="!canCreate"
+              >
+                {{ isEditing ? '💾 保存修改' : '✨ 创建项目' }}
+              </a-button>
             </div>
 
             <!-- 创建提示 -->
@@ -312,10 +270,7 @@
                 <span class="preview-label">文本长度:</span>
                 <span class="preview-value">{{ (selectedBook?.word_count || 0).toLocaleString() }} 字</span>
               </div>
-              <div class="preview-item">
-                <span class="preview-label">分段方式:</span>
-                <span class="preview-value">{{ getSegmentModeText(projectSettings.segmentMode) }}</span>
-              </div>
+
             </div>
           </a-card>
         </a-col>
@@ -355,7 +310,7 @@ const projectRules = {
   ]
 }
 
-// 项目设置
+// 项目设置 - 简化后使用默认值
 const projectSettings = reactive({
   segmentMode: 'paragraph',
   audioQuality: 'high',
@@ -381,7 +336,8 @@ const canCreate = computed(() => {
 
 const estimatedSegments = computed(() => {
   if (!selectedBook.value?.word_count) return 0
-  const wordsPerSegment = projectSettings.segmentMode === 'paragraph' ? 200 : 50
+  // 使用固定的段落分段方式
+  const wordsPerSegment = 200
   return Math.ceil(selectedBook.value.word_count / wordsPerSegment)
 })
 
@@ -427,9 +383,7 @@ const formatDate = (dateString) => {
   return date.toLocaleDateString('zh-CN')
 }
 
-const getSegmentModeText = (mode) => {
-  return mode === 'paragraph' ? '按段落分段' : '按句子分段'
-}
+
 
 const getCreateHint = () => {
   if (!projectForm.name.trim()) return '请输入项目名称'
@@ -613,50 +567,7 @@ const createProject = async () => {
   }
 }
 
-const createAndStart = async () => {
-  try {
-    await projectFormRef.value.validate()
-  } catch (error) {
-    message.error('请检查表单内容')
-    return
-  }
 
-  creating.value = true
-  try {
-    const projectData = {
-      name: projectForm.name,
-      description: projectForm.description,
-      book_id: selectedBook.value?.id || null,
-      initial_characters: [], // 初始化为空，后续在合成阶段配置
-      settings: {
-        segment_mode: projectSettings.segmentMode,
-        audio_quality: projectSettings.audioQuality,
-        enable_smart_detection: projectSettings.enableSmartDetection,
-        enable_bg_music: projectSettings.enableBgMusic
-      }
-    }
-
-    let response
-    if (isEditing.value) {
-      response = await readerAPI.updateProject(route.params.id, projectData)
-    } else {
-      response = await readerAPI.createProject(projectData)
-    }
-
-    if (response.data.success) {
-      const projectId = response.data.data.id
-      message.success('项目创建成功，正在跳转到合成中心...')
-      // 跳转到合成中心
-      router.push(`/synthesis/${projectId}`)
-    }
-  } catch (error) {
-    console.error('项目创建失败:', error)
-    const errorMsg = error.response?.data?.detail || '操作失败'
-    message.error(errorMsg)
-  } finally {
-    creating.value = false
-  }
-}
 
 // 检查URL参数中的书籍ID
 const checkPreSelectedBook = async () => {
@@ -723,13 +634,7 @@ const loadProject = async () => {
         console.log('项目没有关联书籍')
       }
       
-      // 加载项目设置
-      if (project.settings) {
-        projectSettings.segmentMode = project.settings.segment_mode || 'paragraph'
-        projectSettings.audioQuality = project.settings.audio_quality || 'high'
-        projectSettings.enableSmartDetection = project.settings.enable_smart_detection !== false
-        projectSettings.enableBgMusic = project.settings.enable_bg_music || false
-      }
+      // 项目设置保持默认值（简化后不需要加载）
       
       console.log('=== 项目数据加载完成 ===')
       console.log('selectedBook:', selectedBook.value)
