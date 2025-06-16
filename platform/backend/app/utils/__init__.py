@@ -12,7 +12,8 @@ from typing import Dict, List, Any, Optional
 from fastapi import UploadFile
 from sqlalchemy.orm import Session
 
-from ..models import SystemLog, UsageStats
+# 延迟导入避免循环依赖
+# from ..models import SystemLog, UsageStats
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +101,9 @@ async def log_system_event(
             logger.warning("无效的数据库会话，跳过日志记录")
             return
         
+        # 延迟导入避免循环依赖
+        from ..models import SystemLog
+        
         # 创建系统日志记录
         log_entry = SystemLog(
             level=level,
@@ -146,6 +150,9 @@ async def update_usage_stats(
         if not db or not hasattr(db, 'query'):
             logger.warning("无效的数据库会话，跳过统计更新")
             return
+        
+        # 延迟导入避免循环依赖
+        from ..models import UsageStats
         
         today = date.today().strftime("%Y-%m-%d")
         

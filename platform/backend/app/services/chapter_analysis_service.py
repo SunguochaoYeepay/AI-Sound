@@ -211,10 +211,16 @@ class ChapterAnalysisService:
             logger.error(f"获取项目 {project_id} 章节列表失败: {str(e)}")
             raise ServiceException(f"获取项目章节失败: {str(e)}")
     
-    def get_project_chapters_with_status(self, project_id: int) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    def get_project_chapters_with_status(self, project_id: int, selected_chapter_ids: Optional[List[int]] = None) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         """获取章节及分析状态"""
         try:
             chapters = self.get_project_chapters(project_id)
+            
+            # 如果指定了选中的章节ID，则只处理这些章节
+            if selected_chapter_ids:
+                chapters = [ch for ch in chapters if ch['id'] in selected_chapter_ids]
+                logger.info(f"过滤后的章节数量: {len(chapters)}, 原始数量: {len(self.get_project_chapters(project_id))}")
+            
             chapter_ids = [ch['id'] for ch in chapters]
             
             # 获取分析结果
@@ -292,11 +298,11 @@ class ChapterAnalysisService:
             logger.error(f"转换章节分析格式失败: {str(e)}")
             raise ServiceException(f"格式转换失败: {str(e)}")
     
-    def aggregate_chapter_results(self, project_id: int) -> Dict[str, Any]:
+    def aggregate_chapter_results(self, project_id: int, selected_chapter_ids: Optional[List[int]] = None) -> Dict[str, Any]:
         """多章节结果聚合"""
         try:
             # 获取章节及状态
-            chapters, status_summary = self.get_project_chapters_with_status(project_id)
+            chapters, status_summary = self.get_project_chapters_with_status(project_id, selected_chapter_ids)
             
             # 检查是否所有章节都已分析
             if status_summary['pending_chapters'] > 0:

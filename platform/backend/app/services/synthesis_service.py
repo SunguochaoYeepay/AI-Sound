@@ -18,6 +18,7 @@ from ..models import (
 )
 from ..exceptions import ServiceException, TTSException
 from ..utils.websocket_manager import ProgressWebSocketManager
+from ..utils.path_manager import get_path_manager, get_storage_path
 from ..tts_client import get_tts_client
 import logging
 
@@ -31,6 +32,7 @@ class SynthesisTaskManager:
         self.db = db
         self.websocket_manager = websocket_manager
         self.tts_client = get_tts_client()
+        self.path_manager = get_path_manager()
         
     async def create_task(
         self,
@@ -256,6 +258,12 @@ class SynthesisTaskManager:
             if not voice_profile:
                 raise TTSException(f"声音配置 {voice_id} 不存在")
             
+            # 验证声音文件是否存在
+            file_validation = voice_profile.validate_files()
+            if not file_validation['valid']:
+                missing_files = ', '.join(file_validation['missing_files'])
+                raise TTSException(f"声音文件不存在: {missing_files}")
+            
             # 调用TTS服务
             audio_result = await self.tts_client.synthesize_text(
                 text=segment.text_content,
@@ -307,17 +315,19 @@ class SynthesisTaskManager:
     async def _merge_audio_files(self, task: SynthesisTask, audio_files: List[Dict[str, Any]]) -> str:
         """合并音频文件"""
         try:
-            # 构建输出文件路径
-            project_dir = f"output/projects/{task.project_id}"
-            os.makedirs(project_dir, exist_ok=True)
-            
+            # 使用路径管理器构建输出文件路径
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             if task.chapter_id:
                 output_filename = f"chapter_{task.chapter_id}_{timestamp}.wav"
             else:
                 output_filename = f"project_{task.project_id}_{timestamp}.wav"
             
-            output_path = os.path.join(project_dir, output_filename)
+            # 创建项目专用目录
+            project_subdir = f"projects/{task.project_id}"
+            project_audio_dir = get_storage_path('audio', project_subdir)
+            os.makedirs(project_audio_dir, exist_ok=True)
+            
+            output_path = os.path.join(project_audio_dir, output_filename)
             
             # 调用音频合并服务
             file_paths = [af["file_path"] for af in audio_files if af.get("file_path")]

@@ -40,12 +40,172 @@
       </div>
 
       <a-row :gutter="24">
-        <!-- 左侧：书籍信息和内容 -->
+        <!-- 左侧：Tabs式内容区域 -->
         <a-col :span="16">
+          <a-card :bordered="false" class="content-tabs-card">
+            <a-tabs v-model:activeKey="activeTab" @change="handleTabChange">
+              <!-- 智能识别结果 Tab -->
+              <a-tab-pane key="chapters" tab="🤖 智能识别结果">
+                <div v-if="detectingChapters" class="detecting-chapters">
+                  <a-spin size="small" />
+                  <span style="margin-left: 8px;">正在检测章节...</span>
+                </div>
+                
+                <div v-else-if="chapters.length > 0" class="chapters-list">
+                  <div
+                    v-for="(chapter, index) in chapters"
+                    :key="index"
+                    class="chapter-item"
+                  >
+                    <div class="chapter-content" @click="scrollToChapter(chapter)">
+                      <div class="chapter-number">第{{ chapter.number }}章</div>
+                      <div class="chapter-title">{{ chapter.title }}</div>
+                      <div class="chapter-stats">{{ chapter.wordCount }} 字</div>
+                      <!-- 智能准备状态指示器 -->
+                      <div v-if="chapterPreparationStatus[chapter.id]" class="preparation-status">
+                        <a-tag 
+                          :color="getPreparationStatusColor(chapterPreparationStatus[chapter.id])"
+                          size="small"
+                        >
+                          {{ getPreparationStatusText(chapterPreparationStatus[chapter.id]) }}
+                        </a-tag>
+                      </div>
+                    </div>
+                    <div class="chapter-actions">
+                      <!-- 根据准备状态显示不同按钮 -->
+                      <template v-if="chapterPreparationStatus[chapter.id]?.preparation_complete">
+                        <!-- 已完成智能准备 -->
+                        <a-button 
+                          type="default" 
+                          size="small"
+                          @click.stop="openAnalysisDrawer(chapter)"
+                          title="查看智能准备结果"
+                        >
+                          📋 查看结果
+                        </a-button>
+                        <a-button 
+                          type="primary" 
+                          size="small"
+                          @click.stop="prepareChapterForSynthesis(chapter, true)"
+                          :loading="preparingChapters.has(chapter.id)"
+                          title="重新执行智能准备"
+                        >
+                          🔄 再次准备
+                        </a-button>
+                      </template>
+                      <template v-else>
+                        <!-- 未完成智能准备 -->
+                        <a-button 
+                          type="primary" 
+                          size="small"
+                          @click.stop="prepareChapterForSynthesis(chapter)"
+                          :loading="preparingChapters.has(chapter.id)"
+                          title="智能准备章节内容用于语音合成"
+                        >
+                          🎭 智能准备
+                        </a-button>
+                      </template>
+                    </div>
+                  </div>
+                </div>
+                
+                <div v-else class="no-chapters">
+                  <a-empty
+                    description="暂无章节"
+                  >
+                    <a-button type="primary" @click="detectChapters" :loading="detectingChapters">
+                      🔍 检测章节
+                    </a-button>
+                  </a-empty>
+                </div>
+              </a-tab-pane>
+
+              <!-- 原文预览 Tab -->
+              <a-tab-pane key="content" tab="📖 原文预览">
+                <div class="content-actions">
+                  <a-space>
+                    <a-button @click="copyContent" :disabled="!book.content">
+                      📋 复制全文
+                    </a-button>
+                    <a-button @click="downloadTxt" :disabled="!book.content">
+                      💾 下载TXT
+                    </a-button>
+                    <span class="content-stats">
+                      共 {{ chapters.length }} 章节 · {{ (book.word_count || 0).toLocaleString() }} 字
+                    </span>
+                  </a-space>
+                </div>
+                
+                <!-- 按章节显示内容 -->
+                <div v-if="chapters.length > 0" class="chapters-content-list">
+                  <div
+                    v-for="(chapter, index) in chapters"
+                    :key="index"
+                    class="chapter-content-item"
+                    :id="`chapter-${chapter.id}`"
+                  >
+                    <div class="chapter-content-header">
+                      <div class="chapter-info">
+                        <span class="chapter-number">第{{ chapter.number }}章</span>
+                        <span class="chapter-title">{{ chapter.title }}</span>
+                        <span class="chapter-word-count">{{ chapter.wordCount }} 字</span>
+                      </div>
+                      <div class="chapter-actions">
+                        <a-button 
+                          v-if="chapterPreparationStatus[chapter.id]?.preparation_complete"
+                          type="link" 
+                          size="small"
+                          @click="openAnalysisDrawer(chapter)"
+                        >
+                          📋 查看智能结果
+                        </a-button>
+                        <a-button 
+                          v-else
+                          type="link" 
+                          size="small"
+                          @click="prepareChapterForSynthesis(chapter)"
+                          :loading="preparingChapters.has(chapter.id)"
+                        >
+                          🎭 智能准备
+                        </a-button>
+                      </div>
+                    </div>
+                    <div class="chapter-content-text">
+                      <div v-if="chapter.content" class="content-text">
+                        {{ chapter.content }}
+                      </div>
+                      <div v-else class="no-chapter-content">
+                        <a-empty description="该章节暂无内容" size="small" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                
+                <!-- 无章节时显示完整内容 -->
+                <div v-else-if="book.content" class="full-content-fallback">
+                  <div class="content-text">
+                    {{ book.content }}
+                  </div>
+                </div>
+                
+                <div v-else class="no-content">
+                  <a-empty description="暂无内容">
+                    <a-button type="primary" @click="detectChapters" :loading="detectingChapters">
+                      🔍 检测章节
+                    </a-button>
+                  </a-empty>
+                </div>
+              </a-tab-pane>
+            </a-tabs>
+          </a-card>
+        </a-col>
+
+        <!-- 右侧：书籍信息和统计 -->
+        <a-col :span="8">
           <!-- 基本信息 -->
           <a-card title="📖 书籍信息" :bordered="false" class="info-card">
-            <a-descriptions :column="2" bordered>
-              <a-descriptions-item label="标题" :span="2">{{ book.title }}</a-descriptions-item>
+            <a-descriptions :column="1" bordered>
+              <a-descriptions-item label="标题">{{ book.title }}</a-descriptions-item>
               <a-descriptions-item label="作者">{{ book.author || '未知' }}</a-descriptions-item>
               <a-descriptions-item label="状态">
                 <a-tag :color="getStatusColor(book.status)">
@@ -54,9 +214,9 @@
               </a-descriptions-item>
               <a-descriptions-item label="字数">{{ (book.word_count || 0).toLocaleString() }}</a-descriptions-item>
               <a-descriptions-item label="章节数">{{ chapters.length || 0 }}</a-descriptions-item>
-              <a-descriptions-item label="创建时间" :span="2">{{ formatDate(book.created_at) }}</a-descriptions-item>
-              <a-descriptions-item label="更新时间" :span="2">{{ formatDate(book.updated_at) }}</a-descriptions-item>
-              <a-descriptions-item label="描述" :span="2">
+              <a-descriptions-item label="创建时间">{{ formatDate(book.created_at) }}</a-descriptions-item>
+              <a-descriptions-item label="更新时间">{{ formatDate(book.updated_at) }}</a-descriptions-item>
+              <a-descriptions-item label="描述">
                 <div class="description">
                   {{ book.description || '暂无描述' }}
                 </div>
@@ -74,41 +234,6 @@
             </div>
           </a-card>
 
-          <!-- 内容预览 -->
-          <a-card title="📄 内容预览" :bordered="false" class="content-card">
-            <div class="content-actions">
-              <a-space>
-                <a-button @click="toggleFullContent" :type="showFullContent ? 'primary' : 'default'">
-                  {{ showFullContent ? '收起内容' : '展开全文' }}
-                </a-button>
-                <a-button @click="copyContent" :disabled="!book.content">
-                  📋 复制全文
-                </a-button>
-                <a-button @click="downloadTxt" :disabled="!book.content">
-                  💾 下载TXT
-                </a-button>
-              </a-space>
-            </div>
-            
-            <div class="content-preview" :class="{ 'full-content': showFullContent }">
-              <div v-if="book.content" class="content-text">
-                {{ showFullContent ? book.content : previewContent }}
-                <div v-if="!showFullContent && book.content && book.content.length > 1000" class="content-fade">
-                  <div class="fade-overlay"></div>
-                  <a-button type="link" @click="toggleFullContent">
-                    点击展开全文 ({{ book.content.length.toLocaleString() }} 字符)
-                  </a-button>
-                </div>
-              </div>
-              <div v-else class="no-content">
-                暂无内容
-              </div>
-            </div>
-          </a-card>
-        </a-col>
-
-        <!-- 右侧：章节和统计 -->
-        <a-col :span="8">
           <!-- 内容统计 -->
           <a-card title="📊 内容统计" :bordered="false" class="stats-card">
             <div class="stats-grid">
@@ -128,82 +253,6 @@
                 <div class="stat-value">{{ chapters.length || 0 }}</div>
                 <div class="stat-label">章节数</div>
               </div>
-            </div>
-          </a-card>
-
-          <!-- 章节列表 -->
-          <a-card title="📚 章节列表" :bordered="false" class="chapters-card">
-            <div v-if="detectingChapters" class="detecting-chapters">
-              <a-spin size="small" />
-              <span style="margin-left: 8px;">正在检测章节...</span>
-            </div>
-            
-            <div v-else-if="chapters.length > 0" class="chapters-list">
-              <div
-                v-for="(chapter, index) in chapters"
-                :key="index"
-                class="chapter-item"
-              >
-                <div class="chapter-content" @click="scrollToChapter(chapter)">
-                  <div class="chapter-number">第{{ chapter.number }}章</div>
-                  <div class="chapter-title">{{ chapter.title }}</div>
-                  <div class="chapter-stats">{{ chapter.wordCount }} 字</div>
-                  <!-- 智能准备状态指示器 -->
-                  <div v-if="chapterPreparationStatus[chapter.id]" class="preparation-status">
-                    <a-tag 
-                      :color="getPreparationStatusColor(chapterPreparationStatus[chapter.id])"
-                      size="small"
-                    >
-                      {{ getPreparationStatusText(chapterPreparationStatus[chapter.id]) }}
-                    </a-tag>
-                  </div>
-                </div>
-                <div class="chapter-actions">
-                  <!-- 根据准备状态显示不同按钮 -->
-                  <template v-if="chapterPreparationStatus[chapter.id]?.preparation_complete">
-                    <!-- 已完成智能准备 -->
-                    <a-button 
-                      type="default" 
-                      size="small"
-                      @click.stop="viewPreparationResult(chapter)"
-                      title="查看智能准备结果"
-                    >
-                      📋 查看结果
-                    </a-button>
-                    <a-button 
-                      type="primary" 
-                      size="small"
-                      @click.stop="prepareChapterForSynthesis(chapter, true)"
-                      :loading="preparingChapters.has(chapter.id)"
-                      title="重新执行智能准备"
-                    >
-                      🔄 再次准备
-                    </a-button>
-                  </template>
-                  <template v-else>
-                    <!-- 未完成智能准备 -->
-                    <a-button 
-                      type="primary" 
-                      size="small"
-                      @click.stop="prepareChapterForSynthesis(chapter)"
-                      :loading="preparingChapters.has(chapter.id)"
-                      title="智能准备章节内容用于语音合成"
-                    >
-                      🎭 智能准备
-                    </a-button>
-                  </template>
-                </div>
-              </div>
-            </div>
-            
-            <div v-else class="no-chapters">
-              <a-empty
-                description="暂无章节"
-              >
-                <a-button type="primary" @click="detectChapters" :loading="detectingChapters">
-                  🔍 检测章节
-                </a-button>
-              </a-empty>
             </div>
           </a-card>
 
@@ -254,14 +303,22 @@
         </template>
       </a-result>
     </div>
+
+    <!-- 智能分析结果抽屉 -->
+    <EditableAnalysisDrawer
+      v-model:visible="analysisDrawerVisible"
+      :chapterId="currentChapterId"
+      @saved="handleAnalysisResultSaved"
+    />
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, h } from 'vue'
+import { ref, reactive, computed, onMounted, nextTick, h } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { message, Modal } from 'ant-design-vue'
 import { booksAPI } from '@/api'
+import EditableAnalysisDrawer from '@/components/EditableAnalysisDrawer.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -273,6 +330,11 @@ const loadingProjects = ref(false)
 const showFullContent = ref(false)
 const preparingChapters = ref(new Set()) // 正在准备的章节ID集合
 const chapterPreparationStatus = ref({}) // 章节智能准备状态
+const activeTab = ref('chapters') // 默认显示章节列表
+
+// 抽屉相关状态
+const analysisDrawerVisible = ref(false)
+const currentChapterId = ref(null)
 
 const book = ref(null)
 const chapters = ref([])
@@ -335,6 +397,11 @@ const formatDate = (dateString) => {
 
 const toggleFullContent = () => {
   showFullContent.value = !showFullContent.value
+}
+
+const handleTabChange = (key) => {
+  activeTab.value = key
+  console.log('[BookDetail] Tab切换到:', key)
 }
 
 const copyContent = async () => {
@@ -484,13 +551,26 @@ const loadChapters = async () => {
 }
 
 const scrollToChapter = (chapter) => {
-  // 滚动到内容区域对应章节
-  if (!showFullContent.value) {
-    showFullContent.value = true
-  }
+  // 切换到原文预览tab
+  activeTab.value = 'content'
   
-  // 简单实现：暂时只提示
-  message.info(`跳转到第${chapter.number}章：${chapter.title}`)
+  // 等待DOM更新后滚动到对应章节
+  nextTick(() => {
+    const chapterElement = document.getElementById(`chapter-${chapter.id}`)
+    if (chapterElement) {
+      chapterElement.scrollIntoView({ 
+        behavior: 'smooth', 
+        block: 'start' 
+      })
+      // 高亮显示该章节
+      chapterElement.classList.add('chapter-highlight')
+      setTimeout(() => {
+        chapterElement.classList.remove('chapter-highlight')
+      }, 2000)
+    } else {
+      message.info(`跳转到第${chapter.number}章：${chapter.title}`)
+    }
+  })
 }
 
 // 智能准备章节
@@ -571,81 +651,20 @@ const loadAllChapterPreparationStatus = async () => {
   await Promise.allSettled(promises)
 }
 
-// 查看智能准备结果
-const viewPreparationResult = async (chapter) => {
-  try {
-    console.log('[BookDetail] 查看智能准备结果:', chapter)
-    
-    // 首先尝试获取已有结果
-    let response
-    try {
-      response = await booksAPI.getPreparationResult(chapter.id)
-    } catch (error) {
-      // 如果获取已有结果失败，提示用户
-      console.warn('[BookDetail] 获取已有结果失败，可能需要重新执行智能准备:', error)
-      message.warning('未找到该章节的智能准备结果，请先执行智能准备')
-      return
-    }
-    
-    if (response.data && response.data.success) {
-      const result = response.data.data
-      const processingInfo = result.processing_info || {}
-      const synthesisJson = result.synthesis_json || {}
-      
-      // 显示详细结果
-      Modal.info({
-        title: `📋 智能准备结果 - ${chapter.title}`,
-        content: h('div', { style: 'max-height: 400px; overflow-y: auto;' }, [
-          h('div', { class: 'result-section' }, [
-            h('h4', { style: 'color: #1890ff; margin-bottom: 12px;' }, '🎯 处理信息'),
-            h('p', { style: 'margin: 4px 0;' }, `处理模式: ${processingInfo.mode || '未知'}`),
-            h('p', { style: 'margin: 4px 0;' }, `生成片段: ${processingInfo.total_segments || synthesisJson.synthesis_plan?.length || 0} 个`),
-            h('p', { style: 'margin: 4px 0;' }, `检测角色: ${processingInfo.characters_found || synthesisJson.characters?.length || 0} 个`),
-            h('p', { style: 'margin: 4px 0;' }, `估算tokens: ${processingInfo.estimated_tokens || '未知'}`),
-            h('p', { style: 'margin: 4px 0;' }, `旁白角色: ${processingInfo.narrator_added ? '已添加' : '未添加'}`),
-            h('p', { style: 'margin: 4px 0;' }, `数据库存储: ${processingInfo.saved_to_database ? '已保存' : '未保存'}`),
-            h('p', { style: 'margin: 4px 0; color: #666; font-size: 12px;' }, `最后更新: ${result.last_updated || '未知'}`),
-          ]),
-          h('div', { class: 'result-section', style: 'margin-top: 16px;' }, [
-            h('h4', { style: 'color: #52c41a; margin-bottom: 12px;' }, '🎭 检测到的角色'),
-            ...(synthesisJson.characters || []).length > 0 ? 
-              (synthesisJson.characters || []).map(char => 
-                h('p', { style: 'margin: 4px 0; padding-left: 16px;' }, `• ${char.name} (语音ID: ${char.voice_id})`)
-              ) : 
-              [h('p', { style: 'margin: 4px 0; padding-left: 16px; color: #999;' }, '暂无角色信息')]
-          ]),
-          h('div', { class: 'result-section', style: 'margin-top: 16px;' }, [
-            h('h4', { style: 'color: #fa8c16; margin-bottom: 12px;' }, '📝 合成片段预览'),
-            ...(synthesisJson.synthesis_plan || []).length > 0 ?
-              (synthesisJson.synthesis_plan || []).slice(0, 5).map((segment, index) => 
-                h('div', { 
-                  style: 'margin-bottom: 8px; padding: 8px; background: #f5f5f5; border-radius: 4px; border-left: 3px solid #1890ff;' 
-                }, [
-                  h('strong', { style: 'color: #1890ff;' }, `片段 ${index + 1}: ${segment.speaker}`),
-                  h('p', { 
-                    style: 'margin: 4px 0 0 0; color: #666; font-size: 13px; line-height: 1.4;' 
-                  }, segment.text.length > 80 ? segment.text.substring(0, 80) + '...' : segment.text)
-                ])
-              ) :
-              [h('p', { style: 'margin: 4px 0; color: #999;' }, '暂无合成片段信息')],
-            ...(synthesisJson.synthesis_plan?.length > 5 ? [
-              h('p', { 
-                style: 'color: #999; font-style: italic; text-align: center; margin-top: 12px;' 
-              }, `... 还有 ${synthesisJson.synthesis_plan.length - 5} 个片段`)
-            ] : [])
-          ])
-        ]),
-        width: 700,
-        okText: '关闭',
-        class: 'preparation-result-modal'
-      })
-    } else {
-      message.error('获取智能准备结果失败')
-    }
-  } catch (error) {
-    console.error('[BookDetail] 查看智能准备结果失败:', error)
-    message.error('获取智能准备结果失败')
-  }
+// 打开智能分析抽屉
+const openAnalysisDrawer = (chapter) => {
+  console.log('[BookDetail] 打开智能分析抽屉:', chapter)
+  currentChapterId.value = chapter.id
+  analysisDrawerVisible.value = true
+}
+
+// 处理分析结果保存后的回调
+const handleAnalysisResultSaved = (updatedData) => {
+  console.log('[BookDetail] 智能分析结果已保存:', updatedData)
+  message.success('智能分析结果已保存，章节数据已更新')
+  
+  // 可以在这里刷新章节的准备状态
+  // 或者更新本地的章节数据
 }
 
 // 获取准备状态颜色
@@ -754,10 +773,18 @@ onMounted(() => {
   font-size: 14px;
 }
 
-.info-card, .content-card, .stats-card, .chapters-card, .projects-card {
+.info-card, .content-card, .stats-card, .chapters-card, .projects-card, .content-tabs-card {
   margin-bottom: 24px;
   border-radius: 12px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.content-tabs-card {
+  min-height: 500px;
+}
+
+.content-tabs-card .ant-tabs-content-holder {
+  padding: 16px 0;
 }
 
 .tags-section {
@@ -780,6 +807,85 @@ onMounted(() => {
   border-bottom: 1px solid #f0f0f0;
 }
 
+.content-stats {
+  color: #666;
+  font-size: 12px;
+}
+
+/* 章节内容列表样式 */
+.chapters-content-list {
+  overflow-y: auto;
+}
+
+.chapter-content-item {
+  background: #fafafa;
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.chapter-content-item.chapter-highlight {
+  border-color: #1890ff;
+  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
+}
+
+.chapter-content-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: #f0f2f5;
+  border-bottom: 1px solid #e8e8e8;
+}
+
+.chapter-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.chapter-number {
+  font-size: 12px;
+  color: #1890ff;
+  font-weight: 500;
+}
+
+.chapter-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: #1f2937;
+}
+
+.chapter-word-count {
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.chapter-content-text {
+  padding: 16px;
+}
+
+.chapter-content-text .content-text {
+  white-space: pre-wrap;
+  line-height: 1.8;
+  font-size: 14px;
+  color: #374151;
+  font-family: 'Microsoft YaHei', sans-serif;
+}
+
+.no-chapter-content {
+  text-align: center;
+  padding: 20px;
+}
+
+.full-content-fallback {
+  padding: 16px;
+  background: #fafafa;
+  border-radius: 8px;
+}
+
 .content-preview {
   position: relative;
 }
@@ -797,7 +903,6 @@ onMounted(() => {
 }
 
 .content-preview:not(.full-content) .content-text {
-  max-height: 400px;
   overflow: hidden;
 }
 
@@ -857,7 +962,6 @@ onMounted(() => {
 }
 
 .chapters-list, .projects-list {
-  max-height: 400px;
   overflow-y: auto;
 }
 
@@ -883,13 +987,14 @@ onMounted(() => {
   cursor: pointer;
 }
 
-.chapter-number {
+/* 智能识别结果tab中的章节样式 */
+.chapters-list .chapter-number {
   font-size: 12px;
   color: #6b7280;
   margin-bottom: 4px;
 }
 
-.chapter-title {
+.chapters-list .chapter-title {
   font-size: 14px;
   font-weight: 500;
   color: #1f2937;

@@ -23,6 +23,7 @@ router = APIRouter(prefix="/intelligent-analysis", tags=["智能分析"])
 @router.post("/analyze/{project_id}")
 async def analyze_project(
     project_id: int,
+    request_data: Optional[Dict[str, Any]] = None,
     db: Session = Depends(get_db)
 ):
     """
@@ -40,8 +41,16 @@ async def analyze_project(
             # 创建章节分析服务
             chapter_analysis_service = ChapterAnalysisService(db)
             
+            # 获取选中的章节ID列表（如果有的话）
+            selected_chapter_ids = None
+            if request_data and 'chapter_ids' in request_data:
+                selected_chapter_ids = request_data['chapter_ids']
+                logger.info(f"智能分析将基于选中的章节: {selected_chapter_ids}")
+            else:
+                logger.info("智能分析将基于项目的所有章节")
+            
             # 1. 获取项目关联的章节并检查分析状态
-            chapters, status_summary = chapter_analysis_service.get_project_chapters_with_status(project_id)
+            chapters, status_summary = chapter_analysis_service.get_project_chapters_with_status(project_id, selected_chapter_ids)
             
             # 2. 检查是否所有章节都已完成分析
             if status_summary['pending_chapters'] > 0:
@@ -73,9 +82,9 @@ async def analyze_project(
                     "source": "chapter_analysis_validation"
                 }
             
-            # 3. 聚合所有章节的分析结果
+            # 3. 聚合选中章节的分析结果
             logger.info(f"开始聚合项目 {project_id} 的章节分析结果")
-            aggregated_data = chapter_analysis_service.aggregate_chapter_results(project_id)
+            aggregated_data = chapter_analysis_service.aggregate_chapter_results(project_id, selected_chapter_ids)
             
             # 4. 转换为合成格式并分配声音
             logger.info(f"开始为项目 {project_id} 分配声音")

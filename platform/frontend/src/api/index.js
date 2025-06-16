@@ -409,7 +409,15 @@ export const booksAPI = {
 
   // 获取已有的智能准备结果（不重新执行）
   getPreparationResult: (chapterId) => 
-    apiClient.get(`/content-preparation/result/${chapterId}`)
+    apiClient.get(`/content-preparation/result/${chapterId}`),
+
+  // 更新智能准备结果
+  updatePreparationResult: (chapterId, data) => 
+    apiClient.put(`/content-preparation/result/${chapterId}`, data),
+
+  // AI重新分段
+  aiResegmentText: (data) => 
+    apiClient.post(`/content-preparation/ai-resegment`, data)
 }
 
 // 音频库API
@@ -478,7 +486,13 @@ export const monitorAPI = {
 // 智能分析API (Mock)
 export const intelligentAnalysisAPI = {
   // 分析项目角色和文本
-  analyzeProject: (projectId) => apiClient.post(`/intelligent-analysis/analyze/${projectId}`),
+  analyzeProject: (projectId, params = null) => {
+    if (params) {
+      return apiClient.post(`/intelligent-analysis/analyze/${projectId}`, params)
+    } else {
+      return apiClient.post(`/intelligent-analysis/analyze/${projectId}`)
+    }
+  },
   
   // 应用分析结果
   applyAnalysis: (projectId, analysisData) => 

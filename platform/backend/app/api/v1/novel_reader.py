@@ -11,7 +11,7 @@ import json
 import logging
 
 from app.database import get_db
-from app.models import NovelProject, TextSegment, VoiceProfile
+from app.models import NovelProject, TextSegment, AudioFile, VoiceProfile
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/novel-reader", tags=["Novel Reader"])
@@ -142,6 +142,27 @@ async def get_project_detail(
                 if segment.voice_profile_id:
                     character_stats[speaker]["voice_assigned"] = True
         
+        # 获取项目相关的音频文件
+        audio_files = db.query(AudioFile).filter(
+            AudioFile.project_id == project_id
+        ).order_by(AudioFile.created_at.desc()).all()
+        
+        audio_files_data = []
+        for audio_file in audio_files:
+            audio_files_data.append({
+                "id": audio_file.id,
+                "filename": audio_file.filename,
+                "original_name": audio_file.original_name,
+                "file_path": audio_file.file_path,
+                "file_size": audio_file.file_size,
+                "duration": audio_file.duration,
+                "audio_type": audio_file.audio_type,
+                "text_content": audio_file.text_content,
+                "status": audio_file.status,
+                "created_at": audio_file.created_at.isoformat() if audio_file.created_at else None,
+                "url": f"/audio/{audio_file.filename}" if audio_file.filename else None
+            })
+        
         project_data = {
             "id": project.id,
             "name": project.name,
@@ -158,6 +179,7 @@ async def get_project_detail(
             "completed_at": project.completed_at.isoformat() if project.completed_at else None,
             "estimated_completion": project.estimated_completion.isoformat() if project.estimated_completion else None,
             "character_stats": character_stats,
+            "audio_files": audio_files_data,
             "segments_preview": [
                 {
                     "id": s.id,

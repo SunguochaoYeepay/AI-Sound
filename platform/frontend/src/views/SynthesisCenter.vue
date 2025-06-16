@@ -645,7 +645,14 @@ const runMockAnalysis = async () => {
   mockAnalyzing.value = true
   try {
     console.log('=== 开始智能分析测试 ===')
-    const response = await intelligentAnalysisAPI.analyzeProject(project.value.id)
+    console.log('选中的章节:', selectedChapters.value)
+    
+    // 构建分析参数，包含选中的章节
+    const analysisParams = {
+      chapter_ids: selectedChapters.value.length > 0 ? selectedChapters.value : null
+    }
+    
+    const response = await intelligentAnalysisAPI.analyzeProject(project.value.id, analysisParams)
     
     if (response.data.success) {
       mockResult.value = response.data.data
