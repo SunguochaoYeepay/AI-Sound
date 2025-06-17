@@ -548,6 +548,89 @@ async def pause_generation(
         db.rollback()
         raise HTTPException(status_code=500, detail=f"暂停项目失败: {str(e)}")
 
+@router.post("/projects/{project_id}/resume")
+async def resume_generation(
+    project_id: int,
+    background_tasks: BackgroundTasks,
+    parallel_tasks: int = Form(1, description="并行任务数"),
+    db: Session = Depends(get_db)
+):
+    """
+    恢复项目音频生成
+    只能恢复处于暂停状态的项目
+    """
+    try:
+        project = db.query(NovelProject).filter(NovelProject.id == project_id).first()
+        if not project:
+            raise HTTPException(status_code=404, detail="项目不存在")
+        
+        if project.status != 'paused':
+            raise HTTPException(status_code=400, detail=f"项目状态为 {project.status}，无法恢复。只能恢复暂停状态的项目")
+        
+        # 检查智能准备结果（使用智能准备模式）
+        if not project.book_id:
+            raise HTTPException(status_code=400, detail="项目未关联书籍，无法使用智能准备")
+        
+        # 获取智能准备结果
+        from app.models import AnalysisResult, BookChapter
+        analysis_results = db.query(AnalysisResult).join(
+            BookChapter, AnalysisResult.chapter_id == BookChapter.id
+        ).filter(
+            BookChapter.book_id == project.book_id,
+            AnalysisResult.status == 'completed',
+            AnalysisResult.synthesis_plan.isnot(None)
+        ).all()
+        
+        if not analysis_results:
+            raise HTTPException(
+                status_code=400, 
+                detail="未找到智能准备结果，请先在书籍管理页面完成智能准备"
+            )
+        
+        # 收集所有合成段落数据
+        synthesis_data = []
+        for result in analysis_results:
+            if result.synthesis_plan and 'synthesis_plan' in result.synthesis_plan:
+                plan_segments = result.synthesis_plan['synthesis_plan']
+                synthesis_data.extend(plan_segments)
+        
+        if not synthesis_data:
+            raise HTTPException(
+                status_code=400, 
+                detail="智能准备结果中没有合成段落数据，请重新进行智能准备"
+            )
+        
+        # 更新项目状态为处理中，但不重置进度（保持从暂停位置继续）
+        project.status = 'processing'
+        db.commit()
+        
+        # 启动后台任务处理音频生成
+        from app.novel_reader import process_audio_generation_from_synthesis_plan
+        background_tasks.add_task(
+            process_audio_generation_from_synthesis_plan,
+            project_id,
+            synthesis_data,
+            parallel_tasks
+        )
+        
+        return {
+            "success": True,
+            "message": "项目恢复成功",
+            "data": {
+                "project_id": project.id,
+                "status": project.status,
+                "total_segments": len(synthesis_data),
+                "parallel_tasks": parallel_tasks,
+                "current_progress": project.processed_segments or 0
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"恢复项目失败: {str(e)}")
+
 @router.put("/projects/{project_id}")
 async def update_project(
     project_id: int,
