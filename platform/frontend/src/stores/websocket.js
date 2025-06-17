@@ -41,7 +41,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
   // WebSocket URL
   const getWebSocketUrl = () => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const baseUrl = import.meta.env.VITE_API_BASE_URL || 'localhost:3000'
+    const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
     // 移除协议前缀（如果存在）
     const cleanHost = baseUrl.replace(/^https?:\/\//, '')
     return `${protocol}//${cleanHost}/ws`

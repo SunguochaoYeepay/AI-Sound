@@ -332,7 +332,7 @@
                   v-if="progressTimer"
                   danger
                   size="small"
-                  @click="stopProgressPolling"
+                  @click="stopWebSocketProgressMonitoring"
                   style="margin-top: 8px;"
                 >
                   ⏹️ 停止监控
@@ -569,56 +569,6 @@
       :keyboard="false"
       class="synthesis-progress-drawer"
     >
-      <template #extra>
-        <a-space>
-          <!-- 暂停/继续按钮 -->
-          <a-button
-            v-if="progressData.status === 'processing'"
-            type="default"
-            @click="pauseSynthesis"
-            :loading="pausingGeneration"
-          >
-            ⏸️ 暂停
-          </a-button>
-          
-          <a-button
-            v-if="progressData.status === 'paused'"
-            type="primary"
-            @click="resumeSynthesis"
-            :loading="resumingGeneration"
-          >
-            ▶️ 继续
-          </a-button>
-          
-          <!-- 取消合成按钮 -->
-          <a-button
-            v-if="progressData.status === 'processing' || progressData.status === 'paused'"
-            danger
-            @click="cancelSynthesis"
-            :loading="cancelingGeneration"
-          >
-            ⏹️ 取消
-          </a-button>
-          
-          <!-- 刷新状态按钮 -->
-          <a-button
-            v-if="progressData.status === 'processing' || progressData.status === 'paused'"
-            type="dashed"
-            @click="refreshProjectStatus"
-            size="small"
-          >
-            🔄 刷新状态
-          </a-button>
-          
-          <!-- 关闭按钮 -->
-          <a-button
-            v-if="progressData.status === 'completed' || progressData.status === 'failed' || progressData.status === 'cancelled'"
-            @click="closeSynthesisDrawer"
-          >
-            ✕ 关闭
-          </a-button>
-        </a-space>
-      </template>
       
       <div class="progress-container">
         <!-- 总体进度 -->
@@ -1688,7 +1638,7 @@ const startSynthesis = async () => {
       // 打开进度监控抽屉
       synthesisProgressDrawer.value = true
       
-      startProgressPolling()
+      startWebSocketProgressMonitoring()
     } else {
       throw new Error(response.data.message || '启动失败')
     }
@@ -1717,8 +1667,8 @@ const pauseSynthesis = async () => {
     message.success('合成已暂停')
     project.value.status = 'paused'
     
-    // 暂停时停止轮询和计时器，但保持抽屉打开
-    stopProgressPolling()
+    // 暂停时停止WebSocket监控和计时器，但保持抽屉打开
+    stopWebSocketProgressMonitoring()
     stopElapsedTimer()
     
     // 更新进度数据状态为暂停
@@ -1767,7 +1717,7 @@ const resumeSynthesis = async () => {
     // 打开进度监控抽屉
     synthesisProgressDrawer.value = true
     
-    startProgressPolling()
+    startWebSocketProgressMonitoring()
   } catch (error) {
     console.error('继续合成失败:', error)
     
@@ -1808,7 +1758,7 @@ const cancelSynthesis = async () => {
         project.value.status = 'cancelled'
         
         // 停止所有监控
-        stopProgressPolling()
+        stopWebSocketProgressMonitoring()
         stopElapsedTimer()
         
         // 更新进度数据状态
@@ -1824,7 +1774,7 @@ const cancelSynthesis = async () => {
         // 如果是因为状态不匹配的错误，直接标记为取消
         if (error.response?.data?.message?.includes('无法暂停')) {
           project.value.status = 'cancelled'
-          stopProgressPolling()
+          stopWebSocketProgressMonitoring()
           stopElapsedTimer()
           
           if (synthesisProgressDrawer.value) {
@@ -1992,98 +1942,78 @@ const checkTTSService = async () => {
   }
 }
 
-// 进度轮询
-const startProgressPolling = () => {
-  let errorCount = 0
-  const maxErrors = 5
-  const maxDuration = 30 * 60 * 1000 // 30分钟最大轮询时间
-  const startTime = Date.now()
+// WebSocket进度监控 - 替代轮询机制
+const startWebSocketProgressMonitoring = () => {
+  // 确保WebSocket连接
+  wsStore.connect()
   
-  progressTimer.value = setInterval(async () => {
-    try {
-      // 检查轮询时间是否超过最大限制
-      if (Date.now() - startTime > maxDuration) {
-        console.warn('轮询超时，自动停止')
-        stopProgressPolling()
-        message.warning('进度监控超时，请刷新页面查看最新状态')
-        return
-      }
-
-      const response = await readerAPI.getProgress(project.value.id)
-      if (response.data.success) {
-        const progress = response.data.data
-        
-        // 更新项目统计信息
-        project.value.statistics = {
-          totalSegments: progress.segments.total,
-          completedSegments: progress.segments.completed,
-          failedSegments: progress.segments.failed,
-          processingSegments: progress.segments.processing,
-          pendingSegments: progress.segments.pending
-        }
-        project.value.status = progress.status
-        project.value.current_segment = progress.current_segment
-        
-        // 如果进度监控抽屉已打开，同步更新进度数据
-        if (synthesisProgressDrawer.value) {
-          updateProgressDataFromAPI(progress)
-        }
-        
-        // 重置错误计数
-        errorCount = 0
-        
-        // 更新当前处理段落信息
-        currentProcessingSegment.value = getCurrentProcessingSegment()
-        
-        // 如果有新完成的片段，加载已完成片段列表
-        if (progress.segments.completed > (completedSegments.value.length || 0)) {
-          await loadCompletedSegments()
-        }
-        
-        // 检查停止条件
-        const shouldStop = progress.status === 'completed' || 
-                          progress.status === 'failed' ||
-                          progress.status === 'cancelled' ||
-                          // 如果没有段落在处理且没有待处理的段落，也停止轮询
-                          (progress.segments.processing === 0 && 
-                           progress.segments.pending === 0 && 
-                           progress.segments.total > 0)
-        
-        if (shouldStop) {
-          stopProgressPolling()
-          if (progress.status === 'completed') {
-            // 重新加载项目以获取最新数据（包括音频文件）
-            await loadProject()
-            message.success('合成完成！')
-          } else if (progress.status === 'failed') {
-            message.error('合成失败')
-          } else if (progress.status === 'cancelled') {
-            message.info('合成已取消')
-          } else {
-            message.info('任务处理完成')
-          }
-        }
-      } else {
-        throw new Error('API响应失败')
-      }
-    } catch (error) {
-      console.error('获取进度失败:', error)
-      errorCount++
+  // 订阅合成进度更新
+  unsubscribeWebSocket.value = wsStore.subscribe('progress_update', (data) => {
+    // 检查是否为当前项目的进度更新
+    if (data.type === 'synthesis' && data.project_id == project.value?.id) {
+      console.log('📨 收到WebSocket进度更新:', data)
       
-      // 连续错误过多时停止轮询
-      if (errorCount >= maxErrors) {
-        console.error(`连续${maxErrors}次获取进度失败，停止轮询`)
-        stopProgressPolling()
-        message.error('无法获取进度信息，请检查网络连接')
+      // 更新项目统计信息
+      project.value.statistics = {
+        totalSegments: data.total_segments,
+        completedSegments: data.completed_segments,
+        failedSegments: data.failed_segments,
+        processingSegments: data.total_segments - data.completed_segments - data.failed_segments,
+        pendingSegments: 0
+      }
+      project.value.status = data.status
+      project.value.current_segment = data.current_segment || 0
+      
+      // 如果进度监控抽屉已打开，同步更新进度数据
+      if (synthesisProgressDrawer.value) {
+        updateProgressDataFromWebSocket(data)
+      }
+      
+      // 更新当前处理段落信息
+      currentProcessingSegment.value = getCurrentProcessingSegment()
+      
+      // 如果有新完成的片段，加载已完成片段列表
+      if (data.completed_segments > (completedSegments.value.length || 0)) {
+        loadCompletedSegments()
+      }
+      
+      // 检查完成状态
+      if (data.status === 'completed') {
+        stopWebSocketProgressMonitoring()
+        stopElapsedTimer()
+        loadProject()
+        message.success('🎉 音频合成完成！')
+      } else if (data.status === 'failed') {
+        stopWebSocketProgressMonitoring()  
+        stopElapsedTimer()
+        message.error('❌ 音频合成失败')
+      } else if (data.status === 'cancelled') {
+        stopWebSocketProgressMonitoring()
+        stopElapsedTimer()
+        message.info('⏹️ 音频合成已取消')
       }
     }
-  }, 2000)
+  })
+  
+  // 发送订阅请求
+  wsStore.sendMessage('subscribe', {
+    session_id: `synthesis_${project.value.id}`
+  })
+  
+  console.log('🔌 WebSocket进度监控已启动，session_id:', `synthesis_${project.value.id}`)
 }
 
-const stopProgressPolling = () => {
-  if (progressTimer.value) {
-    clearInterval(progressTimer.value)
-    progressTimer.value = null
+const stopWebSocketProgressMonitoring = () => {
+  if (unsubscribeWebSocket.value) {
+    // 发送取消订阅请求
+    wsStore.sendMessage('unsubscribe', {
+      session_id: `synthesis_${project.value.id}`
+    })
+    
+    // 取消本地订阅
+    unsubscribeWebSocket.value()
+    unsubscribeWebSocket.value = null
+    console.log('🔌 WebSocket进度监控已停止')
   }
 }
 
@@ -2345,12 +2275,12 @@ const setupWebSocketListeners = () => {
       // 如果合成完成，停止计时器并刷新项目数据
       if (data.status === 'completed') {
         stopElapsedTimer()
-        stopProgressPolling()
+        stopWebSocketProgressMonitoring()
         loadProject()
         message.success('🎉 音频合成完成！')
       } else if (data.status === 'failed') {
         stopElapsedTimer()
-        stopProgressPolling()
+        stopWebSocketProgressMonitoring()
         message.error('❌ 音频合成失败')
       }
     }
@@ -2373,7 +2303,7 @@ onMounted(async () => {
     await loadCompletedSegments()
   }
   
-  // 如果正在处理中，启动进度轮询并自动打开监控抽屉
+  // 如果正在处理中，启动WebSocket监控并自动打开监控抽屉
   if (project.value?.status === 'processing') {
     currentProcessingSegment.value = getCurrentProcessingSegment()
     
@@ -2383,19 +2313,19 @@ onMounted(async () => {
     // 自动打开进度监控抽屉
     synthesisProgressDrawer.value = true
     
-    startProgressPolling()
+    startWebSocketProgressMonitoring()
   }
 })
 
 // 页面切换前的清理
 onBeforeRouteLeave(() => {
-  stopProgressPolling()
+  stopWebSocketProgressMonitoring()
   return true
 })
 
 // 组件卸载时的清理
 onUnmounted(() => {
-  stopProgressPolling()
+  stopWebSocketProgressMonitoring()
   stopElapsedTimer()
   // 清理WebSocket监听器
   if (unsubscribeWebSocket.value) {
@@ -2405,7 +2335,7 @@ onUnmounted(() => {
 
 // 浏览器刷新/关闭前的清理
 window.addEventListener('beforeunload', () => {
-  stopProgressPolling()
+  stopWebSocketProgressMonitoring()
 })
 
 // 合成进度监控相关方法
@@ -2645,16 +2575,16 @@ const formatTime = (timestamp) => {
   })
 }
 
-// 更新进度轮询以同步段落状态
-const updateProgressDataFromAPI = (progress) => {
+// 更新进度数据从WebSocket推送
+const updateProgressDataFromWebSocket = (data) => {
   // 更新总体进度数据
   progressData.value = {
-    progress: Math.round((progress.segments.completed / progress.segments.total) * 100),
-    status: progress.status,
-    completed_segments: progress.segments.completed,
-    total_segments: progress.segments.total,
-    failed_segments: progress.segments.failed,
-    current_processing: progress.current_processing || `正在处理第 ${progress.current_segment || 1} 段`
+    progress: data.progress || Math.round((data.completed_segments / data.total_segments) * 100),
+    status: data.status,
+    completed_segments: data.completed_segments,
+    total_segments: data.total_segments,
+    failed_segments: data.failed_segments,
+    current_processing: data.current_processing || `正在处理第 ${data.current_segment || 1} 段`
   }
   
   // 更新段落状态
