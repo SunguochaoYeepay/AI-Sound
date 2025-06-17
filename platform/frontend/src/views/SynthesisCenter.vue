@@ -54,15 +54,24 @@
             <div class="chapter-selection-content">
               <div class="selection-mode">
                 <a-alert
+                  v-if="project?.book?.id"
                   message="按章节合成"
                   description="为确保合成质量和系统稳定性，现在只支持按章节进行合成"
                   type="info"
                   show-icon
                   style="margin-bottom: 16px;"
                 />
+                <a-alert
+                  v-else
+                  message="直接文本合成"
+                  description="该项目是基于直接输入的文本创建的，将按照文本段落进行合成"
+                  type="info"
+                  show-icon
+                  style="margin-bottom: 16px;"
+                />
               </div>
               
-              <div class="chapter-list">
+              <div class="chapter-list" v-if="project?.book?.id">
                 <div class="chapter-controls">
                   <a-space>
                     <a-checkbox 
@@ -121,6 +130,21 @@
                     </a-button>
                   </a-empty>
                 </div>
+              </div>
+              
+              <!-- 直接文本项目的显示 -->
+              <div v-else class="text-project-info">
+                <a-empty
+                  description="该项目基于直接输入的文本创建"
+                >
+                  <template #image>
+                    📝
+                  </template>
+                  <p>项目将自动按照文本段落进行语音合成</p>
+                  <p style="color: #666; font-size: 12px;">
+                    文本段落已在项目创建时自动分段处理
+                  </p>
+                </a-empty>
               </div>
             </div>
           </a-card>
@@ -850,8 +874,10 @@ const getStartHint = () => {
 
 // 章节选择相关方法
 const loadChapters = async () => {
+  // 检查项目是否关联了书籍
   if (!project.value?.book?.id) {
-    message.warning('项目未关联书籍，无法加载章节')
+    console.log('项目未关联书籍，跳过章节加载')
+    availableChapters.value = []
     return
   }
   
