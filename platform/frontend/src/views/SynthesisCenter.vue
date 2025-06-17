@@ -569,6 +569,57 @@
       :keyboard="false"
       class="synthesis-progress-drawer"
     >
+      <template #extra>
+        <a-space>
+          <!-- 暂停/继续按钮 -->
+          <a-button
+            v-if="progressData.status === 'processing'"
+            type="default"
+            @click="pauseSynthesis"
+            :loading="pausingGeneration"
+          >
+            ⏸️ 暂停
+          </a-button>
+          
+          <a-button
+            v-if="progressData.status === 'paused'"
+            type="primary"
+            @click="resumeSynthesis"
+            :loading="resumingGeneration"
+          >
+            ▶️ 继续
+          </a-button>
+          
+          <!-- 取消合成按钮 -->
+          <a-button
+            v-if="progressData.status === 'processing' || progressData.status === 'paused'"
+            danger
+            @click="cancelSynthesis"
+            :loading="cancelingGeneration"
+          >
+            ⏹️ 取消
+          </a-button>
+          
+          <!-- 刷新状态按钮 -->
+          <a-button
+            v-if="progressData.status === 'processing' || progressData.status === 'paused'"
+            type="dashed"
+            @click="refreshProjectStatus"
+            size="small"
+          >
+            🔄 刷新状态
+          </a-button>
+          
+          <!-- 关闭按钮 -->
+          <a-button
+            v-if="progressData.status === 'completed' || progressData.status === 'failed' || progressData.status === 'cancelled'"
+            @click="closeSynthesisDrawer"
+          >
+            ✕ 关闭
+          </a-button>
+        </a-space>
+      </template>
+      
       <div class="progress-container">
         <!-- 总体进度 -->
         <div class="overall-progress">
@@ -609,6 +660,52 @@
             show-icon 
             class="current-alert"
           />
+        </div>
+
+        <!-- 合成控制面板 -->
+        <div v-if="progressData.status === 'processing' || progressData.status === 'paused'" class="synthesis-controls-panel">
+          <a-card size="small" title="⚡ 合成控制">
+            <a-space>
+              <!-- 暂停按钮 -->
+              <a-button
+                v-if="progressData.status === 'processing'"
+                type="default"
+                @click="pauseSynthesis"
+                :loading="pausingGeneration"
+              >
+                ⏸️ 暂停合成
+              </a-button>
+              
+              <!-- 继续按钮 -->
+              <a-button
+                v-if="progressData.status === 'paused'"
+                type="primary"
+                @click="resumeSynthesis"
+                :loading="resumingGeneration"
+              >
+                ▶️ 继续合成
+              </a-button>
+              
+              <!-- 取消按钮 -->
+              <a-button
+                danger
+                @click="cancelSynthesis"
+                :loading="cancelingGeneration"
+              >
+                ⏹️ 取消合成
+              </a-button>
+            </a-space>
+            
+            <!-- 状态说明 -->
+            <div class="control-hint" style="margin-top: 12px; font-size: 12px; color: #666;">
+              <div v-if="progressData.status === 'processing'">
+                ⚡ 合成正在进行中，您可以暂停或取消合成
+              </div>
+              <div v-if="progressData.status === 'paused'">
+                ⏸️ 合成已暂停，您可以继续合成或取消任务
+              </div>
+            </div>
+          </a-card>
         </div>
 
         <!-- 段落详细列表 -->
@@ -1607,6 +1704,15 @@ const startSynthesis = async () => {
 const pauseSynthesis = async () => {
   pausingGeneration.value = true
   try {
+    // 先检查当前状态
+    const currentStatus = project.value.status
+    console.log('暂停前项目状态:', currentStatus)
+    
+    if (currentStatus !== 'processing') {
+      message.warning(`当前状态为 ${currentStatus}，无法暂停`)
+      return
+    }
+    
     await readerAPI.pauseGeneration(project.value.id)
     message.success('合成已暂停')
     project.value.status = 'paused'
@@ -1622,7 +1728,14 @@ const pauseSynthesis = async () => {
     }
   } catch (error) {
     console.error('暂停合成失败:', error)
-    message.error('暂停合成失败')
+    
+    // 如果是状态错误，尝试刷新项目状态
+    if (error.response?.data?.message?.includes('无法暂停')) {
+      message.warning('项目状态已改变，正在刷新...')
+      await refreshProjectStatus()
+    } else {
+      message.error('暂停合成失败: ' + (error.response?.data?.message || error.message))
+    }
   } finally {
     pausingGeneration.value = false
   }
@@ -1632,6 +1745,15 @@ const pauseSynthesis = async () => {
 const resumeSynthesis = async () => {
   resumingGeneration.value = true
   try {
+    // 先检查当前状态
+    const currentStatus = project.value.status
+    console.log('继续前项目状态:', currentStatus)
+    
+    if (currentStatus !== 'paused' && currentStatus !== 'failed') {
+      message.warning(`当前状态为 ${currentStatus}，无法继续合成`)
+      return
+    }
+    
     // 使用start接口来恢复，因为后端可能没有单独的resume接口
     await readerAPI.startGeneration(project.value.id, {
       parallel_tasks: synthesisConfig.parallelTasks
@@ -1648,7 +1770,14 @@ const resumeSynthesis = async () => {
     startProgressPolling()
   } catch (error) {
     console.error('继续合成失败:', error)
-    message.error('继续合成失败')
+    
+    // 如果是状态错误，尝试刷新项目状态
+    if (error.response?.data?.message?.includes('状态')) {
+      message.warning('项目状态已改变，正在刷新...')
+      await refreshProjectStatus()
+    } else {
+      message.error('继续合成失败: ' + (error.response?.data?.message || error.message))
+    }
   } finally {
     resumingGeneration.value = false
   }
@@ -1666,10 +1795,16 @@ const cancelSynthesis = async () => {
     onOk: async () => {
       cancelingGeneration.value = true
       try {
-        // 使用暂停接口来停止合成，然后更新状态为cancelled
-        await readerAPI.pauseGeneration(project.value.id)
+        // 先检查当前项目状态
+        const currentStatus = project.value.status
+        console.log('当前项目状态:', currentStatus)
         
-        // 更新项目状态为已取消
+        // 如果当前状态是 processing，先暂停
+        if (currentStatus === 'processing') {
+          await readerAPI.pauseGeneration(project.value.id)
+        }
+        
+        // 更新项目状态为已取消（无论之前是什么状态）
         project.value.status = 'cancelled'
         
         // 停止所有监控
@@ -1685,7 +1820,22 @@ const cancelSynthesis = async () => {
         message.success('合成已取消')
       } catch (error) {
         console.error('取消合成失败:', error)
-        message.error('取消合成失败')
+        
+        // 如果是因为状态不匹配的错误，直接标记为取消
+        if (error.response?.data?.message?.includes('无法暂停')) {
+          project.value.status = 'cancelled'
+          stopProgressPolling()
+          stopElapsedTimer()
+          
+          if (synthesisProgressDrawer.value) {
+            progressData.value.status = 'cancelled'
+            progressData.value.current_processing = '⏹️ 合成已取消'
+          }
+          
+          message.success('合成已取消')
+        } else {
+          message.error('取消合成失败: ' + (error.response?.data?.message || error.message))
+        }
       } finally {
         cancelingGeneration.value = false
       }
@@ -1763,6 +1913,37 @@ const restartSynthesis = async () => {
     message.error('重新启动合成失败')
   } finally {
     synthesisStarting.value = false
+  }
+}
+
+// 刷新项目状态
+const refreshProjectStatus = async () => {
+  try {
+    const response = await readerAPI.getProjectDetail(project.value.id)
+    if (response.data.success) {
+      const newStatus = response.data.data.status
+      console.log('刷新后项目状态:', newStatus)
+      
+      project.value.status = newStatus
+      
+      // 同步更新进度数据状态
+      if (synthesisProgressDrawer.value) {
+        progressData.value.status = newStatus
+        
+        if (newStatus === 'paused') {
+          progressData.value.current_processing = '⏸️ 合成已暂停'
+        } else if (newStatus === 'processing') {
+          progressData.value.current_processing = '🎵 合成进行中...'
+        } else if (newStatus === 'completed') {
+          progressData.value.current_processing = '✅ 合成已完成'
+        }
+      }
+      
+      message.info(`项目状态已更新为: ${getStatusText(newStatus)}`)
+    }
+  } catch (error) {
+    console.error('刷新项目状态失败:', error)
+    message.error('无法获取最新状态')
   }
 }
 
@@ -1913,9 +2094,17 @@ const loadPreparationResults = async () => {
     return
   }
   
+  if (selectedChapters.value.length === 0) {
+    message.warning('请先选择要合成的章节')
+    return
+  }
+  
   loadingResults.value = true
   try {
-    const response = await booksAPI.getBookAnalysisResults(project.value.book.id)
+    // 只获取选中章节的智能准备结果
+    const response = await booksAPI.getBookAnalysisResults(project.value.book.id, {
+      chapter_ids: selectedChapters.value
+    })
     
     if (response.data.success) {
       preparationResults.value = response.data
@@ -1970,7 +2159,7 @@ const loadPreparationResults = async () => {
         }
       })
       
-      message.success(`成功加载智能准备结果：${detectedCharacters.value.length} 个角色，${totalSegments} 个段落`)
+      message.success(`成功加载 ${selectedChapters.value.length} 个章节的智能准备结果：${detectedCharacters.value.length} 个角色，${totalSegments} 个段落`)
       
     } else {
       message.error('加载智能准备结果失败: ' + response.data.message)
@@ -2460,11 +2649,11 @@ const formatTime = (timestamp) => {
 const updateProgressDataFromAPI = (progress) => {
   // 更新总体进度数据
   progressData.value = {
-    progress: Math.round((progress.statistics.completed / progress.statistics.total) * 100),
+    progress: Math.round((progress.segments.completed / progress.segments.total) * 100),
     status: progress.status,
-    completed_segments: progress.statistics.completed,
-    total_segments: progress.statistics.total,
-    failed_segments: progress.statistics.failed,
+    completed_segments: progress.segments.completed,
+    total_segments: progress.segments.total,
+    failed_segments: progress.segments.failed,
     current_processing: progress.current_processing || `正在处理第 ${progress.current_segment || 1} 段`
   }
   
@@ -3071,7 +3260,41 @@ const updateProgressDataFromAPI = (progress) => {
   margin-bottom: 16px;
     font-size: 18px;
     color: #1f2937;
-}
+  }
+
+  .synthesis-controls-panel {
+    margin: 20px 0;
+    
+    .ant-card {
+      border: 1px solid #e8f4fd;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    }
+    
+    .ant-card-head {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border-radius: 8px 8px 0 0;
+      
+      .ant-card-head-title {
+        color: white;
+        font-weight: 600;
+      }
+    }
+    
+    .ant-space {
+      width: 100%;
+      justify-content: center;
+    }
+    
+    .control-hint {
+      text-align: center;
+      background: #f6f8fa;
+      padding: 8px 12px;
+      border-radius: 4px;
+      border-left: 3px solid #1890ff;
+    }
+  }
 
   .progress-stats {
     display: flex;
