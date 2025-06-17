@@ -208,8 +208,8 @@ async def create_project(
             if sentence.strip():
                 segment = TextSegment(
                     project_id=project.id,
-                    segment_order=i + 1,
-                    text_content=sentence.strip(),
+                    paragraph_index=i + 1,
+                    content=sentence.strip(),
                     status='pending'
                 )
                 db.add(segment)
