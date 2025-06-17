@@ -1,5 +1,19 @@
 # 📋 AI-Sound 更新日志
 
+## [1.5.1] - 2024-01-XX
+
+### 🔧 界面优化与功能增强
+- ✅ **前端界面优化** - 优化书籍创建、角色管理、项目创建等核心界面
+- ✅ **语音合成中心** - 改进合成流程和用户体验
+- ✅ **Docker构建优化** - 优化前端Docker构建配置
+- ✅ **后端API改进** - 优化books.py API接口实现
+
+### 🎯 技术优化
+- 📱 **前端组件** - BookCreate.vue、Characters.vue、NovelProjectCreate.vue等界面优化
+- 🔄 **项目管理** - NovelProjects.vue项目列表和管理功能改进
+- 🎵 **合成中心** - SynthesisCenter.vue语音合成流程优化
+- 🐳 **容器化** - 前端Dockerfile构建流程改进
+
 ## [1.5.0] - 2024-01-XX
 
 ### 🖥️ 系统监控API实现 (Step 5)
