@@ -303,9 +303,9 @@
                   </a-button>
                 </div>
 
-                <!-- 继续合成按钮 - 只在暂停时显示 -->
+                <!-- 继续合成按钮 - 暂停或部分完成时显示 -->
                 <a-button
-                  v-if="project.status === 'paused'"
+                  v-if="project.status === 'paused' || (project.status === 'failed' && project.statistics?.completedSegments > 0)"
                   type="primary"
                   size="large"
                   block
@@ -314,6 +314,19 @@
                   style="margin-top: 8px;"
                 >
                   ▶️ 继续合成
+                </a-button>
+
+                <!-- 部分完成重试按钮 -->
+                <a-button
+                  v-if="(project.status === 'partial_completed' || project.status === 'failed') && project.statistics?.completedSegments > 0 && project.statistics?.completedSegments < project.statistics?.totalSegments"
+                  type="primary"
+                  size="large"
+                  block
+                  @click="resumeSynthesis"
+                  :loading="resumingGeneration"
+                  style="margin-top: 8px;"
+                >
+                  🔄 继续未完成的合成
                 </a-button>
 
                 <!-- TTS服务恢复按钮 -->
@@ -348,12 +361,33 @@
                   style="margin-top: 16px;"
                 />
               </div>
+
+              <!-- 合成状态提示 -->
+              <div v-if="project.status === 'failed' && project.statistics?.completedSegments > 0" class="synthesis-status-hint">
+                <a-alert
+                  message="合成部分完成"
+                  :description="`已完成 ${project.statistics.completedSegments}/${project.statistics.totalSegments} 个段落，可以继续合成剩余部分。`"
+                  type="info"
+                  show-icon
+                  style="margin-top: 16px;"
+                />
+              </div>
+
+              <div v-if="project.status === 'partial_completed'" class="synthesis-status-hint">
+                <a-alert
+                  message="合成部分完成"
+                  :description="`已完成 ${project.statistics?.completedSegments || 0}/${project.statistics?.totalSegments || 0} 个段落，可以继续合成剩余部分或重新开始。`"
+                  type="warning"
+                  show-icon
+                  style="margin-top: 16px;"
+                />
+              </div>
             </div>
           </a-card>
 
           <!-- 合成进度 -->
           <a-card
-            v-if="project.status === 'processing' || project.status === 'paused' || project.statistics?.completedSegments > 0"
+            v-if="project.status === 'processing' || project.status === 'paused' || project.status === 'failed' || project.status === 'partial_completed' || project.statistics?.completedSegments > 0"
             title="📊 合成进度"
             :bordered="false"
             class="progress-card"
@@ -1699,15 +1733,23 @@ const resumeSynthesis = async () => {
     const currentStatus = project.value.status
     console.log('继续前项目状态:', currentStatus)
     
-    if (currentStatus !== 'paused' && currentStatus !== 'failed') {
+    if (currentStatus !== 'paused' && currentStatus !== 'failed' && currentStatus !== 'partial_completed') {
       message.warning(`当前状态为 ${currentStatus}，无法继续合成`)
       return
     }
     
-    // 使用start接口来恢复，因为后端可能没有单独的resume接口
-    await readerAPI.startGeneration(project.value.id, {
-      parallel_tasks: synthesisConfig.parallelTasks
-    })
+    // 根据状态选择合适的API
+    if (currentStatus === 'paused') {
+      // 暂停状态使用resume接口
+      await readerAPI.resumeGeneration(project.value.id, {
+        parallel_tasks: synthesisConfig.parallelTasks
+      })
+    } else {
+      // failed 和 partial_completed 状态使用start接口
+      await readerAPI.startGeneration(project.value.id, {
+        parallel_tasks: synthesisConfig.parallelTasks
+      })
+    }
     message.success('合成已继续')
     project.value.status = 'processing'
     
@@ -1856,7 +1898,7 @@ const restartSynthesis = async () => {
       // 打开进度监控抽屉
       synthesisProgressDrawer.value = true
       
-      startProgressPolling()
+      startWebSocketProgressMonitoring()
     }
   } catch (error) {
     console.error('重新启动合成失败:', error)

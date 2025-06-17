@@ -432,7 +432,7 @@ async def start_project_generation(
         if not project:
             raise HTTPException(status_code=404, detail="项目不存在")
         
-        if project.status not in ['pending', 'paused', 'completed', 'failed', 'processing']:
+        if project.status not in ['pending', 'paused', 'completed', 'failed', 'processing', 'partial_completed']:
             raise HTTPException(status_code=400, detail=f"项目状态为 {project.status}，无法启动")
         
         # 检查智能准备结果（使用智能准备模式）
@@ -468,12 +468,18 @@ async def start_project_generation(
                 detail="智能准备结果中没有合成段落数据，请重新进行智能准备"
             )
         
-        # 如果是已完成、失败或正在处理的项目，重置进度（防止卡住）
-        if project.status in ['completed', 'failed', 'processing']:
+        # 根据状态决定是否重置进度
+        if project.status in ['completed', 'processing']:
+            # 完全重置：已完成或正在处理中的项目
             project.processed_segments = 0
             project.current_segment = 0
             project.started_at = None
             project.completed_at = None
+        elif project.status == 'failed':
+            # 部分重置：失败项目重置时间但保留进度（用户可能想重试失败的部分）
+            project.started_at = None
+            project.completed_at = None
+        # partial_completed 状态不重置，继续上次的进度
         
         # 更新项目状态
         project.status = 'processing'
