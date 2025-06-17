@@ -549,8 +549,7 @@
         <!-- 总体进度 -->
         <div class="overall-progress">
           <h3>
-            <a-icon type="sound" />
-            合成总进度
+            🎵 合成总进度
           </h3>
           <a-progress 
             :percent="progressData.progress" 
@@ -620,8 +619,7 @@
                     @click="playSegmentAudioAdvanced(segment)"
                     :loading="segment.playing"
                   >
-                    <a-icon type="play-circle" />
-                    播放试听
+                    ▶️ 播放试听
                   </a-button>
                   <span class="success-info">
                     ✅ {{ segment.completion_time ? formatTime(segment.completion_time) : '完成' }}
@@ -637,8 +635,7 @@
                     @click="retrySegment(segment)"
                     :loading="segment.retrying"
                   >
-                    <a-icon type="redo" />
-                    重试合成
+                    🔄 重试合成
                   </a-button>
                   <span class="error-info">
                     ❌ {{ segment.error_message || '合成失败' }}
@@ -664,12 +661,10 @@
           >
             <template #extra>
               <a-button type="primary" size="large" @click="downloadFinalAudio">
-                <a-icon type="download" />
-                下载完整音频
+                📥 下载完整音频
               </a-button>
               <a-button @click="closeSynthesisDrawer">
-                <a-icon type="check" />
-                确认完成
+                ✅ 确认完成
               </a-button>
             </template>
           </a-result>
@@ -686,12 +681,10 @@
           />
           <div class="failure-buttons">
             <a-button type="primary" @click="retryAllFailedSegments">
-              <a-icon type="redo" />
-              重试所有失败段落
+              🔄 重试所有失败段落
             </a-button>
             <a-button @click="downloadPartialAudio" v-if="progressData.completed_segments > 0">
-              <a-icon type="download" />
-              下载已完成部分
+              📥 下载已完成部分
             </a-button>
           </div>
         </div>
