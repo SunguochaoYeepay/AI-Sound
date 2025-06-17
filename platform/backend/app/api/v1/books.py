@@ -543,7 +543,7 @@ def update_book_patch(
     return {
         "success": True,
         "data": book.to_dict()
-    }
+    } 
 
 
 @router.get("/{book_id}/analysis-results")

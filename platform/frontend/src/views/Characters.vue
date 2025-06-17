@@ -1904,20 +1904,20 @@ const prepareCharacterConfigs = () => {
   
   // 显示所有角色，包括已存在的
   newCharacters.value = smartDiscovery.discoveredCharacters.map(char => ({
-    ...char,
-    config: {
-      name: char.name,
-      gender: char.recommended_config?.gender || 'female',
-      personality: char.recommended_config?.personality || 'calm',
-      color: char.recommended_config?.color || colorOptions[0],
-      description: char.recommended_config?.description || `${char.name}角色配置`,
-      // 文件上传相关
-      audioFileList: [],
-      latentFileList: [],
-      audioFileInfo: null,
-      latentFileInfo: null
-    }
-  }))
+      ...char,
+      config: {
+        name: char.name,
+        gender: char.recommended_config?.gender || 'female',
+        personality: char.recommended_config?.personality || 'calm',
+        color: char.recommended_config?.color || colorOptions[0],
+        description: char.recommended_config?.description || `${char.name}角色配置`,
+        // 文件上传相关
+        audioFileList: [],
+        latentFileList: [],
+        audioFileInfo: null,
+        latentFileInfo: null
+      }
+    }))
   
   console.log('[角色配置] 所有角色（包括已存在）:', newCharacters.value)
   

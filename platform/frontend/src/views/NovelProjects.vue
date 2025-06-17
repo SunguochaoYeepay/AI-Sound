@@ -203,14 +203,14 @@
                   >
                     查看
                   </a-button>
-                  <a-button 
-                    type="text" 
-                    size="small" 
-                    @click.stop="viewAudioFiles(project)"
-                    title="查看音频文件"
-                  >
-                    音频
-                  </a-button>
+                <a-button 
+                  type="text" 
+                  size="small" 
+                  @click.stop="viewAudioFiles(project)"
+                  title="查看音频文件"
+                >
+                  音频
+                </a-button>
                   <a-button 
                     type="primary" 
                     size="small"
@@ -232,14 +232,14 @@
                   >
                     音频
                   </a-button>
-                  <a-button 
-                    type="primary" 
-                    size="small"
-                    @click.stop="openProject(project)"
-                    :disabled="project.status === 'failed'"
-                  >
+                <a-button 
+                  type="primary" 
+                  size="small"
+                  @click.stop="openProject(project)"
+                  :disabled="project.status === 'failed'"
+                >
                     {{ project.status === 'processing' ? '监控' : '合成' }}
-                  </a-button>
+                </a-button>
                 </template>
               </div>
             </div>
@@ -286,12 +286,12 @@
                     <a-button type="text" size="small" @click.stop="openProject(record)" title="查看合成结果">
                       查看
                     </a-button>
-                    <a-button type="text" size="small" @click.stop="viewAudioFiles(record)" title="查看音频文件">
-                      音频
-                    </a-button>
+                  <a-button type="text" size="small" @click.stop="viewAudioFiles(record)" title="查看音频文件">
+                    音频
+                  </a-button>
                     <a-button type="primary" size="small" @click.stop="restartSynthesis(record)" title="重新合成">
                       重新合成
-                    </a-button>
+                  </a-button>
                   </template>
                   
                   <!-- 其他状态项目的操作 -->

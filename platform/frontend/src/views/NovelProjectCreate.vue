@@ -234,16 +234,16 @@
           <!-- 快速操作 -->
           <a-card title="🚀 快速创建" :bordered="false" class="config-card">
             <div class="quick-actions">
-              <a-button 
-                type="primary" 
-                size="large" 
-                block 
-                @click="createProject" 
-                :loading="creating"
-                :disabled="!canCreate"
-              >
-                {{ isEditing ? '💾 保存修改' : '✨ 创建项目' }}
-              </a-button>
+                <a-button 
+                  type="primary" 
+                  size="large" 
+                  block 
+                  @click="createProject" 
+                  :loading="creating"
+                  :disabled="!canCreate"
+                >
+                  {{ isEditing ? '💾 保存修改' : '✨ 创建项目' }}
+                </a-button>
             </div>
 
             <!-- 创建提示 -->

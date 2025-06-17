@@ -259,14 +259,14 @@
 
                 <!-- 合成控制按钮组 - 处理中时显示 -->
                 <div v-if="project.status === 'processing'" class="synthesis-controls">
-                  <a-button
-                    size="large"
-                    block
-                    @click="pauseSynthesis"
+                <a-button
+                  size="large"
+                  block
+                  @click="pauseSynthesis"
                     :loading="pausingGeneration"
-                  >
-                    ⏸️ 暂停合成
-                  </a-button>
+                >
+                  ⏸️ 暂停合成
+                </a-button>
                   <a-button
                     danger
                     size="large"
@@ -575,7 +575,7 @@
               suffix="秒"
               :value-style="{ color: '#1890ff' }"
             />
-          </div>
+  </div>
         </div>
 
         <!-- 当前处理状态 -->
@@ -3049,10 +3049,10 @@ const updateProgressDataFromAPI = (progress) => {
   }
 
   .overall-progress h3 {
-    margin-bottom: 16px;
+  margin-bottom: 16px;
     font-size: 18px;
     color: #1f2937;
-  }
+}
 
   .progress-stats {
     display: flex;
@@ -3067,8 +3067,8 @@ const updateProgressDataFromAPI = (progress) => {
   .stat-value {
     display: block;
     font-size: 16px;
-    font-weight: 600;
-    color: #1f2937;
+  font-weight: 600;
+  color: #1f2937;
   }
 
   .stat-label {

@@ -245,13 +245,13 @@
                       </a-form-item>
                       
                       <a-form-item label="章节内容">
-                        <a-textarea
+                  <a-textarea
                           v-model:value="chapterEditForm.content"
                           placeholder="请输入章节内容..."
                           :rows="15"
-                          show-count
-                          class="content-textarea"
-                        />
+                    show-count
+                    class="content-textarea"
+                  />
                       </a-form-item>
                       
 
