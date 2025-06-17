@@ -9,6 +9,7 @@ from sqlalchemy import desc, asc, func, or_, and_
 from typing import Dict, List, Any, Optional
 import json
 import logging
+import re
 
 from app.database import get_db
 from app.models import NovelProject, TextSegment, AudioFile, VoiceProfile
@@ -108,6 +109,138 @@ async def get_projects(
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"获取项目列表失败: {str(e)}")
+
+@router.post("/projects")
+async def create_project(
+    name: str = Form(...),
+    description: str = Form(""),
+    content: str = Form(""),
+    book_id: Optional[int] = Form(None),
+    initial_characters: str = Form("[]"),
+    settings: str = Form("{}"),
+    db: Session = Depends(get_db)
+):
+    """
+    创建新的朗读项目
+    支持基于书籍引用或直接输入文本内容
+    """
+    try:
+        # 验证项目名称
+        if not name or len(name.strip()) == 0:
+            raise HTTPException(status_code=400, detail="项目名称不能为空")
+        
+        # 检查项目名称是否已存在
+        existing = db.query(NovelProject).filter(NovelProject.name == name).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="项目名称已存在")
+        
+        # 获取文本内容：优先使用书籍，其次使用直接输入的内容
+        text_content = ""
+        actual_book_id = None
+        
+        if book_id:
+            # 方式1：基于书籍
+            from app.models import Book
+            book = db.query(Book).filter(Book.id == book_id).first()
+            if not book:
+                raise HTTPException(status_code=404, detail="指定的书籍不存在")
+            
+            if not book.content or len(book.content.strip()) == 0:
+                raise HTTPException(status_code=400, detail="书籍内容为空，无法创建项目")
+            
+            text_content = book.content
+            actual_book_id = book_id
+        elif content and content.strip():
+            # 方式2：直接输入文本
+            text_content = content.strip()
+            actual_book_id = None
+        else:
+            raise HTTPException(status_code=400, detail="必须提供书籍ID或文本内容")
+
+        # 解析初始角色映射
+        try:
+            initial_chars = json.loads(initial_characters) if initial_characters else []
+            logger.info(f"解析初始角色: {initial_chars}")
+        except json.JSONDecodeError as e:
+            logger.error(f"初始角色JSON解析失败: {e}")
+            raise HTTPException(status_code=400, detail="初始角色格式错误")
+        
+        # 解析项目设置
+        try:
+            project_settings = json.loads(settings) if settings else {}
+            logger.info(f"解析项目设置: {project_settings}")
+        except json.JSONDecodeError as e:
+            logger.error(f"项目设置JSON解析失败: {e}")
+            raise HTTPException(status_code=400, detail="项目设置格式错误")
+        
+        # 创建项目记录
+        project = NovelProject(
+            name=name,
+            description=description,
+            book_id=actual_book_id,
+            status='pending'
+        )
+        
+        # 设置初始角色映射（如果有）
+        char_mapping = {}
+        if initial_chars:
+            for char_info in initial_chars:
+                if isinstance(char_info, dict) and 'name' in char_info and 'voice_id' in char_info:
+                    char_mapping[char_info['name']] = char_info['voice_id']
+        
+        # 使用项目模型的方法设置角色映射
+        if hasattr(project, 'set_character_mapping'):
+            project.set_character_mapping(char_mapping)
+        
+        # 设置项目配置
+        if project_settings and hasattr(project, 'set_settings'):
+            project.set_settings(project_settings)
+        
+        db.add(project)
+        db.flush()  # 获取项目ID
+        
+        # 简单的文本分段（这里简化处理，实际应该有更复杂的分段逻辑）
+        import re
+        sentences = re.split(r'[。！？.!?]', text_content)
+        segments_count = 0
+        
+        for i, sentence in enumerate(sentences):
+            if sentence.strip():
+                segment = TextSegment(
+                    project_id=project.id,
+                    segment_order=i + 1,
+                    paragraph_index=i + 1,
+                    text_content=sentence.strip(),
+                    status='pending'
+                )
+                db.add(segment)
+                segments_count += 1
+        
+        # 更新项目统计
+        project.total_segments = segments_count
+        project.processed_segments = 0
+        
+        db.commit()
+        
+        return {
+            "success": True,
+            "message": "项目创建成功",
+            "data": {
+                "id": project.id,
+                "name": project.name,
+                "description": project.description,
+                "status": project.status,
+                "total_segments": project.total_segments,
+                "book_id": project.book_id,
+                "created_at": project.created_at.isoformat() if project.created_at else None
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"创建项目失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"创建失败: {str(e)}")
 
 @router.get("/projects/{project_id}")
 async def get_project_detail(
