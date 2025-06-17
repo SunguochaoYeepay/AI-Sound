@@ -13,6 +13,11 @@
   - 将 `progress.statistics.completed` 改为 `progress.segments.completed`
   - 解决前端TypeError: Cannot read properties of undefined错误
   - 确保进度监控功能正常工作
+- ✅ **音频合成后台任务修复** - 修复合成功能无法真正启动的关键问题
+  - 在API v1的start接口中添加真正的后台任务启动逻辑
+  - 集成智能准备结果获取和音频生成任务启动
+  - 修复0/36进度显示问题，现在能正确显示实际合成进度
+  - 确保点击"继续合成"后能真正开始音频生成
 
 ### 🎯 技术优化
 - 📱 **前端组件** - BookCreate.vue、Characters.vue、NovelProjectCreate.vue等界面优化
