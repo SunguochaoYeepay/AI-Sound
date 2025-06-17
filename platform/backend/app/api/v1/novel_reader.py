@@ -266,12 +266,12 @@ async def get_project_detail(
         # 获取角色统计
         character_stats = {}
         for segment in segments:
-            speaker = segment.detected_speaker
+            speaker = segment.speaker
             if speaker:
                 if speaker not in character_stats:
                     character_stats[speaker] = {"count": 0, "voice_assigned": False}
                 character_stats[speaker]["count"] += 1
-                if segment.voice_profile_id:
+                if segment.voice_id:
                     character_stats[speaker]["voice_assigned"] = True
         
         # 获取项目相关的音频文件
@@ -315,10 +315,10 @@ async def get_project_detail(
             "segments_preview": [
                 {
                     "id": s.id,
-                    "order": s.segment_order,
-                    "text": s.text_content[:100] + "..." if len(s.text_content) > 100 else s.text_content,
-                    "speaker": s.detected_speaker,
-                    "voice_profile_id": s.voice_profile_id,
+                    "order": s.paragraph_index,
+                    "text": s.content[:100] + "..." if len(s.content) > 100 else s.content,
+                    "speaker": s.speaker,
+                    "voice_profile_id": s.voice_id,
                     "status": s.status
                 }
                 for s in segments[:10]  # 只返回前10个分段预览
