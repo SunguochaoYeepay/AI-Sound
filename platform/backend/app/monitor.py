@@ -20,7 +20,7 @@ import zipfile
 import csv
 
 from app.database import get_db, engine
-from app.models import SystemLog, UsageStats, VoiceProfile, NovelProject, TextSegment
+from app.models import SystemLog, UsageStats, VoiceProfile, NovelProject  # TextSegment已废弃
 from app.tts_client import MegaTTS3Client, get_tts_client
 from app.utils import log_system_event, save_upload_file
 

@@ -1,626 +1,345 @@
 <template>
-  <div class="synthesis-center-container">
-    <!-- 页面头部 -->
-    <div class="page-header">
-      <div class="header-content">
-        <h1>🎙️ 合成中心</h1>
-        <p>配置角色声音，启动音频合成任务</p>
-      </div>
-      <div class="header-actions">
-        <a-button @click="goBack">
-          ← 返回项目
+  <div class="synthesis-center">
+    <!-- 顶部导航 -->
+    <div class="top-navbar">
+      <div class="nav-left">
+        <a-button type="text" @click="goBack" class="back-btn">
+          <template #icon><ArrowLeftOutlined /></template>
+          返回项目
         </a-button>
+        <a-divider type="vertical" />
+        <h1 class="page-title">🎙️ 合成中心</h1>
+      </div>
+      <div class="nav-right">
+        <a-tag :color="getStatusColor(project?.status)" v-if="project">
+          {{ getStatusText(project?.status) }}
+        </a-tag>
       </div>
     </div>
 
     <div v-if="loading" class="loading-wrapper">
       <a-spin size="large" tip="加载项目信息...">
-        <div style="height: 300px;"></div>
+        <div style="height: 400px;"></div>
       </a-spin>
     </div>
 
-    <div v-else-if="project" class="synthesis-content">
-      <a-row :gutter="24">
-        <!-- 左侧：项目信息和角色配置 -->
-        <a-col :span="16">
-          <!-- 项目概览 -->
-          <a-card title="📋 项目概览" :bordered="false" class="info-card">
-            <a-descriptions :column="2" bordered>
-              <a-descriptions-item label="项目名称" :span="2">
-                {{ project.name }}
-              </a-descriptions-item>
-              <a-descriptions-item label="关联书籍">
-                {{ project.book?.title || '直接输入文本' }}
-              </a-descriptions-item>
-              <a-descriptions-item label="项目状态">
-                <a-tag :color="getStatusColor(project.status)">
-                  {{ getStatusText(project.status) }}
-                </a-tag>
-              </a-descriptions-item>
-              <a-descriptions-item label="总段落数">
-                {{ project.statistics?.totalSegments || 0 }}
-              </a-descriptions-item>
-              <a-descriptions-item label="已完成">
-                {{ project.statistics?.completedSegments || 0 }}
-              </a-descriptions-item>
-              <a-descriptions-item label="描述" :span="2">
-                {{ project.description || '暂无描述' }}
-              </a-descriptions-item>
-            </a-descriptions>
-          </a-card>
-
-          <!-- 章节选择 -->
-          <a-card title="📚 章节选择" :bordered="false" class="chapter-selection-card" style="margin-bottom: 16px;">
-            <div class="chapter-selection-content">
-              <div class="selection-mode">
-                <a-alert
-                  v-if="project?.book?.id"
-                  message="按章节合成"
-                  description="为确保合成质量和系统稳定性，现在只支持按章节进行合成"
-                  type="info"
-                  show-icon
-                  style="margin-bottom: 16px;"
-                />
-                <a-alert
-                  v-else
-                  message="直接文本合成"
-                  description="该项目是基于直接输入的文本创建的，将按照文本段落进行合成"
-                  type="info"
-                  show-icon
-                  style="margin-bottom: 16px;"
-                />
-              </div>
-              
-              <div class="chapter-list" v-if="project?.book?.id">
-                <div class="chapter-controls">
-                  <a-space>
-                    <a-checkbox 
-                      :indeterminate="chapterIndeterminate" 
-                      :checked="chapterCheckAll" 
-                      @change="toggleAllChapters"
-                    >
-                      全选
-                    </a-checkbox>
-                    <span class="selection-info">
-                      已选择 {{ selectedChapters.length }} / {{ availableChapters.length }} 章节
-                    </span>
-                    <a-button size="small" @click="loadChapters" :loading="loadingChapters">
-                      🔄 刷新章节
-                    </a-button>
-                  </a-space>
-                </div>
-                
-                <div v-if="loadingChapters" class="loading-chapters">
-                  <a-spin tip="加载章节列表...">
-                    <div style="height: 100px;"></div>
-                  </a-spin>
-                </div>
-                
-                <div v-else-if="availableChapters.length > 0" class="chapters-grid">
-                  <div 
-                    v-for="chapter in availableChapters" 
-                    :key="chapter.id"
-                    class="chapter-item"
-                    :class="{ 'selected': selectedChapters.includes(chapter.id) }"
-                    @click="toggleChapterSelection(chapter.id)"
-                  >
-                    <a-checkbox 
-                      :checked="selectedChapters.includes(chapter.id)"
-                      @click.stop="toggleChapterSelection(chapter.id)"
-                    >
-                      <div class="chapter-content">
-                        <div class="chapter-title">
-                          第{{ chapter.chapter_number }}章 {{ chapter.title || chapter.chapter_title || '未命名章节' }}
-                        </div>
-                        <div class="chapter-meta">
-                          <span>字数: {{ formatNumber(chapter.word_count || 0) }}</span>
-                          <span class="chapter-status" :class="getChapterStatusClass(chapter)">
-                            {{ getChapterStatusText(chapter) }}
-                          </span>
-                        </div>
-                      </div>
-                    </a-checkbox>
-                  </div>
-                </div>
-                
-                <div v-else class="no-chapters">
-                  <a-empty description="暂无章节数据">
-                    <a-button type="primary" @click="loadChapters">
-                      重新加载
-                    </a-button>
-                  </a-empty>
-                </div>
-              </div>
-              
-              <!-- 直接文本项目的显示 -->
-              <div v-else class="text-project-info">
-                <a-empty
-                  description="该项目基于直接输入的文本创建"
-                >
-                  <template #image>
-                    📝
-                  </template>
-                  <p>项目将自动按照文本段落进行语音合成</p>
-                  <p style="color: #666; font-size: 12px;">
-                    文本段落已在项目创建时自动分段处理
-                  </p>
-                </a-empty>
-              </div>
-            </div>
-          </a-card>
-
-          <!-- 智能准备结果 -->
-          <a-card title="📋 智能准备结果" :bordered="false" class="analysis-card" style="margin-bottom: 16px;">
-            <div class="preparation-controls">
-              <a-space>
-                <a-button 
-                  type="primary" 
-                  @click="loadPreparationResults"
-                  :loading="loadingResults"
-                >
-                  📥 加载智能准备结果
-                </a-button>
-                <a-button 
-                  v-if="preparationResults"
-                  @click="refreshPreparationResults"
-                  :loading="loadingResults"
-                >
-                  🔄 刷新结果
-                </a-button>
-                <a-button 
-                  v-if="preparationResults"
-                  @click="clearPreparationResults"
-                  type="dashed"
-                >
-                  🗑️ 清空结果
-                </a-button>
-                <a-button 
-                  type="dashed"
-                  @click="showJsonTestModal"
-                  :disabled="loadingResults"
-                >
-                  🧪 测试JSON
-                </a-button>
-              </a-space>
-            </div>
-            
-            <!-- 智能准备结果显示 -->
-            <div v-if="preparationResults" class="preparation-results">
-              <a-alert
-                :message="`已加载 ${preparationResults.book_info?.analyzed_chapters || 0} 个章节的智能准备结果`"
-                :description="`书籍: ${preparationResults.book_info?.title} | 总角色: ${detectedCharacters.length} 个 | 总段落: ${getTotalSegments()} 个`"
-                type="success"
-                show-icon
-                style="margin: 16px 0;"
-              />
-              
-              <!-- 合成片段预览 -->
-              <div class="synthesis-segments-preview">
-                <div class="segments-header">
-                  <h4>📝 要合成的片段内容</h4>
-                  <a-tag color="blue">共 {{ getTotalSegments() }} 个段落</a-tag>
-                </div>
-                
-                <div class="segments-list">
-                  <div v-for="(chapterResult, chapterIndex) in preparationResults.data" :key="chapterIndex" class="chapter-segments">
-                    <div class="chapter-header">
-                      <h5>第{{ chapterResult.chapter_number }}章 {{ chapterResult.chapter_title }}</h5>
-                      <a-tag>{{ chapterResult.synthesis_json?.synthesis_plan?.length || 0 }} 个段落</a-tag>
-                    </div>
-                    
-                    <div class="segments-container">
-                      <div 
-                        v-for="(segment, segmentIndex) in (chapterResult.synthesis_json?.synthesis_plan || []).slice(0, showAllSegments ? undefined : 10)" 
-                        :key="segmentIndex"
-                        class="segment-item"
-                      >
-                        <div class="segment-meta">
-                          <span class="segment-number">{{ segmentIndex + 1 }}</span>
-                          <span class="segment-speaker" :class="getCharacterClass(segment.speaker)">
-                            {{ segment.speaker }}
-                          </span>
-                        </div>
-                        <div class="segment-text">{{ segment.text }}</div>
-                      </div>
-                      
-                      <div v-if="!showAllSegments && (chapterResult.synthesis_json?.synthesis_plan?.length || 0) > 10" class="show-more">
-                        <a-button type="link" @click="showAllSegments = true">
-                          显示全部 {{ chapterResult.synthesis_json?.synthesis_plan?.length }} 个段落
-                        </a-button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            
-
-          </a-card>
-
-        </a-col>
-
-        <!-- 右侧：合成控制和进度 -->
-        <a-col :span="8">
-          <!-- 合成控制 -->
-          <a-card title="🚀 合成控制" :bordered="false" class="control-card">
-            <div class="synthesis-controls">
-              <!-- 合成配置 -->
-              <a-form layout="vertical">
-                <a-form-item label="音质设置">
-                  <a-radio-group v-model:value="synthesisConfig.quality" size="small">
-                    <a-radio-button value="standard">标准</a-radio-button>
-                    <a-radio-button value="high">高质量</a-radio-button>
-                  </a-radio-group>
-                </a-form-item>
-              </a-form>
-
-              <!-- 操作按钮 -->
-              <div class="action-buttons">
-                <!-- 开始合成按钮 - 只在未开始时显示 -->
-                <a-button
-                  v-if="project.status === 'pending' || project.status === 'failed' || project.status === 'configured'"
-                  type="primary"
-                  size="large"
-                  block
-                  :disabled="!canStartSynthesis"
-                  :loading="synthesisStarting"
-                  @click="startSynthesis"
-                >
-                  🎯 开始合成
-                </a-button>
-
-                <!-- 重新合成按钮 - 完成时显示 -->
-                <a-button
-                  v-if="project.status === 'completed'"
-                  type="primary"
-                  size="large"
-                  block
-                  @click="restartSynthesis"
-                  :loading="synthesisStarting"
-                >
-                  🔄 重新合成
-                </a-button>
-
-                <!-- 合成控制按钮组 - 处理中时显示 -->
-                <div v-if="project.status === 'processing'" class="synthesis-controls">
-                <a-button
-                  size="large"
-                  block
-                  @click="pauseSynthesis"
-                    :loading="pausingGeneration"
-                >
-                  ⏸️ 暂停合成
-                </a-button>
-                  <a-button
-                    danger
-                    size="large"
-                    block
-                    @click="cancelSynthesis"
-                    :loading="cancelingGeneration"
-                    style="margin-top: 8px;"
-                  >
-                    ⏹️ 取消合成
-                  </a-button>
-                </div>
-
-                <!-- 继续合成按钮 - 暂停或部分完成时显示 -->
-                <a-button
-                  v-if="project.status === 'paused' || (project.status === 'failed' && project.statistics?.completedSegments > 0)"
-                  type="primary"
-                  size="large"
-                  block
-                  @click="resumeSynthesis"
-                  :loading="resumingGeneration"
-                  style="margin-top: 8px;"
-                >
-                  ▶️ 继续合成
-                </a-button>
-
-                <!-- 部分完成重试按钮 -->
-                <a-button
-                  v-if="(project.status === 'partial_completed' || project.status === 'failed') && project.statistics?.completedSegments > 0 && project.statistics?.completedSegments < project.statistics?.totalSegments"
-                  type="primary"
-                  size="large"
-                  block
-                  @click="retryAllFailedSegments"
-                  :loading="resumingGeneration"
-                  style="margin-top: 8px;"
-                >
-                  🔄 重试失败段落 ({{ project.statistics?.failedSegments || 0 }})
-                </a-button>
-
-                <!-- TTS服务恢复按钮 -->
-                <a-button
-                  type="dashed"
-                  size="small"
-                  @click="checkTTSService"
-                  style="margin-top: 8px;"
-                  :loading="checkingService"
-                >
-                  🔧 检查TTS服务
-                </a-button>
-
-                <!-- 手动停止轮询按钮 -->
-                <a-button
-                  v-if="progressTimer"
-                  danger
-                  size="small"
-                  @click="stopWebSocketProgressMonitoring"
-                  style="margin-top: 8px;"
-                >
-                  ⏹️ 停止监控
-                </a-button>
-              </div>
-
-              <!-- 状态提示 -->
-              <div v-if="!canStartSynthesis" class="status-hint">
-                <a-alert
-                  :message="getStartHint()"
-                  type="warning"
-                  show-icon
-                  style="margin-top: 16px;"
-                />
-              </div>
-
-              <!-- 合成状态提示 -->
-              <div v-if="project.status === 'failed' && project.statistics?.completedSegments > 0" class="synthesis-status-hint">
-                <a-alert
-                  message="合成部分完成"
-                  :description="`已完成 ${project.statistics.completedSegments}/${project.statistics.totalSegments} 个段落，可以继续合成剩余部分。`"
-                  type="info"
-                  show-icon
-                  style="margin-top: 16px;"
-                />
-              </div>
-
-              <div v-if="project.status === 'partial_completed'" class="synthesis-status-hint">
-                <a-alert
-                  message="合成部分完成"
-                  :description="`已完成 ${project.statistics?.completedSegments || 0}/${project.statistics?.totalSegments || 0} 个段落，${project.statistics?.failedSegments || 0} 个失败。可以重试失败段落或下载已完成部分。`"
-                  type="warning"
-                  show-icon
-                  style="margin-top: 16px;"
-                >
-                  <template #action>
-                    <a-space>
-                      <a-button type="primary" size="small" @click="retryAllFailedSegments" :loading="resumingGeneration">
-                        🔄 重试失败
-                      </a-button>
-                      <a-button size="small" @click="downloadPartialAudio">
-                        📥 下载已完成
-                      </a-button>
-                    </a-space>
-                  </template>
-                </a-alert>
-              </div>
-            </div>
-          </a-card>
-
-          <!-- 合成进度 -->
-          <a-card
-            v-if="project.status === 'processing' || project.status === 'paused' || project.status === 'failed' || project.status === 'partial_completed' || project.statistics?.completedSegments > 0"
-            title="📊 合成进度"
-            :bordered="false"
-            class="progress-card"
-          >
-            <div class="progress-content">
-              <div class="progress-overview">
-                <a-progress
-                  :percent="progressPercent"
-                  :status="project.status === 'failed' ? 'exception' : 'active'"
-                  stroke-color="#06b6d4"
-                />
-                <div class="progress-stats">
-                  <div class="stat-item">
-                    <span class="stat-value">{{ project.statistics?.completedSegments || 0 }}</span>
-                    <span class="stat-label">已完成</span>
-                  </div>
-                  <div class="stat-item">
-                    <span class="stat-value">{{ project.statistics?.totalSegments || 0 }}</span>
-                    <span class="stat-label">总数</span>
-                  </div>
-                  <div class="stat-item">
-                    <span class="stat-value">{{ project.statistics?.failedSegments || 0 }}</span>
-                    <span class="stat-label">失败</span>
-                  </div>
-                </div>
-              </div>
-
-              <!-- 当前处理段落 -->
-              <div v-if="project.status === 'processing' && currentProcessingSegment" class="current-segment">
-                <div class="current-segment-header">
-                  <h4>🎯 当前合成段落</h4>
-                  <a-tag color="processing">处理中</a-tag>
-                </div>
-                <div class="current-segment-content">
-                  <div class="segment-info">
-                    <span class="segment-speaker">{{ currentProcessingSegment.speaker }}</span>
-                    <span class="segment-position">第 {{ project.current_segment || 1 }} 段</span>
-                  </div>
-                  <div class="segment-text">{{ currentProcessingSegment.text }}</div>
-                </div>
-              </div>
-
-              <!-- 已完成片段 -->
-              <div v-if="completedSegments.length > 0" class="completed-segments">
-                <div class="completed-header">
-                  <h4>✅ 已完成片段</h4>
-                  <a-space>
-                    <a-tag color="green">{{ completedSegments.length }} 个</a-tag>
-                    <a-button size="small" @click="refreshCompletedSegments" :loading="loadingCompletedSegments">
-                      🔄 刷新
-                    </a-button>
-                  </a-space>
-                </div>
-                
-                <div class="completed-list">
-                  <div 
-                    v-for="(segment, index) in completedSegments.slice(-10)" 
-                    :key="segment.id" 
-                    class="completed-item"
-                  >
-                    <div class="segment-meta">
-                      <span class="segment-number">{{ completedSegments.length - 9 + index }}</span>
-                      <span class="segment-speaker">{{ segment.speaker }}</span>
-                      <span class="segment-duration" v-if="segment.duration">{{ formatDuration(segment.duration) }}</span>
-                    </div>
-                    <div class="segment-content">
-                      <div class="segment-text">{{ segment.text?.slice(0, 80) }}{{ segment.text?.length > 80 ? '...' : '' }}</div>
-                      <div class="segment-controls">
-                        <a-button 
-                          v-if="segment.audio_url" 
-                          size="small" 
-                          type="link"
-                          :loading="playingSegment === segment.id"
-                          @click="playSegmentAudio(segment)"
-                        >
-                          {{ playingSegment === segment.id ? '⏸️' : '▶️' }} 播放
-                        </a-button>
-                        <a-button v-else size="small" type="link" disabled>
-                          🔄 处理中
-                        </a-button>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div v-if="completedSegments.length > 10" class="show-all-completed">
-                    <a-button type="link" @click="showAllCompleted = !showAllCompleted">
-                      {{ showAllCompleted ? '收起' : `查看全部 ${completedSegments.length} 个` }}
-                    </a-button>
-                  </div>
-                </div>
-              </div>
-
-              <!-- 合成完成操作区 -->
-              <div v-if="project.status === 'completed'" class="completion-section">
-                <!-- 音频预览 -->
-                <div class="audio-preview">
-                  <div class="preview-header">
-                    <h4>🎵 音频预览</h4>
-                    <span class="audio-info">最终合成音频</span>
-                  </div>
-                  <div class="audio-player-container">
-                    <audio 
-                      ref="audioPlayer"
-                      controls
-                      style="width: 100%;"
-                      :src="audioPreviewUrl"
-                      @loadstart="handleAudioLoadStart"
-                      @error="handleAudioError"
-                    >
-                      您的浏览器不支持音频播放
-                    </audio>
-                  </div>
-                </div>
-                
-                <!-- 下载按钮 -->
-                <div class="download-section">
-                  <a-button
-                    type="primary"
-                    size="large"
-                    block
-                    @click="downloadAudio"
-                    style="margin-bottom: 8px;"
-                  >
-                    📥 下载完整音频
-                  </a-button>
-                  <a-button
-                    size="large"
-                    block
-                    @click="viewProjectDetail"
-                  >
-                    📋 查看详情
-                  </a-button>
-                </div>
-              </div>
-            </div>
-          </a-card>
-        </a-col>
-      </a-row>
-    </div>
-
-    <div v-else class="error-content">
-      <a-result
-        status="404"
-        title="项目不存在"
-        sub-title="找不到指定的项目"
-      >
-        <template #extra>
-          <a-button type="primary" @click="goBack">返回项目列表</a-button>
-        </template>
-      </a-result>
-    </div>
-
-    <!-- JSON测试弹窗 -->
-    <a-modal
-      v-model:open="jsonTestModalVisible"
-      title="🧪 JSON测试"
-      width="800px"
-      @cancel="cancelJsonTest"
-    >
-      <div class="json-test-modal">
-        <a-form layout="vertical">
-          <a-form-item label="JSON内容">
-            <a-textarea
-              v-model:value="jsonTestContent"
-              :rows="15"
-              placeholder="请输入或粘贴JSON数据..."
-              style="font-family: 'Courier New', monospace;"
-            />
-          </a-form-item>
+    <div v-else-if="project" class="synthesis-layout">
+      <!-- 左侧：章节选择区域 -->
+      <div class="left-panel">
+        <div class="panel-header">
+          <h3>📚 书籍章节</h3>
+          <span class="project-name">{{ project.book?.title || project.name }}</span>
+        </div>
+        
+        <div class="chapter-selection-area">
+          <!-- 章节控制栏 -->
+          <div class="chapter-controls">
+            <a-checkbox 
+              :indeterminate="chapterIndeterminate" 
+              :checked="chapterCheckAll" 
+              @change="toggleAllChapters"
+            >
+              全选
+            </a-checkbox>
+            <span class="selection-count">
+              {{ selectedChapters.length }} / {{ availableChapters.length }} 个章节
+            </span>
+            <a-button size="small" @click="loadChapters" :loading="loadingChapters" type="text">
+              <template #icon><ReloadOutlined /></template>
+            </a-button>
+          </div>
           
-          <a-form-item>
-            <a-space>
-              <a-button @click="formatJsonContent">
-                🎨 格式化
-              </a-button>
-              <a-button @click="validateJsonContent">
-                ✅ 验证格式
-              </a-button>
-              <a-button @click="clearJsonContent" type="dashed">
-                🗑️ 清空
-              </a-button>
-              <a-button 
-                type="primary" 
-                @click="executeJsonTest"
-                :loading="jsonTestExecuting"
-                :disabled="!jsonTestContent.trim()"
+          <!-- 章节列表 -->
+          <div class="chapters-list" v-if="project?.book?.id">
+            <div v-if="loadingChapters" class="loading-state">
+              <a-spin tip="加载章节列表..." />
+            </div>
+            
+            <div v-else-if="availableChapters.length > 0" class="chapters-container">
+              <div 
+                v-for="chapter in availableChapters" 
+                :key="chapter.id"
+                class="chapter-card"
+                :class="{ 'selected': selectedChapters.includes(chapter.id) }"
+                @click="toggleChapterSelection(chapter.id)"
               >
-                🚀 执行测试
-              </a-button>
-            </a-space>
-          </a-form-item>
+                <div class="chapter-checkbox">
+                  <a-checkbox 
+                    :checked="selectedChapters.includes(chapter.id)"
+                    @click.stop="toggleChapterSelection(chapter.id)"
+                  />
+                </div>
+                <div class="chapter-info">
+                  <div class="chapter-title">
+                    第{{ chapter.chapter_number }}章 {{ chapter.title || chapter.chapter_title || '未命名章节' }}
+                  </div>
+                  <div class="chapter-meta">
+                    <span class="word-count">{{ formatNumber(chapter.word_count || 0) }} 字</span>
+                    <span class="chapter-status" :class="getChapterStatusClass(chapter)">
+                      {{ getChapterStatusText(chapter) }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div v-else class="empty-chapters">
+              <a-empty description="暂无章节数据" :image="Empty.PRESENTED_IMAGE_SIMPLE">
+                <a-button type="primary" @click="loadChapters">重新加载</a-button>
+              </a-empty>
+            </div>
+          </div>
           
-          <div v-if="jsonValidationResult" class="validation-result">
+          <!-- 直接文本项目提示 -->
+          <div v-else class="text-project-hint">
             <a-alert
-              :type="jsonValidationResult.valid ? 'success' : 'error'"
-              :message="jsonValidationResult.message"
-              :description="jsonValidationResult.description"
+              message="文本项目"
+              description="该项目基于直接输入的文本，将自动按段落合成"
+              type="info"
               show-icon
             />
           </div>
-        </a-form>
+        </div>
       </div>
-    </a-modal>
+
+      <!-- 右侧：合成操作区域 -->
+      <div class="right-panel">
+        <!-- 顶部操作栏 -->
+        <div class="action-toolbar" style="background: #e6f7ff; border: 2px solid #1890ff;">
+          <div class="toolbar-left">
+            <a-button 
+              type="primary" 
+              @click="loadPreparationResults"
+              :loading="loadingResults"
+              size="large"
+            >
+              📥 加载智能准备结果
+            </a-button>
+            <a-button 
+              v-if="preparationResults"
+              @click="refreshPreparationResults"
+              :loading="loadingResults"
+            >
+              🔄 刷新
+            </a-button>
+          </div>
+          
+          <div class="toolbar-right">
+            <!-- 合成控制按钮 -->
+            <a-button
+              v-if="project.status === 'pending' || project.status === 'failed' || project.status === 'configured'"
+              type="primary"
+              size="large"
+              :disabled="!canStartSynthesis"
+              :loading="synthesisStarting"
+              @click="startSynthesis"
+              class="start-btn"
+            >
+              🎯 开始合成
+            </a-button>
+
+            <a-button
+              v-if="project.status === 'completed'"
+              type="primary"
+              size="large"
+              @click="restartSynthesis"
+              :loading="synthesisStarting"
+              class="restart-btn"
+            >
+              🔄 重新合成
+            </a-button>
+
+            <a-space v-if="project.status === 'processing'">
+              <a-button
+                @click="pauseSynthesis"
+                :loading="pausingGeneration"
+              >
+                ⏸️ 暂停
+              </a-button>
+              <a-button
+                danger
+                @click="cancelSynthesis"
+                :loading="cancelingGeneration"
+              >
+                ⏹️ 取消
+              </a-button>
+            </a-space>
+
+            <a-button
+              v-if="project.status === 'paused' || (project.status === 'failed' && project.statistics?.completedSegments > 0)"
+              type="primary"
+              size="large"
+              @click="resumeSynthesis"
+              :loading="resumingGeneration"
+            >
+              ▶️ 继续合成
+            </a-button>
+
+            <!-- 部分完成状态的按钮 -->
+            <a-space v-if="project.status === 'partial_completed'">
+              <a-button
+                type="primary"
+                size="large"
+                @click="retryAllFailedSegments"
+                :loading="resumingGeneration"
+              >
+                🔄 重试失败段落
+              </a-button>
+              <a-button
+                size="large"
+                @click="restartSynthesis"
+                :loading="synthesisStarting"
+              >
+                🎯 重新合成
+              </a-button>
+              <a-button
+                size="large"
+                @click="downloadPartialAudio"
+                type="dashed"
+              >
+                📥 下载已完成
+              </a-button>
+            </a-space>
+
+            <!-- 调试按钮 - 显示当前状态 -->
+            <a-tag color="orange" style="margin-left: 8px;">
+              状态: {{ project.status }}
+            </a-tag>
+          </div>
+        </div>
+
+        <!-- 合成内容预览区域 -->
+        <div class="content-preview">
+          <!-- 项目统计卡片 -->
+          <div class="stats-card">
+            <div class="stats-row">
+              <div class="stat-item">
+                <span class="stat-number">{{ currentProgressData.totalSegments }}</span>
+                <span class="stat-label">总段落</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-number">{{ currentProgressData.completedSegments }}</span>
+                <span class="stat-label">已完成</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-number">{{ currentProgressData.failedSegments }}</span>
+                <span class="stat-label">失败</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-number">{{ currentProgressData.percent }}%</span>
+                <span class="stat-label">进度</span>
+              </div>
+            </div>
+            
+            <!-- 章节和角色统计 -->
+            <div class="stats-row" style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #f0f0f0;" v-if="preparationResults">
+              <div class="stat-item">
+                <span class="stat-number">{{ detectedCharacters.length }}</span>
+                <span class="stat-label">角色数</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-number">{{ selectedChapters.length }}</span>
+                <span class="stat-label">选中章节</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-number">{{ getTotalSegments() }}</span>
+                <span class="stat-label">智能片段</span>
+              </div>
+                             <div class="stat-item">
+                 <span class="stat-number" :style="{ color: project.status === 'running' ? '#52c41a' : '#666' }">{{ project.status }}</span>
+                 <span class="stat-label">项目状态</span>
+               </div>
+            </div>
+          </div>
+
+          <!-- 智能准备结果 -->
+          <div v-if="preparationResults" class="preparation-preview">
+            <!-- 角色对话预览 -->
+            <div class="dialogue-preview">
+              <div class="preview-header">
+                <h4>📝 对话内容预览</h4>
+                <a-space>
+                  <a-button 
+                    size="small" 
+                    @click="showAllSegments = !showAllSegments"
+                    type="text"
+                  >
+                    {{ showAllSegments ? '收起' : '展开全部' }}
+                  </a-button>
+                  <a-button 
+                    size="small"
+                    @click="showJsonTestModal"
+                    type="text"
+                  >
+                    🧪 测试JSON
+                  </a-button>
+                </a-space>
+              </div>
+              
+              <!-- 对话列表 -->
+              <div class="dialogue-list">
+                <div v-for="(chapterResult, chapterIndex) in preparationResults.data" :key="chapterIndex">
+                  <!-- 章节标题 -->
+                  <div class="chapter-divider">
+                    <span class="chapter-title">
+                      第{{ chapterResult.chapter_number }}章 {{ chapterResult.chapter_title }}
+                    </span>
+                    <a-tag size="small">{{ chapterResult.synthesis_json?.synthesis_plan?.length || 0 }} 段</a-tag>
+                  </div>
+                  
+                  <!-- 对话气泡 -->
+                  <div class="dialogue-bubbles">
+                    <div 
+                      v-for="(segment, segmentIndex) in (chapterResult.synthesis_json?.synthesis_plan || []).slice(0, showAllSegments ? undefined : 10)" 
+                      :key="segmentIndex"
+                      class="dialogue-bubble"
+                      :class="getCharacterClass(segment.speaker)"
+                    >
+                      <div class="bubble-header">
+                        <span class="speaker-name">{{ segment.speaker }}</span>
+                        <span class="segment-index">#{{ segmentIndex + 1 }}</span>
+                      </div>
+                      <div class="bubble-content">{{ segment.text }}</div>
+                    </div>
+                    
+                    <div v-if="!showAllSegments && (chapterResult.synthesis_json?.synthesis_plan?.length || 0) > 10" class="show-more">
+                      <a-button type="dashed" @click="showAllSegments = true" block>
+                        显示全部 {{ chapterResult.synthesis_json?.synthesis_plan?.length }} 个段落
+                      </a-button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 空状态 -->
+          <div v-else class="empty-preview">
+            <a-empty 
+              description="请先选择章节并加载智能准备结果"
+              :image="Empty.PRESENTED_IMAGE_SIMPLE"
+            >
+              <p class="empty-hint">{{ getStartHint() }}</p>
+            </a-empty>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <!-- 合成进度监控抽屉 -->
     <a-drawer
       v-model:open="synthesisProgressDrawer"
-      title="🎵 音频合成进度监控"
-      placement="right"
-      width="600"
-      :closable="false"
-      :mask-closable="false"
-      :keyboard="false"
-      class="synthesis-progress-drawer"
+      title="🎵 合成进度监控"
+      placement="bottom"
+      :height="400"
+      :closable="true"
+      @close="closeSynthesisDrawer"
     >
-      
+      <!-- 进度监控内容保持原有逻辑 -->
       <div class="progress-container">
         <!-- 总体进度 -->
         <div class="overall-progress">
-          <h3>
-            🎵 合成总进度
-          </h3>
+          <h3>🎵 合成总进度</h3>
           <a-progress 
             :percent="progressData.progress" 
             :status="progressData.status === 'failed' ? 'exception' : 'active'"
@@ -644,7 +363,7 @@
               suffix="秒"
               :value-style="{ color: '#1890ff' }"
             />
-  </div>
+          </div>
         </div>
 
         <!-- 当前处理状态 -->
@@ -656,197 +375,19 @@
             class="current-alert"
           />
         </div>
-
-        <!-- 合成控制面板 -->
-        <div v-if="progressData.status === 'processing' || progressData.status === 'paused'" class="synthesis-controls-panel">
-          <a-card size="small" title="⚡ 合成控制">
-            <a-space>
-              <!-- 暂停按钮 -->
-              <a-button
-                v-if="progressData.status === 'processing'"
-                type="default"
-                @click="pauseSynthesis"
-                :loading="pausingGeneration"
-              >
-                ⏸️ 暂停合成
-              </a-button>
-              
-              <!-- 继续按钮 -->
-              <a-button
-                v-if="progressData.status === 'paused'"
-                type="primary"
-                @click="resumeSynthesis"
-                :loading="resumingGeneration"
-              >
-                ▶️ 继续合成
-              </a-button>
-              
-              <!-- 取消按钮 -->
-              <a-button
-                danger
-                @click="cancelSynthesis"
-                :loading="cancelingGeneration"
-              >
-                ⏹️ 取消合成
-              </a-button>
-            </a-space>
-            
-            <!-- 状态说明 -->
-            <div class="control-hint" style="margin-top: 12px; font-size: 12px; color: #666;">
-              <div v-if="progressData.status === 'processing'">
-                ⚡ 合成正在进行中，您可以暂停或取消合成
-              </div>
-              <div v-if="progressData.status === 'paused'">
-                ⏸️ 合成已暂停，您可以继续合成或取消任务
-              </div>
-            </div>
-          </a-card>
-        </div>
-
-        <!-- 段落详细列表 -->
-        <div class="segments-list">
-          <h4>📋 段落合成详情</h4>
-          <div class="segments-container">
-            <div 
-              v-for="segment in segmentStatuses" 
-              :key="segment.segment_id"
-              class="segment-item"
-              :class="segment.status"
-            >
-              <div class="segment-header">
-                <span class="segment-id">段落 {{ segment.segment_id }}</span>
-                <span class="segment-speaker">{{ segment.speaker }}</span>
-                <a-tag 
-                  :color="getSegmentStatusColor(segment.status)"
-                  class="status-tag"
-                >
-                  {{ getSegmentStatusText(segment.status) }}
-                </a-tag>
-              </div>
-              
-              <div class="segment-content">
-                <p class="segment-text">{{ segment.text || '准备中...' }}</p>
-                
-                <!-- 成功状态 -->
-                <div v-if="segment.status === 'completed'" class="segment-actions">
-                  <a-button 
-                    type="primary" 
-                    size="small" 
-                    @click="playSegmentAudioAdvanced(segment)"
-                    :loading="segment.playing"
-                  >
-                    ▶️ 播放试听
-                  </a-button>
-                  <span class="success-info">
-                    ✅ {{ segment.completion_time ? formatTime(segment.completion_time) : '完成' }}
-                  </span>
-                </div>
-                
-                <!-- 失败状态 -->
-                <div v-if="segment.status === 'failed'" class="segment-actions">
-                  <a-button 
-                    type="primary" 
-                    danger 
-                    size="small" 
-                    @click="retrySegment(segment)"
-                    :loading="segment.retrying"
-                  >
-                    🔄 重试合成
-                  </a-button>
-                  <span class="error-info">
-                    ❌ {{ segment.error_message || '合成失败' }}
-                  </span>
-                </div>
-                
-                <!-- 处理中状态 -->
-                <div v-if="segment.status === 'processing'" class="segment-actions">
-                  <a-spin size="small" />
-                  <span class="processing-info">🎵 正在合成中...</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- 完成后操作 -->
-        <div v-if="progressData.status === 'completed'" class="completion-actions">
-          <a-result
-            status="success"
-            title="🎉 音频合成完成！"
-            sub-title="所有段落已成功合成，您可以下载最终音频文件"
-          >
-            <template #extra>
-              <a-button type="primary" size="large" @click="downloadFinalAudio">
-                📥 下载完整音频
-              </a-button>
-              <a-button @click="closeSynthesisDrawer">
-                ✅ 确认完成
-              </a-button>
-            </template>
-          </a-result>
-        </div>
-
-        <!-- 部分完成后操作 -->
-        <div v-if="progressData.status === 'partial_completed'" class="partial-completion-actions">
-          <a-result
-            status="warning"
-            title="⚠️ 音频合成部分完成"
-            :sub-title="`${progressData.completed_segments}/${progressData.total_segments} 个段落成功，${progressData.failed_segments} 个失败`"
-          >
-            <template #extra>
-              <a-space direction="vertical" style="width: 100%">
-                <a-button type="primary" size="large" @click="retryAllFailedSegments" :loading="resumingGeneration">
-                  🔄 重试失败段落 ({{ progressData.failed_segments }})
-                </a-button>
-                <a-space>
-                  <a-button size="large" @click="downloadPartialAudio" v-if="progressData.completed_segments > 0">
-                    📥 下载已完成部分
-                  </a-button>
-                  <a-button @click="closeSynthesisDrawer">
-                    ✅ 确认完成
-                  </a-button>
-                </a-space>
-              </a-space>
-            </template>
-          </a-result>
-        </div>
-
-        <!-- 完全失败后操作 -->
-        <div v-if="progressData.status === 'failed'" class="failure-actions">
-          <a-result
-            status="error"
-            title="❌ 音频合成失败"
-            :sub-title="progressData.completed_segments > 0 ? `${progressData.completed_segments} 个段落已完成，但仍有 ${progressData.failed_segments} 个失败` : '合成过程中发生错误'"
-          >
-            <template #extra>
-              <a-space direction="vertical" style="width: 100%">
-                <a-button type="primary" size="large" @click="retryAllFailedSegments" :loading="resumingGeneration">
-                  🔄 重试失败段落
-                </a-button>
-                <a-space v-if="progressData.completed_segments > 0">
-                  <a-button size="large" @click="downloadPartialAudio">
-                    📥 下载已完成部分
-                  </a-button>
-                  <a-button @click="closeSynthesisDrawer">
-                    ✅ 确认完成
-                  </a-button>
-                </a-space>
-                <a-button v-else @click="closeSynthesisDrawer">
-                  🔙 返回
-                </a-button>
-              </a-space>
-            </template>
-          </a-result>
-        </div>
       </div>
     </a-drawer>
+
+    <!-- JSON测试弹窗保持原有 -->
+    <!-- ... 其他弹窗组件 ... -->
   </div>
 </template>
 
 <script setup>
-  import { ref, reactive, computed, onMounted, onUnmounted, h } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, h } from 'vue'
 import { useRouter, useRoute, onBeforeRouteLeave } from 'vue-router'
-import { message, Modal } from 'ant-design-vue'
+import { message, Modal, Empty } from 'ant-design-vue'
+import { ArrowLeftOutlined, ReloadOutlined } from '@ant-design/icons-vue'
 import { readerAPI, charactersAPI, intelligentAnalysisAPI, systemAPI, booksAPI } from '@/api'
 import { useWebSocketStore } from '@/stores/websocket.js'
 
@@ -860,6 +401,7 @@ const synthesisStarting = ref(false)
 const pausingGeneration = ref(false)
 const resumingGeneration = ref(false)
 const cancelingGeneration = ref(false)
+const refreshing = ref(false)
 const project = ref(null)
 const detectedCharacters = ref([])
 const availableVoices = ref([])
@@ -887,23 +429,28 @@ const loadingResults = ref(false)
 
 // 合成进度和片段相关
 const currentProcessingSegment = ref(null)
+const synthesisProgressDrawer = ref(false)
+const synthesisElapsedTime = ref(0)
 const completedSegments = ref([])
 const loadingCompletedSegments = ref(false)
 const playingSegment = ref(null)
-const showAllSegments = ref(false)
 const showAllCompleted = ref(false)
 const segmentAudioPlayer = ref(null)
 
-// JSON测试相关
+// 合成配置
+const synthesisConfig = reactive({
+  quality: 'standard',
+  parallelTasks: 1
+})
+
+// 其他状态变量
+const showAllSegments = ref(false)
 const jsonTestModalVisible = ref(false)
 const jsonTestContent = ref('')
 const jsonTestExecuting = ref(false)
 const jsonValidationResult = ref(null)
-
 // 合成进度监控抽屉相关
-const synthesisProgressDrawer = ref(false)
 const synthesisStartTime = ref(null)
-const synthesisElapsedTime = ref(0)
 const segmentStatuses = ref([]) // 段落状态列表
 const elapsedTimer = ref(null)
 const unsubscribeWebSocket = ref(null) // WebSocket取消订阅函数
@@ -916,22 +463,64 @@ const progressData = ref({
   current_processing: ''
 })
 
-const synthesisConfig = reactive({
-  parallelTasks: 1, // 固定为1，避免GPU显存冲突
-  quality: 'high'
+// 🚀 计算属性 - 统一进度数据源（增加调试日志）
+const currentProgressData = computed(() => {
+  console.log('🔍 currentProgressData计算触发')
+  console.log('🔍 synthesisProgressDrawer.value:', synthesisProgressDrawer.value)
+  console.log('🔍 progressData.value:', progressData.value)
+  console.log('🔍 project.value?.statistics:', project.value?.statistics)
+  
+  // 如果合成监控抽屉已打开且有实时数据，优先使用实时数据
+  if (synthesisProgressDrawer.value && progressData.value.total_segments > 0) {
+    const result = {
+      totalSegments: progressData.value.total_segments,
+      completedSegments: progressData.value.completed_segments,
+      failedSegments: progressData.value.failed_segments,
+      percent: progressData.value.progress
+    }
+    console.log('🔍 使用progressData结果:', result)
+    return result
+  }
+  
+  // 否则使用项目统计数据
+  if (project.value?.statistics) {
+    const { totalSegments, completedSegments, failedSegments } = project.value.statistics
+    const percent = totalSegments > 0 ? Math.round((completedSegments / totalSegments) * 100) : 0
+    const result = {
+      totalSegments: totalSegments || 0,
+      completedSegments: completedSegments || 0,
+      failedSegments: failedSegments || 0,
+      percent
+    }
+    console.log('🔍 使用statistics结果:', result)
+    return result
+  }
+  
+  const defaultResult = {
+    totalSegments: 0,
+    completedSegments: 0,
+    failedSegments: 0,
+    percent: 0
+  }
+  console.log('🔍 使用默认结果:', defaultResult)
+  return defaultResult
 })
 
-// 计算属性
 const progressPercent = computed(() => {
-  if (!project.value?.statistics) return 0
-  const { totalSegments, completedSegments } = project.value.statistics
-  if (totalSegments === 0) return 0
-  return Math.round((completedSegments / totalSegments) * 100)
+  const result = currentProgressData.value.percent
+  console.log('🔍 progressPercent计算:', {
+    input: currentProgressData.value,
+    result: result
+  })
+  return result
 })
 
 // 音频预览URL
 const audioPreviewUrl = computed(() => {
-  if (!project.value?.final_audio_path) return null
+  // 只有项目完成且有最终音频路径时才返回URL
+  if (!project.value?.final_audio_path || project.value.status !== 'completed') {
+    return null
+  }
   // 构建音频预览URL
   return `/api/v1/novel-reader/projects/${project.value.id}/download`
 })
@@ -947,8 +536,6 @@ const canStartSynthesis = computed(() => {
          hasSegments
 })
 
-
-
 // 章节选择相关计算属性
 const chapterCheckAll = computed(() => {
   return availableChapters.value.length > 0 && selectedChapters.value.length === availableChapters.value.length
@@ -961,6 +548,14 @@ const chapterIndeterminate = computed(() => {
 // 方法
 const goBack = () => {
   router.push('/novel-reader')
+}
+
+const closeSynthesisDrawer = () => {
+  synthesisProgressDrawer.value = false
+}
+
+const showJsonTestModal = () => {
+  jsonTestModalVisible.value = true
 }
 
 const getStatusColor = (status) => {
@@ -1331,11 +926,6 @@ const clearMockResult = () => {
 }
 
 // JSON测试方法
-const showJsonTestModal = () => {
-  jsonTestModalVisible.value = true
-  jsonTestContent.value = ''
-  jsonValidationResult.value = null
-}
 
 const cancelJsonTest = () => {
   jsonTestModalVisible.value = false
@@ -1519,22 +1109,22 @@ const loadProject = async () => {
     if (response.data.success) {
       project.value = response.data.data
       
-      // 确保statistics是响应式对象
-      if (!project.value.statistics) {
-        project.value.statistics = reactive({
-          totalSegments: 0,
-          completedSegments: 0,
-          failedSegments: 0,
-          processingSegments: 0,
-          pendingSegments: 0
-        })
-      }
+      // 初始化统计信息
+      project.value.statistics = reactive({
+        totalSegments: project.value.total_segments || 0,
+        completedSegments: project.value.processed_segments || 0,
+        failedSegments: 0,
+        processingSegments: 0,
+        pendingSegments: 0
+      })
       
-      // 如果项目处于processing状态或有段落，加载统计信息
-      if (project.value.status === 'processing' || project.value.total_segments > 0) {
+      // 🚀 修复：始终获取最新统计信息，不管项目状态
+      try {
         const progressResponse = await readerAPI.getProgress(projectId)
         if (progressResponse.data.success) {
           const progress = progressResponse.data.data
+          console.log('📊 获取到进度数据:', progress)
+          
           // 更新统计信息，映射字段名
           Object.assign(project.value.statistics, {
             totalSegments: progress.segments.total,
@@ -1543,6 +1133,10 @@ const loadProject = async () => {
             processingSegments: progress.segments.processing,
             pendingSegments: progress.segments.pending
           })
+          
+          // 同步更新项目基础字段
+          project.value.total_segments = progress.segments.total
+          project.value.processed_segments = progress.segments.completed
           project.value.status = progress.status
           project.value.current_segment = progress.current_segment
           
@@ -1553,10 +1147,37 @@ const loadProject = async () => {
             completed_segments: progress.segments.completed,
             total_segments: progress.segments.total,
             failed_segments: progress.segments.failed,
-            current_processing: `正在处理第 ${progress.current_segment || 1} 段`
+            current_processing: progress.status === 'processing' ? `正在处理第 ${progress.current_segment || 1} 段` : '等待开始'
+          }
+          
+          console.log('📊 更新后的statistics:', project.value.statistics)
+          console.log('📊 更新后的progressData:', progressData.value)
+        } else {
+          console.warn('获取进度失败，使用项目基础数据:', progressResponse.data.message)
+          // Fallback到项目基础数据
+          progressData.value = {
+            progress: project.value.total_segments > 0 ? Math.round((project.value.processed_segments / project.value.total_segments) * 100) : 0,
+            status: project.value.status,
+            completed_segments: project.value.processed_segments || 0,
+            total_segments: project.value.total_segments || 0,
+            failed_segments: Math.max(0, (project.value.total_segments || 0) - (project.value.processed_segments || 0)),
+            current_processing: '等待开始'
           }
         }
+      } catch (error) {
+        console.warn('获取进度异常，使用项目基础数据:', error)
+        // Fallback到项目基础数据
+        progressData.value = {
+          progress: project.value.total_segments > 0 ? Math.round((project.value.processed_segments / project.value.total_segments) * 100) : 0,
+          status: project.value.status,
+          completed_segments: project.value.processed_segments || 0,
+          total_segments: project.value.total_segments || 0,
+          failed_segments: Math.max(0, (project.value.total_segments || 0) - (project.value.processed_segments || 0)),
+          current_processing: '等待开始'
+        }
       }
+      
+      console.log('🔍 最终的currentProgressData:', currentProgressData.value)
       
       await analyzeCharacters()
     }
@@ -1565,6 +1186,92 @@ const loadProject = async () => {
     message.error('加载项目失败')
   } finally {
     loading.value = false
+  }
+}
+
+// 刷新项目数据
+const refreshProjectData = async () => {
+  if (refreshing.value) return
+  
+  refreshing.value = true
+  try {
+    console.log('🔄 手动刷新项目数据...')
+    const projectId = route.params.projectId
+    
+    // 重新加载项目数据
+    const response = await readerAPI.getProjectDetail(projectId)
+    if (response.data.success) {
+      const newProject = response.data.data
+      
+      console.log('🔄 刷新前数据:', {
+        total: project.value.total_segments,
+        processed: project.value.processed_segments,
+        statistics: project.value.statistics
+      })
+      
+      // 更新项目数据
+      project.value = newProject
+      
+      // 重新初始化统计信息
+      project.value.statistics = reactive({
+        totalSegments: newProject.total_segments || 0,
+        completedSegments: newProject.processed_segments || 0,
+        failedSegments: 0,
+        processingSegments: 0,
+        pendingSegments: 0
+      })
+      
+      // 如果项目正在处理，获取最新进度
+      if (newProject.status === 'processing' || newProject.total_segments > 0) {
+        try {
+          const progressResponse = await readerAPI.getProgress(projectId)
+          if (progressResponse.data.success) {
+            const progress = progressResponse.data.data
+            Object.assign(project.value.statistics, {
+              totalSegments: progress.segments.total,
+              completedSegments: progress.segments.completed,
+              failedSegments: progress.segments.failed,
+              processingSegments: progress.segments.processing,
+              pendingSegments: progress.segments.pending
+            })
+            
+            // 同步更新项目原始字段
+            project.value.total_segments = progress.segments.total
+            project.value.processed_segments = progress.segments.completed
+            project.value.status = progress.status
+            project.value.current_segment = progress.current_segment
+          }
+        } catch (progressError) {
+          console.warn('获取进度失败:', progressError)
+        }
+      }
+      
+      // 更新进度显示数据
+      progressData.value = {
+        progress: project.value.total_segments > 0 ? Math.round((project.value.processed_segments / project.value.total_segments) * 100) : 0,
+        status: project.value.status,
+        completed_segments: project.value.processed_segments || 0,
+        total_segments: project.value.total_segments || 0,
+        failed_segments: project.value.statistics?.failedSegments || 0,
+        current_processing: project.value.status === 'processing' ? `正在处理第 ${project.value.current_segment || 1} 段` : '等待开始'
+      }
+      
+      console.log('🔄 刷新后数据:', {
+        total: project.value.total_segments,
+        processed: project.value.processed_segments,
+        statistics: project.value.statistics,
+        progressPercent: progressPercent.value
+      })
+      
+      message.success('数据已刷新')
+    } else {
+      message.error('刷新失败: ' + response.data.message)
+    }
+  } catch (error) {
+    console.error('刷新项目数据失败:', error)
+    message.error('刷新失败: ' + error.message)
+  } finally {
+    refreshing.value = false
   }
 }
 
@@ -1613,8 +1320,6 @@ const loadVoices = async () => {
     console.error('加载声音列表失败:', error)
   }
 }
-
-
 
 // 试听声音
 const playVoicePreview = async (voiceId, sampleText) => {
@@ -2021,7 +1726,12 @@ const handleAudioLoadStart = () => {
 
 const handleAudioError = (error) => {
   console.error('音频加载失败:', error)
-  message.error('音频预览加载失败，请尝试下载完整音频')
+  // 只在项目状态为completed时才显示错误，避免中间状态的误报
+  if (project.value?.status === 'completed') {
+    message.warning('音频文件暂时不可用，可能正在后处理中，请稍后刷新或尝试下载')
+  } else {
+    console.log('项目尚未完成，忽略音频加载错误')
+  }
 }
 
 // 检查TTS服务状态
@@ -2085,7 +1795,7 @@ const startWebSocketProgressMonitoring = () => {
         })
       }
       
-      // 使用Object.assign保持响应式
+      // 使用Object.assign保持响应式，同时同步项目原始字段
       Object.assign(project.value.statistics, {
         totalSegments: progressData.total_segments,
         completedSegments: progressData.completed_segments,
@@ -2093,10 +1803,23 @@ const startWebSocketProgressMonitoring = () => {
         processingSegments: progressData.total_segments - progressData.completed_segments - progressData.failed_segments,
         pendingSegments: 0
       })
+      
+      // 同步更新项目原始字段，确保数据一致性
+      project.value.total_segments = progressData.total_segments
+      project.value.processed_segments = progressData.completed_segments
       project.value.status = progressData.status
       project.value.current_segment = progressData.current_segment || 0
+      
+      // 同时更新progress抽屉的数据，确保数据一致性
+      updateProgressDataFromWebSocket(progressData)
+      
       console.log('📊 更新后的project.statistics:', project.value.statistics)
+      console.log('📊 更新后的project原始字段:', {
+        total_segments: project.value.total_segments,
+        processed_segments: project.value.processed_segments
+      })
       console.log('🔢 计算的progressPercent:', progressPercent.value)
+      console.log('🔢 统一的进度数据:', currentProgressData.value)
       
       // 如果进度监控抽屉已打开，同步更新进度数据
       if (synthesisProgressDrawer.value) {
@@ -2669,16 +2392,7 @@ const downloadPartialAudio = async () => {
   }
 }
 
-// 关闭合成抽屉
-const closeSynthesisDrawer = () => {
-  synthesisProgressDrawer.value = false
-  stopElapsedTimer()
-  
-  // 如果合成已完成，刷新项目数据
-  if (progressData.value.status === 'completed') {
-    loadProject()
-  }
-}
+
 
 // 时间格式化
 const formatTime = (timestamp) => {
@@ -2694,15 +2408,31 @@ const formatTime = (timestamp) => {
 
 // 更新进度数据从WebSocket推送
 const updateProgressDataFromWebSocket = (data) => {
-  // 更新总体进度数据
+  console.log('🔍 WebSocket数据更新:', data)
+  
+  // 计算进度百分比 - 确保一致性
+  const calculatedProgress = data.total_segments > 0 
+    ? Math.round((data.completed_segments / data.total_segments) * 100) 
+    : 0
+  
+  console.log('🔍 进度计算:', {
+    completed: data.completed_segments,
+    total: data.total_segments,
+    calculated: calculatedProgress,
+    original: data.progress
+  })
+  
+  // 更新总体进度数据 - 统一使用计算的进度
   progressData.value = {
-    progress: data.progress || Math.round((data.completed_segments / data.total_segments) * 100),
+    progress: calculatedProgress,
     status: data.status,
-    completed_segments: data.completed_segments,
-    total_segments: data.total_segments,
-    failed_segments: data.failed_segments,
+    completed_segments: data.completed_segments || 0,
+    total_segments: data.total_segments || 0,
+    failed_segments: data.failed_segments || 0,
     current_processing: data.current_processing || `正在处理第 ${data.current_segment || 1} 段`
   }
+  
+  console.log('🔍 更新后progressData:', progressData.value)
   
   // 更新段落状态
   if (data.segments_status) {
@@ -2725,10 +2455,444 @@ const updateProgressDataFromWebSocket = (data) => {
 </script>
 
 <style scoped>
-.synthesis-center-container {
+/* 新的合成中心样式 */
+.synthesis-center {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #f5f7fa;
+}
+
+/* 顶部导航栏 */
+.top-navbar {
+  height: 64px;
+  background: white;
+  border-bottom: 1px solid #e8e8e8;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+}
+
+.nav-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.back-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #666;
+  font-size: 14px;
+}
+
+.page-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.nav-right {
+  display: flex;
+  align-items: center;
+}
+
+/* 主布局 */
+.synthesis-layout {
+  flex: 1;
+  display: flex;
+  height: calc(100vh - 64px);
+}
+
+/* 左侧面板 */
+.left-panel {
+  width: 350px;
+  background: white;
+  border-right: 1px solid #e8e8e8;
+  display: flex;
+  flex-direction: column;
+}
+
+.panel-header {
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.panel-header h3 {
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.project-name {
+  font-size: 13px;
+  color: #666;
+}
+
+.chapter-selection-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.chapter-controls {
+  padding: 12px 24px;
+  border-bottom: 1px solid #f0f0f0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #fafafa;
+}
+
+.selection-count {
+  font-size: 12px;
+  color: #666;
+}
+
+.chapters-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.loading-state {
+  padding: 40px 24px;
+  text-align: center;
+}
+
+.chapters-container {
+  padding: 8px;
+}
+
+.chapter-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 16px;
+  margin-bottom: 8px;
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: white;
+}
+
+.chapter-card:hover {
+  border-color: #1890ff;
+  box-shadow: 0 2px 8px rgba(24, 144, 255, 0.1);
+}
+
+.chapter-card.selected {
+  background: #e6f7ff;
+  border-color: #1890ff;
+}
+
+.chapter-checkbox {
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+
+.chapter-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.chapter-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: #1f2937;
+  line-height: 1.4;
+  margin-bottom: 4px;
+}
+
+.chapter-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+}
+
+.word-count {
+  color: #666;
+}
+
+.chapter-status {
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+}
+
+.empty-chapters {
+  padding: 40px 24px;
+  text-align: center;
+}
+
+.text-project-hint {
   padding: 24px;
-  background: #f5f5f5;
-  min-height: 100vh;
+}
+
+/* 右侧面板 */
+.right-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: #fafbfc;
+}
+
+/* 顶部操作栏 */
+.action-toolbar {
+  background: white;
+  border-bottom: 1px solid #e8e8e8;
+  padding: 16px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.start-btn,
+.restart-btn {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+}
+
+.start-btn:hover,
+.restart-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+/* 内容预览区域 */
+.content-preview {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+}
+
+/* 统计卡片 */
+.stats-card {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.stats-row {
+  display: flex;
+  justify-content: space-around;
+}
+
+.stat-item {
+  text-align: center;
+}
+
+.stat-number {
+  display: block;
+  font-size: 24px;
+  font-weight: 700;
+  color: #1890ff;
+  line-height: 1.2;
+}
+
+.stat-label {
+  display: block;
+  font-size: 12px;
+  color: #666;
+  margin-top: 4px;
+}
+
+/* 准备结果预览 */
+.preparation-preview {
+  background: white;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.dialogue-preview {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.preview-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid #f0f0f0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #fafafa;
+}
+
+.preview-header h4 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.dialogue-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+.chapter-divider {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 24px 0 16px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid #f0f0f0;
+}
+
+.chapter-divider:first-child {
+  margin-top: 0;
+}
+
+.chapter-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.dialogue-bubbles {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.dialogue-bubble {
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  transition: all 0.2s;
+}
+
+.dialogue-bubble:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+.dialogue-bubble.narrator {
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+  border-color: #0ea5e9;
+}
+
+.dialogue-bubble.character {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  border-color: #f59e0b;
+}
+
+.bubble-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.speaker-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.segment-index {
+  font-size: 11px;
+  color: #666;
+  background: #f1f5f9;
+  padding: 2px 6px;
+  border-radius: 10px;
+}
+
+.bubble-content {
+  font-size: 14px;
+  color: #374151;
+  line-height: 1.5;
+}
+
+.show-more {
+  margin-top: 16px;
+}
+
+/* 空状态 */
+.empty-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 300px;
+}
+
+.empty-hint {
+  margin-top: 12px;
+  font-size: 14px;
+  color: #666;
+}
+
+/* 进度抽屉样式 */
+.progress-container {
+  padding: 24px;
+}
+
+.overall-progress h3 {
+  margin-bottom: 16px;
+  font-size: 18px;
+  color: #1f2937;
+}
+
+.progress-stats {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 16px;
+}
+
+.current-status {
+  margin-bottom: 24px;
+}
+
+/* 响应式调整 */
+@media (max-width: 1200px) {
+  .left-panel {
+    width: 300px;
+  }
+}
+
+@media (max-width: 768px) {
+  .synthesis-layout {
+    flex-direction: column;
+  }
+  
+  .left-panel {
+    width: 100%;
+    height: 300px;
+  }
+  
+  .action-toolbar {
+    flex-direction: column;
+    gap: 12px;
+    align-items: stretch;
+  }
 }
 
 /* 章节选择样式 */

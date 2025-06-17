@@ -12,7 +12,7 @@ import logging
 from datetime import datetime
 
 from app.database import get_db
-from app.models import NovelProject, TextSegment, VoiceProfile, Book
+from app.models import NovelProject, VoiceProfile, Book  # 🚀 TextSegment已删除
 from app.utils import log_system_event
 
 logger = logging.getLogger(__name__)
@@ -179,25 +179,9 @@ async def create_project(
         db.add(project)
         db.flush()  # 获取项目ID
         
-        # 简单的文本分段（实际项目中应该有更复杂的逻辑）
+        # 🚀 新架构：不再需要传统分段，使用智能准备模式
         segments_count = 0
-        if text_content:
-            # 按段落分割
-            paragraphs = [p.strip() for p in text_content.split('\n\n') if p.strip()]
-            
-            for i, para in enumerate(paragraphs):
-                if len(para) > 10:  # 忽略太短的段落
-                    segment = TextSegment(
-                        project_id=project.id,
-                        paragraph_index=i + 1,
-                        content=para,
-                        status='pending',
-                        created_at=datetime.utcnow()
-                    )
-                    db.add(segment)
-                    segments_count += 1
-            
-            project.total_segments = segments_count
+        # 新架构：项目创建时不分段，等待智能准备结果进行合成
         
         db.commit()
         
@@ -237,39 +221,44 @@ async def get_project(
         if not project:
             raise HTTPException(status_code=404, detail="项目不存在")
         
-        # 获取分段信息
-        segments = db.query(TextSegment).filter(TextSegment.project_id == project_id).all()
+        # 🚀 新架构：基于AudioFile获取信息
+        from app.models import AudioFile
+        audio_files = db.query(AudioFile).filter(
+            AudioFile.project_id == project_id,
+            AudioFile.audio_type == 'segment'
+        ).all()
         
         # 计算进度百分比
-        progress = 0
-        if project.total_segments > 0:
-            progress = round((project.processed_segments / project.total_segments) * 100, 1)
+        completed_segments = len(audio_files)
+        total_segments = project.total_segments or 0
+        progress = round((completed_segments / total_segments) * 100, 1) if total_segments > 0 else 0
         
         # 获取角色统计
         character_stats = {}
-        for segment in segments:
-            speaker = segment.speaker
+        for audio_file in audio_files:
+            speaker = audio_file.speaker or audio_file.character_name
             if speaker:
                 if speaker not in character_stats:
                     character_stats[speaker] = {"count": 0, "voice_assigned": False}
                 character_stats[speaker]["count"] += 1
-                if segment.voice_id:
+                if audio_file.voice_profile_id:
                     character_stats[speaker]["voice_assigned"] = True
         
         project_data = project.to_dict()
         project_data.update({
             "progress": progress,
             "character_stats": character_stats,
-            "segments_preview": [
+            "audio_files_preview": [
                 {
-                    "id": s.id,
-                    "order": s.paragraph_index,
-                    "text": s.content[:100] + "..." if len(s.content) > 100 else s.content,
-                    "speaker": s.speaker,
-                    "voice_profile_id": s.voice_id,
-                    "status": s.status
+                    "id": a.id,
+                    "order": a.paragraph_index,
+                    "text": a.text_content[:100] + "..." if a.text_content and len(a.text_content) > 100 else (a.text_content or ""),
+                    "speaker": a.speaker or a.character_name,
+                    "voice_profile_id": a.voice_profile_id,
+                    "status": a.status,
+                    "duration": a.duration
                 }
-                for s in segments[:10]  # 只返回前10个分段预览
+                for a in audio_files[:10]  # 只返回前10个音频文件预览
             ]
         })
         
@@ -371,8 +360,9 @@ async def delete_project(
         
         project_name = project.name
         
-        # 删除关联的分段
-        db.query(TextSegment).filter(TextSegment.project_id == project_id).delete()
+        # 🚀 新架构：删除关联的AudioFile
+        from app.models import AudioFile
+        db.query(AudioFile).filter(AudioFile.project_id == project_id).delete()
         
         # 删除项目
         db.delete(project)
@@ -409,13 +399,23 @@ async def get_project_progress(
         if not project:
             raise HTTPException(status_code=404, detail="项目不存在")
         
-        # 获取分段状态统计
-        segment_stats = db.query(
-            TextSegment.status,
-            func.count(TextSegment.id).label('count')
-        ).filter(TextSegment.project_id == project_id).group_by(TextSegment.status).all()
+        # 🚀 新架构：基于AudioFile统计
+        from app.models import AudioFile
+        audio_files = db.query(AudioFile).filter(
+            AudioFile.project_id == project_id,
+            AudioFile.audio_type == 'segment'
+        ).all()
         
-        status_counts = {stat.status: stat.count for stat in segment_stats}
+        completed_count = len(audio_files)
+        total_count = project.total_segments or 0
+        failed_count = max(0, total_count - completed_count)
+        
+        status_counts = {
+            'completed': completed_count,
+            'failed': failed_count,
+            'pending': 0,  # 新架构没有pending状态
+            'processing': 0  # 新架构没有processing状态
+        }
         
         # 计算进度
         total = project.total_segments or 0

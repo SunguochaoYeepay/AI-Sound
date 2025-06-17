@@ -8,8 +8,8 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 
 from app.database import get_db
-from app.services import SynthesisService
-from app.models import SynthesisTask
+# from app.services import SynthesisService  # 🚀 新架构已废弃
+# from app.models import SynthesisTask  # 🚀 新架构已废弃
 
 router = APIRouter(prefix="/synthesis")
 

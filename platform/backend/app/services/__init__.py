@@ -5,14 +5,14 @@
 
 from .chapter_service import ChapterService
 from .analysis_service import AnalysisService
-from .synthesis_service import SynthesisService
+# from .synthesis_service import SynthesisService  # 🚀 已删除
 from .preset_service import PresetService
 from .dify_client import DifyClient, DifyClientFactory
 
 __all__ = [
     'ChapterService',
     'AnalysisService', 
-    'SynthesisService',
+    # 'SynthesisService',  # 🚀 已删除
     'PresetService',
     'DifyClient',
     'DifyClientFactory'

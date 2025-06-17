@@ -14,7 +14,7 @@ import logging
 from datetime import datetime
 
 from app.database import get_db
-from app.models import AudioFile, NovelProject, TextSegment, VoiceProfile
+from app.models import AudioFile, NovelProject, VoiceProfile  # TextSegment已废弃
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/audio-library", tags=["Audio Library"])
@@ -342,13 +342,14 @@ async def sync_audio_files(
                 parts = filename.split('_')
                 if len(parts) >= 2 and parts[1].isdigit():
                     segment_order = int(parts[1])
-                    # 查找对应的段落
-                    segment = db.query(TextSegment).filter(
-                        TextSegment.paragraph_index == segment_order
-                    ).first()
-                    if segment:
-                        segment_id = segment.id
-                        project_id = segment.project_id
+                    # 🚀 新架构：不再查询TextSegment，直接留空
+                    # segment = db.query(TextSegment).filter(
+                    #     TextSegment.paragraph_index == segment_order
+                    # ).first()
+                    # if segment:
+                    #     segment_id = segment.id
+                    #     project_id = segment.project_id
+                    pass  # 同步功能已废弃，新架构不依赖旧文件
             elif filename.startswith('project_'):
                 audio_type = 'project'
                 # 尝试从文件名解析项目ID

@@ -17,7 +17,7 @@ import re
 from datetime import datetime, timedelta
 
 from app.database import get_db
-from .models import NovelProject, TextSegment, VoiceProfile, Book, SystemLog, AudioFile, BookChapter
+from .models import NovelProject, VoiceProfile, Book, SystemLog, AudioFile, BookChapter  # 🚀 TextSegment已删除
 from app.tts_client import MegaTTS3Client, TTSRequest, get_tts_client
 from app.utils import log_system_event, update_usage_stats, save_upload_file
 # from tts_memory_optimizer import synthesis_context, optimize_tts_memory  # 暂时禁用以避免torch依赖
@@ -123,15 +123,10 @@ async def create_project(
         db.flush()  # 刷新以获取项目ID
         logger.info(f"[DEBUG] 项目刷新获取ID: {project.id}")
         
-        # 自动进行文本分段（使用获取到的文本内容）
-        try:
-            logger.info(f"[DEBUG] 开始文本分段: {project.id}")
-            segments_count = await auto_segment_text_no_commit(project.id, text_content, db)
-            logger.info(f"项目 {project.id} 分段完成，分段数量: {segments_count}")
-        except Exception as seg_error:
-            logger.error(f"项目分段失败: {str(seg_error)}")
-            # 分段失败不影响项目创建，可以后续手动分段
-            segments_count = 0
+        # 🚀 新架构：不再需要传统分段，直接使用智能准备模式
+        # 项目创建时不进行分段，等待智能准备结果
+        segments_count = 0
+        logger.info(f"项目 {project.id} 创建完成，新架构将使用智能准备结果进行合成")
         
         # 记录创建日志
         try:
@@ -290,26 +285,32 @@ async def get_project_detail(
                 }
                 book_content_length = len(book.content) if book.content else 0
         
-        # 获取文本段落列表
-        segments = db.query(TextSegment).filter(
-            TextSegment.project_id == project_id
-        ).order_by(TextSegment.paragraph_index).all()
-        
-        project_data['segments'] = [segment.to_dict() for segment in segments]
+        # 🚀 新架构：废弃TextSegment，使用AudioFile
+        project_data['segments'] = []  # 段落列表已废弃
         project_data['book'] = book_info  # 添加书籍信息
         
-        # 统计信息（兼容旧项目的original_text和新项目的book引用）
+        # 🚀 新架构：基于AudioFile的统计信息  
         total_chars = book_content_length if book_content_length > 0 else (
             len(project.original_text) if hasattr(project, 'original_text') and project.original_text else 0
         )
         
+        # 从AudioFile获取实际统计
+        audio_files = db.query(AudioFile).filter(
+            AudioFile.project_id == project_id,
+            AudioFile.audio_type == 'segment'
+        ).all()
+        
+        completed_segments = len(audio_files)  # 有AudioFile = 完成
+        total_segments = project.total_segments or 0  # 项目的总段落数
+        failed_segments = max(0, total_segments - completed_segments)  # 缺失的 = 失败
+        
         project_data['statistics'] = {
             "totalCharacters": total_chars,
-            "totalSegments": len(segments),
-            "completedSegments": len([s for s in segments if s.status == 'completed']),
-            "failedSegments": len([s for s in segments if s.status == 'failed']),
-            "pendingSegments": len([s for s in segments if s.status == 'pending']),
-            "processingSegments": len([s for s in segments if s.status == 'processing'])
+            "totalSegments": total_segments,
+            "completedSegments": completed_segments,
+            "failedSegments": failed_segments,
+            "pendingSegments": 0,  # 新架构没有pending状态
+            "processingSegments": 0  # 新架构没有processing状态
         }
         
         return {
@@ -386,9 +387,9 @@ async def update_project(
         
         project.set_character_mapping(char_mapping)
         
-        # 更新相关段落的声音分配（不自动提交）
-        if char_mapping:
-            await update_segments_voice_mapping_no_commit(project_id, char_mapping, db)
+        # 🚀 新架构：不再需要更新TextSegment，角色映射保存在项目配置中
+        # if char_mapping:
+        #     await update_segments_voice_mapping_no_commit(project_id, char_mapping, db)
         
         # 记录更新日志（不自动提交）
         try:
@@ -462,11 +463,7 @@ async def delete_project(
         if project.final_audio_path and os.path.exists(project.final_audio_path):
             files_to_delete.append(project.final_audio_path)
         
-        # 删除所有段落的音频文件
-        segments = db.query(TextSegment).filter(TextSegment.project_id == project_id).all()
-        for segment in segments:
-            if segment.audio_file_path and os.path.exists(segment.audio_file_path):
-                files_to_delete.append(segment.audio_file_path)
+        # 🚀 新架构：不再需要查询TextSegment，直接处理AudioFile
         
         # 删除AudioFile表中的关联记录
         from app.models import AudioFile
@@ -743,12 +740,16 @@ async def resume_generation(
         project.status = 'processing'
         db.commit()
         
-        # 重新启动后台任务
-        background_tasks.add_task(
-            process_audio_generation,
-            project_id,
-            parallel_tasks
-        )
+        # 🚀 新架构：重新启动时也使用智能准备模式
+        # 恢复时需要重新获取智能准备结果
+        # background_tasks.add_task(
+        #     process_audio_generation_from_synthesis_plan,
+        #     project_id,
+        #     synthesis_data,
+        #     parallel_tasks
+        # )
+        # 暂时不支持恢复功能，需要重新启动
+        raise HTTPException(status_code=400, detail="请重新启动音频生成")
         
         # 记录恢复日志
         await log_system_event(
@@ -823,22 +824,20 @@ async def get_generation_progress(
                 logger.warning(f"时间计算错误: {time_error}")
                 estimated_completion = None
         
-        # 最近完成的段落
-        recent_completed = db.query(TextSegment).filter(
-            and_(
-                TextSegment.project_id == project_id,
-                TextSegment.status == 'completed'
-            )
-        ).order_by(desc(TextSegment.id)).limit(5).all()
+        # 🚀 新架构：最近完成的段落（基于AudioFile）
+        recent_audio_files = db.query(AudioFile).filter(
+            AudioFile.project_id == project_id,
+            AudioFile.audio_type == 'segment'
+        ).order_by(desc(AudioFile.created_at)).limit(5).all()
         
         recent_list = [
             {
-                "id": segment.id,
-                "order": segment.paragraph_index,
-                "speaker": segment.speaker,
-                "processingTime": segment.processing_time
+                "id": audio_file.id,
+                "order": audio_file.paragraph_index,
+                "speaker": audio_file.speaker,
+                "processingTime": None  # AudioFile没有处理时间字段
             }
-            for segment in recent_completed
+            for audio_file in recent_audio_files
         ]
         
         return {
@@ -907,197 +906,9 @@ async def download_final_audio(
 
 # 传统分段工具函数已废弃 - 统一使用智能准备模式
 
-async def segment_text_by_strategy_no_commit(
-    text: str, 
-    project_id: int, 
-    strategy: str, 
-    custom_rules: str,
-    db: Session
-) -> int:
-    """根据策略分段文本 - 不提交版本"""
-    try:
-        if not text:
-            logger.warning("分段文本为空")
-            return 0
-        
-        segments = []
-        
-        if strategy == "auto":
-            # 自动分段：基于句号、感叹号、问号分段
-            sentences = re.split(r'[。！？]', text)
-            for i, sentence in enumerate(sentences):
-                sentence = sentence.strip()
-                if sentence:
-                    segments.append({
-                        "order": i + 1,
-                        "text": sentence + ("。" if i < len(sentences) - 1 else ""),
-                        "speaker": detect_speaker(sentence)
-                    })
-        
-        elif strategy == "paragraph":
-            # 段落分段：基于换行符分段
-            paragraphs = text.split('\n')
-            order = 1
-            for paragraph in paragraphs:
-                paragraph = paragraph.strip()
-                if paragraph:
-                    segments.append({
-                        "order": order,
-                        "text": paragraph,
-                        "speaker": detect_speaker(paragraph)
-                    })
-                    order += 1
-        
-        elif strategy == "dialogue":
-            # 对话分段：识别对话和叙述分开
-            lines = text.split('\n')
-            order = 1
-            for line in lines:
-                line = line.strip()
-                if line:
-                    segments.append({
-                        "order": order,
-                        "text": line,
-                        "speaker": detect_speaker(line)
-                    })
-                    order += 1
-        
-        # 保存段落到数据库（不提交）
-        for segment_data in segments:
-            segment = TextSegment(
-                project_id=project_id,
-                paragraph_index=segment_data["order"],
-                content=segment_data["text"],
-                speaker=segment_data["speaker"],
-                status='pending'
-            )
-            db.add(segment)
-        
-        # 只刷新，不提交
-        db.flush()
-        logger.info(f"[DEBUG] 段落添加到会话，数量: {len(segments)}")
-        return len(segments)
-        
-    except Exception as e:
-        logger.error(f"文本分段失败: {str(e)}")
-        return 0
+# 🚀 已删除：segment_text_by_strategy_no_commit - 旧架构函数，新架构不使用
 
-async def segment_text_by_strategy(
-    text: str, 
-    project_id: int, 
-    strategy: str, 
-    custom_rules: str,
-    db: Session
-) -> int:
-    """根据策略分段文本"""
-    try:
-        # 获取项目文本
-        if not text:
-            project = db.query(NovelProject).filter(NovelProject.id == project_id).first()
-            if not project or not project.original_text:
-                return 0
-            text = project.original_text
-        
-        segments = []
-        
-        if strategy == "auto":
-            # 自动分段：基于句号、感叹号、问号分段
-            sentences = re.split(r'[。！？]', text)
-            for i, sentence in enumerate(sentences):
-                sentence = sentence.strip()
-                if sentence:
-                    segments.append({
-                        "order": i + 1,
-                        "text": sentence + ("。" if i < len(sentences) - 1 else ""),
-                        "speaker": detect_speaker(sentence)
-                    })
-        
-        elif strategy == "paragraph":
-            # 段落分段：基于换行符分段
-            paragraphs = text.split('\n')
-            order = 1
-            for paragraph in paragraphs:
-                paragraph = paragraph.strip()
-                if paragraph:
-                    segments.append({
-                        "order": order,
-                        "text": paragraph,
-                        "speaker": detect_speaker(paragraph)
-                    })
-                    order += 1
-        
-        elif strategy == "dialogue":
-            # 对话分段：识别对话和叙述分开
-            lines = text.split('\n')
-            order = 1
-            for line in lines:
-                line = line.strip()
-                if line:
-                    segments.append({
-                        "order": order,
-                        "text": line,
-                        "speaker": detect_speaker(line)
-                    })
-                    order += 1
-        
-        elif strategy == "custom":
-            # 自定义分段规则
-            if custom_rules:
-                try:
-                    rules = json.loads(custom_rules)
-                    delimiter = rules.get("delimiter", "。")
-                    max_length = rules.get("max_length", 200)
-                    
-                    parts = text.split(delimiter)
-                    current_segment = ""
-                    order = 1
-                    
-                    for part in parts:
-                        part = part.strip()
-                        if not part:
-                            continue
-                        
-                        if len(current_segment + part) <= max_length:
-                            current_segment += part + delimiter
-                        else:
-                            if current_segment:
-                                segments.append({
-                                    "order": order,
-                                    "text": current_segment.rstrip(delimiter),
-                                    "speaker": detect_speaker(current_segment)
-                                })
-                                order += 1
-                            current_segment = part + delimiter
-                    
-                    # 添加最后一个段落
-                    if current_segment:
-                        segments.append({
-                            "order": order,
-                            "text": current_segment.rstrip(delimiter),
-                            "speaker": detect_speaker(current_segment)
-                        })
-                        
-                except json.JSONDecodeError:
-                    # 如果自定义规则解析失败，使用自动分段
-                    return await segment_text_by_strategy(text, project_id, "auto", "", db)
-        
-        # 保存段落到数据库
-        for segment_data in segments:
-            segment = TextSegment(
-                project_id=project_id,
-                paragraph_index=segment_data["order"],
-                content=segment_data["text"],
-                speaker=segment_data["speaker"],
-                status='pending'
-            )
-            db.add(segment)
-        
-        db.commit()
-        return len(segments)
-        
-    except Exception as e:
-        logger.error(f"文本分段失败: {str(e)}")
-        return 0
+# 🚀 已删除：segment_text_by_strategy - 旧架构函数，新架构不使用
 
 def detect_speaker(text: str) -> str:
     """检测说话人"""
@@ -1196,532 +1007,19 @@ def detect_speaker(text: str) -> str:
     except Exception:
         return "温柔女声"
 
-async def update_segments_voice_mapping(project_id: int, char_mapping: Dict[str, str], db: Session):
-    """更新段落的声音映射"""
-    try:
-        segments = db.query(TextSegment).filter(TextSegment.project_id == project_id).all()
-        
-        for segment in segments:
-            if segment.speaker in char_mapping:
-                voice_id = char_mapping[segment.speaker]
-                # 验证声音ID是否有效
-                voice = db.query(VoiceProfile).filter(VoiceProfile.id == voice_id).first()
-                if voice and voice.status == 'active':
-                    segment.voice_id = voice_id
-        
-        db.commit()
-        
-    except Exception as e:
-        logger.error(f"更新声音映射失败: {str(e)}")
+# 🚀 已删除：update_segments_voice_mapping - 旧架构函数，新架构不需要
 
-async def process_audio_generation(project_id: int, parallel_tasks: int = 1):
-    """后台音频生成任务 - 修改为真正的逐个处理"""
-    try:
-        from app.database import SessionLocal
-        db = SessionLocal()
-        
-        try:
-            project = db.query(NovelProject).filter(NovelProject.id == project_id).first()
-            if not project:
-                return
-            
-            logger.info(f"[GENERATION] 开始音频生成: 项目 {project_id}, 并行数: {parallel_tasks}")
-            
-            # 获取TTS客户端
-            tts_client = get_tts_client()
-            
-            # 处理逻辑：不再并发所有任务，而是分批处理
-            while True:
-                # 检查项目状态
-                project = db.query(NovelProject).filter(NovelProject.id == project_id).first()
-                if not project or project.status != 'processing':
-                    logger.info(f"[GENERATION] 项目状态变更，停止处理: {project.status if project else 'None'}")
-                    break
-                
-                # 获取下一批待处理的段落（限制数量）
-                pending_segments = db.query(TextSegment).filter(
-                    and_(
-                        TextSegment.project_id == project_id,
-                        TextSegment.status == 'pending'
-                    )
-                ).order_by(TextSegment.paragraph_index).limit(parallel_tasks).all()
-                
-                if not pending_segments:
-                    logger.info(f"[GENERATION] 没有待处理段落，检查完成状态")
-                    # 检查是否全部完成
-                    await check_project_completion(project_id, db)
-                    break
-                
-                logger.info(f"[GENERATION] 处理批次: {len(pending_segments)} 个段落")
-                
-                # 强制顺序处理，避免显存不足
-                if parallel_tasks == 1:
-                    # 单线程顺序处理
-                    for segment in pending_segments:
-                        try:
-                            logger.info(f"[GENERATION] 顺序处理段落 {segment.id}")
-                            await process_single_segment_sequential(segment, tts_client, db)
-                        except Exception as e:
-                            logger.error(f"[GENERATION] 段落 {segment.id} 处理失败: {e}")
-                else:
-                    # 并发处理（仅当parallel_tasks > 1时）
-                    semaphore = asyncio.Semaphore(parallel_tasks)
-                    tasks = []
-                    
-                    for segment in pending_segments:
-                        task = asyncio.create_task(
-                            process_single_segment(segment, tts_client, semaphore, db)
-                        )
-                        tasks.append(task)
-                    
-                    # 等待这一批完成
-                    results = await asyncio.gather(*tasks, return_exceptions=True)
-                    
-                    # 检查结果
-                    for i, result in enumerate(results):
-                        if isinstance(result, Exception):
-                            logger.error(f"[GENERATION] 段落 {pending_segments[i].id} 处理失败: {result}")
-                
-                # 短暂休息，避免过度占用资源
-                await asyncio.sleep(0.5)
-            
-            # 最终检查项目完成状态
-            await check_project_completion(project_id, db)
-            logger.info(f"[GENERATION] 音频生成完成: 项目 {project_id}")
-            
-        finally:
-            db.close()
-            
-    except Exception as e:
-        logger.error(f"[GENERATION] 音频生成后台任务失败: {str(e)}")
-        import traceback
-        logger.error(f"[GENERATION] 详细错误: {traceback.format_exc()}")
+# 🚀 已删除：process_audio_generation - 旧架构函数，新架构使用process_audio_generation_from_synthesis_plan
 
-async def process_single_segment_sequential(segment: TextSegment, tts_client, db: Session):
-    """顺序处理单个段落 - 无并发，专用于避免显存不足"""
-    try:
-        logger.info(f"[SEGMENT] 开始顺序处理段落 {segment.id}: {segment.content[:30]}...")
-        
-        # 更新段落状态
-        segment.status = 'processing'
-        db.commit()
-        
-        # 获取声音档案
-        voice = db.query(VoiceProfile).filter(VoiceProfile.id == segment.voice_id).first()
-        if not voice:
-            logger.error(f"[SEGMENT] 段落 {segment.id} 声音档案不存在: {segment.voice_id}")
-            segment.status = 'failed'
-            segment.error_message = "声音档案不存在"
-            db.commit()
-            return
-        
-        # 检查声音文件
-        if not voice.reference_audio_path or not os.path.exists(voice.reference_audio_path):
-            logger.error(f"[SEGMENT] 段落 {segment.id} 声音文件不存在: {voice.reference_audio_path}")
-            segment.status = 'failed'
-            segment.error_message = "声音文件不存在"
-            db.commit()
-            return
-        
-        # 生成音频文件路径
-        import uuid
-        audio_filename = f"segment_{segment.id}_{uuid.uuid4().hex}.wav"
-        audio_path = os.path.join(AUDIO_DIR, audio_filename)
-        
-        # 确保目录存在
-        os.makedirs(AUDIO_DIR, exist_ok=True)
-        
-        # 构建TTS请求
-        start_time = time.time()
-        tts_request = TTSRequest(
-            text=segment.content,
-            reference_audio_path=voice.reference_audio_path,
-            output_audio_path=audio_path,
-            time_step=20,  # 使用稳定的参数
-            p_weight=1.0,
-            t_weight=1.0,
-            latent_file_path=voice.latent_file_path
-        )
-        
-        logger.info(f"[SEGMENT] 调用TTS服务处理段落 {segment.id}")
-        
-        # 调用TTS服务
-        response = await tts_client.synthesize_speech(tts_request)
-        processing_time = time.time() - start_time
-        
-        if response.success:
-            logger.info(f"[SEGMENT] 段落 {segment.id} TTS合成成功，耗时 {processing_time:.2f}s")
-            
-            # 验证生成的音频文件
-            if os.path.exists(audio_path):
-                file_size = os.path.getsize(audio_path)
-                logger.info(f"[SEGMENT] 音频文件生成: {audio_path} ({file_size} bytes)")
-                
-                # 获取音频时长
-                try:
-                    from app.utils import get_audio_duration
-                    duration = get_audio_duration(audio_path)
-                except:
-                    duration = 0.0
-                
-                # 更新段落记录
-                segment.audio_file_path = audio_path
-                segment.status = 'completed'
-                segment.processing_time = processing_time
-                segment.completed_at = datetime.utcnow()
-                segment.error_message = None
-                
-                # 创建AudioFile记录
-                audio_file = AudioFile(
-                    filename=os.path.basename(audio_path),
-                    original_name=f"段落{segment.paragraph_index}_{segment.speaker or '未知'}",
-                    file_path=audio_path,
-                    file_size=file_size,
-                    duration=duration,
-                    project_id=segment.project_id,
-                    segment_id=segment.id,
-                    voice_profile_id=segment.voice_id,
-                    text_content=segment.content,
-                    audio_type='segment',
-                    processing_time=processing_time,
-                    model_used='MegaTTS3',
-                    status='active',
-                    created_at=datetime.utcnow()
-                )
-                db.add(audio_file)
-                
-                # 更新声音档案使用计数
-                if voice.usage_count is None:
-                    voice.usage_count = 0
-                voice.usage_count += 1
-                voice.last_used = datetime.utcnow()
-                
-                db.commit()
-                logger.info(f"[SEGMENT] 段落 {segment.id} 顺序处理完成，已创建AudioFile记录 ID: {audio_file.id}")
-                
-            else:
-                logger.error(f"[SEGMENT] 段落 {segment.id} 音频文件未生成: {audio_path}")
-                segment.status = 'failed'
-                segment.error_message = f"音频文件未生成: {response.message}"
-                db.commit()
-        else:
-            logger.error(f"[SEGMENT] 段落 {segment.id} TTS合成失败: {response.message}")
-            segment.status = 'failed'
-            segment.error_message = f"TTS合成失败: {response.message}"
-            db.commit()
-            
-    except Exception as e:
-        logger.error(f"[SEGMENT] 段落 {segment.id} 顺序处理异常: {str(e)}")
-        import traceback
-        logger.error(f"[SEGMENT] 详细错误: {traceback.format_exc()}")
-        
-        segment.status = 'failed'
-        segment.error_message = f"处理异常: {str(e)}"
-        db.commit()
+# 🚀 已删除：process_single_segment_sequential - 旧架构函数，新架构不使用
 
-async def process_single_segment(segment: TextSegment, tts_client, semaphore, db: Session):
-    """处理单个段落 - 增加更多错误处理"""
-    async with semaphore:
-        try:
-            logger.info(f"[SEGMENT] 开始处理段落 {segment.id}: {segment.content[:30]}...")
-            
-            # 更新段落状态
-            segment.status = 'processing'
-            db.commit()
-            
-            # 获取声音档案
-            voice = db.query(VoiceProfile).filter(VoiceProfile.id == segment.voice_id).first()
-            if not voice:
-                logger.error(f"[SEGMENT] 段落 {segment.id} 声音档案不存在: {segment.voice_id}")
-                segment.status = 'failed'
-                segment.error_message = "声音档案不存在"
-                db.commit()
-                return
-            
-            # 检查声音文件
-            if not voice.reference_audio_path or not os.path.exists(voice.reference_audio_path):
-                logger.error(f"[SEGMENT] 段落 {segment.id} 声音文件不存在: {voice.reference_audio_path}")
-                segment.status = 'failed'
-                segment.error_message = "声音文件不存在"
-                db.commit()
-                return
-            
-            # 生成音频文件路径
-            import uuid
-            audio_filename = f"segment_{segment.id}_{uuid.uuid4().hex}.wav"
-            audio_path = os.path.join(AUDIO_DIR, audio_filename)
-            
-            # 确保目录存在
-            os.makedirs(AUDIO_DIR, exist_ok=True)
-            
-            # 构建TTS请求
-            start_time = time.time()
-            tts_request = TTSRequest(
-                text=segment.content,
-                reference_audio_path=voice.reference_audio_path,
-                output_audio_path=audio_path,
-                time_step=20,  # 使用稳定的参数
-                p_weight=1.0,
-                t_weight=1.0,
-                latent_file_path=voice.latent_file_path
-            )
-            
-            logger.info(f"[SEGMENT] 调用TTS服务处理段落 {segment.id}")
-            
-            # 调用TTS服务
-            response = await tts_client.synthesize_speech(tts_request)
-            processing_time = time.time() - start_time
-            
-            if response.success:
-                logger.info(f"[SEGMENT] 段落 {segment.id} TTS合成成功，耗时 {processing_time:.2f}s")
-                
-                # 验证生成的音频文件
-                if os.path.exists(audio_path):
-                    file_size = os.path.getsize(audio_path)
-                    logger.info(f"[SEGMENT] 音频文件生成: {audio_path} ({file_size} bytes)")
-                    
-                    # 获取音频时长
-                    try:
-                        from app.utils import get_audio_duration
-                        duration = get_audio_duration(audio_path)
-                    except:
-                        duration = 0.0
-                    
-                    # 更新段落记录
-                    segment.audio_file_path = audio_path
-                    segment.status = 'completed'
-                    segment.processing_time = processing_time
-                    segment.completed_at = datetime.utcnow()
-                    segment.error_message = None
-                    
-                    # 创建AudioFile记录 - 修复数据库脱节问题
-                    audio_file = AudioFile(
-                        filename=os.path.basename(audio_path),
-                        original_name=f"段落{segment.paragraph_index}_{segment.speaker or '未知'}",
-                        file_path=audio_path,
-                        file_size=file_size,
-                        duration=duration,
-                        project_id=segment.project_id,
-                        segment_id=segment.id,
-                        voice_profile_id=segment.voice_id,
-                        text_content=segment.content,
-                        audio_type='segment',
-                        processing_time=processing_time,
-                        model_used='MegaTTS3',
-                        status='active',
-                        created_at=datetime.utcnow()
-                    )
-                    db.add(audio_file)
-                    
-                    # 更新声音档案使用计数
-                    if voice.usage_count is None:
-                        voice.usage_count = 0
-                    voice.usage_count += 1
-                    voice.last_used = datetime.utcnow()
-                    
-                    db.commit()
-                    logger.info(f"[SEGMENT] 段落 {segment.id} 处理完成，已创建AudioFile记录 ID: {audio_file.id}")
-                    
-                else:
-                    logger.error(f"[SEGMENT] 段落 {segment.id} 音频文件未生成: {audio_path}")
-                    segment.status = 'failed'
-                    segment.error_message = f"音频文件未生成: {response.message}"
-                    db.commit()
-            else:
-                logger.error(f"[SEGMENT] 段落 {segment.id} TTS合成失败: {response.message}")
-                segment.status = 'failed'
-                segment.error_message = f"TTS合成失败: {response.message}"
-                db.commit()
-                
-        except Exception as e:
-            logger.error(f"[SEGMENT] 段落 {segment.id} 处理异常: {str(e)}")
-            import traceback
-            logger.error(f"[SEGMENT] 详细错误: {traceback.format_exc()}")
-            
-            segment.status = 'failed'
-            segment.error_message = f"处理异常: {str(e)}"
-            db.commit()
+# 🚀 已删除：process_single_segment - 旧架构函数，新架构不使用
 
-async def check_project_completion(project_id: int, db: Session):
-    """检查项目是否完成"""
-    try:
-        project = db.query(NovelProject).filter(NovelProject.id == project_id).first()
-        if not project:
-            return
-        
-        # 统计段落状态
-        segments = db.query(TextSegment).filter(TextSegment.project_id == project_id).all()
-        total = len(segments)
-        completed = len([s for s in segments if s.status == 'completed'])
-        failed = len([s for s in segments if s.status == 'failed'])
-        
-        if completed + failed == total:
-            # 所有段落都处理完成
-            if failed == 0:
-                # 全部成功，合并音频
-                await merge_audio_files(project, segments, db)
-                project.status = 'completed'
-                project.completed_at = datetime.utcnow()
-                project.processed_segments = completed  # 更新已处理段落数
-            else:
-                # 有失败的段落
-                project.status = 'failed'
-                project.processed_segments = completed  # 更新已处理段落数
-            
-            db.commit()
-            
-            # 记录完成日志
-            await log_system_event(
-                db=db,
-                level="info",
-                message=f"项目{'完成' if failed == 0 else '失败'}: {project.name}",
-                module="novel_reader",
-                details={
-                    "project_id": project_id,
-                    "total_segments": total,
-                    "completed_segments": completed,
-                    "failed_segments": failed
-                }
-            )
-            
-    except Exception as e:
-        logger.error(f"检查项目完成状态失败: {str(e)}")
+# 🚀 已删除：check_project_completion - 旧架构函数，新架构不使用
 
-async def merge_audio_files(project: NovelProject, segments: List[TextSegment], db: Session):
-    """合并音频文件"""
-    try:
-        # 按顺序获取已完成的段落
-        completed_segments = [s for s in segments if s.status == 'completed' and s.audio_file_path]
-        completed_segments.sort(key=lambda x: x.paragraph_index)
-        
-        if not completed_segments:
-            return
-        
-        # 生成最终音频文件路径
-        import uuid
-        final_filename = f"project_{project.id}_{uuid.uuid4().hex}.wav"
-        final_path = os.path.join(AUDIO_DIR, final_filename)
-        
-        # 使用 pydub 合并音频文件
-        try:
-            from pydub import AudioSegment
-            
-            combined = AudioSegment.empty()
-            for segment in completed_segments:
-                if os.path.exists(segment.audio_file_path):
-                    audio = AudioSegment.from_wav(segment.audio_file_path)
-                    combined += audio
-                    # 添加短暂停顿
-                    combined += AudioSegment.silent(duration=500)  # 0.5秒停顿
-            
-            # 导出最终音频
-            combined.export(final_path, format="wav")
-            
-            # 创建合并音频的AudioFile记录
-            try:
-                file_size = os.path.getsize(final_path)
-                duration = len(combined) / 1000.0  # pydub时长单位是毫秒
-                
-                merged_audio_file = AudioFile(
-                    filename=os.path.basename(final_path),
-                    original_name=f"{project.name}_完整合成",
-                    file_path=final_path,
-                    file_size=file_size,
-                    duration=duration,
-                    project_id=project.id,
-                    segment_id=None,
-                    voice_profile_id=None,
-                    text_content=f"项目《{project.name}》完整音频合成",
-                    audio_type='project',
-                    processing_time=None,
-                    model_used='MegaTTS3',
-                    status='active',
-                    created_at=datetime.utcnow()
-                )
-                db.add(merged_audio_file)
-                logger.info(f"已创建项目合并音频的AudioFile记录 ID: {merged_audio_file.id}")
-            except Exception as e:
-                logger.warning(f"创建合并音频的AudioFile记录失败: {str(e)}")
-            
-            # 更新项目记录
-            project.final_audio_path = final_path
-            db.commit()
-            
-            logger.info(f"音频合并完成: {final_path}")
-            
-        except ImportError:
-            logger.warning("未安装 pydub，跳过音频合并")
-            
-    except Exception as e:
-        logger.error(f"合并音频文件失败: {str(e)}")
+# 🚀 已删除：merge_audio_files - 旧架构函数，新架构使用merge_audio_files_from_plan
 
-async def update_segments_voice_mapping_no_commit(project_id: int, char_mapping: Dict[str, str], db: Session):
-    """更新段落的声音映射 - 不自动提交"""
-    try:
-        logger.info(f"[DEBUG] 更新段落声音映射 - 项目ID: {project_id}")
-        logger.info(f"[DEBUG] 角色映射: {char_mapping}")
-        
-        segments = db.query(TextSegment).filter(TextSegment.project_id == project_id).all()
-        logger.info(f"[DEBUG] 找到 {len(segments)} 个段落")
-        
-        # 增加narrator/旁白的兼容性映射
-        enhanced_mapping = dict(char_mapping)
-        if 'narrator' in enhanced_mapping and '旁白' not in enhanced_mapping:
-            enhanced_mapping['旁白'] = enhanced_mapping['narrator']
-        if '旁白' in enhanced_mapping and 'narrator' not in enhanced_mapping:
-            enhanced_mapping['narrator'] = enhanced_mapping['旁白']
-        
-        logger.info(f"[DEBUG] 增强后的角色映射: {enhanced_mapping}")
-        
-        updated_count = 0
-        unmapped_speakers = set()
-        
-        for segment in segments:
-            logger.info(f"[DEBUG] 段落{segment.paragraph_index}: speaker='{segment.speaker}'")
-            
-            speaker = segment.speaker
-            if not speaker:
-                logger.warning(f"[DEBUG] 段落{segment.paragraph_index}: speaker为空，跳过")
-                continue
-            
-            if speaker in enhanced_mapping:
-                voice_id = enhanced_mapping[speaker]
-                # 验证声音ID是否有效
-                voice = db.query(VoiceProfile).filter(VoiceProfile.id == voice_id).first()
-                if voice and voice.status == 'active':
-                    old_voice_id = segment.voice_id
-                    segment.voice_id = voice_id
-                    updated_count += 1
-                    logger.info(f"[DEBUG] 段落{segment.paragraph_index}: {speaker} -> 声音ID {voice_id} ({voice.name}) (原:{old_voice_id})")
-                else:
-                    logger.warning(f"[DEBUG] 段落{segment.paragraph_index}: 声音ID {voice_id} 无效或声音档案不存在")
-                    unmapped_speakers.add(f"{speaker}(无效声音ID:{voice_id})")
-            else:
-                logger.warning(f"[DEBUG] 段落{segment.paragraph_index}: 角色'{speaker}'未在映射中找到")
-                unmapped_speakers.add(speaker)
-        
-        if unmapped_speakers:
-            logger.warning(f"[DEBUG] 未映射的角色: {list(unmapped_speakers)}")
-        
-        logger.info(f"[DEBUG] 更新完成，共更新 {updated_count} 个段落")
-        
-        # 返回统计信息
-        return {
-            "updated_count": updated_count,
-            "total_segments": len(segments),
-            "unmapped_speakers": list(unmapped_speakers)
-        }
-        
-    except Exception as e:
-        logger.error(f"更新声音映射失败: {str(e)}")
-        import traceback
-        logger.error(f"详细错误: {traceback.format_exc()}") 
-        return {
-            "updated_count": 0,
-            "total_segments": 0,
-            "unmapped_speakers": [],
-            "error": str(e)
-        } 
+# 🚀 已删除：update_segments_voice_mapping_no_commit - 旧架构函数，新架构不使用 
 
 async def process_audio_generation_from_synthesis_plan(
     project_id: int, 
@@ -1835,7 +1133,21 @@ async def process_audio_generation_from_synthesis_plan(
                         except:
                             duration = 0.0
                         
-                        # 保存AudioFile记录（智能准备模式不关联segment_id）
+                        # 🚀 获取章节信息用于新架构
+                        chapter_number = segment_data.get('chapter_number')
+                        chapter_id = segment_data.get('chapter_id')
+                        if not chapter_number and chapter_id:
+                            # 尝试从数据库获取章节号
+                            try:
+                                from app.models import BookChapter
+                                chapter = db.query(BookChapter).filter(BookChapter.id == chapter_id).first()
+                                if chapter:
+                                    chapter_number = chapter.chapter_number
+                                    logger.info(f"[NEW_ARCH] 段落 {segment_id} 从数据库获取章节号: {chapter_number}")
+                            except Exception as e:
+                                logger.error(f"[NEW_ARCH] 获取章节信息失败: {e}")
+                        
+                        # 保存AudioFile记录（新架构：包含完整合成信息）
                         audio_file = AudioFile(
                             filename=audio_filename,
                             original_name=f"段落{segment_id}_{speaker}",
@@ -1843,6 +1155,11 @@ async def process_audio_generation_from_synthesis_plan(
                             file_size=file_size,
                             duration=duration,
                             project_id=project_id,
+                            chapter_id=chapter_id,
+                            chapter_number=chapter_number,
+                            character_name=speaker,  # 角色名
+                            speaker=speaker,  # 说话人
+                            paragraph_index=segment_id,  # 段落索引
                             voice_profile_id=voice_id,
                             text_content=text,
                             audio_type='segment',
@@ -1853,6 +1170,10 @@ async def process_audio_generation_from_synthesis_plan(
                         )
                         db.add(audio_file)
                         db.commit()
+                        db.refresh(audio_file)
+                        
+                        # 🚀 新架构：完全基于AudioFile，不再创建TextSegment
+                        # AudioFile已包含所有必要信息：文本内容、说话人、章节等
                         
                         logger.info(f"[SYNTHESIS_PLAN] 段落 {segment_id} 合成成功，耗时 {processing_time:.2f}s")
                         
@@ -1934,7 +1255,14 @@ async def process_audio_generation_from_synthesis_plan(
                 # 实时更新项目的 processed_segments
                 project.processed_segments = completed_count
                 project.current_segment = result['segment_id']
+                
+                # 确保total_segments字段正确设置
+                if not project.total_segments or project.total_segments != len(synthesis_data):
+                    project.total_segments = len(synthesis_data)
+                    logger.info(f"[SYNTHESIS_PLAN] 更新项目总段落数为: {project.total_segments}")
+                
                 db.commit()
+                logger.debug(f"[SYNTHESIS_PLAN] 项目进度更新: {completed_count}/{len(synthesis_data)}")
                 
                 # 发送进度更新到前端
                 await websocket_manager.publish_to_topic(
@@ -1975,9 +1303,13 @@ async def process_audio_generation_from_synthesis_plan(
         else:
             project.status = 'failed'
         
+        # 确保数据一致性
+        project.total_segments = len(synthesis_data)
         project.processed_segments = completed_count
         project.completed_at = datetime.utcnow()
         project.final_audio_path = final_audio_path
+        
+        logger.info(f"[SYNTHESIS_PLAN] 最终项目状态: {project.status}, 进度: {completed_count}/{len(synthesis_data)}")
         
         if failed_segments:
             project.error_message = f"有 {len(failed_segments)} 个段落处理失败"
@@ -2112,3 +1444,28 @@ async def merge_audio_files_from_plan(
     except Exception as e:
         logger.error(f"[MERGE] 音频合并失败: {str(e)}")
         raise e 
+
+def add_chapter_info_to_synthesis_data(synthesis_data: List[Dict], analysis_results, db: Session) -> List[Dict]:
+    """为合成数据添加章节信息"""
+    # 创建章节ID到章节号的映射
+    chapter_mapping = {}
+    for result in analysis_results:
+        chapter = db.query(BookChapter).filter(BookChapter.id == result.chapter_id).first()
+        if chapter:
+            chapter_mapping[result.chapter_id] = chapter.chapter_number
+    
+    # 为每个segment添加章节信息
+    enhanced_data = []
+    result_index = 0
+    
+    for result in analysis_results:
+        if result.synthesis_plan and 'synthesis_plan' in result.synthesis_plan:
+            plan_segments = result.synthesis_plan['synthesis_plan']
+            for segment in plan_segments:
+                # 添加章节信息
+                segment['chapter_id'] = result.chapter_id
+                segment['chapter_number'] = chapter_mapping.get(result.chapter_id)
+                enhanced_data.append(segment)
+                logger.debug(f"[SYNTHESIS_PLAN] 段落 {segment.get('segment_id')} 添加章节信息: chapter_id={result.chapter_id}, chapter_number={chapter_mapping.get(result.chapter_id)}")
+    
+    return enhanced_data

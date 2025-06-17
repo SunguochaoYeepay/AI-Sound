@@ -210,6 +210,15 @@ export const useWebSocketStore = defineStore('websocket', () => {
       case 'system_status':
         appStore.updateSystemStatus(data)
         break
+      case 'subscription_confirmed':
+        console.log('✅ 订阅确认:', data)
+        break
+      case 'unsubscription_confirmed':
+        console.log('✅ 取消订阅确认:', data)
+        break
+      case 'connection_established':
+        console.log('✅ 连接建立确认:', data)
+        break
       default:
         // 未知消息类型，记录日志
         console.log('收到未知类型的WebSocket消息:', type, data)

@@ -19,7 +19,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from database import get_db
-from .models import AudioFile, NovelProject, TextSegment, VoiceProfile, SystemLog
+from .models import AudioFile, NovelProject, VoiceProfile, SystemLog  # TextSegment已废弃
 from utils import log_system_event, get_audio_duration
 
 logger = logging.getLogger(__name__)
@@ -565,13 +565,14 @@ async def sync_audio_files(
                 parts = filename.split('_')
                 if len(parts) >= 2 and parts[1].isdigit():
                     segment_order = int(parts[1])
-                    # 查找对应的段落
-                    segment = db.query(TextSegment).filter(
-                        TextSegment.segment_order == segment_order
-                    ).first()
-                    if segment:
-                        segment_id = segment.id
-                        project_id = segment.project_id
+                    # 🚀 新架构：不再查询TextSegment，同步功能已废弃
+                    # segment = db.query(TextSegment).filter(
+                    #     TextSegment.segment_order == segment_order
+                    # ).first()
+                    # if segment:
+                    #     segment_id = segment.id
+                    #     project_id = segment.project_id
+                    pass  # 同步功能已废弃，新架构不依赖旧文件
             elif filename.startswith('project_'):
                 audio_type = 'project'
                 # 尝试从文件名解析项目ID

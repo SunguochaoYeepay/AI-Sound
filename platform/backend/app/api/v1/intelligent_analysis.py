@@ -11,10 +11,10 @@ import logging
 from datetime import datetime
 
 from app.database import get_db
-from app.models import NovelProject, VoiceProfile, Book, TextSegment
+from app.models import NovelProject, VoiceProfile, Book  # TextSegment已废弃
 from app.exceptions import ServiceException
 from app.config import settings
-from app.novel_reader import update_segments_voice_mapping_no_commit
+# from app.novel_reader import update_segments_voice_mapping_no_commit  # 🚀 新架构不需要更新TextSegment
 from app.services.chapter_analysis_service import ChapterAnalysisService
 
 logger = logging.getLogger(__name__)
@@ -171,18 +171,18 @@ async def apply_analysis(
         logger.info(f"[DEBUG] 重新查询后的config: {project.config}")
         logger.info(f"[DEBUG] 获取的character_mapping: {project.get_character_mapping()}")
         
-        # 重要：更新段落的声音映射
-        mapping_result = await update_segments_voice_mapping_no_commit(project_id, character_mapping, db)
+        # 🚀 新架构：不再需要更新TextSegment段落映射
+        # 角色映射已保存在项目配置中，合成时直接使用
         db.commit()
         
         logger.info(f"已应用分析结果到项目 {project_id}")
-        logger.info(f"段落映射更新结果: {mapping_result}")
+        logger.info(f"🚀 新架构：角色映射保存在项目配置中，合成时直接使用")
         
         return {
             "success": True,
             "message": "分析结果已应用",
             "applied_mapping": character_mapping,
-            "segments_updated": mapping_result.get("updated_count", 0)
+            "note": "新架构：角色映射已保存在项目配置中"
         }
         
     except HTTPException:

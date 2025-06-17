@@ -15,7 +15,7 @@ import os
 from datetime import datetime
 
 from app.database import get_db
-from app.models import NovelProject, TextSegment, AudioFile, VoiceProfile
+from app.models import NovelProject, AudioFile, VoiceProfile  # TextSegment已废弃
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/novel-reader", tags=["Novel Reader"])
@@ -69,10 +69,14 @@ async def get_projects(
         # 转换为字典格式
         project_list = []
         for project in projects:
-            # 计算进度百分比
-            progress = 0
-            if project.total_segments > 0:
-                progress = round((project.processed_segments / project.total_segments) * 100, 1)
+            # 🚀 新架构：基于AudioFile计算进度
+            audio_count = db.query(AudioFile).filter(
+                AudioFile.project_id == project.id,
+                AudioFile.audio_type == 'segment'
+            ).count()
+            
+            total_count = project.total_segments or 0
+            progress = round((audio_count / total_count) * 100, 1) if total_count > 0 else 0
             
             project_data = {
                 "id": project.id,
@@ -80,8 +84,8 @@ async def get_projects(
                 "description": project.description,
                 "status": project.status,
                 "progress": progress,
-                "total_segments": project.total_segments,
-                "processed_segments": project.processed_segments,
+                "total_segments": total_count,  # 🚀 基于项目设置
+                "processed_segments": audio_count,  # 🚀 基于AudioFile实际数量
                 "current_segment": project.current_segment,
                 "final_audio_path": project.final_audio_path,
                 "created_at": project.created_at.isoformat() if project.created_at else None,
@@ -202,25 +206,12 @@ async def create_project(
         db.add(project)
         db.flush()  # 获取项目ID
         
-        # 简单的文本分段（这里简化处理，实际应该有更复杂的分段逻辑）
-        import re
-        sentences = re.split(r'[。！？.!?]', text_content)
+        # 🚀 新架构：不再进行传统文本分段，使用智能准备模式
+        # 项目创建时不分段，等待智能准备结果进行合成
         segments_count = 0
-        
-        for i, sentence in enumerate(sentences):
-            if sentence.strip():
-                segment = TextSegment(
-                    project_id=project.id,
-                    paragraph_index=i + 1,
-                    content=sentence.strip(),
-                    status='pending'
-                )
-                db.add(segment)
-                segments_count += 1
-        
-        # 更新项目统计
-        project.total_segments = segments_count
+        project.total_segments = 0
         project.processed_segments = 0
+        logger.info(f"项目 {project.id} 创建完成，新架构将使用智能准备结果进行合成")
         
         db.commit()
         
@@ -258,23 +249,28 @@ async def get_project_detail(
         if not project:
             raise HTTPException(status_code=404, detail="项目不存在")
         
-        # 获取分段信息
-        segments = db.query(TextSegment).filter(TextSegment.project_id == project_id).all()
+        # 🚀 新架构：基于AudioFile获取段落信息
+        audio_segments = db.query(AudioFile).filter(
+            AudioFile.project_id == project_id,
+            AudioFile.audio_type == 'segment'
+        ).all()
         
         # 计算进度百分比
         progress = 0
-        if project.total_segments > 0:
-            progress = round((project.processed_segments / project.total_segments) * 100, 1)
+        completed_count = len(audio_segments)  # AudioFile存在即表示已完成
+        total_count = project.total_segments or 0
+        if total_count > 0:
+            progress = round((completed_count / total_count) * 100, 1)
         
-        # 获取角色统计
+        # 🚀 新架构：基于AudioFile的角色统计
         character_stats = {}
-        for segment in segments:
-            speaker = segment.speaker
+        for audio_file in audio_segments:
+            speaker = audio_file.speaker or audio_file.character_name
             if speaker:
                 if speaker not in character_stats:
                     character_stats[speaker] = {"count": 0, "voice_assigned": False}
                 character_stats[speaker]["count"] += 1
-                if segment.voice_id:
+                if audio_file.voice_profile_id:
                     character_stats[speaker]["voice_assigned"] = True
         
         # 获取项目相关的音频文件
@@ -317,9 +313,17 @@ async def get_project_detail(
             "description": project.description,
             "status": project.status,
             "progress": progress,
-            "total_segments": project.total_segments,
-            "processed_segments": project.processed_segments,
+            "total_segments": total_count,  # 🚀 基于智能准备实际总数
+            "processed_segments": completed_count,  # 🚀 基于AudioFile实际数量
             "current_segment": project.current_segment,
+            # 🚀 新架构：提供基于AudioFile的统计信息
+            "statistics": {
+                "totalSegments": total_count,
+                "completedSegments": completed_count,
+                "failedSegments": max(0, total_count - completed_count) if project.status in ['partial_completed', 'failed'] else 0,
+                "processingSegments": 1 if project.status == 'processing' else 0,
+                "pendingSegments": max(0, total_count - completed_count) if project.status == 'pending' else 0
+            },
             "character_mapping": project.get_character_mapping(),
             "final_audio_path": project.final_audio_path,
             "book_id": project.book_id,
@@ -330,16 +334,20 @@ async def get_project_detail(
             "estimated_completion": None,  # 字段不存在于模型中
             "character_stats": character_stats,
             "audio_files": audio_files_data,
+            # 🚀 新架构：基于AudioFile的段落预览
             "segments_preview": [
                 {
-                    "id": s.id,
-                    "order": s.paragraph_index,
-                    "text": s.content[:100] + "..." if len(s.content) > 100 else s.content,
-                    "speaker": s.speaker,
-                    "voice_profile_id": s.voice_id,
-                    "status": s.status
+                    "id": audio_file.id,
+                    "order": audio_file.paragraph_index,
+                    "text": audio_file.text_content[:100] + "..." if audio_file.text_content and len(audio_file.text_content) > 100 else audio_file.text_content,
+                    "speaker": audio_file.speaker or audio_file.character_name,
+                    "voice_profile_id": audio_file.voice_profile_id,
+                    "status": "completed",  # AudioFile存在即已完成
+                    "chapter_number": audio_file.chapter_number,
+                    "filename": audio_file.filename,
+                    "duration": audio_file.duration
                 }
-                for s in segments[:10]  # 只返回前10个分段预览
+                for audio_file in sorted(audio_segments, key=lambda x: x.paragraph_index or 0)[:10]  # 按段落索引排序，只返回前10个
             ]
         }
         
@@ -367,16 +375,28 @@ async def get_generation_progress(
         if not project:
             raise HTTPException(status_code=404, detail="项目不存在")
         
-        # 使用项目级别的统计数据（智能准备模式）
-        total = project.total_segments or 0
-        processed = project.processed_segments or 0
+        # 🚀 新架构：基于AudioFile的实际统计数据
+        audio_count = db.query(AudioFile).filter(
+            AudioFile.project_id == project_id,
+            AudioFile.audio_type == 'segment'
+        ).count()
+        
+        total = project.total_segments or 0  # 智能准备确定的总数
+        processed = audio_count  # 实际已合成的数量
+        
+        # 数据验证和修复
+        if total > 0 and processed > total:
+            logger.warning(f"项目 {project_id} 数据异常: processed_segments({processed}) > total_segments({total})")
+            processed = total
+            project.processed_segments = processed
+            db.commit()
         
         # 计算进度
         progress_percentage = round((processed / total) * 100, 1) if total > 0 else 0
         
         # 计算其他状态的段落数量
         if project.status == 'processing':
-            processing = total - processed
+            processing = max(0, total - processed)
             pending = 0
             failed = 0
         elif project.status == 'completed':
@@ -386,11 +406,19 @@ async def get_generation_progress(
         elif project.status == 'failed':
             processing = 0
             pending = 0
-            failed = total - processed
+            failed = max(0, total - processed)
+        elif project.status == 'partial_completed':
+            processing = 0
+            pending = 0
+            # 对于部分完成状态，假设剩余的都是失败的
+            failed = max(0, total - processed)
         else:  # pending
             processing = 0
             pending = total
             failed = 0
+        
+        # 记录调试信息
+        logger.debug(f"项目 {project_id} 进度查询: 状态={project.status}, 总数={total}, 完成={processed}, 进度={progress_percentage}%")
         
         return {
             "success": True,
@@ -409,6 +437,11 @@ async def get_generation_progress(
                 "timestamps": {
                     "started_at": project.started_at.isoformat() if project.started_at else None,
                     "estimated_completion": None  # 字段不存在于模型中
+                },
+                "debug_info": {
+                    "raw_total_segments": project.total_segments,
+                    "raw_processed_segments": project.processed_segments,
+                    "calculated_progress": progress_percentage
                 }
             }
         }
@@ -416,6 +449,7 @@ async def get_generation_progress(
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"获取进度失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"获取进度失败: {str(e)}")
 
 @router.post("/projects/{project_id}/start")
@@ -423,6 +457,8 @@ async def start_project_generation(
     project_id: int,
     background_tasks: BackgroundTasks,
     parallel_tasks: int = Form(1, description="并行任务数"),
+    synthesis_mode: str = Form("chapters", description="合成模式"),
+    chapter_ids: str = Form("", description="章节ID列表，逗号分隔"),
     db: Session = Depends(get_db)
 ):
     """
@@ -440,15 +476,33 @@ async def start_project_generation(
         if not project.book_id:
             raise HTTPException(status_code=400, detail="项目未关联书籍，无法使用智能准备")
         
+                # 解析章节ID列表
+        selected_chapter_ids = []
+        if chapter_ids.strip():
+            try:
+                selected_chapter_ids = [int(id.strip()) for id in chapter_ids.split(',') if id.strip()]
+                logger.info(f"[DEBUG] 用户选择的章节ID: {selected_chapter_ids}")
+            except ValueError:
+                raise HTTPException(status_code=400, detail="无效的章节ID格式")
+        
         # 获取智能准备结果
         from app.models import AnalysisResult, BookChapter
-        analysis_results = db.query(AnalysisResult).join(
+        analysis_query = db.query(AnalysisResult).join(
             BookChapter, AnalysisResult.chapter_id == BookChapter.id
         ).filter(
             BookChapter.book_id == project.book_id,
             AnalysisResult.status == 'completed',
             AnalysisResult.synthesis_plan.isnot(None)
-        ).all()
+        )
+        
+        # 如果指定了章节ID，则只获取选中的章节
+        if selected_chapter_ids:
+            analysis_query = analysis_query.filter(BookChapter.id.in_(selected_chapter_ids))
+            logger.info(f"[DEBUG] 按章节筛选合成，选中 {len(selected_chapter_ids)} 个章节")
+        else:
+            logger.info(f"[DEBUG] 合成所有章节")
+        
+        analysis_results = analysis_query.all()
         
         if not analysis_results:
             raise HTTPException(
@@ -554,6 +608,7 @@ async def resume_generation(
     project_id: int,
     background_tasks: BackgroundTasks,
     parallel_tasks: int = Form(1, description="并行任务数"),
+    chapter_ids: str = Form("", description="章节ID列表，逗号分隔"),
     db: Session = Depends(get_db)
 ):
     """
@@ -572,15 +627,33 @@ async def resume_generation(
         if not project.book_id:
             raise HTTPException(status_code=400, detail="项目未关联书籍，无法使用智能准备")
         
+                # 解析章节ID列表
+        selected_chapter_ids = []
+        if chapter_ids.strip():
+            try:
+                selected_chapter_ids = [int(id.strip()) for id in chapter_ids.split(',') if id.strip()]
+                logger.info(f"[DEBUG] 用户选择的章节ID: {selected_chapter_ids}")
+            except ValueError:
+                raise HTTPException(status_code=400, detail="无效的章节ID格式")
+        
         # 获取智能准备结果
         from app.models import AnalysisResult, BookChapter
-        analysis_results = db.query(AnalysisResult).join(
+        analysis_query = db.query(AnalysisResult).join(
             BookChapter, AnalysisResult.chapter_id == BookChapter.id
         ).filter(
             BookChapter.book_id == project.book_id,
             AnalysisResult.status == 'completed',
             AnalysisResult.synthesis_plan.isnot(None)
-        ).all()
+        )
+        
+        # 如果指定了章节ID，则只获取选中的章节
+        if selected_chapter_ids:
+            analysis_query = analysis_query.filter(BookChapter.id.in_(selected_chapter_ids))
+            logger.info(f"[DEBUG] 按章节筛选合成，选中 {len(selected_chapter_ids)} 个章节")
+        else:
+            logger.info(f"[DEBUG] 合成所有章节")
+        
+        analysis_results = analysis_query.all()
         
         if not analysis_results:
             raise HTTPException(
@@ -748,14 +821,13 @@ async def delete_project(
         if not project:
             raise HTTPException(status_code=404, detail="项目不存在")
         
-        # 检查项目是否有关联数据
-        segments_count = db.query(TextSegment).filter(TextSegment.project_id == project_id).count()
+        # 🚀 新架构：只检查AudioFile，TextSegment已废弃
         audio_files_count = db.query(AudioFile).filter(AudioFile.project_id == project_id).count()
         
-        if not force and (segments_count > 0 or audio_files_count > 0):
+        if not force and audio_files_count > 0:
             raise HTTPException(
                 status_code=400, 
-                detail=f"项目有关联数据（{segments_count}个段落，{audio_files_count}个音频文件），请使用强制删除"
+                detail=f"项目有关联数据（{audio_files_count}个音频文件），请使用强制删除"
             )
         
         # 删除关联的音频文件记录和实际文件
@@ -771,9 +843,7 @@ async def delete_project(
                 # 删除数据库记录
                 db.delete(audio_file)
         
-        # 删除关联的文本段落
-        if segments_count > 0:
-            db.query(TextSegment).filter(TextSegment.project_id == project_id).delete()
+        # 🚀 新架构：不再需要删除TextSegment
         
         # 删除项目本身
         db.delete(project)
@@ -784,8 +854,7 @@ async def delete_project(
             "message": "项目删除成功",
             "data": {
                 "deleted_project_id": project_id,
-                "deleted_segments": segments_count,
-                "deleted_audio_files": audio_files_count
+                "deleted_audio_files": audio_files_count  # 🚀 新架构：只删除音频文件
             }
         }
         
@@ -802,31 +871,53 @@ async def retry_segment(
     db: Session = Depends(get_db)
 ):
     """
-    重试单个失败的段落
+    🚀 新架构：重试单个失败的段落（基于AudioFile不存在判断失败）
     """
     try:
         project = db.query(NovelProject).filter(NovelProject.id == project_id).first()
         if not project:
             raise HTTPException(status_code=404, detail="项目不存在")
         
-        # 查找指定的段落
-        segment = db.query(TextSegment).filter(
-            TextSegment.project_id == project_id,
-            TextSegment.id == segment_id
+        # 🚀 新架构：检查该段落是否已有AudioFile
+        existing_audio = db.query(AudioFile).filter(
+            AudioFile.project_id == project_id,
+            AudioFile.paragraph_index == segment_id,
+            AudioFile.audio_type == 'segment'
         ).first()
         
-        if not segment:
-            raise HTTPException(status_code=404, detail="段落不存在")
+        if existing_audio:
+            raise HTTPException(status_code=400, detail="该段落已经合成成功，无需重试")
         
-        if segment.status != 'failed':
-            raise HTTPException(status_code=400, detail=f"段落状态为 {segment.status}，只能重试失败的段落")
+        # 🚀 新架构：重试失败段落本质上是重新启动智能准备合成
+        if not project.book_id:
+            raise HTTPException(status_code=400, detail="项目未关联书籍，无法重试")
         
-        # 重置段落状态
-        segment.status = 'pending'
-        segment.error_message = None
-        segment.processing_time = None
+        # 获取智能准备结果，找到对应segment_id的数据
+        from app.models import AnalysisResult, BookChapter
+        analysis_results = db.query(AnalysisResult).join(
+            BookChapter, AnalysisResult.chapter_id == BookChapter.id
+        ).filter(
+            BookChapter.book_id == project.book_id,
+            AnalysisResult.status == 'completed',
+            AnalysisResult.synthesis_plan.isnot(None)
+        ).all()
         
-        # 更新项目状态为处理中（如果需要）
+        # 查找对应的segment数据
+        target_segment_data = None
+        for result in analysis_results:
+            if result.synthesis_plan and 'synthesis_plan' in result.synthesis_plan:
+                plan_segments = result.synthesis_plan['synthesis_plan']
+                for segment_data in plan_segments:
+                    if segment_data.get('segment_id') == segment_id:
+                        target_segment_data = segment_data
+                        break
+                if target_segment_data:
+                    break
+        
+        if not target_segment_data:
+            raise HTTPException(status_code=404, detail=f"未找到段落{segment_id}的智能准备数据")
+        
+        # 更新项目状态为处理中
         if project.status in ['failed', 'partial_completed']:
             project.status = 'processing'
         
@@ -834,11 +925,11 @@ async def retry_segment(
         
         return {
             "success": True,
-            "message": "段落重试已启动",
+            "message": f"段落{segment_id}重试已启动",
             "data": {
                 "project_id": project_id,
                 "segment_id": segment_id,
-                "segment_status": segment.status
+                "message": "将在下次完整合成时重新处理该段落"
             }
         }
         
@@ -855,68 +946,86 @@ async def retry_all_failed_segments(
     db: Session = Depends(get_db)
 ):
     """
-    重试所有失败的段落
+    🚀 新架构：重试所有失败的段落（基于AudioFile缺失判断失败）
     """
     try:
         project = db.query(NovelProject).filter(NovelProject.id == project_id).first()
         if not project:
             raise HTTPException(status_code=404, detail="项目不存在")
         
-        # 查找所有失败的段落
-        failed_segments = db.query(TextSegment).filter(
-            TextSegment.project_id == project_id,
-            TextSegment.status == 'failed'
+        if not project.book_id:
+            raise HTTPException(status_code=400, detail="项目未关联书籍，无法重试")
+        
+        # 🚀 新架构：获取智能准备结果，确定应该有哪些段落
+        from app.models import AnalysisResult, BookChapter
+        analysis_results = db.query(AnalysisResult).join(
+            BookChapter, AnalysisResult.chapter_id == BookChapter.id
+        ).filter(
+            BookChapter.book_id == project.book_id,
+            AnalysisResult.status == 'completed',
+            AnalysisResult.synthesis_plan.isnot(None)
         ).all()
+        
+        if not analysis_results:
+            raise HTTPException(status_code=400, detail="未找到智能准备结果")
+        
+        # 收集所有应该合成的段落ID
+        expected_segments = set()
+        synthesis_data = []
+        for result in analysis_results:
+            if result.synthesis_plan and 'synthesis_plan' in result.synthesis_plan:
+                plan_segments = result.synthesis_plan['synthesis_plan']
+                for segment_data in plan_segments:
+                    segment_id = segment_data.get('segment_id')
+                    if segment_id:
+                        expected_segments.add(segment_id)
+                synthesis_data.extend(plan_segments)
+        
+        # 🚀 新架构：查找已存在的AudioFile段落ID
+        existing_audio_files = db.query(AudioFile).filter(
+            AudioFile.project_id == project_id,
+            AudioFile.audio_type == 'segment',
+            AudioFile.paragraph_index.isnot(None)
+        ).all()
+        
+        existing_segments = set(af.paragraph_index for af in existing_audio_files)
+        
+        # 计算失败（缺失）的段落
+        failed_segments = expected_segments - existing_segments
         
         if not failed_segments:
             return {
                 "success": True,
-                "message": "没有失败的段落需要重试",
+                "message": "没有失败的段落需要重试，所有段落已完成",
                 "data": {
                     "project_id": project_id,
-                    "retried_segments": 0
+                    "retried_segments": 0,
+                    "total_segments": len(expected_segments),
+                    "completed_segments": len(existing_segments)
                 }
             }
         
-        # 重置所有失败段落的状态
-        for segment in failed_segments:
-            segment.status = 'pending'
-            segment.error_message = None
-            segment.processing_time = None
-        
-        # 更新项目状态
+        # 更新项目状态为处理中
         project.status = 'processing'
-        
         db.commit()
         
-        # 如果项目有智能准备结果，使用智能准备模式重新启动
-        if project.book_id:
-            from app.models import AnalysisResult, BookChapter
-            analysis_results = db.query(AnalysisResult).join(
-                BookChapter, AnalysisResult.chapter_id == BookChapter.id
-            ).filter(
-                BookChapter.book_id == project.book_id,
-                AnalysisResult.status == 'completed',
-                AnalysisResult.synthesis_plan.isnot(None)
-            ).all()
+        # 🚀 启动智能准备模式重新合成（只处理失败的段落）
+        if synthesis_data:
+            # 过滤出失败段落的数据
+            failed_synthesis_data = [
+                segment_data for segment_data in synthesis_data
+                if segment_data.get('segment_id') in failed_segments
+            ]
             
-            if analysis_results:
-                # 收集所有合成段落数据
-                synthesis_data = []
-                for result in analysis_results:
-                    if result.synthesis_plan and 'synthesis_plan' in result.synthesis_plan:
-                        plan_segments = result.synthesis_plan['synthesis_plan']
-                        synthesis_data.extend(plan_segments)
-                
-                if synthesis_data:
-                    # 启动后台任务处理音频生成
-                    from app.novel_reader import process_audio_generation_from_synthesis_plan
-                    background_tasks.add_task(
-                        process_audio_generation_from_synthesis_plan,
-                        project_id,
-                        synthesis_data,
-                        1  # 默认并行任务数为1
-                    )
+            if failed_synthesis_data:
+                # 启动后台任务处理音频生成
+                from app.novel_reader import process_audio_generation_from_synthesis_plan
+                background_tasks.add_task(
+                    process_audio_generation_from_synthesis_plan,
+                    project_id,
+                    failed_synthesis_data,
+                    1  # 默认并行任务数为1
+                )
         
         return {
             "success": True,
@@ -924,6 +1033,8 @@ async def retry_all_failed_segments(
             "data": {
                 "project_id": project_id,
                 "retried_segments": len(failed_segments),
+                "total_segments": len(expected_segments),
+                "completed_segments": len(existing_segments),
                 "project_status": project.status
             }
         }
@@ -1007,3 +1118,44 @@ async def download_partial_audio(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"下载部分音频失败: {str(e)}")
+
+@router.get("/projects/{project_id}/download")
+async def download_final_audio(
+    project_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    下载最终音频文件
+    对应前端下载功能
+    """
+    from fastapi.responses import FileResponse
+    try:
+        project = db.query(NovelProject).filter(NovelProject.id == project_id).first()
+        
+        if not project:
+            raise HTTPException(status_code=404, detail="项目不存在")
+        
+        if project.status != 'completed':
+            raise HTTPException(status_code=400, detail="项目尚未完成")
+        
+        if not project.final_audio_path:
+            raise HTTPException(status_code=404, detail="最终音频文件路径不存在")
+        
+        # 检查文件是否存在
+        if not os.path.exists(project.final_audio_path):
+            logger.warning(f"音频文件不存在: {project.final_audio_path}")
+            raise HTTPException(status_code=404, detail="音频文件不存在")
+        
+        logger.info(f"下载最终音频: 项目{project_id}, 文件: {project.final_audio_path}")
+        
+        return FileResponse(
+            path=project.final_audio_path,
+            filename=f"{project.name}_final.wav",
+            media_type="audio/wav"
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"下载音频失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"下载失败: {str(e)}")

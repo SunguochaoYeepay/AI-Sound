@@ -15,7 +15,7 @@ import requests
 import os
 
 from app.database import get_db
-from app.models import BookChapter, Book, TextSegment
+from app.models import BookChapter, Book  # TextSegment已废弃
 from app.utils import log_system_event
 from app.services.content_preparation_service import ContentPreparationService
 
@@ -808,16 +808,10 @@ async def get_chapter_statistics(
         if not chapter:
             raise HTTPException(status_code=404, detail="章节不存在")
         
-        # 获取分段统计
-        segment_stats = db.query(
-            TextSegment.status,
-            func.count(TextSegment.id).label('count')
-        ).filter(TextSegment.book_chapter_id == chapter_id).group_by(TextSegment.status).all()
-        
-        status_counts = {stat.status: stat.count for stat in segment_stats}
-        
-        # 计算基础统计
-        total_segments = sum(status_counts.values())
+        # 🚀 新架构：不再使用TextSegment分段统计
+        # 因为新架构直接基于智能准备结果合成，章节不依赖TextSegment
+        status_counts = {}
+        total_segments = 0
         
         return {
             "success": True,
