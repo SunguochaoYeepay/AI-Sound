@@ -8,6 +8,12 @@
 - ✅ **Docker构建优化** - 优化前端Docker构建配置
 - ✅ **后端API改进** - 优化books.py API接口实现
 
+### 🐛 Bug修复
+- ✅ **进度API数据结构修复** - 修复SynthesisCenter.vue中进度监控的数据结构不匹配问题
+  - 将 `progress.statistics.completed` 改为 `progress.segments.completed`
+  - 解决前端TypeError: Cannot read properties of undefined错误
+  - 确保进度监控功能正常工作
+
 ### 🎯 技术优化
 - 📱 **前端组件** - BookCreate.vue、Characters.vue、NovelProjectCreate.vue等界面优化
 - 🔄 **项目管理** - NovelProjects.vue项目列表和管理功能改进
