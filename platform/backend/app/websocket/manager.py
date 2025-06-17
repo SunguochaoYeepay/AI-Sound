@@ -244,22 +244,30 @@ class WebSocketManager:
             
             # 处理不同类型的消息
             if message_type == "subscribe":
-                topic = data.get("topic")
+                # 兼容两种格式：直接topic字段或data.topic字段
+                topic = data.get("topic") or (data.get("data", {}).get("topic") if isinstance(data.get("data"), dict) else None)
                 if topic:
                     await self.subscribe(connection_id, topic)
                     await self.send_personal_message(connection_id, {
                         "type": "subscription_confirmed",
                         "topic": topic
                     })
+                    logger.info(f"✅ 订阅成功: {connection_id} -> {topic}")
+                else:
+                    logger.warning(f"⚠️ 订阅请求缺少topic: {data}")
             
             elif message_type == "unsubscribe":
-                topic = data.get("topic")
+                # 兼容两种格式：直接topic字段或data.topic字段
+                topic = data.get("topic") or (data.get("data", {}).get("topic") if isinstance(data.get("data"), dict) else None)
                 if topic:
                     await self.unsubscribe(connection_id, topic)
                     await self.send_personal_message(connection_id, {
                         "type": "unsubscription_confirmed",
                         "topic": topic
                     })
+                    logger.info(f"✅ 取消订阅成功: {connection_id} -> {topic}")
+                else:
+                    logger.warning(f"⚠️ 取消订阅请求缺少topic: {data}")
             
             elif message_type == "ping":
                 await self.send_personal_message(connection_id, {

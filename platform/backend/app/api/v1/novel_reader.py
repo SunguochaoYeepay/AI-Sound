@@ -4,6 +4,7 @@
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Form, BackgroundTasks
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, asc, func, or_, and_
 from typing import Dict, List, Any, Optional
@@ -793,3 +794,216 @@ async def delete_project(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"删除项目失败: {str(e)}")
+
+@router.post("/projects/{project_id}/retry-segment/{segment_id}")
+async def retry_segment(
+    project_id: int,
+    segment_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    重试单个失败的段落
+    """
+    try:
+        project = db.query(NovelProject).filter(NovelProject.id == project_id).first()
+        if not project:
+            raise HTTPException(status_code=404, detail="项目不存在")
+        
+        # 查找指定的段落
+        segment = db.query(TextSegment).filter(
+            TextSegment.project_id == project_id,
+            TextSegment.id == segment_id
+        ).first()
+        
+        if not segment:
+            raise HTTPException(status_code=404, detail="段落不存在")
+        
+        if segment.status != 'failed':
+            raise HTTPException(status_code=400, detail=f"段落状态为 {segment.status}，只能重试失败的段落")
+        
+        # 重置段落状态
+        segment.status = 'pending'
+        segment.error_message = None
+        segment.processing_time = None
+        
+        # 更新项目状态为处理中（如果需要）
+        if project.status in ['failed', 'partial_completed']:
+            project.status = 'processing'
+        
+        db.commit()
+        
+        return {
+            "success": True,
+            "message": "段落重试已启动",
+            "data": {
+                "project_id": project_id,
+                "segment_id": segment_id,
+                "segment_status": segment.status
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"重试段落失败: {str(e)}")
+
+@router.post("/projects/{project_id}/retry-failed-segments")
+async def retry_all_failed_segments(
+    project_id: int,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
+    """
+    重试所有失败的段落
+    """
+    try:
+        project = db.query(NovelProject).filter(NovelProject.id == project_id).first()
+        if not project:
+            raise HTTPException(status_code=404, detail="项目不存在")
+        
+        # 查找所有失败的段落
+        failed_segments = db.query(TextSegment).filter(
+            TextSegment.project_id == project_id,
+            TextSegment.status == 'failed'
+        ).all()
+        
+        if not failed_segments:
+            return {
+                "success": True,
+                "message": "没有失败的段落需要重试",
+                "data": {
+                    "project_id": project_id,
+                    "retried_segments": 0
+                }
+            }
+        
+        # 重置所有失败段落的状态
+        for segment in failed_segments:
+            segment.status = 'pending'
+            segment.error_message = None
+            segment.processing_time = None
+        
+        # 更新项目状态
+        project.status = 'processing'
+        
+        db.commit()
+        
+        # 如果项目有智能准备结果，使用智能准备模式重新启动
+        if project.book_id:
+            from app.models import AnalysisResult, BookChapter
+            analysis_results = db.query(AnalysisResult).join(
+                BookChapter, AnalysisResult.chapter_id == BookChapter.id
+            ).filter(
+                BookChapter.book_id == project.book_id,
+                AnalysisResult.status == 'completed',
+                AnalysisResult.synthesis_plan.isnot(None)
+            ).all()
+            
+            if analysis_results:
+                # 收集所有合成段落数据
+                synthesis_data = []
+                for result in analysis_results:
+                    if result.synthesis_plan and 'synthesis_plan' in result.synthesis_plan:
+                        plan_segments = result.synthesis_plan['synthesis_plan']
+                        synthesis_data.extend(plan_segments)
+                
+                if synthesis_data:
+                    # 启动后台任务处理音频生成
+                    from app.novel_reader import process_audio_generation_from_synthesis_plan
+                    background_tasks.add_task(
+                        process_audio_generation_from_synthesis_plan,
+                        project_id,
+                        synthesis_data,
+                        1  # 默认并行任务数为1
+                    )
+        
+        return {
+            "success": True,
+            "message": f"已启动重试 {len(failed_segments)} 个失败段落",
+            "data": {
+                "project_id": project_id,
+                "retried_segments": len(failed_segments),
+                "project_status": project.status
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"重试失败段落失败: {str(e)}")
+
+@router.get("/projects/{project_id}/download-partial")
+async def download_partial_audio(
+    project_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    下载部分完成的音频文件
+    """
+    try:
+        project = db.query(NovelProject).filter(NovelProject.id == project_id).first()
+        if not project:
+            raise HTTPException(status_code=404, detail="项目不存在")
+        
+        # 查找已完成的音频文件
+        completed_audio_files = db.query(AudioFile).filter(
+            AudioFile.project_id == project_id,
+            AudioFile.status == 'active',
+            AudioFile.audio_type == 'segment'
+        ).order_by(AudioFile.created_at).all()
+        
+        if not completed_audio_files:
+            raise HTTPException(status_code=404, detail="没有已完成的音频文件")
+        
+        # 如果只有一个文件，直接返回
+        if len(completed_audio_files) == 1:
+            audio_file = completed_audio_files[0]
+            if not os.path.exists(audio_file.file_path):
+                raise HTTPException(status_code=404, detail="音频文件不存在")
+            
+            return FileResponse(
+                audio_file.file_path,
+                media_type='audio/wav',
+                filename=f"{project.name}_partial.wav"
+            )
+        
+        # 合并多个音频文件
+        try:
+            from pydub import AudioSegment
+            import tempfile
+            
+            merged_audio = None
+            silence = AudioSegment.silent(duration=500)  # 500ms间隔
+            
+            for audio_file in completed_audio_files:
+                if os.path.exists(audio_file.file_path):
+                    segment_audio = AudioSegment.from_wav(audio_file.file_path)
+                    if merged_audio is None:
+                        merged_audio = segment_audio
+                    else:
+                        merged_audio = merged_audio + silence + segment_audio
+            
+            if merged_audio is None:
+                raise HTTPException(status_code=404, detail="没有有效的音频文件")
+            
+            # 创建临时文件
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as tmp_file:
+                merged_audio.export(tmp_file.name, format="wav")
+                
+                return FileResponse(
+                    tmp_file.name,
+                    media_type='audio/wav',
+                    filename=f"{project.name}_partial.wav"
+                )
+                
+        except ImportError:
+            raise HTTPException(status_code=500, detail="音频处理库未安装，无法合并音频")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"音频合并失败: {str(e)}")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"下载部分音频失败: {str(e)}")

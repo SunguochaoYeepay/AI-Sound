@@ -322,11 +322,11 @@
                   type="primary"
                   size="large"
                   block
-                  @click="resumeSynthesis"
+                  @click="retryAllFailedSegments"
                   :loading="resumingGeneration"
                   style="margin-top: 8px;"
                 >
-                  🔄 继续未完成的合成
+                  🔄 重试失败段落 ({{ project.statistics?.failedSegments || 0 }})
                 </a-button>
 
                 <!-- TTS服务恢复按钮 -->
@@ -376,11 +376,22 @@
               <div v-if="project.status === 'partial_completed'" class="synthesis-status-hint">
                 <a-alert
                   message="合成部分完成"
-                  :description="`已完成 ${project.statistics?.completedSegments || 0}/${project.statistics?.totalSegments || 0} 个段落，可以继续合成剩余部分或重新开始。`"
+                  :description="`已完成 ${project.statistics?.completedSegments || 0}/${project.statistics?.totalSegments || 0} 个段落，${project.statistics?.failedSegments || 0} 个失败。可以重试失败段落或下载已完成部分。`"
                   type="warning"
                   show-icon
                   style="margin-top: 16px;"
-                />
+                >
+                  <template #action>
+                    <a-space>
+                      <a-button type="primary" size="small" @click="retryAllFailedSegments" :loading="resumingGeneration">
+                        🔄 重试失败
+                      </a-button>
+                      <a-button size="small" @click="downloadPartialAudio">
+                        📥 下载已完成
+                      </a-button>
+                    </a-space>
+                  </template>
+                </a-alert>
               </div>
             </div>
           </a-card>
@@ -619,7 +630,7 @@
             <a-statistic 
               title="已完成" 
               :value="progressData.completed_segments" 
-              suffix="/ {{ progressData.total_segments }}"
+              :suffix="`/ ${progressData.total_segments}`"
               :value-style="{ color: '#52c41a' }"
             />
             <a-statistic 
@@ -775,23 +786,57 @@
           </a-result>
         </div>
 
-        <!-- 部分失败后操作 -->
-        <div v-if="progressData.status === 'failed' || (progressData.failed_segments > 0 && progressData.status === 'completed')" class="failure-actions">
-          <a-alert
-            message="⚠️ 部分段落合成失败"
-            description="您可以重试失败的段落，或者下载已完成的部分"
-            type="warning"
-            show-icon
-            class="failure-alert"
-          />
-          <div class="failure-buttons">
-            <a-button type="primary" @click="retryAllFailedSegments">
-              🔄 重试所有失败段落
-            </a-button>
-            <a-button @click="downloadPartialAudio" v-if="progressData.completed_segments > 0">
-              📥 下载已完成部分
-            </a-button>
-          </div>
+        <!-- 部分完成后操作 -->
+        <div v-if="progressData.status === 'partial_completed'" class="partial-completion-actions">
+          <a-result
+            status="warning"
+            title="⚠️ 音频合成部分完成"
+            :sub-title="`${progressData.completed_segments}/${progressData.total_segments} 个段落成功，${progressData.failed_segments} 个失败`"
+          >
+            <template #extra>
+              <a-space direction="vertical" style="width: 100%">
+                <a-button type="primary" size="large" @click="retryAllFailedSegments" :loading="resumingGeneration">
+                  🔄 重试失败段落 ({{ progressData.failed_segments }})
+                </a-button>
+                <a-space>
+                  <a-button size="large" @click="downloadPartialAudio" v-if="progressData.completed_segments > 0">
+                    📥 下载已完成部分
+                  </a-button>
+                  <a-button @click="closeSynthesisDrawer">
+                    ✅ 确认完成
+                  </a-button>
+                </a-space>
+              </a-space>
+            </template>
+          </a-result>
+        </div>
+
+        <!-- 完全失败后操作 -->
+        <div v-if="progressData.status === 'failed'" class="failure-actions">
+          <a-result
+            status="error"
+            title="❌ 音频合成失败"
+            :sub-title="progressData.completed_segments > 0 ? `${progressData.completed_segments} 个段落已完成，但仍有 ${progressData.failed_segments} 个失败` : '合成过程中发生错误'"
+          >
+            <template #extra>
+              <a-space direction="vertical" style="width: 100%">
+                <a-button type="primary" size="large" @click="retryAllFailedSegments" :loading="resumingGeneration">
+                  🔄 重试失败段落
+                </a-button>
+                <a-space v-if="progressData.completed_segments > 0">
+                  <a-button size="large" @click="downloadPartialAudio">
+                    📥 下载已完成部分
+                  </a-button>
+                  <a-button @click="closeSynthesisDrawer">
+                    ✅ 确认完成
+                  </a-button>
+                </a-space>
+                <a-button v-else @click="closeSynthesisDrawer">
+                  🔙 返回
+                </a-button>
+              </a-space>
+            </template>
+          </a-result>
         </div>
       </div>
     </a-drawer>
@@ -924,7 +969,9 @@ const getStatusColor = (status) => {
     processing: 'blue',
     paused: 'purple',
     completed: 'green',
-    failed: 'red'
+    partial_completed: 'gold',
+    failed: 'red',
+    cancelled: 'default'
   }
   return colors[status] || 'default'
 }
@@ -935,7 +982,9 @@ const getStatusText = (status) => {
     processing: '合成中',
     paused: '已暂停',
     completed: '已完成',
-    failed: '失败'
+    partial_completed: '部分完成',
+    failed: '失败',
+    cancelled: '已取消'
   }
   return texts[status] || status
 }
@@ -1470,21 +1519,42 @@ const loadProject = async () => {
     if (response.data.success) {
       project.value = response.data.data
       
+      // 确保statistics是响应式对象
+      if (!project.value.statistics) {
+        project.value.statistics = reactive({
+          totalSegments: 0,
+          completedSegments: 0,
+          failedSegments: 0,
+          processingSegments: 0,
+          pendingSegments: 0
+        })
+      }
+      
       // 如果项目处于processing状态或有段落，加载统计信息
       if (project.value.status === 'processing' || project.value.total_segments > 0) {
         const progressResponse = await readerAPI.getProgress(projectId)
         if (progressResponse.data.success) {
           const progress = progressResponse.data.data
           // 更新统计信息，映射字段名
-          project.value.statistics = {
+          Object.assign(project.value.statistics, {
             totalSegments: progress.segments.total,
             completedSegments: progress.segments.completed,
             failedSegments: progress.segments.failed,
             processingSegments: progress.segments.processing,
             pendingSegments: progress.segments.pending
-          }
+          })
           project.value.status = progress.status
           project.value.current_segment = progress.current_segment
+          
+          // 同步更新进度数据用于显示
+          progressData.value = {
+            progress: progress.progress_percentage || 0,
+            status: progress.status,
+            completed_segments: progress.segments.completed,
+            total_segments: progress.segments.total,
+            failed_segments: progress.segments.failed,
+            current_processing: `正在处理第 ${progress.current_segment || 1} 段`
+          }
         }
       }
       
@@ -1986,50 +2056,86 @@ const checkTTSService = async () => {
 
 // WebSocket进度监控 - 替代轮询机制
 const startWebSocketProgressMonitoring = () => {
+  // 先停止之前的订阅（避免重复订阅）
+  if (unsubscribeWebSocket.value) {
+    stopWebSocketProgressMonitoring()
+  }
+  
   // 确保WebSocket连接
   wsStore.connect()
   
-  // 订阅合成进度更新
-  unsubscribeWebSocket.value = wsStore.subscribe('progress_update', (data) => {
+  // 订阅合成进度更新主题
+  unsubscribeWebSocket.value = wsStore.subscribe('topic_message', (data, fullMessage) => {
     // 检查是否为当前项目的进度更新
-    if (data.type === 'synthesis' && data.project_id == project.value?.id) {
-      console.log('📨 收到WebSocket进度更新:', data)
+    if (fullMessage.topic === `synthesis_${project.value?.id}` && data.type === 'progress_update') {
+      const progressData = data.data
+      console.log('📨 收到WebSocket进度更新:', progressData)
       
       // 更新项目统计信息
-      project.value.statistics = {
-        totalSegments: data.total_segments,
-        completedSegments: data.completed_segments,
-        failedSegments: data.failed_segments,
-        processingSegments: data.total_segments - data.completed_segments - data.failed_segments,
-        pendingSegments: 0
+      console.log('📊 更新前的project.statistics:', project.value.statistics)
+      
+      // 确保statistics存在且是响应式的
+      if (!project.value.statistics) {
+        project.value.statistics = reactive({
+          totalSegments: 0,
+          completedSegments: 0,
+          failedSegments: 0,
+          processingSegments: 0,
+          pendingSegments: 0
+        })
       }
-      project.value.status = data.status
-      project.value.current_segment = data.current_segment || 0
+      
+      // 使用Object.assign保持响应式
+      Object.assign(project.value.statistics, {
+        totalSegments: progressData.total_segments,
+        completedSegments: progressData.completed_segments,
+        failedSegments: progressData.failed_segments,
+        processingSegments: progressData.total_segments - progressData.completed_segments - progressData.failed_segments,
+        pendingSegments: 0
+      })
+      project.value.status = progressData.status
+      project.value.current_segment = progressData.current_segment || 0
+      console.log('📊 更新后的project.statistics:', project.value.statistics)
+      console.log('🔢 计算的progressPercent:', progressPercent.value)
       
       // 如果进度监控抽屉已打开，同步更新进度数据
       if (synthesisProgressDrawer.value) {
-        updateProgressDataFromWebSocket(data)
+        updateProgressDataFromWebSocket(progressData)
       }
+      
+      // 强制更新进度显示数据（确保进度条实时更新）
+      updateProgressDataFromWebSocket(progressData)
       
       // 更新当前处理段落信息
       currentProcessingSegment.value = getCurrentProcessingSegment()
       
       // 如果有新完成的片段，加载已完成片段列表
-      if (data.completed_segments > (completedSegments.value.length || 0)) {
+      if (progressData.completed_segments > (completedSegments.value.length || 0)) {
         loadCompletedSegments()
       }
       
       // 检查完成状态
-      if (data.status === 'completed') {
+      if (progressData.status === 'completed') {
         stopWebSocketProgressMonitoring()
         stopElapsedTimer()
         loadProject()
         message.success('🎉 音频合成完成！')
-      } else if (data.status === 'failed') {
+      } else if (progressData.status === 'partial_completed') {
+        stopWebSocketProgressMonitoring()
+        stopElapsedTimer()
+        loadProject()
+        const failedCount = progressData.failed_segments || 0
+        if (failedCount > 0) {
+          message.warning(`⚠️ 合成部分完成！${progressData.completed_segments}/${progressData.total_segments} 个段落成功，${failedCount} 个失败`)
+        } else {
+          message.success('🎉 音频合成部分完成！')
+        }
+      } else if (progressData.status === 'failed') {
         stopWebSocketProgressMonitoring()  
         stopElapsedTimer()
+        loadProject()
         message.error('❌ 音频合成失败')
-      } else if (data.status === 'cancelled') {
+      } else if (progressData.status === 'cancelled') {
         stopWebSocketProgressMonitoring()
         stopElapsedTimer()
         message.info('⏹️ 音频合成已取消')
@@ -2037,19 +2143,19 @@ const startWebSocketProgressMonitoring = () => {
     }
   })
   
-  // 发送订阅请求
+  // 发送主题订阅请求
   wsStore.sendMessage('subscribe', {
-    session_id: `synthesis_${project.value.id}`
+    topic: `synthesis_${project.value.id}`
   })
   
-  console.log('🔌 WebSocket进度监控已启动，session_id:', `synthesis_${project.value.id}`)
+  console.log('🔌 WebSocket进度监控已启动，topic:', `synthesis_${project.value.id}`)
 }
 
 const stopWebSocketProgressMonitoring = () => {
   if (unsubscribeWebSocket.value) {
     // 发送取消订阅请求
     wsStore.sendMessage('unsubscribe', {
-      session_id: `synthesis_${project.value.id}`
+      topic: `synthesis_${project.value.id}`
     })
     
     // 取消本地订阅
@@ -2281,61 +2387,12 @@ const filterVoiceOption = (input, option) => {
   return option.children.toLowerCase().indexOf(input.toLowerCase()) >= 0
 }
 
-// WebSocket设置
-const setupWebSocketListeners = () => {
-  // 确保WebSocket连接
-  wsStore.connect()
-  
-  // 订阅合成进度更新
-  unsubscribeWebSocket.value = wsStore.subscribe('synthesis_progress', (data) => {
-    if (data.project_id == project.value?.id) {
-      console.log('收到WebSocket进度更新:', data)
-      
-      // 更新进度数据
-      progressData.value = {
-        progress: data.progress || 0,
-        status: data.status || 'processing',
-        completed_segments: data.completed_segments || 0,
-        total_segments: data.total_segments || 0,
-        failed_segments: data.failed_segments || 0,
-        current_processing: data.current_processing || '合成中...'
-      }
-      
-      // 更新对应段落的状态
-      if (data.current_segment) {
-        const segment = segmentStatuses.value.find(s => s.segment_id === data.current_segment)
-        if (segment) {
-          if (data.status === 'running') {
-            segment.status = 'processing'
-          } else if (data.status === 'completed' && data.progress === 100) {
-            segment.status = 'completed'
-            segment.completion_time = data.timestamp
-          }
-        }
-      }
-      
-      // 如果合成完成，停止计时器并刷新项目数据
-      if (data.status === 'completed') {
-        stopElapsedTimer()
-        stopWebSocketProgressMonitoring()
-        loadProject()
-        message.success('🎉 音频合成完成！')
-      } else if (data.status === 'failed') {
-        stopElapsedTimer()
-        stopWebSocketProgressMonitoring()
-        message.error('❌ 音频合成失败')
-      }
-    }
-  })
-}
+// WebSocket设置 - 已移除，统一使用startWebSocketProgressMonitoring方法
 
 // 生命周期
 onMounted(async () => {
   await loadProject()
   await loadVoices()
-  
-  // 设置WebSocket监听器
-  setupWebSocketListeners()
   
   // 自动加载章节（因为现在固定为章节模式）
   autoLoadChapters()
@@ -2533,24 +2590,42 @@ const retrySegment = async (segment) => {
 
 // 重试所有失败段落
 const retryAllFailedSegments = async () => {
-  const failedSegments = segmentStatuses.value.filter(s => s.status === 'failed')
-  
-  if (failedSegments.length === 0) {
-    message.info('没有失败的段落需要重试')
+  if (!project.value?.id) {
+    message.error('项目信息不存在')
     return
   }
   
-  message.info(`正在重试 ${failedSegments.length} 个失败段落...`)
-  
-  // 并发重试所有失败段落
-  const retryPromises = failedSegments.map(segment => retrySegment(segment))
-  
+  resumingGeneration.value = true
   try {
-    await Promise.all(retryPromises)
-    message.success('所有失败段落重试已启动')
+    const response = await readerAPI.retryAllFailedSegments(project.value.id)
+    
+    if (response.data.success) {
+      const retryCount = response.data.data.retried_segments
+      if (retryCount > 0) {
+        message.success(`已启动重试 ${retryCount} 个失败段落`)
+        
+        // 更新项目状态
+        project.value.status = 'processing'
+        
+        // 重新初始化监控
+        initializeSynthesisMonitoring()
+        
+        // 确保抽屉打开
+        synthesisProgressDrawer.value = true
+        
+        // 重新启动WebSocket监控
+        startWebSocketProgressMonitoring()
+      } else {
+        message.info('没有失败的段落需要重试')
+      }
+    } else {
+      throw new Error(response.data.message || '重试失败')
+    }
   } catch (error) {
-    console.error('批量重试失败:', error)
-    message.error('批量重试失败')
+    console.error('重试所有失败段落失败:', error)
+    message.error('重试失败: ' + error.message)
+  } finally {
+    resumingGeneration.value = false
   }
 }
 
@@ -2630,8 +2705,8 @@ const updateProgressDataFromWebSocket = (data) => {
   }
   
   // 更新段落状态
-  if (progress.segments_status) {
-    progress.segments_status.forEach(segmentStatus => {
+  if (data.segments_status) {
+    data.segments_status.forEach(segmentStatus => {
       const segment = segmentStatuses.value.find(s => s.segment_id === segmentStatus.segment_id)
       if (segment) {
         segment.status = segmentStatus.status
@@ -2643,7 +2718,7 @@ const updateProgressDataFromWebSocket = (data) => {
   }
   
   // 如果合成完成或失败，停止计时器
-  if (progress.status === 'completed' || progress.status === 'failed') {
+  if (data.status === 'completed' || data.status === 'failed') {
     stopElapsedTimer()
   }
 }

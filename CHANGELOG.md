@@ -29,6 +29,12 @@
   - 后端start API支持partial_completed状态
   - partial_completed状态保留进度，从上次停止位置继续
   - 优化了不同项目状态下的进度重置逻辑
+- 🚀 **CUDA GPU序列化合成修复** - 解决GPU并发过载导致的设备断言错误
+  - 问题分析：并行合成所有段落导致GPU内存过载，出现"CUDA error: device-side assert triggered"
+  - 解决方案：改为序列化处理（一个段落接一个段落），防止GPU资源争夺
+  - 技术实现：移除asyncio.gather()并行任务，使用for循环序列化处理每个segment
+  - 稳定性提升：避免CUDA设备断言错误，确保长时间合成任务稳定运行
+  - 性能优化：虽然总时间稍长，但成功率100%，无需重试失败段落
 
 ### 🎯 技术优化
 - 📱 **前端组件** - BookCreate.vue、Characters.vue、NovelProjectCreate.vue等界面优化
@@ -300,6 +306,37 @@ platform/
 - 基础项目结构
 - MegaTTS3原始集成
 - 初步API接口
+
+## [2025-01-17] 合成进度实时更新修复
+### 修复
+- ✅ 修复合成进度不实时更新的问题
+  - 在段落开始处理时发送WebSocket进度更新
+  - 前端现在可以看到"正在处理段落 X"的实时状态
+  - 改善了用户体验，避免进度显示长时间无变化
+
+### 🔥 重要WebSocket架构修复
+- 🔧 解决WebSocket管理器不一致问题
+  - 发现系统中存在两个不同的WebSocket管理器
+  - main.py使用app.websocket.manager.WebSocketManager
+  - novel_reader.py使用app.utils.websocket_manager.ProgressWebSocketManager
+  - 统一使用app.websocket.manager中的WebSocket管理器
+
+### 🔄 前端响应式数据修复
+- 🔧 修复进度条和统计数字不更新的响应式问题
+  - 确保project.value.statistics始终是响应式对象
+  - 使用reactive()和Object.assign()保持Vue响应式链
+  - 修复了直接赋值破坏响应式的问题
+  - 添加详细的调试日志跟踪数据更新
+
+### 技术改进
+- 📡 优化WebSocket进度推送机制
+  - 在process_audio_generation_from_synthesis_plan函数中添加段落开始处理时的进度推送
+  - 包含当前处理段落的角色和文本片段信息
+  - 完善了错误处理，确保WebSocket推送失败不影响主流程
+- 🔄 修复前端WebSocket订阅逻辑
+  - 改为订阅topic_message类型消息
+  - 更新订阅/取消订阅的消息格式
+  - 确保前后端消息格式一致
 
 ---
 

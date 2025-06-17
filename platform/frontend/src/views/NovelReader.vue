@@ -485,6 +485,12 @@ const startProgressPolling = () => {
             character: 'completed',
             synthesis: 'completed'
           }
+        } else if (progress.status === 'partial_completed') {
+          progressStatus.value = {
+            text: 'completed',
+            character: 'completed',
+            synthesis: 'partial_completed'
+          }
         } else if (progress.status === 'failed') {
           progressStatus.value = {
             text: 'completed',
@@ -495,6 +501,7 @@ const startProgressPolling = () => {
         
         // 检查停止条件
         const shouldStop = progress.status === 'completed' || 
+                          progress.status === 'partial_completed' ||
                           progress.status === 'failed' ||
                           progress.status === 'cancelled' ||
                           // 如果没有段落在处理且没有待处理的段落，也停止轮询
@@ -511,7 +518,14 @@ const startProgressPolling = () => {
           // 重新加载项目以获取音频文件
           loadProject()
           message.success('语音合成完成！')
-      } else if (progress.status === 'failed') {
+        } else if (progress.status === 'partial_completed') {
+          currentProject.value.status = 'partial_completed'
+          // 重新加载项目以获取音频文件
+          loadProject()
+          const failedCount = progress.statistics?.failed || 0
+          const completedCount = progress.statistics?.completed || 0
+          message.warning(`部分合成完成！${completedCount} 个段落成功，${failedCount} 个失败`)
+        } else if (progress.status === 'failed') {
           currentProject.value.status = 'failed'
           message.error('语音合成失败')
           } else if (progress.status === 'cancelled') {
@@ -634,7 +648,9 @@ const getStatusColor = (status) => {
     'pending': 'orange',
     'processing': 'blue', 
     'completed': 'green',
-    'failed': 'red'
+    'partial_completed': 'gold',
+    'failed': 'red',
+    'cancelled': 'default'
   }
   return colors[status] || 'default'
 }
@@ -644,7 +660,9 @@ const getStatusText = (status) => {
     'pending': '待处理',
     'processing': '处理中',
     'completed': '已完成',
-    'failed': '失败'
+    'partial_completed': '部分完成',
+    'failed': '失败',
+    'cancelled': '已取消'
   }
   return texts[status] || '未知'
 }

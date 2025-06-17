@@ -259,6 +259,14 @@ export const readerAPI = {
     const formData = new FormData()
     formData.append('parallel_tasks', data.parallel_tasks || 1)
     
+    // 添加其他可选参数
+    if (data.synthesis_mode) {
+      formData.append('synthesis_mode', data.synthesis_mode)
+    }
+    if (data.chapter_ids && Array.isArray(data.chapter_ids)) {
+      formData.append('chapter_ids', data.chapter_ids.join(','))
+    }
+    
     return apiClient.post(`/novel-reader/projects/${projectId}/start`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data'
@@ -286,6 +294,17 @@ export const readerAPI = {
   
   // 下载音频
   downloadAudio: (projectId) => apiClient.get(`/novel-reader/projects/${projectId}/download`, {
+    responseType: 'blob'
+  }),
+  
+  // 重试失败的段落
+  retrySegment: (projectId, segmentId) => apiClient.post(`/novel-reader/projects/${projectId}/retry-segment/${segmentId}`),
+  
+  // 重试所有失败的段落
+  retryAllFailedSegments: (projectId) => apiClient.post(`/novel-reader/projects/${projectId}/retry-failed-segments`),
+  
+  // 下载部分完成的音频
+  downloadPartialAudio: (projectId) => apiClient.get(`/novel-reader/projects/${projectId}/download-partial`, {
     responseType: 'blob'
   }),
   

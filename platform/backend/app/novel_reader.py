@@ -1764,8 +1764,7 @@ async def process_audio_generation_from_synthesis_plan(
         semaphore = asyncio.Semaphore(parallel_tasks)
         
         # 初始化WebSocket管理器用于进度推送
-        from .utils.websocket_manager import get_websocket_manager
-        websocket_manager = get_websocket_manager()
+        from app.websocket.manager import websocket_manager
         
         # 处理每个段落
         completed_count = 0
@@ -1773,114 +1772,143 @@ async def process_audio_generation_from_synthesis_plan(
         output_files = []
         
         async def process_segment(segment_data, segment_index):
-            """处理单个段落"""
-            async with semaphore:
-                try:
-                    segment_id = segment_data.get('segment_id', segment_index + 1)
-                    text = segment_data.get('text', '')
-                    speaker = segment_data.get('speaker', '未知')
-                    voice_id = segment_data.get('voice_id')
-                    parameters = segment_data.get('parameters', {})
-                    
-                    logger.info(f"[SYNTHESIS_PLAN] 处理段落 {segment_id}: {speaker} - {text[:50]}...")
-                    
-                    if not text.strip():
-                        logger.warning(f"[SYNTHESIS_PLAN] 段落 {segment_id} 文本为空，跳过")
-                        return None
-                    
-                    if not voice_id:
-                        logger.error(f"[SYNTHESIS_PLAN] 段落 {segment_id} 缺少 voice_id")
-                        return {"error": f"段落 {segment_id} 缺少声音配置"}
-                    
-                    # 获取声音档案
-                    voice = db.query(VoiceProfile).filter(VoiceProfile.id == voice_id).first()
-                    if not voice:
-                        logger.error(f"[SYNTHESIS_PLAN] 段落 {segment_id} 声音档案不存在: {voice_id}")
-                        return {"error": f"段落 {segment_id} 声音档案不存在"}
-                    
-                    # 验证声音文件
-                    file_validation = voice.validate_files()
-                    if not file_validation['valid']:
-                        logger.error(f"[SYNTHESIS_PLAN] 段落 {segment_id} 声音文件缺失: {file_validation['missing_files']}")
-                        return {"error": f"段落 {segment_id} 声音文件缺失"}
-                    
-                    # 生成音频文件路径
-                    safe_speaker = "".join(c for c in speaker if c.isalnum() or c in (' ', '-', '_')).rstrip()
-                    audio_filename = f"segment_{segment_id:04d}_{safe_speaker}_{voice_id}.wav"
-                    audio_path = os.path.join(project_output_dir, audio_filename)
-                    
-                    # 准备TTS请求
-                    tts_request = TTSRequest(
-                        text=text,
-                        reference_audio_path=voice.reference_audio_path,
-                        output_audio_path=audio_path,
-                        time_step=parameters.get('timeStep', 32),
-                        p_weight=parameters.get('pWeight', 1.4),
-                        t_weight=parameters.get('tWeight', 3.0),
-                        latent_file_path=voice.latent_file_path
-                    )
-                    
-                    # 调用TTS合成
-                    start_time = time.time()
-                    response = await tts_client.synthesize_speech(tts_request)
-                    processing_time = time.time() - start_time
-                    
-                    if response.success:
-                        # 验证生成的音频文件
-                        if os.path.exists(audio_path):
-                            file_size = os.path.getsize(audio_path)
-                            
-                            # 获取音频时长
-                            try:
-                                from app.utils import get_audio_duration
-                                duration = get_audio_duration(audio_path)
-                            except:
-                                duration = 0.0
-                            
-                            # 保存AudioFile记录（智能准备模式不关联segment_id）
-                            audio_file = AudioFile(
-                                filename=audio_filename,
-                                original_name=f"段落{segment_id}_{speaker}",
-                                file_path=audio_path,
-                                file_size=file_size,
-                                duration=duration,
-                                project_id=project_id,
-                                voice_profile_id=voice_id,
-                                text_content=text,
-                                audio_type='segment',
-                                processing_time=processing_time,
-                                model_used='MegaTTS3',
-                                status='active',
-                                created_at=datetime.utcnow()
-                            )
-                            db.add(audio_file)
-                            db.commit()
-                            
-                            logger.info(f"[SYNTHESIS_PLAN] 段落 {segment_id} 合成成功，耗时 {processing_time:.2f}s")
-                            
-                            return {
-                                "segment_id": segment_id,
-                                "audio_file_id": audio_file.id,
-                                "file_path": audio_path,
-                                "duration": duration,
-                                "speaker": speaker,
-                                "voice_id": voice_id
-                            }
-                        else:
-                            logger.error(f"[SYNTHESIS_PLAN] 段落 {segment_id} 音频文件未生成")
-                            return {"error": f"段落 {segment_id} 音频文件未生成"}
-                    else:
-                        logger.error(f"[SYNTHESIS_PLAN] 段落 {segment_id} TTS合成失败: {response.message}")
-                        return {"error": f"段落 {segment_id} TTS合成失败: {response.message}"}
+            """处理单个段落 - 序列化版本"""
+            try:
+                segment_id = segment_data.get('segment_id', segment_index + 1)
+                text = segment_data.get('text', '')
+                speaker = segment_data.get('speaker', '未知')
+                voice_id = segment_data.get('voice_id')
+                parameters = segment_data.get('parameters', {})
+                
+                logger.info(f"[SYNTHESIS_PLAN] 处理段落 {segment_id}: {speaker} - {text[:50]}...")
+                
+                if not text.strip():
+                    logger.warning(f"[SYNTHESIS_PLAN] 段落 {segment_id} 文本为空，跳过")
+                    return None
+                
+                if not voice_id:
+                    logger.error(f"[SYNTHESIS_PLAN] 段落 {segment_id} 缺少 voice_id")
+                    return {"error": f"段落 {segment_id} 缺少声音配置"}
+                
+                # 获取声音档案
+                voice = db.query(VoiceProfile).filter(VoiceProfile.id == voice_id).first()
+                if not voice:
+                    logger.error(f"[SYNTHESIS_PLAN] 段落 {segment_id} 声音档案不存在: {voice_id}")
+                    return {"error": f"段落 {segment_id} 声音档案不存在"}
+                
+                # 验证声音文件
+                file_validation = voice.validate_files()
+                if not file_validation['valid']:
+                    logger.error(f"[SYNTHESIS_PLAN] 段落 {segment_id} 声音文件缺失: {file_validation['missing_files']}")
+                    return {"error": f"段落 {segment_id} 声音文件缺失"}
+                
+                # 生成音频文件路径
+                safe_speaker = "".join(c for c in speaker if c.isalnum() or c in (' ', '-', '_')).rstrip()
+                audio_filename = f"segment_{segment_id:04d}_{safe_speaker}_{voice_id}.wav"
+                audio_path = os.path.join(project_output_dir, audio_filename)
+                
+                # 准备TTS请求
+                tts_request = TTSRequest(
+                    text=text,
+                    reference_audio_path=voice.reference_audio_path,
+                    output_audio_path=audio_path,
+                    time_step=parameters.get('timeStep', 32),
+                    p_weight=parameters.get('pWeight', 1.4),
+                    t_weight=parameters.get('tWeight', 3.0),
+                    latent_file_path=voice.latent_file_path
+                )
+                
+                # 调用TTS合成
+                start_time = time.time()
+                response = await tts_client.synthesize_speech(tts_request)
+                processing_time = time.time() - start_time
+                
+                if response.success:
+                    # 验证生成的音频文件
+                    if os.path.exists(audio_path):
+                        file_size = os.path.getsize(audio_path)
                         
-                except Exception as e:
-                    logger.error(f"[SYNTHESIS_PLAN] 段落 {segment_index + 1} 处理异常: {str(e)}")
-                    return {"error": f"段落 {segment_index + 1} 处理异常: {str(e)}"}
+                        # 获取音频时长
+                        try:
+                            from app.utils import get_audio_duration
+                            duration = get_audio_duration(audio_path)
+                        except:
+                            duration = 0.0
+                        
+                        # 保存AudioFile记录（智能准备模式不关联segment_id）
+                        audio_file = AudioFile(
+                            filename=audio_filename,
+                            original_name=f"段落{segment_id}_{speaker}",
+                            file_path=audio_path,
+                            file_size=file_size,
+                            duration=duration,
+                            project_id=project_id,
+                            voice_profile_id=voice_id,
+                            text_content=text,
+                            audio_type='segment',
+                            processing_time=processing_time,
+                            model_used='MegaTTS3',
+                            status='active',
+                            created_at=datetime.utcnow()
+                        )
+                        db.add(audio_file)
+                        db.commit()
+                        
+                        logger.info(f"[SYNTHESIS_PLAN] 段落 {segment_id} 合成成功，耗时 {processing_time:.2f}s")
+                        
+                        return {
+                            "segment_id": segment_id,
+                            "audio_file_id": audio_file.id,
+                            "file_path": audio_path,
+                            "duration": duration,
+                            "speaker": speaker,
+                            "voice_id": voice_id
+                        }
+                    else:
+                        logger.error(f"[SYNTHESIS_PLAN] 段落 {segment_id} 音频文件未生成")
+                        return {"error": f"段落 {segment_id} 音频文件未生成"}
+                else:
+                    logger.error(f"[SYNTHESIS_PLAN] 段落 {segment_id} TTS合成失败: {response.message}")
+                    return {"error": f"段落 {segment_id} TTS合成失败: {response.message}"}
+                    
+            except Exception as e:
+                logger.error(f"[SYNTHESIS_PLAN] 段落 {segment_index + 1} 处理异常: {str(e)}")
+                return {"error": f"段落 {segment_index + 1} 处理异常: {str(e)}"}
         
-        # 批量处理段落
-        logger.info(f"[SYNTHESIS_PLAN] 开始批量处理 {len(synthesis_data)} 个段落...")
-        tasks = [process_segment(segment, i) for i, segment in enumerate(synthesis_data)]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        # 序列化处理段落 - 防止GPU过载
+        logger.info(f"[SYNTHESIS_PLAN] 开始序列化处理 {len(synthesis_data)} 个段落...")
+        results = []
+        for i, segment in enumerate(synthesis_data):
+            logger.info(f"[SYNTHESIS_PLAN] 处理进度: {i+1}/{len(synthesis_data)}")
+            
+            # 发送段落开始处理的进度更新到前端
+            try:
+                await websocket_manager.publish_to_topic(
+                    f"synthesis_{project_id}",
+                    {
+                        "type": "progress_update",
+                        "data": {
+                            "type": "synthesis",
+                            "project_id": project_id,
+                            "status": "running",
+                            "progress": round((i / len(synthesis_data)) * 100),
+                            "completed_segments": completed_count,
+                            "total_segments": len(synthesis_data),
+                            "failed_segments": len(failed_segments),
+                            "current_processing": f"正在处理段落 {i+1} - {segment.get('speaker', '未知角色')}: {segment.get('text', '')[:50]}...",
+                            "timestamp": datetime.utcnow().isoformat()
+                        }
+                    }
+                )
+            except Exception as ws_error:
+                logger.error(f"[SYNTHESIS_PLAN] WebSocket进度推送失败: {str(ws_error)}")
+            
+            try:
+                result = await process_segment(segment, i)
+                results.append(result)
+            except Exception as e:
+                logger.error(f"[SYNTHESIS_PLAN] 段落 {i+1} 处理异常: {str(e)}")
+                results.append(e)
         
         # 统计处理结果
         for i, result in enumerate(results):
@@ -1909,18 +1937,21 @@ async def process_audio_generation_from_synthesis_plan(
                 db.commit()
                 
                 # 发送进度更新到前端
-                await websocket_manager.send_progress_update(
-                    session_id=f"synthesis_{project_id}",
-                    data={
-                        "type": "synthesis",
-                        "project_id": project_id,
-                        "status": "running",
-                        "progress": round((completed_count / len(synthesis_data)) * 100),
-                        "completed_segments": completed_count,
-                        "total_segments": len(synthesis_data),
-                        "failed_segments": len(failed_segments),
-                        "current_processing": f"段落 {result['segment_id']} 合成完成 - {result.get('speaker', '未知角色')}",
-                        "timestamp": datetime.utcnow().isoformat()
+                await websocket_manager.publish_to_topic(
+                    f"synthesis_{project_id}",
+                    {
+                        "type": "progress_update",
+                        "data": {
+                            "type": "synthesis",
+                            "project_id": project_id,
+                            "status": "running",
+                            "progress": round((completed_count / len(synthesis_data)) * 100),
+                            "completed_segments": completed_count,
+                            "total_segments": len(synthesis_data),
+                            "failed_segments": len(failed_segments),
+                            "current_processing": f"段落 {result['segment_id']} 合成完成 - {result.get('speaker', '未知角色')}",
+                            "timestamp": datetime.utcnow().isoformat()
+                        }
                     }
                 )
         
@@ -1954,19 +1985,22 @@ async def process_audio_generation_from_synthesis_plan(
         db.commit()
         
         # 发送最终状态更新到前端
-        await websocket_manager.send_progress_update(
-            session_id=f"synthesis_{project_id}",
-            data={
-                "type": "synthesis",
-                "project_id": project_id,
-                "status": project.status,
-                "progress": 100 if project.status == 'completed' else round((completed_count / len(synthesis_data)) * 100),
-                "completed_segments": completed_count,
-                "total_segments": len(synthesis_data),
-                "failed_segments": len(failed_segments),
-                "current_processing": f"合成{'完成' if project.status == 'completed' else '结束'}",
-                "final_audio_path": final_audio_path,
-                "timestamp": datetime.utcnow().isoformat()
+        await websocket_manager.publish_to_topic(
+            f"synthesis_{project_id}",
+            {
+                "type": "progress_update",
+                "data": {
+                    "type": "synthesis",
+                    "project_id": project_id,
+                    "status": project.status,
+                    "progress": 100 if project.status == 'completed' else round((completed_count / len(synthesis_data)) * 100),
+                    "completed_segments": completed_count,
+                    "total_segments": len(synthesis_data),
+                    "failed_segments": len(failed_segments),
+                    "current_processing": f"合成{'完成' if project.status == 'completed' else '结束'}",
+                    "final_audio_path": final_audio_path,
+                    "timestamp": datetime.utcnow().isoformat()
+                }
             }
         )
         

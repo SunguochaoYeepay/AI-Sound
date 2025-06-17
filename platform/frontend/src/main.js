@@ -7,11 +7,7 @@ import App from './App.vue'
 import routes from './router/index.js'
 import pinia from './stores/index.js'
 
-// 引入调试工具（开发环境）
-if (import.meta.env.DEV) {
-  import('./utils/debugTools.js')
-  import('./utils/polling.js')
-}
+// 调试工具已移除 - WebSocket替代轮询后不再需要
 
 const router = createRouter({
   history: createWebHistory(),

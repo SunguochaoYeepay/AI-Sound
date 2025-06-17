@@ -116,37 +116,26 @@ const memoryUsage = computed(() => {
 let statsTimer = null
 
 const refreshStats = () => {
-  if (window.debugTools) {
-    const timers = window.debugTools.getActiveTimers()
-    const suspicious = window.debugTools.findSuspiciousPolling()
-    const requests = window.debugTools.checkNetworkRequests()
-    
-    pollingStats.active = timers.length
-    pollingStats.suspicious = suspicious.length
-    pollingStats.requests = requests.length
-  }
+  // 调试工具已移除，使用基础统计
+  pollingStats.active = 0
+  pollingStats.suspicious = 0  
+  pollingStats.requests = 0
 }
 
 const viewReport = () => {
-  if (window.debugTools) {
-    report.value = window.debugTools.generateDiagnosticReport()
+  report.value = {
+    timestamp: new Date().toISOString(),
+    message: '调试工具已移除，现在使用WebSocket替代轮询',
+    status: 'optimized'
   }
 }
 
 const clearSuspicious = () => {
-  if (window.debugTools) {
-    const count = window.debugTools.clearSuspiciousPolling()
-    refreshStats()
-    message.success(`清除了 ${count} 个异常轮询`)
-  }
+  message.info('调试工具已移除，现在使用WebSocket不再需要清理轮询')
 }
 
 const emergencyStop = () => {
-  if (window.debugTools) {
-    const count = window.debugTools.clearAllTimers()
-    refreshStats()
-    message.warning(`紧急停止了所有 ${count} 个定时器`)
-  }
+  message.info('调试工具已移除，现在使用优化的WebSocket通信')
 }
 
 const refreshPage = () => {
