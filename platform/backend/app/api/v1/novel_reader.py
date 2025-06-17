@@ -209,7 +209,6 @@ async def create_project(
                 segment = TextSegment(
                     project_id=project.id,
                     segment_order=i + 1,
-                    paragraph_index=i + 1,
                     text_content=sentence.strip(),
                     status='pending'
                 )
