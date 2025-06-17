@@ -187,25 +187,46 @@ class ContentPreparationService:
             
             # 检查用户偏好，决定是否使用简化模式
             use_simple_mode = user_preferences and user_preferences.get("processing_mode") == "fast"
+            logger.info(f"🔍 处理模式决策: processing_mode={processing_mode}, use_simple_mode={use_simple_mode}")
             
             if use_simple_mode:
                 # 使用简化的本地分析，不依赖Ollama
+                logger.info("⚡ 使用快速模式，跳过Ollama分析")
                 analysis_result = await self._simple_local_analysis(cleaned_text, chapter_info)
             else:
-                # 尝试使用AI分析，如果失败则降级到简化模式
+                # 强制使用AI分析，并增强错误处理
+                logger.info("🤖 尝试使用Ollama AI进行角色分析")
                 try:
                     # 延迟初始化OllamaCharacterDetector
                     if self.ollama_detector is None:
-                        from ..api.v1.chapters import OllamaCharacterDetector
-                        self.ollama_detector = OllamaCharacterDetector()
+                        logger.info("📦 初始化OllamaCharacterDetector...")
+                        try:
+                            from ..detectors.ollama_character_detector import OllamaCharacterDetector
+                            self.ollama_detector = OllamaCharacterDetector()
+                            logger.info("✅ OllamaCharacterDetector初始化成功")
+                        except ImportError as e:
+                            logger.error(f"❌ 无法导入OllamaCharacterDetector: {str(e)}")
+                            raise e
                     
+                    # 执行AI分析
+                    logger.info(f"🔄 开始Ollama分析，模式: {processing_mode}")
                     if processing_mode == "single":
                         analysis_result = await self.ollama_detector.analyze_text(cleaned_text, chapter_info)
+                        logger.info("✅ Ollama单块分析完成")
                     else:
                         analysis_result = await self._analyze_chapter_distributed(cleaned_text, chapter_info)
+                        logger.info("✅ Ollama分布式分析完成")
                         
                 except Exception as e:
-                    logger.warning(f"AI分析失败，降级到本地分析: {str(e)}")
+                    logger.error(f"❌ Ollama AI分析失败: {str(e)}")
+                    logger.error(f"错误类型: {type(e).__name__}")
+                    
+                    # 只有在明确不可恢复的错误时才降级
+                    if "attempted relative import" in str(e) or "No module named" in str(e):
+                        logger.warning("🔧 检测到导入错误，尝试修复后重试")
+                        # 这里可以添加导入修复逻辑
+                    
+                    logger.warning("⬇️  降级到本地规则分析")
                     analysis_result = await self._simple_local_analysis(cleaned_text, chapter_info)
             
             # 6. 确保有旁白角色

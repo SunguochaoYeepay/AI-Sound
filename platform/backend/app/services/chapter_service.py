@@ -5,12 +5,16 @@
 
 import re
 import hashlib
+import logging
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from ..models import Book, BookChapter
 from ..exceptions import ServiceException
+from ..detectors import ProgrammaticCharacterDetector, AdvancedCharacterDetector, OllamaCharacterDetector
+
+logger = logging.getLogger(__name__)
 
 
 class ChapterDetectionConfig:
@@ -318,4 +322,148 @@ class ChapterService:
             "average_words": round(stats.avg_words or 0),
             "min_words": stats.min_words or 0,
             "max_words": stats.max_words or 0
-        } 
+        }
+
+
+async def analyze_chapter_characters(chapter: BookChapter, detection_method: str, emotion_detection: bool):
+    """
+    分析单个章节的角色
+    基于编程识别规则实现 - 增强版
+    """
+    try:
+        logger.info(f"开始分析章节 {chapter.id}: {chapter.chapter_title}")
+        
+        content = chapter.content or ""
+        if not content.strip():
+            return {
+                "chapter_id": chapter.id,
+                "chapter_title": chapter.chapter_title,
+                "chapter_number": chapter.chapter_number,
+                "detected_characters": [],
+                "segments": [],
+                "processing_stats": {"total_segments": 0, "dialogue_segments": 0, "characters_found": 0}
+            }
+        
+        # 优先使用Ollama智能检测器
+        try:
+            detector = OllamaCharacterDetector()
+            logger.info(f"使用Ollama AI进行角色分析")
+        except Exception as e:
+            logger.warning(f"Ollama检测器初始化失败，使用规则检测器: {str(e)}")
+            detector = AdvancedCharacterDetector()
+        
+        # 执行角色分析
+        if isinstance(detector, OllamaCharacterDetector):
+            analysis_result = await detector.analyze_text(content, {
+                'chapter_id': chapter.id,
+                'chapter_title': chapter.chapter_title,
+                'chapter_number': chapter.chapter_number
+            })
+        else:
+            analysis_result = detector.analyze_text(content, {
+                'chapter_id': chapter.id,
+                'chapter_title': chapter.chapter_title,
+                'chapter_number': chapter.chapter_number
+            })
+        
+        return analysis_result
+        
+    except Exception as e:
+        logger.error(f"分析章节 {chapter.id} 失败: {str(e)}")
+        return {
+            "chapter_id": chapter.id,
+            "chapter_title": chapter.chapter_title or "未知章节",
+            "chapter_number": chapter.chapter_number,
+            "detected_characters": [],
+            "segments": [],
+            "error": str(e)
+        }
+
+
+def get_chapter_content_stats(chapter: BookChapter) -> Dict[str, Any]:
+    """获取章节内容统计信息"""
+    import re
+    
+    content = chapter.content
+    
+    # 基本统计
+    char_count = len(content)
+    chinese_chars = len(re.findall(r'[\u4e00-\u9fff]', content))
+    english_words = len(re.findall(r'[a-zA-Z]+', content))
+    
+    # 估算token数量
+    estimated_tokens = int(chinese_chars * 1.5 + english_words)
+    
+    # 段落统计
+    paragraphs = re.split(r'\n\s*\n', content.strip())
+    paragraph_count = len([p for p in paragraphs if p.strip()])
+    
+    # 对话统计
+    dialogue_markers = ['"', '"', '"', '「', '」', '『', '』', "'", "'"]
+    dialogue_count = sum(content.count(marker) for marker in dialogue_markers)
+    
+    # 推荐处理模式
+    if estimated_tokens <= 3000:
+        recommended_mode = "single"
+        estimated_time = "30-60秒"
+    else:
+        recommended_mode = "distributed"
+        estimated_time = "60-120秒"
+    
+    return {
+        "chapter_info": {
+            "id": chapter.id,
+            "title": chapter.chapter_title
+        },
+        "content_stats": {
+            "total_characters": char_count,
+            "chinese_characters": chinese_chars,
+            "english_words": english_words,
+            "estimated_tokens": estimated_tokens,
+            "paragraph_count": paragraph_count,
+            "dialogue_markers": dialogue_count
+        },
+        "processing_recommendation": {
+            "recommended_mode": recommended_mode,
+            "estimated_time": estimated_time,
+            "complexity": "simple" if estimated_tokens <= 1500 else "medium" if estimated_tokens <= 3000 else "complex"
+        }
+    }
+
+
+def get_synthesis_preview(chapter: BookChapter, max_segments: int = 10) -> Dict[str, Any]:
+    """获取章节合成预览"""
+    # 使用简单的角色检测器进行快速预览
+    detector = ProgrammaticCharacterDetector()
+    
+    # 取前1000字符进行预览分析
+    preview_text = chapter.content[:1000] if len(chapter.content) > 1000 else chapter.content
+    
+    # 分析文本段落
+    segments = detector.segment_text_with_speakers(preview_text)
+    
+    # 提取角色信息
+    character_stats = detector.extract_dialogue_characters(segments)
+    
+    # 限制预览段落数量
+    preview_segments = segments[:max_segments]
+    
+    return {
+        "chapter_info": {
+            "id": chapter.id,
+            "title": chapter.chapter_title,
+            "content_length": len(chapter.content),
+            "preview_length": len(preview_text)
+        },
+        "preview_segments": preview_segments,
+        "detected_characters": [
+            {"name": name, "segment_count": count}
+            for name, count in character_stats.items()
+        ],
+        "statistics": {
+            "total_segments": len(segments),
+            "preview_segments": len(preview_segments),
+            "character_count": len(character_stats),
+            "is_truncated": len(chapter.content) > 1000
+        }
+    } 

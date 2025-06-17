@@ -604,9 +604,9 @@ const prepareChapterForSynthesis = async (chapter, force = false) => {
         title: '智能准备完成',
         content: `
           章节：${chapter.title}
-          检测到 ${result.character_count || 0} 个角色
-          生成 ${result.segments?.length || 0} 个语音片段
-          自动添加旁白角色：${result.narrator_added ? '是' : '否'}
+          检测到 ${result.processing_info?.characters_found || result.synthesis_json?.characters?.length || 0} 个角色
+          生成 ${result.synthesis_json?.synthesis_plan?.length || result.segments?.length || 0} 个语音片段
+          自动添加旁白角色：${result.processing_info?.narrator_added ? '是' : '否'}
         `,
         width: 500
       })

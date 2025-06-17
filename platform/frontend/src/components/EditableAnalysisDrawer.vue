@@ -427,16 +427,17 @@ const initEditableData = () => {
     })
   }
   
-  // 初始化片段数据
+  // 初始化片段数据 - 保持完整的原始结构
   editableSegments.value = (synthesisJson.synthesis_plan || []).map(segment => ({
     segment_id: segment.segment_id || 0,
     speaker: segment.speaker || '',
     text: segment.text || '',
+    voice_id: segment.voice_id || '',
     voice_name: segment.voice_name || '',
-    parameters: {
-      timeStep: segment.parameters?.timeStep || 0.5,
-      pWeight: segment.parameters?.pWeight || 0.5,
-      tWeight: segment.parameters?.tWeight || 0.5
+    parameters: segment.parameters || {
+      timeStep: 32,
+      pWeight: 1.4,
+      tWeight: 3.0
     }
   }))
   
@@ -588,15 +589,39 @@ const handleReset = () => {
 const handleSave = async () => {
   saving.value = true
   try {
+    console.log('[EditableAnalysisDrawer] 保存前的数据检查:', {
+      editableCharacters: editableCharacters.value,
+      editableSegments: editableSegments.value.slice(0, 3) // 只显示前3个段落
+    })
+    
+    // 构造完整的synthesis_plan，确保包含所有必要字段
+    const completeSynthesisPlan = editableSegments.value.map(segment => ({
+      segment_id: segment.segment_id,
+      speaker: segment.speaker,
+      text: segment.text,
+      voice_id: segment.voice_id || '',
+      voice_name: segment.voice_name || '未分配',
+      parameters: segment.parameters || {
+        timeStep: 32,
+        pWeight: 1.4,
+        tWeight: 3.0
+      }
+    }))
+    
     // 构造更新后的数据
     const updatedData = {
       ...analysisData.value,
       synthesis_json: {
         ...analysisData.value.synthesis_json,
         characters: editableCharacters.value,
-        synthesis_plan: editableSegments.value
+        synthesis_plan: completeSynthesisPlan
       }
     }
+    
+    console.log('[EditableAnalysisDrawer] 即将保存的数据:', {
+      characters: updatedData.synthesis_json.characters,
+      synthesis_plan: updatedData.synthesis_json.synthesis_plan.slice(0, 3)
+    })
     
     // 调用保存API
     const response = await booksAPI.updatePreparationResult(props.chapterId, updatedData)
@@ -630,12 +655,26 @@ const handleClose = () => {
 const getJsonPreview = () => {
   if (!analysisData.value) return ''
   
+  // 构造完整的synthesis_plan预览
+  const completeSynthesisPlan = editableSegments.value.map(segment => ({
+    segment_id: segment.segment_id,
+    speaker: segment.speaker,
+    text: segment.text,
+    voice_id: segment.voice_id || '',
+    voice_name: segment.voice_name || '未分配',
+    parameters: segment.parameters || {
+      timeStep: 32,
+      pWeight: 1.4,
+      tWeight: 3.0
+    }
+  }))
+  
   const previewData = {
     ...analysisData.value,
     synthesis_json: {
       ...analysisData.value.synthesis_json,
       characters: editableCharacters.value,
-      synthesis_plan: editableSegments.value
+      synthesis_plan: completeSynthesisPlan
     }
   }
   

@@ -282,6 +282,11 @@ export const readerAPI = {
     const formData = new FormData()
     formData.append('parallel_tasks', data.parallel_tasks || 2)
     
+    // 添加章节ID参数处理，确保恢复时也能指定章节
+    if (data.chapter_ids && Array.isArray(data.chapter_ids)) {
+      formData.append('chapter_ids', data.chapter_ids.join(','))
+    }
+    
     return apiClient.post(`/novel-reader/projects/${projectId}/resume`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data'
