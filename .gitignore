@@ -173,6 +173,35 @@ weights/
 *.trt
 
 # ===========================================
+# 大型模型文件 (保留本地，不推送到远程)
+# ===========================================
+# MegaTTS模型文件
+MegaTTS/*/checkpoints/
+MegaTTS/*/models/
+MegaTTS/*/exp/
+MegaTTS/*/*.ckpt
+MegaTTS/*/*.safetensors
+MegaTTS/*/*.zip
+!MegaTTS/*/checkpoints/.gitkeep
+!MegaTTS/*/models/.gitkeep
+!MegaTTS/*/exp/.gitkeep
+
+# 大型音频文件 (超过10MB的音频保留本地)
+platform/backend/data/audio/*.wav
+platform/backend/data/audio/*.mp3
+platform/backend/data/audio/*.flac
+data/audio/
+
+# Style-Bert-VITS2 模型文件
+MegaTTS/Style-Bert-VITS2/bert/*/
+MegaTTS/Style-Bert-VITS2/slm/*/
+MegaTTS/Style-Bert-VITS2/Data/
+MegaTTS/Style-Bert-VITS2/model_assets/
+MegaTTS/Style-Bert-VITS2/inputs/
+!MegaTTS/Style-Bert-VITS2/bert/*/.gitkeep
+!MegaTTS/Style-Bert-VITS2/slm/*/.gitkeep
+
+# ===========================================
 # Docker 相关
 # ===========================================
 # Docker数据卷
