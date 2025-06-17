@@ -10,6 +10,7 @@ from typing import Dict, List, Any, Optional
 import json
 import logging
 import re
+import os
 
 from app.database import get_db
 from app.models import NovelProject, TextSegment, AudioFile, VoiceProfile
@@ -295,6 +296,19 @@ async def get_project_detail(
                 "url": f"/audio/{audio_file.filename}" if audio_file.filename else None
             })
         
+        # 获取关联书籍信息
+        book_data = None
+        if project.book_id:
+            from app.models import Book
+            book = db.query(Book).filter(Book.id == project.book_id).first()
+            if book:
+                book_data = {
+                    "id": book.id,
+                    "title": book.title,
+                    "author": book.author,
+                    "status": book.status
+                }
+
         project_data = {
             "id": project.id,
             "name": project.name,
@@ -306,6 +320,8 @@ async def get_project_detail(
             "current_segment": project.current_segment,
             "character_mapping": project.get_character_mapping(),
             "final_audio_path": project.final_audio_path,
+            "book_id": project.book_id,
+            "book": book_data,
             "created_at": project.created_at.isoformat() if project.created_at else None,
             "started_at": project.started_at.isoformat() if project.started_at else None,
             "completed_at": project.completed_at.isoformat() if project.completed_at else None,
@@ -582,3 +598,66 @@ async def update_project(
         import traceback
         logger.error(f"[DEBUG] PUT详细错误: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"更新失败: {str(e)}")
+
+@router.delete("/projects/{project_id}")
+async def delete_project(
+    project_id: int,
+    force: bool = Query(False, description="是否强制删除"),
+    db: Session = Depends(get_db)
+):
+    """
+    删除项目
+    - 如果force=True，强制删除包括关联的音频文件和段落
+    - 如果force=False，仅在项目无关联数据时允许删除
+    """
+    try:
+        project = db.query(NovelProject).filter(NovelProject.id == project_id).first()
+        if not project:
+            raise HTTPException(status_code=404, detail="项目不存在")
+        
+        # 检查项目是否有关联数据
+        segments_count = db.query(TextSegment).filter(TextSegment.project_id == project_id).count()
+        audio_files_count = db.query(AudioFile).filter(AudioFile.project_id == project_id).count()
+        
+        if not force and (segments_count > 0 or audio_files_count > 0):
+            raise HTTPException(
+                status_code=400, 
+                detail=f"项目有关联数据（{segments_count}个段落，{audio_files_count}个音频文件），请使用强制删除"
+            )
+        
+        # 删除关联的音频文件记录和实际文件
+        if audio_files_count > 0:
+            audio_files = db.query(AudioFile).filter(AudioFile.project_id == project_id).all()
+            for audio_file in audio_files:
+                # 删除实际文件
+                if audio_file.file_path and os.path.exists(audio_file.file_path):
+                    try:
+                        os.remove(audio_file.file_path)
+                    except Exception as e:
+                        logger.warning(f"删除音频文件失败: {audio_file.file_path}, 错误: {e}")
+                # 删除数据库记录
+                db.delete(audio_file)
+        
+        # 删除关联的文本段落
+        if segments_count > 0:
+            db.query(TextSegment).filter(TextSegment.project_id == project_id).delete()
+        
+        # 删除项目本身
+        db.delete(project)
+        db.commit()
+        
+        return {
+            "success": True,
+            "message": "项目删除成功",
+            "data": {
+                "deleted_project_id": project_id,
+                "deleted_segments": segments_count,
+                "deleted_audio_files": audio_files_count
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"删除项目失败: {str(e)}")

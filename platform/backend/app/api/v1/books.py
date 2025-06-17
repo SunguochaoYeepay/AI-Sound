@@ -549,6 +549,7 @@ def update_book_patch(
 @router.get("/{book_id}/analysis-results")
 async def get_book_analysis_results(
     book_id: int,
+    chapter_ids: Optional[str] = Query(None, description="逗号分隔的章节ID列表"),
     db: Session = Depends(get_db)
 ):
     """
@@ -561,12 +562,24 @@ async def get_book_analysis_results(
         if not book:
             raise HTTPException(status_code=404, detail="书籍不存在")
         
-        # 获取书籍的所有章节及其分析结果
-        chapters_with_analysis = db.query(BookChapter, AnalysisResult).join(
+        # 构建查询条件
+        query = db.query(BookChapter, AnalysisResult).join(
             AnalysisResult, BookChapter.id == AnalysisResult.chapter_id, isouter=True
         ).filter(
             BookChapter.book_id == book_id
-        ).order_by(BookChapter.chapter_number).all()
+        )
+        
+        # 如果指定了章节ID，则只查询这些章节
+        if chapter_ids:
+            try:
+                chapter_id_list = [int(id.strip()) for id in chapter_ids.split(',') if id.strip()]
+                if chapter_id_list:
+                    query = query.filter(BookChapter.id.in_(chapter_id_list))
+                    logger.info(f"过滤章节ID: {chapter_id_list}")
+            except ValueError:
+                raise HTTPException(status_code=400, detail="章节ID格式错误")
+        
+        chapters_with_analysis = query.order_by(BookChapter.chapter_number).all()
         
         analysis_results = []
         

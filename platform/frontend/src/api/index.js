@@ -436,8 +436,17 @@ export const booksAPI = {
     apiClient.post(`/content-preparation/ai-resegment`, data),
 
   // 获取书籍的所有智能准备结果
-  getBookAnalysisResults: (bookId) => 
-    apiClient.get(`/books/${bookId}/analysis-results`)
+  getBookAnalysisResults: (bookId, params = {}) => {
+    const queryParams = new URLSearchParams()
+    if (params.chapter_ids && Array.isArray(params.chapter_ids)) {
+      queryParams.append('chapter_ids', params.chapter_ids.join(','))
+    }
+    
+    const queryString = queryParams.toString()
+    const url = queryString ? `/books/${bookId}/analysis-results?${queryString}` : `/books/${bookId}/analysis-results`
+    
+    return apiClient.get(url)
+  }
 }
 
 // 章节管理API
