@@ -331,7 +331,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, h } from 'vue'
 import { useRouter } from 'vue-router'
 import { message, Modal } from 'ant-design-vue'
 import { PlusOutlined, ReloadOutlined } from '@ant-design/icons-vue'
@@ -533,19 +533,41 @@ const duplicateProject = async (project) => {
 }
 
 const confirmDeleteProject = (project) => {
+  // 创建一个响应式的状态来管理强制删除选项
+  let forceDelete = false
+  
   Modal.confirm({
     title: '删除项目',
-    content: `确定要删除项目"${project.name}"吗？此操作不可恢复。`,
+    content: h('div', [
+      h('p', `确定要删除项目"${project.name}"吗？此操作不可恢复。`),
+      h('div', { style: 'margin-top: 16px; padding: 12px; background: #fff7e6; border: 1px solid #ffd591; border-radius: 6px;' }, [
+        h('p', { style: 'margin: 0 0 8px 0; color: #fa8c16; font-weight: 500;' }, '⚠️ 删除提示'),
+        h('p', { style: 'margin: 0; font-size: 13px; color: #8c8c8c;' }, '如果项目包含音频文件、文本段落等关联数据，可能需要强制删除')
+      ]),
+      h('div', { style: 'margin-top: 16px;' }, [
+        h('label', { style: 'display: flex; align-items: center; cursor: pointer;' }, [
+          h('input', {
+            type: 'checkbox',
+            style: 'margin-right: 8px;',
+            onChange: (e) => {
+              forceDelete = e.target.checked
+            }
+          }),
+          h('span', { style: 'color: #ff4d4f; font-weight: 500;' }, '强制删除（包括关联的音频文件和数据）')
+        ])
+      ])
+    ]),
     okText: '删除',
     okType: 'danger',
     cancelText: '取消',
-    onOk: () => deleteProject(project)
+    onOk: () => deleteProject(project, forceDelete)
   })
 }
 
-const deleteProject = async (project) => {
+const deleteProject = async (project, force = false) => {
   try {
-    const response = await readerAPI.deleteProject(project.id)
+    console.log('删除项目:', project.id, '强制删除:', force)
+    const response = await readerAPI.deleteProject(project.id, force)
     if (response.data.success) {
       message.success('项目删除成功')
       loadProjects()
@@ -553,7 +575,18 @@ const deleteProject = async (project) => {
       message.error('删除失败: ' + response.data.message)
     }
   } catch (error) {
-    message.error('删除失败')
+    console.error('删除项目失败:', error)
+    
+    // 如果是需要强制删除的错误，给出友好提示
+    if (error.response?.data?.message?.includes('请使用强制删除')) {
+      message.error({
+        content: '项目包含关联数据，请勾选"强制删除"选项后重试',
+        duration: 5
+      })
+    } else {
+      const errorMsg = error.response?.data?.message || error.message || '删除失败'
+      message.error('删除失败: ' + errorMsg)
+    }
   }
 }
 

@@ -821,40 +821,93 @@ async def delete_project(
         if not project:
             raise HTTPException(status_code=404, detail="项目不存在")
         
-        # 🚀 新架构：只检查AudioFile，TextSegment已废弃
+        # 检查关联数据
         audio_files_count = db.query(AudioFile).filter(AudioFile.project_id == project_id).count()
         
-        if not force and audio_files_count > 0:
+        # 检查TextSegment（虽然已废弃，但可能还有历史数据）
+        from app.models.text_segment import TextSegment
+        text_segments_count = db.query(TextSegment).filter(TextSegment.project_id == project_id).count()
+        
+        # 检查分析会话
+        from app.models.analysis_session import AnalysisSession
+        analysis_sessions_count = db.query(AnalysisSession).filter(AnalysisSession.project_id == project_id).count()
+        
+        # 检查合成任务
+        from app.models.synthesis_task import SynthesisTask
+        synthesis_tasks_count = db.query(SynthesisTask).filter(SynthesisTask.project_id == project_id).count()
+        
+        total_related_data = audio_files_count + text_segments_count + analysis_sessions_count + synthesis_tasks_count
+        
+        if not force and total_related_data > 0:
             raise HTTPException(
                 status_code=400, 
-                detail=f"项目有关联数据（{audio_files_count}个音频文件），请使用强制删除"
+                detail=f"项目有关联数据（{audio_files_count}个音频文件，{text_segments_count}个文本段落，{analysis_sessions_count}个分析会话，{synthesis_tasks_count}个合成任务），请使用强制删除"
             )
         
-        # 删除关联的音频文件记录和实际文件
-        if audio_files_count > 0:
-            audio_files = db.query(AudioFile).filter(AudioFile.project_id == project_id).all()
-            for audio_file in audio_files:
-                # 删除实际文件
-                if audio_file.file_path and os.path.exists(audio_file.file_path):
-                    try:
-                        os.remove(audio_file.file_path)
-                    except Exception as e:
-                        logger.warning(f"删除音频文件失败: {audio_file.file_path}, 错误: {e}")
-                # 删除数据库记录
-                db.delete(audio_file)
+        # 强制删除时，删除所有关联数据
+        if force and total_related_data > 0:
+            # 1. 删除AudioFile记录和实际文件
+            if audio_files_count > 0:
+                audio_files = db.query(AudioFile).filter(AudioFile.project_id == project_id).all()
+                for audio_file in audio_files:
+                    # 删除实际文件
+                    if audio_file.file_path and os.path.exists(audio_file.file_path):
+                        try:
+                            os.remove(audio_file.file_path)
+                            logger.info(f"删除音频文件: {audio_file.file_path}")
+                        except Exception as e:
+                            logger.warning(f"删除音频文件失败: {audio_file.file_path}, 错误: {e}")
+                    # 删除数据库记录
+                    db.delete(audio_file)
+            
+            # 2. 删除TextSegment记录（历史数据）
+            if text_segments_count > 0:
+                text_segments = db.query(TextSegment).filter(TextSegment.project_id == project_id).all()
+                for segment in text_segments:
+                    # 如果有音频文件路径，也删除
+                    if segment.audio_file_path and os.path.exists(segment.audio_file_path):
+                        try:
+                            os.remove(segment.audio_file_path)
+                            logger.info(f"删除历史音频文件: {segment.audio_file_path}")
+                        except Exception as e:
+                            logger.warning(f"删除历史音频文件失败: {segment.audio_file_path}, 错误: {e}")
+                    db.delete(segment)
+            
+            # 3. 删除AnalysisSession记录（会级联删除相关数据）
+            if analysis_sessions_count > 0:
+                analysis_sessions = db.query(AnalysisSession).filter(AnalysisSession.project_id == project_id).all()
+                for session in analysis_sessions:
+                    db.delete(session)
+            
+            # 4. 删除SynthesisTask记录
+            if synthesis_tasks_count > 0:
+                synthesis_tasks = db.query(SynthesisTask).filter(SynthesisTask.project_id == project_id).all()
+                for task in synthesis_tasks:
+                    db.delete(task)
         
-        # 🚀 新架构：不再需要删除TextSegment
+        # 删除项目最终音频文件
+        if project.final_audio_path and os.path.exists(project.final_audio_path):
+            try:
+                os.remove(project.final_audio_path)
+                logger.info(f"删除项目最终音频文件: {project.final_audio_path}")
+            except Exception as e:
+                logger.warning(f"删除项目最终音频文件失败: {project.final_audio_path}, 错误: {e}")
         
-        # 删除项目本身
+        # 最后删除项目本身
         db.delete(project)
         db.commit()
+        
+        logger.info(f"成功删除项目 {project_id} 及其所有关联数据")
         
         return {
             "success": True,
             "message": "项目删除成功",
             "data": {
                 "deleted_project_id": project_id,
-                "deleted_audio_files": audio_files_count  # 🚀 新架构：只删除音频文件
+                "deleted_audio_files": audio_files_count,
+                "deleted_text_segments": text_segments_count,
+                "deleted_analysis_sessions": analysis_sessions_count,
+                "deleted_synthesis_tasks": synthesis_tasks_count
             }
         }
         
@@ -862,6 +915,7 @@ async def delete_project(
         raise
     except Exception as e:
         db.rollback()
+        logger.error(f"删除项目失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"删除项目失败: {str(e)}")
 
 @router.post("/projects/{project_id}/retry-segment/{segment_id}")

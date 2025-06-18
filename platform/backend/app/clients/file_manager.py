@@ -358,7 +358,7 @@ class FileManager:
 
 
 # 全局文件管理器实例
-file_manager = FileManager()
+file_manager = FileManager() 
 
 # 导出函数供其他模块使用
 async def save_audio_file(audio_data: bytes, filename: str, subfolder: str = "environment_sounds") -> str:

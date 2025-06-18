@@ -3,15 +3,22 @@
     <!-- 页面头部 -->
     <div class="page-header">
       <div class="header-content">
+        <div class="title-with-back">
+          <a-button type="text" @click="goBack" class="back-btn-header">
+            <template #icon><ArrowLeftOutlined /></template>
+          </a-button>
+          <div>
         <h1 style="margin: 0; color: white; font-size: 28px; font-weight: 700;">
           声音库管理
         </h1>
         <p style="margin: 8px 0 0 0; color: rgba(255,255,255,0.9); font-size: 16px;">
           管理已克隆的声音样本，评估质量并优化参数配置
         </p>
+          </div>
+        </div>
       </div>
       <div class="header-actions">
-        <a-button type="primary" size="large" @click="showSmartDiscoveryModal = true" ghost>
+        <a-button type="primary" size="large" @click="showSmartDiscoveryModal" ghost>
           <template #icon>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
               <path d="M9.5,3A6.5,6.5 0 0,1 16,9.5C16,11.11 15.41,12.59 14.44,13.73L14.71,14H15.5L20.5,19L19,20.5L14,15.5V14.71L13.73,14.44C12.59,15.41 11.11,16 9.5,16A6.5,6.5 0 0,1 3,9.5A6.5,6.5 0 0,1 9.5,3M9.5,5C7,5 5,7 5,9.5C5,12 7,14 9.5,14C12,14 14,12 14,9.5C14,7 12,5 9.5,5Z"/>
@@ -1060,10 +1067,15 @@
 
 <script setup>
 import { ref, computed, reactive, onMounted, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { charactersAPI } from '@/api'
 import { API_BASE_URL } from '@/api/config'
 import { bookAPI, chapterAPI } from '../api/v2.js'
+import { ArrowLeftOutlined } from '@ant-design/icons-vue'
+
+// 路由
+const router = useRouter()
 
 // 响应式数据
 const voiceLibrary = ref([])
@@ -2237,6 +2249,10 @@ const getChapterStatusText = (status) => {
   }
   return statusMap[status] || '未知'
 }
+
+const goBack = () => {
+  router.go(-1) // 返回上一页
+}
 </script>
 
 <style scoped>
@@ -3173,5 +3189,28 @@ const getChapterStatusText = (status) => {
   display: flex;
   gap: 4px;
   flex-wrap: wrap;
+}
+
+.back-btn-header {
+  font-size: 18px;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  color: rgba(255, 255, 255, 0.9);
+  transition: all 0.2s;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  margin-right: 16px;
+}
+
+.back-btn-header:hover {
+  color: white;
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+.title-with-back {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
 }
 </style>

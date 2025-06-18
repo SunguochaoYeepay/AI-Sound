@@ -219,9 +219,15 @@ export const useWebSocketStore = defineStore('websocket', () => {
       case 'connection_established':
         console.log('✅ 连接建立确认:', data)
         break
+      case 'topic_message':
+        // 主题消息类型，已通过回调处理，不需要额外操作
+        console.log('📨 处理主题消息:', message.topic, data?.type || 'unknown')
+        break
       default:
-        // 未知消息类型，记录日志
+        // 未知消息类型，记录详细日志
+        if (type !== 'heartbeat' && type !== 'ping' && type !== 'pong') {
         console.log('收到未知类型的WebSocket消息:', type, data)
+        }
     }
   }
   

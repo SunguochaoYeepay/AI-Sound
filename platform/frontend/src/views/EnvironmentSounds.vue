@@ -4,10 +4,15 @@
     <div class="page-header">
       <div class="header-content">
         <div class="title-section">
-          <h1 class="page-title">
-            <SoundOutlined class="title-icon" />
-            环境音管理
-          </h1>
+          <div class="title-with-back">
+            <a-button type="text" @click="goBack" class="back-btn">
+              <template #icon><ArrowLeftOutlined /></template>
+            </a-button>
+            <h1 class="page-title">
+              <SoundOutlined class="title-icon" />
+              环境音管理
+            </h1>
+          </div>
           <p class="page-description">
             使用TangoFlux AI模型生成各种环境音效，支持自然音、城市音、机械音等多种类型
           </p>
@@ -375,18 +380,22 @@
 
 <script setup>
 import { ref, reactive, onMounted, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { message, Modal } from 'ant-design-vue'
 import {
   SoundOutlined, PlusOutlined, SearchOutlined, PlayCircleOutlined,
   DownloadOutlined, HeartOutlined, MoreOutlined, EditOutlined,
   DeleteOutlined, CopyOutlined, RedoOutlined, CheckCircleOutlined,
-  LoadingOutlined, StarFilled
+  LoadingOutlined, StarFilled, ArrowLeftOutlined
 } from '@ant-design/icons-vue'
 
 import GenerateModal from '@/components/environment-sounds/GenerateModal.vue'
 import EditModal from '@/components/environment-sounds/EditModal.vue'
 import { getAudioService } from '@/utils/audioService'
 import api from '@/api'
+
+// 路由
+const router = useRouter()
 
 // 响应式数据
 const loading = ref(false)
@@ -704,6 +713,10 @@ const getStatusText = (status) => {
   }
   return statusMap[status] || '未知'
 }
+
+const goBack = () => {
+  router.go(-1) // 返回上一页
+}
 </script>
 
 <style scoped>
@@ -719,6 +732,26 @@ const getStatusText = (status) => {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
+}
+
+.title-with-back {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.back-btn {
+  font-size: 16px;
+  padding: 4px 8px;
+  display: flex;
+  align-items: center;
+  color: #666;
+  transition: all 0.2s;
+}
+
+.back-btn:hover {
+  color: #1890ff;
+  background: #f0f6ff;
 }
 
 .title-section .page-title {

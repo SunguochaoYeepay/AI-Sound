@@ -2,7 +2,15 @@
   <div class="audio-library">
     <!-- 页面标题和说明 -->
     <div class="page-header">
-      <a-page-header title="音频资源库" sub-title="统一管理所有生成的音频文件">
+      <a-page-header sub-title="统一管理所有生成的音频文件">
+        <template #title>
+          <div class="title-with-back">
+            <a-button type="text" @click="goBack" class="back-btn">
+              <template #icon><ArrowLeftOutlined /></template>
+            </a-button>
+            <span>音频资源库</span>
+          </div>
+        </template>
         <template #extra>
           <a-button type="primary" @click="syncAudioFiles" :loading="syncing">
             <ReloadOutlined />
@@ -261,6 +269,7 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted, h } from 'vue'
+import { useRouter } from 'vue-router'
 import { message, Modal } from 'ant-design-vue'
 import {
   SoundOutlined,
@@ -272,10 +281,14 @@ import {
   DeleteOutlined,
   PlayCircleOutlined,
   HeartOutlined,
-  HeartFilled
+  HeartFilled,
+  ArrowLeftOutlined
 } from '@ant-design/icons-vue'
 import { audioAPI, readerAPI } from '@/api'
 import apiClient from '@/api/config'
+
+// 路由
+const router = useRouter()
 
 // 响应式数据
 const loading = ref(false)
@@ -377,8 +390,6 @@ const formatDuration = (seconds) => {
   const secs = Math.floor(seconds % 60)
   return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
 }
-
-
 
 // 方法
 const refreshAudioList = async () => {
@@ -626,6 +637,10 @@ const getTypeLabel = (type) => {
   return labels[type] || '未知类型'
 }
 
+const goBack = () => {
+  router.go(-1)
+}
+
 // 生命周期
 onMounted(async () => {
   await Promise.all([
@@ -766,5 +781,17 @@ onMounted(async () => {
   line-height: 1.6;
   max-height: 120px;
   overflow-y: auto;
+}
+
+.title-with-back {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.back-btn {
+  padding: 0;
+  background: transparent;
+  border: none;
 }
 </style> 
