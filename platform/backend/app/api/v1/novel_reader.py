@@ -1159,3 +1159,130 @@ async def download_final_audio(
     except Exception as e:
         logger.error(f"下载音频失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"下载失败: {str(e)}")
+
+# ====== 章节级别合成API ======
+@router.post("/projects/{project_id}/chapters/{chapter_id}/start")
+async def start_chapter_synthesis(
+    project_id: int,
+    chapter_id: int,
+    background_tasks: BackgroundTasks,
+    parallel_tasks: int = Form(1, description="并行任务数"),
+    db: Session = Depends(get_db)
+):
+    """
+    开始单章节合成
+    """
+    try:
+        # 调用通用的项目启动API，但只处理指定章节
+        return await start_project_generation(
+            project_id=project_id,
+            background_tasks=background_tasks,
+            parallel_tasks=parallel_tasks,
+            synthesis_mode="chapters",
+            chapter_ids=str(chapter_id),
+            db=db
+        )
+    except Exception as e:
+        logger.error(f"开始章节合成失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"开始章节合成失败: {str(e)}")
+
+@router.post("/projects/{project_id}/chapters/{chapter_id}/restart")
+async def restart_chapter_synthesis(
+    project_id: int,
+    chapter_id: int,
+    background_tasks: BackgroundTasks,
+    parallel_tasks: int = Form(1, description="并行任务数"),
+    db: Session = Depends(get_db)
+):
+    """
+    重新开始单章节合成
+    """
+    try:
+        # 先重置项目状态，然后启动
+        project = db.query(NovelProject).filter(NovelProject.id == project_id).first()
+        if not project:
+            raise HTTPException(status_code=404, detail="项目不存在")
+        
+        # 重置相关进度（保持项目其他状态）
+        project.processed_segments = 0
+        project.current_segment = 0
+        project.started_at = None
+        project.completed_at = None
+        db.commit()
+        
+        # 调用通用的项目启动API
+        return await start_project_generation(
+            project_id=project_id,
+            background_tasks=background_tasks,
+            parallel_tasks=parallel_tasks,
+            synthesis_mode="chapters",
+            chapter_ids=str(chapter_id),
+            db=db
+        )
+    except Exception as e:
+        logger.error(f"重新开始章节合成失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"重新开始章节合成失败: {str(e)}")
+
+@router.post("/projects/{project_id}/chapters/{chapter_id}/resume")
+async def resume_chapter_synthesis(
+    project_id: int,
+    chapter_id: int,
+    background_tasks: BackgroundTasks,
+    parallel_tasks: int = Form(1, description="并行任务数"),
+    db: Session = Depends(get_db)
+):
+    """
+    继续单章节合成
+    """
+    try:
+        # 调用通用的恢复API，但只处理指定章节
+        return await resume_generation(
+            project_id=project_id,
+            background_tasks=background_tasks,
+            parallel_tasks=parallel_tasks,
+            chapter_ids=str(chapter_id),
+            db=db
+        )
+    except Exception as e:
+        logger.error(f"继续章节合成失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"继续章节合成失败: {str(e)}")
+
+@router.post("/projects/{project_id}/chapters/{chapter_id}/retry-failed")
+async def retry_chapter_failed_segments(
+    project_id: int,
+    chapter_id: int,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
+    """
+    重试单章节的失败段落
+    """
+    try:
+        # 这里可以调用现有的重试失败段落API
+        # 但需要根据章节过滤失败的段落
+        return await retry_all_failed_segments(
+            project_id=project_id,
+            background_tasks=background_tasks,
+            db=db
+        )
+    except Exception as e:
+        logger.error(f"重试章节失败段落失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"重试章节失败段落失败: {str(e)}")
+
+@router.get("/projects/{project_id}/chapters/{chapter_id}/download")
+async def download_chapter_audio(
+    project_id: int,
+    chapter_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    下载单章节音频
+    注意：当前实现暂时返回完整项目音频，后续可以实现章节级别的音频文件
+    """
+    try:
+        # 暂时返回完整项目音频
+        # TODO: 实现章节级别的音频文件生成和下载
+        return await download_final_audio(project_id=project_id, db=db)
+    except Exception as e:
+        logger.error(f"下载章节音频失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"下载章节音频失败: {str(e)}")

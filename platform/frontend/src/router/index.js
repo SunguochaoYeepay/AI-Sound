@@ -11,6 +11,7 @@ import NovelProjectCreate from '../views/NovelProjectCreate.vue'
 import SynthesisCenter from '../views/SynthesisCenter.vue'
 import SynthesisResults from '../views/SynthesisResults.vue'
 import AudioLibrary from '../views/AudioLibrary.vue'
+import EnvironmentSounds from '../views/EnvironmentSounds.vue'
 import Settings from '../views/Settings.vue'
 
 const routes = [
@@ -92,6 +93,11 @@ const routes = [
     path: '/audio-library',
     name: 'AudioLibrary',
     component: AudioLibrary
+  },
+  {
+    path: '/environment-sounds',
+    name: 'EnvironmentSounds',
+    component: EnvironmentSounds
   },
   {
     path: '/settings',

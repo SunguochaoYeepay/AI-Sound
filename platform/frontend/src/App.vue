@@ -182,6 +182,9 @@
     
     <!-- 开发者控制台 -->
     <DevConsole v-if="isDev" />
+    
+    <!-- 全局音频播放器 -->
+    <GlobalAudioPlayer />
   </a-layout>
 </template>
 
@@ -193,6 +196,7 @@ import { useUserStore } from './stores/user.js'
 import { useWebSocketStore } from './stores/websocket.js'
 import { systemAPI } from './api/v2.js'
 import DevConsole from './components/DevConsole.vue'
+import GlobalAudioPlayer from './components/GlobalAudioPlayer.vue'
 
 const router = useRouter()
 const route = useRoute()

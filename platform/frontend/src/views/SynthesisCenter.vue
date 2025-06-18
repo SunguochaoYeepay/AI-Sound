@@ -7,8 +7,6 @@
           <template #icon><ArrowLeftOutlined /></template>
           返回项目
         </a-button>
-        <a-divider type="vertical" />
-        <h1 class="page-title">🎙️ 合成中心</h1>
       </div>
       <div class="nav-right">
         <a-tag :color="getStatusColor(project?.status)" v-if="project">
@@ -114,204 +112,131 @@
 
       <!-- 右侧：合成操作区域 -->
       <div class="right-panel">
-        <!-- 顶部操作栏 -->
-        <div class="action-toolbar" style="background: #e6f7ff; border: 2px solid #1890ff;">
-          <div class="toolbar-left">
-            <!-- 显示当前智能准备状态 -->
-            <div v-if="selectedChapters.length > 0" class="preparation-status">
-              <a-spin v-if="loadingResults" size="small" />
-              <span v-if="loadingResults" style="margin-left: 8px; color: #1890ff;">正在加载智能准备结果...</span>
-              <span v-else-if="preparationResults" style="color: #52c41a;">📋 已加载 {{ selectedChapters.length }} 个章节的智能准备结果</span>
-              <span v-else style="color: #666;">📝 请选择章节以自动加载智能准备结果</span>
-            </div>
-            <div v-else class="preparation-status">
-              <span style="color: #666;">📝 请选择要合成的章节</span>
-            </div>
-            
-            <!-- 手动刷新按钮 -->
-            <a-button 
-              v-if="preparationResults && selectedChapters.length > 0"
-              @click="refreshPreparationResults"
-              :loading="loadingResults"
-              size="small"
-              type="text"
-            >
-              🔄 刷新
-            </a-button>
-          </div>
-          
-          <div class="toolbar-right">
-            <!-- 合成控制按钮 -->
-            <a-button
-              v-if="project.status === 'pending' || project.status === 'failed' || project.status === 'configured'"
-              type="primary"
-              size="large"
-              :disabled="!canStartSynthesis"
-              :loading="synthesisStarting"
-              @click="startSynthesis"
-              class="start-btn"
-            >
-              🎯 开始合成
-            </a-button>
 
-            <a-button
-              v-if="project.status === 'completed'"
-              type="primary"
-              size="large"
-              @click="restartSynthesis"
-              :loading="synthesisStarting"
-              class="restart-btn"
-            >
-              🔄 重新合成
-            </a-button>
-
-            <a-space v-if="project.status === 'processing'">
-              <a-button
-                @click="pauseSynthesis"
-                :loading="pausingGeneration"
-              >
-                ⏸️ 暂停
-              </a-button>
-              <a-button
-                danger
-                @click="cancelSynthesis"
-                :loading="cancelingGeneration"
-              >
-                ⏹️ 取消
-              </a-button>
-            </a-space>
-
-            <a-button
-              v-if="project.status === 'paused' || (project.status === 'failed' && project.statistics?.completedSegments > 0)"
-              type="primary"
-              size="large"
-              @click="resumeSynthesis"
-              :loading="resumingGeneration"
-            >
-              ▶️ 继续合成
-            </a-button>
-
-            <!-- 部分完成状态的按钮 -->
-            <a-space v-if="project.status === 'partial_completed'">
-              <a-button
-                type="primary"
-                size="large"
-                @click="retryAllFailedSegments"
-                :loading="resumingGeneration"
-              >
-                🔄 重试失败段落
-              </a-button>
-              <a-button
-                size="large"
-                @click="restartSynthesis"
-                :loading="synthesisStarting"
-              >
-                🎯 重新合成
-              </a-button>
-              <a-button
-                size="large"
-                @click="downloadPartialAudio"
-                type="dashed"
-              >
-                📥 下载已完成
-              </a-button>
-            </a-space>
-
-            <!-- 调试按钮 - 显示当前状态 -->
-            <a-tag color="orange" style="margin-left: 8px;">
-              状态: {{ project.status }}
-            </a-tag>
-          </div>
-        </div>
 
         <!-- 合成内容预览区域 -->
         <div class="content-preview">
-          <!-- 项目统计卡片 -->
-          <div class="stats-card">
-            <!-- 段落统计 - 只有在选择章节并加载准备结果后才显示 -->
-            <div class="stats-row" v-if="preparationResults?.data?.length > 0">
-              <div class="stat-item">
-                <span class="stat-number">{{ currentProgressData.totalSegments }}</span>
-                <span class="stat-label">总段落</span>
-              </div>
-              <div class="stat-item">
-                <span class="stat-number">{{ currentProgressData.completedSegments }}</span>
-                <span class="stat-label">已完成</span>
-              </div>
-              <div class="stat-item">
-                <span class="stat-number">{{ currentProgressData.failedSegments }}</span>
-                <span class="stat-label">失败</span>
-              </div>
-              <div class="stat-item">
-                <span class="stat-number">{{ currentProgressData.percent }}%</span>
-                <span class="stat-label">进度</span>
-              </div>
-            </div>
-            
-            <!-- 章节和角色统计 -->
-            <div class="stats-row" style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #f0f0f0;" v-if="preparationResults">
-              <div class="stat-item">
-                <span class="stat-number">{{ detectedCharacters.length }}</span>
-                <span class="stat-label">角色数</span>
-              </div>
-              <div class="stat-item">
-                <span class="stat-number">{{ selectedChapters.length }}</span>
-                <span class="stat-label">选中章节</span>
-              </div>
-              <div class="stat-item">
-                <span class="stat-number">{{ getTotalSegments() }}</span>
-                <span class="stat-label">
-                  智能片段
-                  <br>
-                  <small style="color: #999; font-size: 10px;">(选中章节)</small>
-                </span>
-              </div>
-              <div class="stat-item">
-                <span class="stat-number" :style="{ color: project.status === 'running' ? '#52c41a' : '#666' }">{{ project.status }}</span>
-                <span class="stat-label">项目状态</span>
-              </div>
-            </div>
-            
-            <!-- 无选择时的提示 -->
-            <div v-if="!preparationResults?.data?.length" class="no-selection-hint" style="margin-top: 16px; text-align: center; color: #999;">
-              <p>🔍 请先选择章节并加载智能准备结果</p>
-              <p style="font-size: 12px;">选择左侧章节后，点击"加载智能准备结果"按钮</p>
-            </div>
-          </div>
+
 
           <!-- 智能准备结果 -->
           <div v-if="preparationResults" class="preparation-preview">
             <!-- 角色对话预览 -->
             <div class="dialogue-preview">
-              <div class="preview-header">
-                <h4>📝 对话内容预览</h4>
-                <a-space>
-                  <a-button 
-                    size="small" 
-                    @click="showAllSegments = !showAllSegments"
-                    type="text"
-                  >
-                    {{ showAllSegments ? '收起' : '展开全部' }}
-                  </a-button>
-                  <a-button 
-                    size="small"
-                    @click="showJsonTestModal"
-                    type="text"
-                  >
-                    🧪 测试JSON
-                  </a-button>
-                </a-space>
-              </div>
-              
               <!-- 对话列表 -->
               <div class="dialogue-list">
                 <div v-for="(chapterResult, chapterIndex) in preparationResults.data" :key="chapterIndex">
                   <!-- 章节标题 -->
                   <div class="chapter-divider">
-                    <span class="chapter-title">
-                      第{{ chapterResult.chapter_number }}章 {{ chapterResult.chapter_title }}
-                    </span>
-                    <a-tag size="small">{{ chapterResult.synthesis_json?.synthesis_plan?.length || 0 }} 段</a-tag>
+                    <div class="chapter-title-section">
+                      <span class="chapter-title">
+                        第{{ chapterResult.chapter_number }}章 {{ chapterResult.chapter_title }}
+                      </span>
+                      <!-- 章节统计信息 -->
+                      <div class="chapter-stats">
+                        <a-space>
+                          <a-tag color="blue">📋 {{ chapterResult.synthesis_json?.synthesis_plan?.length || 0 }} 个段落</a-tag>
+                          <a-tag color="green">🎭 {{ getChapterCharacterCount(chapterResult) }} 个角色</a-tag>
+                          <a-tag color="orange">状态: {{ getStatusText(project.status) }}</a-tag>
+                        </a-space>
+                      </div>
+                    </div>
+                    <div class="chapter-actions">
+                      <!-- 手动刷新按钮 -->
+                      <a-button 
+                        v-if="preparationResults && selectedChapters.length > 0"
+                        @click="refreshPreparationResults"
+                        :loading="loadingResults"
+                        size="small"
+                        type="text"
+                      >
+                        🔄 刷新
+                      </a-button>
+                      
+                      <!-- 章节级合成按钮组 -->
+                      <a-space size="small">
+                        <!-- 合成当前章节按钮 -->
+                        <a-button
+                          v-if="project.status === 'pending' || project.status === 'failed' || project.status === 'configured'"
+                          type="primary"
+                          size="small"
+                          :disabled="!canStartSynthesis"
+                          :loading="synthesisStarting"
+                          @click="startChapterSynthesis(chapterResult.chapter_id)"
+                          class="start-btn"
+                        >
+                          🎯 合成此章
+                        </a-button>
+
+                        <template v-if="project.status === 'completed'">
+                          <a-button
+                            type="primary"
+                            size="small"
+                            @click="playChapterAudio(chapterResult.chapter_id)"
+                            :loading="playingChapterAudio === chapterResult.chapter_id"
+                            class="play-btn"
+                          >
+                            🔊 播放此章
+                          </a-button>
+                          <a-button
+                            type="default"
+                            size="small"
+                            @click="restartChapterSynthesis(chapterResult.chapter_id)"
+                            :loading="synthesisStarting"
+                            class="restart-btn"
+                          >
+                            🔄 重新合成此章
+                          </a-button>
+                        </template>
+
+                        <!-- 处理中状态按钮 -->
+                        <template v-if="project.status === 'processing'">
+                          <a-button
+                            size="small"
+                            @click="pauseSynthesis"
+                            :loading="pausingGeneration"
+                          >
+                            ⏸️ 暂停
+                          </a-button>
+                          <a-button
+                            size="small"
+                            danger
+                            @click="cancelSynthesis"
+                            :loading="cancelingGeneration"
+                          >
+                            ⏹️ 取消
+                          </a-button>
+                        </template>
+
+                        <a-button
+                          v-if="project.status === 'paused' || (project.status === 'failed' && project.statistics?.completedSegments > 0)"
+                          type="primary"
+                          size="small"
+                          @click="resumeChapterSynthesis(chapterResult.chapter_id)"
+                          :loading="resumingGeneration"
+                        >
+                          ▶️ 继续合成此章
+                        </a-button>
+
+                        <!-- 部分完成状态按钮 -->
+                        <template v-if="project.status === 'partial_completed'">
+                          <a-button
+                            type="primary"
+                            size="small"
+                            @click="retryChapterFailedSegments(chapterResult.chapter_id)"
+                            :loading="resumingGeneration"
+                          >
+                            🔄 重试此章失败段落
+                          </a-button>
+                          <a-button
+                            size="small"
+                            @click="downloadChapterAudio(chapterResult.chapter_id)"
+                            type="dashed"
+                          >
+                            📥 下载此章音频
+                          </a-button>
+                        </template>
+                      </a-space>
+                    </div>
                   </div>
                   
                   <!-- 对话气泡 -->
@@ -367,7 +292,7 @@
         <!-- 总体进度 -->
         <div class="overall-progress">
           <div class="progress-header">
-            <h3>🎵 合成总进度</h3>
+            <h3>🎵 {{ getSynthesisProgressTitle() }}</h3>
             <!-- 合成控制按钮 -->
             <div class="synthesis-controls" v-if="project?.status === 'processing' || project?.status === 'paused'">
               <a-space>
@@ -458,15 +383,7 @@
           />
         </div>
 
-        <!-- 分段进度详情 -->
-        <div v-if="progressData.total_segments > 0" class="segments-detail">
-          <a-divider>📊 分段详情</a-divider>
-          <div class="segments-summary">
-            <a-tag color="green">已完成: {{ progressData.completed_segments }}</a-tag>
-            <a-tag color="blue">进行中: {{ Math.max(0, progressData.total_segments - progressData.completed_segments - progressData.failed_segments) }}</a-tag>
-            <a-tag color="red" v-if="progressData.failed_segments > 0">失败: {{ progressData.failed_segments }}</a-tag>
-          </div>
-        </div>
+
       </div>
     </a-drawer>
 
@@ -482,6 +399,7 @@ import { message, Modal, Empty } from 'ant-design-vue'
 import { ArrowLeftOutlined, ReloadOutlined } from '@ant-design/icons-vue'
 import { readerAPI, charactersAPI, intelligentAnalysisAPI, systemAPI, booksAPI } from '@/api'
 import { useWebSocketStore } from '@/stores/websocket.js'
+import { audioService } from '@/utils/audioService'
 
 const router = useRouter()
 const route = useRoute()
@@ -527,13 +445,15 @@ const completedSegments = ref([])
 const loadingCompletedSegments = ref(false)
 const playingSegment = ref(null)
 const showAllCompleted = ref(false)
-const segmentAudioPlayer = ref(null)
+
 
 // 音频播放相关
 const loadingFinalAudio = ref(false)
 const downloadingAudio = ref(false)
-const finalAudioPlayer = ref(null)
 const playingFinalAudio = ref(false)
+const playingChapterAudio = ref(null) // 正在播放的章节ID
+const currentlyPlaying = ref(null) // 当前播放信息 { type, id, name }
+const unifiedAudioPlayer = ref(null) // 统一音频播放器
 
 // 合成配置
 const synthesisConfig = reactive({
@@ -1295,7 +1215,11 @@ const loadProject = async () => {
             completed_segments: project.value.processed_segments || 0,
             total_segments: project.value.total_segments || 0,
             failed_segments: Math.max(0, (project.value.total_segments || 0) - (project.value.processed_segments || 0)),
-            current_processing: '等待开始'
+            current_processing: project.value.status === 'processing' 
+              ? `正在处理第 ${project.value.current_segment || 1} 段` 
+              : project.value.status === 'completed' 
+                ? '合成已完成' 
+                : '等待开始'
           }
         }
       } catch (error) {
@@ -1307,7 +1231,11 @@ const loadProject = async () => {
           completed_segments: project.value.processed_segments || 0,
           total_segments: project.value.total_segments || 0,
           failed_segments: Math.max(0, (project.value.total_segments || 0) - (project.value.processed_segments || 0)),
-          current_processing: '等待开始'
+          current_processing: project.value.status === 'processing' 
+            ? `正在处理第 ${project.value.current_segment || 1} 段` 
+            : project.value.status === 'completed' 
+              ? '合成已完成' 
+              : '等待开始'
         }
       }
       
@@ -1387,7 +1315,11 @@ const refreshProjectData = async () => {
         completed_segments: project.value.processed_segments || 0,
         total_segments: project.value.total_segments || 0,
         failed_segments: project.value.statistics?.failedSegments || 0,
-        current_processing: project.value.status === 'processing' ? `正在处理第 ${project.value.current_segment || 1} 段` : '等待开始'
+        current_processing: project.value.status === 'processing' 
+          ? `正在处理第 ${project.value.current_segment || 1} 段` 
+          : project.value.status === 'completed' 
+            ? '合成已完成' 
+            : '等待开始'
       }
       
       console.log('🔄 刷新后数据:', {
@@ -1458,21 +1390,6 @@ const loadVoices = async () => {
 // 试听声音
 const playVoicePreview = async (voiceId, sampleText) => {
   try {
-    // 检查是否正在播放，如果是则停止
-    if (currentPlayingVoice.value === voiceId && currentAudio.value) {
-      currentAudio.value.pause()
-      currentAudio.value = null
-      currentPlayingVoice.value = null
-      return
-    }
-
-    // 停止其他正在播放的音频
-    if (currentAudio.value) {
-      currentAudio.value.pause()
-      currentAudio.value = null
-      currentPlayingVoice.value = null
-    }
-
     if (!voiceId) {
       message.warning('请选择声音')
       return
@@ -1492,47 +1409,7 @@ const playVoicePreview = async (voiceId, sampleText) => {
       return
     }
 
-    // 使用统一的API调用替代直接fetch
-    const testParams = {
-      text: sampleText || '这是声音预览测试',
-      time_step: 20,
-      p_weight: 1.0,
-      t_weight: 1.0
-    }
-    
-    const response = await charactersAPI.testVoiceSynthesis(selectedVoice.id, testParams)
-
-    if (response.data && response.data.success && response.data.audioUrl) {
-      // 构建完整的音频URL
-      const audioUrl = response.data.audioUrl.startsWith('http') ? response.data.audioUrl : response.data.audioUrl
-      
-      // 创建音频元素
-      const audio = new Audio(audioUrl)
-      currentAudio.value = audio
-      currentPlayingVoice.value = voiceId
-
-      // 播放事件处理
-      audio.addEventListener('loadstart', () => {
-        message.success('开始播放试听')
-      })
-
-      audio.addEventListener('ended', () => {
-        currentAudio.value = null
-        currentPlayingVoice.value = null
-      })
-
-      audio.addEventListener('error', (e) => {
-        console.error('音频播放错误:', e)
-        currentAudio.value = null
-        currentPlayingVoice.value = null
-        message.error('音频播放失败')
-      })
-
-      // 开始播放
-      await audio.play()
-    } else {
-      throw new Error(response.data?.message || '后端API返回错误')
-    }
+    await audioService.playVoicePreview(voiceId, selectedVoice.name, sampleText)
     
   } catch (error) {
     console.error('试听失败:', error)
@@ -1747,6 +1624,98 @@ const cancelSynthesis = async () => {
   })
 }
 
+// 统一音频播放器
+const playAudio = async (type, audioUrl, id, name) => {
+  try {
+    // 停止当前播放
+    if (unifiedAudioPlayer.value) {
+      unifiedAudioPlayer.value.pause()
+      unifiedAudioPlayer.value = null
+      
+      // 如果点击的是当前播放的内容，则停止播放
+      if (currentlyPlaying.value?.type === type && currentlyPlaying.value?.id === id) {
+        currentlyPlaying.value = null
+        playingChapterAudio.value = null
+        playingFinalAudio.value = false
+        playingSegment.value = null
+        message.info(`${name}播放已停止`)
+        return
+      }
+    }
+
+    // 创建新的音频播放器
+    unifiedAudioPlayer.value = new Audio(audioUrl)
+    currentlyPlaying.value = { type, id, name }
+    
+    // 更新对应的播放状态
+    if (type === 'chapter') {
+      playingChapterAudio.value = id
+    } else if (type === 'final') {
+      playingFinalAudio.value = true
+    } else if (type === 'segment') {
+      playingSegment.value = id
+    }
+    
+    // 设置事件监听器
+    unifiedAudioPlayer.value.addEventListener('loadstart', () => {
+      message.success(`开始播放${name}`)
+    })
+    
+    unifiedAudioPlayer.value.addEventListener('ended', () => {
+      currentlyPlaying.value = null
+      playingChapterAudio.value = null
+      playingFinalAudio.value = false
+      playingSegment.value = null
+      unifiedAudioPlayer.value = null
+      message.success(`${name}播放完成`)
+    })
+    
+    unifiedAudioPlayer.value.addEventListener('error', (e) => {
+      console.error('音频播放错误:', e)
+      currentlyPlaying.value = null
+      playingChapterAudio.value = null
+      playingFinalAudio.value = false
+      playingSegment.value = null
+      unifiedAudioPlayer.value = null
+      message.error(`${name}播放失败，请检查音频文件是否存在`)
+    })
+    
+    // 开始播放
+    await unifiedAudioPlayer.value.play()
+    
+  } catch (error) {
+    console.error('播放音频失败:', error)
+    currentlyPlaying.value = null
+    playingChapterAudio.value = null
+    playingFinalAudio.value = false
+    playingSegment.value = null
+    unifiedAudioPlayer.value = null
+    
+    if (error.name === 'NotAllowedError') {
+      message.error('浏览器不允许自动播放音频，请先与页面交互')
+    } else if (error.name === 'NotSupportedError') {
+      message.error('音频格式不支持')
+    } else {
+      message.error(`播放${name}失败: ` + error.message)
+    }
+  }
+}
+
+// 播放章节音频
+const playChapterAudio = async (chapterId) => {
+  if (!project.value?.id || !chapterId) {
+    message.warning('项目或章节信息不完整')
+    return
+  }
+
+  try {
+    await audioService.playChapterAudio(project.value.id, chapterId, `第${chapterId}章`)
+  } catch (error) {
+    console.error('播放章节音频失败:', error)
+    message.error('播放章节音频失败')
+  }
+}
+
 // 播放完整音频
 const playFinalAudio = async () => {
   if (!project.value?.id) {
@@ -1756,56 +1725,13 @@ const playFinalAudio = async () => {
 
   loadingFinalAudio.value = true
   try {
-    // 检查是否已经在播放
-    if (playingFinalAudio.value && finalAudioPlayer.value) {
-      // 停止播放
-      finalAudioPlayer.value.pause()
-      finalAudioPlayer.value = null
-      playingFinalAudio.value = false
-      message.info('音频播放已停止')
-      return
-    }
-
-    // 构建音频URL
-    const audioUrl = `/api/v1/novel-reader/projects/${project.value.id}/download`
-    
-    // 创建音频播放器
-    finalAudioPlayer.value = new Audio(audioUrl)
-    
-    // 设置事件监听器
-    finalAudioPlayer.value.addEventListener('loadstart', () => {
-      playingFinalAudio.value = true
-      message.success('开始播放完整音频')
-    })
-    
-    finalAudioPlayer.value.addEventListener('ended', () => {
-      playingFinalAudio.value = false
-      finalAudioPlayer.value = null
-      message.success('音频播放完成')
-    })
-    
-    finalAudioPlayer.value.addEventListener('error', (e) => {
-      console.error('音频播放错误:', e)
-      playingFinalAudio.value = false
-      finalAudioPlayer.value = null
-      message.error('音频播放失败，请检查音频文件是否存在')
-    })
-    
-    // 开始播放
-    await finalAudioPlayer.value.play()
-    
+    await audioService.playProjectAudio(
+      project.value.id, 
+      `${project.value.name || '项目'} - 完整音频`
+    )
   } catch (error) {
     console.error('播放完整音频失败:', error)
-    playingFinalAudio.value = false
-    finalAudioPlayer.value = null
-    
-    if (error.name === 'NotAllowedError') {
-      message.error('浏览器不允许自动播放音频，请先与页面交互')
-    } else if (error.name === 'NotSupportedError') {
-      message.error('音频格式不支持')
-    } else {
-      message.error('播放音频失败: ' + error.message)
-    }
+    message.error('播放完整音频失败')
   } finally {
     loadingFinalAudio.value = false
   }
@@ -2253,6 +2179,50 @@ const getCharacterClass = (speaker) => {
   return `character-${colors[hash % colors.length]}`
 }
 
+// 获取章节中的角色数量
+const getChapterCharacterCount = (chapterResult) => {
+  if (!chapterResult?.synthesis_json?.synthesis_plan) return 0
+  
+  const speakers = new Set()
+  chapterResult.synthesis_json.synthesis_plan.forEach(segment => {
+    if (segment.speaker) {
+      speakers.add(segment.speaker)
+    }
+  })
+  return speakers.size
+}
+
+// 获取合成进度标题
+const getSynthesisProgressTitle = () => {
+  const status = progressData.value.status
+  const current = progressData.value.current_processing
+  const completed = progressData.value.completed_segments
+  const total = progressData.value.total_segments
+  
+  if (current && status === 'processing') {
+    // 显示当前正在合成的段落信息
+    return `正在合成: ${current} (${completed}/${total})`
+  }
+  
+  if (status === 'completed') {
+    return `合成完成 - 共${total}个段落`
+  }
+  
+  if (status === 'failed') {
+    return `合成失败 - 已完成${completed}/${total}`
+  }
+  
+  if (status === 'paused') {
+    return `合成暂停 - 已完成${completed}/${total}`
+  }
+  
+  if (total > 0) {
+    return `合成监控 - ${completed}/${total}`
+  }
+  
+  return '合成进度监控'
+}
+
 // 获取当前处理段落信息
 const getCurrentProcessingSegment = () => {
   if (!preparationResults.value?.data || !project.value?.current_segment) {
@@ -2307,40 +2277,21 @@ const refreshCompletedSegments = async () => {
 
 // 播放片段音频
 const playSegmentAudio = async (segment) => {
+  if (!segment.audio_url) {
+    message.warning('该段落音频文件不存在')
+    return
+  }
+
   try {
-    // 停止当前播放
-    if (segmentAudioPlayer.value) {
-      segmentAudioPlayer.value.pause()
-      segmentAudioPlayer.value.currentTime = 0
-    }
-    
-    if (playingSegment.value === segment.id) {
-      // 如果点击的是正在播放的，则停止播放
-      playingSegment.value = null
-      return
-    }
-    
+    await audioService.playSegmentAudio(
+      project.value.id,
+      segment.id,
+      segment.text
+    )
     playingSegment.value = segment.id
-    
-    // 创建新的音频播放器
-    segmentAudioPlayer.value = new Audio(segment.audio_url)
-    
-    segmentAudioPlayer.value.addEventListener('ended', () => {
-      playingSegment.value = null
-    })
-    
-    segmentAudioPlayer.value.addEventListener('error', (e) => {
-      console.error('音频播放失败:', e)
-      message.error('音频播放失败')
-      playingSegment.value = null
-    })
-    
-    await segmentAudioPlayer.value.play()
-    
   } catch (error) {
-    console.error('播放片段音频失败:', error)
-    message.error('音频播放失败: ' + error.message)
-    playingSegment.value = null
+    console.error('播放段落音频失败:', error)
+    message.error('播放段落音频失败')
   }
 }
 
@@ -2383,6 +2334,18 @@ onMounted(async () => {
     synthesisProgressDrawer.value = true
     
     startWebSocketProgressMonitoring()
+  } else if (project.value?.status === 'completed' && project.value?.total_segments > 0) {
+    // 如果项目已完成，确保进度数据正确显示
+    console.log('🔄 项目已完成，初始化完成后的进度数据...')
+    progressData.value = {
+      progress: 100,
+      status: 'completed',
+      completed_segments: project.value.total_segments,
+      total_segments: project.value.total_segments,
+      failed_segments: 0,
+      current_processing: '合成已完成'
+    }
+    console.log('✅ 完成后进度数据:', progressData.value)
   }
 })
 
@@ -2396,6 +2359,17 @@ onBeforeRouteLeave(() => {
 onUnmounted(() => {
   stopWebSocketProgressMonitoring()
   stopElapsedTimer()
+  
+  // 清理统一音频播放器
+  if (unifiedAudioPlayer.value) {
+    unifiedAudioPlayer.value.pause()
+    unifiedAudioPlayer.value = null
+  }
+  currentlyPlaying.value = null
+  playingChapterAudio.value = null
+  playingFinalAudio.value = false
+  playingSegment.value = null
+  
   // 清理WebSocket监听器
   if (unsubscribeWebSocket.value) {
     unsubscribeWebSocket.value()
@@ -2681,6 +2655,159 @@ const updateProgressDataFromWebSocket = (data) => {
     stopElapsedTimer()
   }
 }
+
+// 章节级别合成方法
+const startChapterSynthesis = async (chapterId) => {
+  try {
+    synthesisStarting.value = true
+    
+    console.log('开始合成章节:', chapterId)
+    
+    // 调用单章节合成API
+    const response = await readerAPI.startChapterSynthesis(project.value.id, chapterId)
+    
+    if (response.data.success) {
+      message.success('章节合成已开始！')
+      project.value.status = 'processing'
+      
+      // 开始WebSocket监控
+      startWebSocketProgressMonitoring()
+      startElapsedTimer()
+      
+      // 显示进度抽屉
+      synthesisProgressDrawer.value = true
+    } else {
+      message.error('启动章节合成失败: ' + response.data.message)
+    }
+  } catch (error) {
+    console.error('启动章节合成失败:', error)
+    message.error('启动章节合成失败: ' + (error.response?.data?.message || error.message))
+  } finally {
+    synthesisStarting.value = false
+  }
+}
+
+const restartChapterSynthesis = async (chapterId) => {
+  try {
+    synthesisStarting.value = true
+    
+    console.log('重新合成章节:', chapterId)
+    
+    // 调用单章节重新合成API
+    const response = await readerAPI.restartChapterSynthesis(project.value.id, chapterId)
+    
+    if (response.data.success) {
+      message.success('章节重新合成已开始！')
+      project.value.status = 'processing'
+      
+      // 开始WebSocket监控
+      startWebSocketProgressMonitoring()
+      startElapsedTimer()
+      
+      // 显示进度抽屉
+      synthesisProgressDrawer.value = true
+    } else {
+      message.error('重新合成章节失败: ' + response.data.message)
+    }
+  } catch (error) {
+    console.error('重新合成章节失败:', error)
+    message.error('重新合成章节失败: ' + (error.response?.data?.message || error.message))
+  } finally {
+    synthesisStarting.value = false
+  }
+}
+
+const resumeChapterSynthesis = async (chapterId) => {
+  try {
+    resumingGeneration.value = true
+    
+    console.log('继续合成章节:', chapterId)
+    
+    // 调用单章节继续合成API
+    const response = await readerAPI.resumeChapterSynthesis(project.value.id, chapterId)
+    
+    if (response.data.success) {
+      message.success('章节合成已继续！')
+      project.value.status = 'processing'
+      
+      // 开始WebSocket监控
+      startWebSocketProgressMonitoring()
+      startElapsedTimer()
+      
+      // 显示进度抽屉
+      synthesisProgressDrawer.value = true
+    } else {
+      message.error('继续合成章节失败: ' + response.data.message)
+    }
+  } catch (error) {
+    console.error('继续合成章节失败:', error)
+    message.error('继续合成章节失败: ' + (error.response?.data?.message || error.message))
+  } finally {
+    resumingGeneration.value = false
+  }
+}
+
+const retryChapterFailedSegments = async (chapterId) => {
+  try {
+    resumingGeneration.value = true
+    
+    console.log('重试章节失败段落:', chapterId)
+    
+    // 调用单章节重试失败段落API
+    const response = await readerAPI.retryChapterFailedSegments(project.value.id, chapterId)
+    
+    if (response.data.success) {
+      message.success('章节失败段落重试已开始！')
+      project.value.status = 'processing'
+      
+      // 开始WebSocket监控
+      startWebSocketProgressMonitoring()
+      startElapsedTimer()
+      
+      // 显示进度抽屉
+      synthesisProgressDrawer.value = true
+    } else {
+      message.error('重试章节失败段落失败: ' + response.data.message)
+    }
+  } catch (error) {
+    console.error('重试章节失败段落失败:', error)
+    message.error('重试章节失败段落失败: ' + (error.response?.data?.message || error.message))
+  } finally {
+    resumingGeneration.value = false
+  }
+}
+
+const downloadChapterAudio = async (chapterId) => {
+  try {
+    console.log('下载章节音频:', chapterId)
+    
+    // 调用单章节音频下载API
+    const response = await readerAPI.downloadChapterAudio(project.value.id, chapterId)
+    
+    // 创建下载链接
+    const blob = new Blob([response.data])
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    
+    // 找到对应的章节信息来设置文件名
+    const chapterResult = preparationResults.value?.data?.find(ch => ch.chapter_id === chapterId)
+    const fileName = chapterResult 
+      ? `第${chapterResult.chapter_number}章_${chapterResult.chapter_title}.wav`
+      : `章节${chapterId}.wav`
+    
+    link.download = fileName
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+    
+    message.success('章节音频下载完成')
+  } catch (error) {
+    console.error('下载章节音频失败:', error)
+    message.error('下载章节音频失败: ' + (error.response?.data?.message || error.message))
+  }
+}
 </script>
 
 <style scoped>
@@ -2873,33 +3000,46 @@ const updateProgressDataFromWebSocket = (data) => {
   background: #fafbfc;
 }
 
-/* 顶部操作栏 */
-.action-toolbar {
+/* 内容标题栏 */
+.content-header {
   background: white;
   border-bottom: 1px solid #e8e8e8;
   padding: 16px 24px;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  min-height: 64px;
 }
 
-.toolbar-left {
+.content-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.title-left {
   display: flex;
   align-items: center;
   gap: 12px;
 }
 
-.toolbar-right {
+.title-stats {
+  display: flex;
+  align-items: center;
+}
+
+.content-title h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.content-actions {
   display: flex;
   align-items: center;
   gap: 12px;
-}
-
-.preparation-status {
-  display: flex;
-  align-items: center;
-  font-size: 14px;
-  font-weight: 500;
 }
 
 .start-btn,
@@ -2913,6 +3053,18 @@ const updateProgressDataFromWebSocket = (data) => {
 .restart-btn:hover {
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.play-btn {
+  background: linear-gradient(135deg, #52c41a 0%, #389e0d 100%);
+  border: none;
+  box-shadow: 0 2px 8px rgba(82, 196, 26, 0.3);
+  color: white;
+}
+
+.play-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(82, 196, 26, 0.4);
 }
 
 /* 内容预览区域 */
@@ -2978,11 +3130,8 @@ const updateProgressDataFromWebSocket = (data) => {
   background: #fafafa;
 }
 
-.preview-header h4 {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 600;
-  color: #1f2937;
+.preview-header {
+  justify-content: flex-end;
 }
 
 .dialogue-list {
@@ -2993,21 +3142,39 @@ const updateProgressDataFromWebSocket = (data) => {
 
 .chapter-divider {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   margin: 24px 0 16px;
-  padding-bottom: 8px;
+  padding-bottom: 12px;
   border-bottom: 2px solid #f0f0f0;
+}
+
+.chapter-title-section {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chapter-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.chapter-stats {
+  margin-top: 4px;
+}
+
+.chapter-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
 }
 
 .chapter-divider:first-child {
   margin-top: 0;
-}
-
-.chapter-title {
-  font-size: 15px;
-  font-weight: 600;
-  color: #1f2937;
 }
 
 .dialogue-bubbles {
@@ -3157,7 +3324,7 @@ const updateProgressDataFromWebSocket = (data) => {
     height: 300px;
   }
   
-  .action-toolbar {
+  .content-header {
     flex-direction: column;
     gap: 12px;
     align-items: stretch;

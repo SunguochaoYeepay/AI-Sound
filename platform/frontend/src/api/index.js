@@ -312,6 +312,54 @@ export const readerAPI = {
   downloadPartialAudio: (projectId) => apiClient.get(`/novel-reader/projects/${projectId}/download-partial`, {
     responseType: 'blob'
   }),
+
+  // 章节级别合成API
+  // 开始单章节合成
+  startChapterSynthesis: (projectId, chapterId, data = {}) => {
+    const formData = new FormData()
+    formData.append('chapter_id', chapterId)
+    formData.append('parallel_tasks', data.parallel_tasks || 1)
+    
+    return apiClient.post(`/novel-reader/projects/${projectId}/chapters/${chapterId}/start`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    })
+  },
+  
+  // 重新合成单章节
+  restartChapterSynthesis: (projectId, chapterId, data = {}) => {
+    const formData = new FormData()
+    formData.append('parallel_tasks', data.parallel_tasks || 1)
+    
+    return apiClient.post(`/novel-reader/projects/${projectId}/chapters/${chapterId}/restart`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    })
+  },
+  
+  // 继续合成单章节
+  resumeChapterSynthesis: (projectId, chapterId, data = {}) => {
+    const formData = new FormData()
+    formData.append('parallel_tasks', data.parallel_tasks || 1)
+    
+    return apiClient.post(`/novel-reader/projects/${projectId}/chapters/${chapterId}/resume`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    })
+  },
+  
+  // 重试单章节失败段落
+  retryChapterFailedSegments: (projectId, chapterId) => 
+    apiClient.post(`/novel-reader/projects/${projectId}/chapters/${chapterId}/retry-failed`),
+  
+  // 下载单章节音频
+  downloadChapterAudio: (projectId, chapterId) => 
+    apiClient.get(`/novel-reader/projects/${projectId}/chapters/${chapterId}/download`, {
+      responseType: 'blob'
+    }),
   
   // 兼容旧API - 已废弃，建议使用 readerAPI 中的对应方法
   uploadText: (formData) => apiClient.post('/novel-reader/upload', formData, {
@@ -655,4 +703,96 @@ export const intelligentAnalysisAPI = {
   // 应用分析结果
   applyAnalysis: (projectId, analysisData) => 
     apiClient.post(`/intelligent-analysis/apply/${projectId}`, analysisData)
+}
+
+// 环境音管理API
+export const environmentSoundsAPI = {
+  // 获取分类列表
+  getCategories: (params = {}) => {
+    const queryParams = new URLSearchParams()
+    if (params.active_only !== undefined) queryParams.append('active_only', params.active_only)
+    
+    const queryString = queryParams.toString()
+    const url = queryString ? `/environment-sounds/categories?${queryString}` : '/environment-sounds/categories'
+    return apiClient.get(url)
+  },
+
+  // 获取标签列表
+  getTags: (params = {}) => {
+    const queryParams = new URLSearchParams()
+    if (params.popular_only !== undefined) queryParams.append('popular_only', params.popular_only)
+    if (params.limit) queryParams.append('limit', params.limit)
+    
+    const queryString = queryParams.toString()
+    const url = queryString ? `/environment-sounds/tags?${queryString}` : '/environment-sounds/tags'
+    return apiClient.get(url)
+  },
+
+  // 获取预设列表
+  getPresets: (params = {}) => {
+    const queryParams = new URLSearchParams()
+    if (params.category_id) queryParams.append('category_id', params.category_id)
+    
+    const queryString = queryParams.toString()
+    const url = queryString ? `/environment-sounds/presets?${queryString}` : '/environment-sounds/presets'
+    return apiClient.get(url)
+  },
+
+  // 获取环境音列表
+  getEnvironmentSounds: (params = {}) => {
+    const queryParams = new URLSearchParams()
+    if (params.page) queryParams.append('page', params.page)
+    if (params.page_size) queryParams.append('page_size', params.page_size)
+    if (params.category_id) queryParams.append('category_id', params.category_id)
+    if (params.tag_ids) queryParams.append('tag_ids', params.tag_ids)
+    if (params.search) queryParams.append('search', params.search)
+    if (params.status) queryParams.append('status', params.status)
+    if (params.featured_only !== undefined) queryParams.append('featured_only', params.featured_only)
+    if (params.sort_by) queryParams.append('sort_by', params.sort_by)
+    if (params.sort_order) queryParams.append('sort_order', params.sort_order)
+    
+    const queryString = queryParams.toString()
+    const url = queryString ? `/environment-sounds/?${queryString}` : '/environment-sounds/'
+    return apiClient.get(url)
+  },
+
+  // 获取单个环境音详情
+  getEnvironmentSound: (id) => apiClient.get(`/environment-sounds/${id}`),
+
+  // 生成环境音
+  generateEnvironmentSound: (data) => apiClient.post('/environment-sounds/generate', data),
+
+  // 重新生成环境音
+  regenerateEnvironmentSound: (id) => apiClient.post(`/environment-sounds/${id}/regenerate`),
+
+  // 播放环境音（记录播放日志）
+  playEnvironmentSound: (id) => apiClient.post(`/environment-sounds/${id}/play`),
+
+  // 下载环境音
+  downloadEnvironmentSound: (id) => apiClient.get(`/environment-sounds/${id}/download`, {
+    responseType: 'blob'
+  }),
+
+  // 切换收藏状态
+  toggleFavorite: (id) => apiClient.post(`/environment-sounds/${id}/favorite`),
+
+  // 删除环境音
+  deleteEnvironmentSound: (id) => apiClient.delete(`/environment-sounds/${id}`),
+
+  // 获取统计数据
+  getStats: () => apiClient.get('/environment-sounds/stats'),
+
+  // TangoFlux健康检查
+  checkTangoFluxHealth: () => apiClient.get('/environment-sounds/tangoflux/health'),
+
+  // 批量删除
+  batchDelete: (soundIds) => apiClient.post('/environment-sounds/batch-delete', {
+    sound_ids: soundIds
+  }),
+
+  // 批量更新
+  batchUpdate: (soundIds, updates) => apiClient.post('/environment-sounds/batch-update', {
+    sound_ids: soundIds,
+    ...updates
+  })
 }
