@@ -402,8 +402,8 @@ async def get_generation_progress(
             else:
                 # 进行中或其他状态的项目，以total_segments为准，更新processed_segments
                 logger.info(f"  修复策略: 限制processed_segments为total_segments {total}")
-                processed = total
-                project.processed_segments = processed
+            processed = total
+            project.processed_segments = processed
             
             db.commit()
             logger.info(f"  数据修复完成: total={total}, processed={processed}")

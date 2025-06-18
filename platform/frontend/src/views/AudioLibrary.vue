@@ -646,11 +646,11 @@ onMounted(() => {
   // 使用立即执行的异步函数处理初始化
   (async () => {
     try {
-      await Promise.all([
-        refreshAudioList(),
-        loadStats(),
-        loadProjectList()
-      ])
+  await Promise.all([
+    refreshAudioList(),
+    loadStats(),
+    loadProjectList()
+  ])
     } catch (error) {
       console.error('🔴 [AudioLibrary] 初始化过程中发生错误:', error)
       message.error('页面初始化失败: ' + error.message)

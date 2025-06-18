@@ -139,7 +139,8 @@
                           🎯 合成此章
                         </a-button>
 
-                        <template v-if="project.status === 'completed'">
+                        <!-- 已完成状态按钮：使用智能状态判断 -->
+                        <template v-if="getDisplayStatus(project.status) === 'completed'">
                         <a-button
                           type="primary"
                             size="small"
@@ -148,6 +149,13 @@
                             class="play-btn"
                           >
                             🔊 播放此章
+                          </a-button>
+                          <a-button
+                            size="small"
+                            @click="downloadChapterAudio(chapterResult.chapter_id)"
+                            type="dashed"
+                          >
+                            📥 下载此章音频
                           </a-button>
                           <a-button
                             type="default"
@@ -194,8 +202,8 @@
                           {{ project.status }}
                         </a-tag>
 
-                        <!-- 部分完成状态按钮 -->
-                        <template v-if="project.status === 'partial_completed'">
+                        <!-- 智能状态按钮：只有真正失败才显示重试 -->
+                        <template v-if="getDisplayStatus(project.status) === 'failed'">
                           <a-button
                             type="primary"
                             size="small"
@@ -204,12 +212,16 @@
                           >
                             🔄 重试此章失败段落
                           </a-button>
+                        </template>
+                        
+                        <!-- 有部分完成但失败的情况：显示下载按钮 -->
+                        <template v-if="getDisplayStatus(project.status) === 'failed' && project.statistics?.completedSegments > 0">
                           <a-button
                             size="small"
                             @click="downloadChapterAudio(chapterResult.chapter_id)"
                             type="dashed"
                           >
-                            📥 下载此章音频
+                            📥 下载已完成部分
                           </a-button>
                         </template>
                       </a-space>
@@ -362,9 +374,9 @@
           </div>
           
           <!-- 持久化错误通知 -->
-          <div class="persistent-error-notice" v-if="progressData.status === 'failed' || (progressData.status === 'partial_completed' && progressData.failed_segments > 0)">
+          <div class="persistent-error-notice" v-if="getDisplayStatus(progressData.status) === 'failed'">
             <a-alert
-              :type="progressData.status === 'failed' ? 'error' : 'warning'"
+              type="error"
               :show-icon="true"
               :closable="false"
               style="margin-bottom: 16px;"
@@ -372,18 +384,18 @@
               <template #message>
                 <div class="error-notice-content">
                   <div class="error-title">
-                    {{ progressData.status === 'failed' ? '🚨 合成完全失败' : '⚠️ 合成部分失败' }}
+                    🚨 合成失败
                   </div>
                   <div class="error-summary">
-                    {{ getErrorSummary() }}
+                    {{ progressData.failed_segments }} 个段落合成失败，请检查配置后重试
                   </div>
                 </div>
               </template>
             </a-alert>
           </div>
           
-          <!-- 🚀 新增：成功完成提示（当partial_completed且无失败时） -->
-          <div class="persistent-success-notice" v-if="progressData.status === 'partial_completed' && progressData.failed_segments === 0">
+          <!-- 成功完成提示 -->
+          <div class="persistent-success-notice" v-if="getDisplayStatus(progressData.status) === 'completed'">
             <a-alert
               type="success"
               :show-icon="true"
@@ -396,7 +408,7 @@
                     ✅ 合成完成
                   </div>
                   <div class="success-summary">
-                    {{ getErrorSummary() }}
+                    所有 {{ progressData.total_segments }} 个段落合成成功
                   </div>
                 </div>
               </template>
@@ -404,7 +416,7 @@
           </div>
           
           <!-- 失败详情显示 -->
-          <div class="failure-details" v-if="(progressData.status === 'failed' || progressData.status === 'partial_completed') && progressData.failed_segments > 0">
+          <div class="failure-details" v-if="getDisplayStatus(progressData.status) === 'failed' && progressData.failed_segments > 0">
             <div class="failure-header">
               <span class="failure-title">❌ 失败详情 ({{ progressData.failed_segments }} 个段落)</span>
               <a-button size="small" type="primary" @click="retryFailedSegments" :loading="resumingGeneration">
@@ -424,16 +436,7 @@
               </div>
             </div>
             
-            <!-- 项目错误信息 -->
-            <div class="project-error" v-if="project?.error_message">
-              <div class="error-info-row">
-                <span class="error-label">错误信息：</span>
-                <span class="error-message">{{ project.error_message }}</span>
-              </div>
-              <a-button size="small" type="dashed" @click="copyErrorInfo" style="margin-top: 8px;">
-                📋 复制错误信息
-              </a-button>
-            </div>
+
           </div>
         </div>
       </div>
@@ -623,20 +626,37 @@ const closeSynthesisDrawer = () => {
 
 // showJsonTestModal 方法已移除
 
-const getStatusColor = (status) => {
-  const colors = {
-    pending: 'orange',
-    processing: 'blue',
-    paused: 'purple',
-    completed: 'green',
-    partial_completed: 'gold',
-    failed: 'red',
-    cancelled: 'default'
+// 智能状态显示：根据实际完成情况显示状态
+// 注意：partial_completed 是后端返回的中间状态，需要根据实际数据智能转换
+const getDisplayStatus = (rawStatus) => {
+  // 如果是 partial_completed，检查是否实际已经全部完成
+  if (rawStatus === 'partial_completed') {
+    // 🔧 修复：使用项目统计数据，不是progressData
+    const completed = project.value?.statistics?.completedSegments || project.value?.processed_segments || 0
+    const total = project.value?.statistics?.totalSegments || project.value?.total_segments || 0
+    const failed = project.value?.statistics?.failedSegments || project.value?.failed_segments || 0
+    
+    console.log('🔍 [getDisplayStatus] 智能转换partial_completed状态:', { 
+      completed, total, failed,
+      rawStatus, willConvertTo: total > 0 && completed === total && failed === 0 ? 'completed' : (failed > 0 ? 'failed' : 'partial_completed')
+    })
+    
+    // 如果全部完成且没有失败，智能转换为已完成
+    if (total > 0 && completed === total && failed === 0) {
+      return 'completed'
+    }
+    // 如果有失败的，智能转换为失败
+    if (failed > 0) {
+      return 'failed'
+    }
+    // 否则保持部分完成状态
   }
-  return colors[status] || 'default'
+  return rawStatus
 }
 
 const getStatusText = (status) => {
+  // 🔧 修复：使用智能显示状态而不是原始状态
+  const displayStatus = getDisplayStatus(status)
   const texts = {
     pending: '待开始',
     processing: '合成中',
@@ -646,7 +666,24 @@ const getStatusText = (status) => {
     failed: '失败',
     cancelled: '已取消'
   }
-  return texts[status] || status
+  console.log(`🏷️ [getStatusText] 原始状态: ${status}, 显示状态: ${displayStatus}, 文本: ${texts[displayStatus]}`)
+  return texts[displayStatus] || displayStatus
+}
+
+const getStatusColor = (status) => {
+  // 🔧 修复：使用智能显示状态而不是原始状态  
+  const displayStatus = getDisplayStatus(status)
+  const colors = {
+    pending: 'orange',
+    processing: 'blue',
+    paused: 'purple',
+    completed: 'green',
+    partial_completed: 'gold',
+    failed: 'red',
+    cancelled: 'default'
+  }
+  console.log(`🎨 [getStatusColor] 原始状态: ${status}, 显示状态: ${displayStatus}, 颜色: ${colors[displayStatus]}`)
+  return colors[displayStatus] || 'default'
 }
 
 const getStartHint = () => {
@@ -1490,12 +1527,7 @@ const startWebSocketProgressMonitoring = () => {
   
   // 订阅合成进度更新主题
   unsubscribeWebSocket.value = wsStore.subscribe('topic_message', (data, fullMessage) => {
-    console.log('🔍 [WEBSOCKET] 收到消息:', { 
-      type: fullMessage.type, 
-      topic: fullMessage.topic, 
-      data,
-      expectedTopic: `synthesis_${project.value?.id}`
-    })
+
     
     // 检查是否为当前项目的进度更新
     if (fullMessage.topic === `synthesis_${project.value?.id}` && data.type === 'progress_update') {
@@ -1535,39 +1567,7 @@ const startWebSocketProgressMonitoring = () => {
       updateProgressDataFromWebSocket(progressDataFromWS)
       
       console.log('📊 [WEBSOCKET] 更新后的project.statistics:', project.value.statistics)
-      console.log('📊 [WEBSOCKET] 更新后的project原始字段:', {
-        total_segments: project.value.total_segments,
-        processed_segments: project.value.processed_segments
-      })
-      console.log('🔢 [WEBSOCKET] 计算的progressPercent:', progressPercent.value)
-      console.log('🔢 [WEBSOCKET] 统一的进度数据:', currentProgressData.value)
-      console.log('🔢 [WEBSOCKET] progressData.value:', progressData.value)
-      
-      // 🔍 DEBUG: 如果进度百分比不为0但完成段落为0，说明数据有问题
-      if (progressDataFromWS.progress && progressDataFromWS.progress > 0 && progressDataFromWS.completed_segments === 0) {
-        console.warn('⚠️ [WEBSOCKET] 数据异常：进度不为0但完成段落为0', {
-          progress: progressDataFromWS.progress,
-          completed_segments: progressDataFromWS.completed_segments,
-          total_segments: progressDataFromWS.total_segments,
-          originalData: progressDataFromWS
-        })
-        
-        // 根据进度百分比估算完成的段落数
-        const estimatedCompleted = Math.floor((progressDataFromWS.progress / 100) * progressDataFromWS.total_segments)
-        console.log('🔍 [WEBSOCKET] 估算完成段落数:', estimatedCompleted)
-        
-        // 更新显示数据
-        progressData.value.completed_segments = estimatedCompleted
-        
-        // 同时更新project统计数据
-        if (project.value.statistics) {
-          project.value.statistics.completedSegments = estimatedCompleted
-          project.value.processed_segments = estimatedCompleted
-        }
-        
-        console.log('🔍 [WEBSOCKET] 修正后的progressData:', progressData.value)
-        console.log('🔍 [WEBSOCKET] 修正后的project.statistics:', project.value.statistics)
-      }
+
       
       // 更新当前处理段落信息
       currentProcessingSegment.value = getCurrentProcessingSegment()
@@ -1577,62 +1577,22 @@ const startWebSocketProgressMonitoring = () => {
         loadCompletedSegments()
       }
       
-      // 检查完成状态
-      if (progressDataFromWS.status === 'completed') {
+      // 简化：统一处理完成状态
+      if (['completed', 'partial_completed', 'failed', 'cancelled'].includes(progressDataFromWS.status)) {
         stopWebSocketProgressMonitoring()
         stopElapsedTimer()
         loadProject()
-        message.success('🎉 音频合成完成！')
         
-        // 延迟关闭抽屉，让用户看到成功提示
-        setTimeout(() => {
-          synthesisProgressDrawer.value = false
-        }, 1500)
-      } else if (progressDataFromWS.status === 'partial_completed') {
-        stopWebSocketProgressMonitoring()
-        stopElapsedTimer()
-        loadProject()
-        const failedCount = progressDataFromWS.failed_segments || 0
-        if (failedCount > 0) {
-          // 部分失败时显示详细信息，持续时间更长
-          message.warning({
-            content: `⚠️ 合成部分完成！${progressDataFromWS.completed_segments}/${progressDataFromWS.total_segments} 个段落成功，${failedCount} 个失败。详细信息请查看下方失败详情。`,
-            duration: 8 // 8秒
-          })
-          // 部分失败时保持抽屉开启，显示失败详情
-        } else {
-          message.success('🎉 音频合成部分完成！')
-          // 完全成功时延迟关闭抽屉
+        // 简化的通知
+        const { status, completed_segments, total_segments, failed_segments } = progressDataFromWS
+        showSimpleNotification(status, completed_segments, total_segments, failed_segments)
+        
+        // 简化的抽屉关闭逻辑：失败时不关闭，其他状态2秒后关闭
+        if (status !== 'failed') {
           setTimeout(() => {
             synthesisProgressDrawer.value = false
           }, 2000)
         }
-      } else if (progressDataFromWS.status === 'failed') {
-        stopWebSocketProgressMonitoring()  
-        stopElapsedTimer()
-        loadProject()
-        
-        // 显示详细的失败信息，持续时间更长
-        const errorMsg = project.value?.error_message || '未知错误'
-        message.error({
-          content: `❌ 音频合成失败：${errorMsg}。请查看下方失败详情并尝试重试。`,
-          duration: 10 // 10秒
-        })
-        
-        // 失败时不自动关闭抽屉，让用户可以查看失败详情
-        // setTimeout(() => {
-        //   synthesisProgressDrawer.value = false
-        // }, 3000)
-      } else if (progressDataFromWS.status === 'cancelled') {
-        stopWebSocketProgressMonitoring()
-        stopElapsedTimer()
-        loadProject() // 重新加载项目状态，确保按钮正确显示
-        message.info('⏹️ 音频合成已取消')
-        
-        // 取消时立即关闭抽屉
-        setTimeout(() => {
-          synthesisProgressDrawer.value = false
-        }, 1000)
       }
     }
     // 如果不是期望的消息格式，也要处理其他类型的synthesis消息
@@ -1979,20 +1939,9 @@ onMounted(() => {
         synthesisProgressDrawer.value = true
         
         startWebSocketProgressMonitoring()
-      } else if (project.value?.status === 'completed' && project.value?.total_segments > 0) {
-        // 如果项目已完成，确保进度数据正确显示
-        console.log('🔍 [INIT] 项目已完成，初始化完成后的进度数据...')
-        progressData.value = {
-          progress: 100,
-          status: 'completed',
-          completed_segments: project.value.total_segments,
-          total_segments: project.value.total_segments,
-          failed_segments: 0,
-          current_processing: '合成已完成'
-        }
-        console.log('✅ [INIT] 完成后进度数据:', progressData.value)
       } else {
-        console.log('🔍 [INIT] 项目状态:', project.value?.status, '无需特殊处理')
+        // 简化的进度数据初始化
+        initializeProgressFromProject()
       }
       
       console.log('✅ [INIT] SynthesisCenter初始化完成!')
@@ -2036,6 +1985,105 @@ onUnmounted(() => {
 window.addEventListener('beforeunload', () => {
   stopWebSocketProgressMonitoring()
 })
+
+// 简化的进度数据初始化
+const initializeProgressFromProject = () => {
+  if (!project.value) return
+  
+  // 在章节模式下，不显示项目历史数据，而是基于当前选择
+  if (synthesisMode.value === 'chapters') {
+    // 如果有智能准备结果，显示当前选择的数据
+    if (preparationResults.value?.data?.length > 0) {
+      const totalSegments = getTotalSegments()
+      progressData.value = {
+        progress: 0,
+        status: 'ready',
+        completed_segments: 0,
+        total_segments: totalSegments,
+        failed_segments: 0,
+        current_processing: `已准备 ${totalSegments} 个段落`
+      }
+    } else {
+      // 没有选择或准备结果时清零
+      progressData.value = {
+        progress: 0,
+        status: 'pending',
+        completed_segments: 0,
+        total_segments: 0,
+        failed_segments: 0,
+        current_processing: '请选择章节并进行智能准备'
+      }
+    }
+  } else {
+    // 非章节模式使用项目数据（保留原逻辑）
+    const status = project.value.status || 'unknown'
+    const completed = project.value.completed_segments || 0
+    const total = project.value.total_segments || 0
+    const failed = project.value.failed_segments || 0
+    
+    progressData.value = {
+      progress: total > 0 ? Math.round((completed / total) * 100) : 0,
+      status: status,
+      completed_segments: completed,
+      total_segments: total,
+      failed_segments: failed,
+      current_processing: getSimpleStatusText(status, completed, total, failed)
+    }
+  }
+  
+  console.log('📊 简化初始化进度数据:', progressData.value)
+}
+
+// 简化的状态文本
+const getSimpleStatusText = (status, completed, total, failed) => {
+  if (status === 'completed') return '合成完成'
+  if (status === 'failed') return '合成失败'
+  if (status === 'partial_completed') return `${completed}/${total} 完成${failed > 0 ? `, ${failed} 失败` : ''}`
+  if (status === 'processing') return '合成中...'
+  return `${completed}/${total}`
+}
+
+// 简化的通知显示
+const showSimpleNotification = (status, completed, total, failed) => {
+  if (status === 'failed') {
+    // 失败时显示详细弹窗
+    const errorMsg = project.value?.error_message || '未知错误'
+    Modal.error({
+      title: '❌ 合成失败',
+      content: h('div', [
+        h('p', `合成过程中发生错误，请查看详细信息：`),
+        h('div', { style: 'background: #fff2f0; padding: 12px; border-radius: 6px; margin: 8px 0; border-left: 4px solid #ff4d4f;' }, [
+          h('strong', '错误详情：'),
+          h('br'),
+          h('span', { style: 'color: #cf1322;' }, errorMsg)
+        ]),
+        h('p', { style: 'margin-top: 12px; color: #666;' }, '您可以：'),
+        h('ul', { style: 'color: #666; margin: 0; padding-left: 20px;' }, [
+          h('li', '检查失败段落详情并进行重试'),
+          h('li', '查看系统日志了解具体原因'),
+          h('li', '联系技术支持获取帮助')
+        ])
+      ]),
+      width: 500,
+      okText: '我知道了'
+    })
+  } else {
+    // 其他状态使用简单通知
+    const messages = {
+      completed: '🎉 合成完成！',
+      partial_completed: `⚠️ 合成部分完成！${completed}/${total} 成功${failed > 0 ? `, ${failed} 失败` : ''}`,
+      cancelled: '⏹️ 合成已取消'
+    }
+    
+    const types = {
+      completed: 'success',
+      partial_completed: failed > 0 ? 'warning' : 'success',
+      cancelled: 'info'
+    }
+    
+    message[types[status]](messages[status])
+  }
+}
 
 // 合成进度监控相关方法
 const initializeSynthesisMonitoring = () => {
@@ -2570,6 +2618,13 @@ const retryChapterFailedSegments = async (chapterId) => {
     const response = await readerAPI.retryChapterFailedSegments(project.value.id, chapterId)
     
     if (response.data.success) {
+      // 检查是否真的有失败段落需要重试
+      if (response.data.message.includes('没有失败的段落需要重试')) {
+        message.info('该章节所有段落已完成，无需重试')
+        return
+      }
+      
+      // 有失败段落需要重试的情况
       message.success('章节失败段落重试已开始！')
       project.value.status = 'processing'
       
@@ -2634,51 +2689,14 @@ const getSelectedChapterNumber = () => {
   const chapter = availableChapters.value.find(ch => ch.id === selectedChapter.value)
   return chapter ? chapter.chapter_number : ''
 }
+
+
 </script>
 
 <style scoped>
 /* 新的合成中心样式 */
 .synthesis-center {
   height: 100vh;
-  display: flex;
-  flex-direction: column;
-  background: #f5f7fa;
-}
-
-/* 顶部导航栏 */
-.top-navbar {
-  height: 64px;
-  background: white;
-  border-bottom: 1px solid #e8e8e8;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 24px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
-}
-
-.nav-left {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.back-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: #666;
-  font-size: 14px;
-}
-
-.page-title {
-  margin: 0;
-  font-size: 20px;
-  font-weight: 600;
-  color: #1f2937;
-}
-
-.nav-right {
   display: flex;
   align-items: center;
 }
