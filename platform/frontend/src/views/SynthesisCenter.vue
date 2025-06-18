@@ -128,9 +128,9 @@
                   <!-- 章节标题 -->
                   <div class="chapter-divider">
                     <div class="chapter-title-section">
-                      <span class="chapter-title">
-                        第{{ chapterResult.chapter_number }}章 {{ chapterResult.chapter_title }}
-                      </span>
+                    <span class="chapter-title">
+                      第{{ chapterResult.chapter_number }}章 {{ chapterResult.chapter_title }}
+                    </span>
                       <!-- 章节统计信息 -->
                       <div class="chapter-stats">
                         <a-space>
@@ -168,8 +168,8 @@
                         </a-button>
 
                         <template v-if="project.status === 'completed'">
-                          <a-button
-                            type="primary"
+                        <a-button
+                          type="primary"
                             size="small"
                             @click="playChapterAudio(chapterResult.chapter_id)"
                             :loading="playingChapterAudio === chapterResult.chapter_id"
@@ -179,13 +179,13 @@
                           </a-button>
                           <a-button
                             type="default"
-                            size="small"
-                            @click="restartChapterSynthesis(chapterResult.chapter_id)"
-                            :loading="synthesisStarting"
-                            class="restart-btn"
-                          >
-                            🔄 重新合成此章
-                          </a-button>
+                          size="small"
+                          @click="restartChapterSynthesis(chapterResult.chapter_id)"
+                          :loading="synthesisStarting"
+                          class="restart-btn"
+                        >
+                          🔄 重新合成此章
+                        </a-button>
                         </template>
 
                         <!-- 处理中状态按钮 -->
@@ -399,7 +399,7 @@ import { message, Modal, Empty } from 'ant-design-vue'
 import { ArrowLeftOutlined, ReloadOutlined } from '@ant-design/icons-vue'
 import { readerAPI, charactersAPI, intelligentAnalysisAPI, systemAPI, booksAPI } from '@/api'
 import { useWebSocketStore } from '@/stores/websocket.js'
-import { audioService } from '@/utils/audioService'
+import { getAudioService } from '@/utils/audioService'
 
 const router = useRouter()
 const route = useRoute()
@@ -1409,7 +1409,7 @@ const playVoicePreview = async (voiceId, sampleText) => {
       return
     }
 
-    await audioService.playVoicePreview(voiceId, selectedVoice.name, sampleText)
+    await getAudioService().playVoicePreview(voiceId, selectedVoice.name, sampleText)
     
   } catch (error) {
     console.error('试听失败:', error)
@@ -1636,13 +1636,13 @@ const playAudio = async (type, audioUrl, id, name) => {
       if (currentlyPlaying.value?.type === type && currentlyPlaying.value?.id === id) {
         currentlyPlaying.value = null
         playingChapterAudio.value = null
-        playingFinalAudio.value = false
+    playingFinalAudio.value = false
         playingSegment.value = null
         message.info(`${name}播放已停止`)
-        return
-      }
+      return
     }
-
+    }
+    
     // 创建新的音频播放器
     unifiedAudioPlayer.value = new Audio(audioUrl)
     currentlyPlaying.value = { type, id, name }
@@ -1709,7 +1709,7 @@ const playChapterAudio = async (chapterId) => {
   }
 
   try {
-    await audioService.playChapterAudio(project.value.id, chapterId, `第${chapterId}章`)
+    await getAudioService().playChapterAudio(project.value.id, chapterId, `第${chapterId}章`)
   } catch (error) {
     console.error('播放章节音频失败:', error)
     message.error('播放章节音频失败')
@@ -1725,7 +1725,7 @@ const playFinalAudio = async () => {
 
   loadingFinalAudio.value = true
   try {
-    await audioService.playProjectAudio(
+    await getAudioService().playProjectAudio(
       project.value.id, 
       `${project.value.name || '项目'} - 完整音频`
     )
@@ -2279,11 +2279,11 @@ const refreshCompletedSegments = async () => {
 const playSegmentAudio = async (segment) => {
   if (!segment.audio_url) {
     message.warning('该段落音频文件不存在')
-    return
-  }
-
+      return
+    }
+    
   try {
-    await audioService.playSegmentAudio(
+    await getAudioService().playSegmentAudio(
       project.value.id,
       segment.id,
       segment.text

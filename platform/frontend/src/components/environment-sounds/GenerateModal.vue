@@ -272,6 +272,9 @@ const rules = {
   cfg_scale: [
     { required: true, message: '请输入CFG强度', trigger: 'blur' },
     { type: 'number', min: 1, max: 10, message: 'CFG强度必须在1-10之间', trigger: 'blur' }
+  ],
+  category_id: [
+    { required: true, message: '请选择分类', trigger: 'change' }
   ]
 }
 
@@ -328,17 +331,22 @@ const useExample = (example) => {
 
 const handleGenerate = async () => {
   try {
+    console.log('[DEBUG] 开始生成环境音，表单数据:', JSON.stringify(form, null, 2))
+    
     // 表单验证
     await formRef.value.validate()
+    console.log('[DEBUG] 表单验证通过')
     
     generating.value = true
     
     // 调用生成API
-    const response = await api.post('/api/v1/environment-sounds/generate', form)
+    console.log('[DEBUG] 调用API: generateEnvironmentSound')
+    const response = await api.generateEnvironmentSound(form)
+    console.log('[DEBUG] API响应:', response)
     const result = response.data
     
-    if (result.success) {
-      message.success('环境音生成任务已启动，请等待生成完成')
+    if (result.status === 'processing') {
+      message.success(result.message || '环境音生成任务已启动，请等待生成完成')
       emit('generated', result.sound_id)
       handleCancel()
     } else {
@@ -346,7 +354,7 @@ const handleGenerate = async () => {
     }
     
   } catch (error) {
-    console.error('生成环境音失败:', error)
+    console.error('[DEBUG] 生成环境音失败:', error)
     if (error.response?.data?.detail) {
       message.error(error.response.data.detail)
     } else {

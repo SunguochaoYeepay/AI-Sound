@@ -3,13 +3,19 @@
 
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks, Request
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from typing import List, Optional
 import logging
 import requests
 import base64
 import os
 import json
-from datetime import datetime
+import tempfile
+import threading
+import time
+from datetime import datetime, timedelta
+import aiohttp
+import asyncio
 
 from app.database import get_db
 from app.models.environment_sound import (
@@ -22,15 +28,55 @@ from app.schemas.environment_sound import (
     EnvironmentSoundGenerateRequest, EnvironmentSoundGenerateResponse,
     EnvironmentSoundListResponse
 )
-from app.utils.file_manager import save_audio_file, get_audio_file_path
-from app.config.environment import get_settings
+from app.clients.file_manager import save_audio_file, get_audio_file_path
+from app.config.environment import get_environment_config
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-settings = get_settings()
+env_config = get_environment_config()
 
-# TangoFlux API配置
-TANGOFLUX_API_URL = "http://127.0.0.1:7930"
+# TangoFlux服务配置
+TANGOFLUX_SERVICE_URL = os.getenv("TANGOFLUX_URL", "http://localhost:7930")
+
+def get_tangoflux_client():
+    """获取TangoFlux客户端（HTTP调用）"""
+    return {
+        "base_url": TANGOFLUX_SERVICE_URL,
+        "timeout": 300  # 5分钟超时
+    }
+
+async def call_tangoflux_generate(prompt: str, duration: float, steps: int, cfg_scale: float) -> bytes:
+    """调用TangoFlux服务生成音频"""
+    client = get_tangoflux_client()
+    
+    try:
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=client["timeout"])) as session:
+            data = {
+                "prompt": prompt,
+                "duration": duration,
+                "steps": steps,
+                "guidance_scale": cfg_scale  # TangoFlux API使用guidance_scale参数名
+            }
+            
+            # 调用TangoFlux API的正确端点
+            async with session.post(f"{client['base_url']}/api/v1/audio/generate", json=data) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    # TangoFlux返回base64编码的音频数据
+                    if result.get("success") and "audio_base64" in result:
+                        import base64
+                        return base64.b64decode(result["audio_base64"])
+                    else:
+                        raise Exception("TangoFlux服务返回格式错误")
+                else:
+                    error_text = await response.text()
+                    raise Exception(f"TangoFlux服务错误: {response.status} - {error_text}")
+                    
+    except asyncio.TimeoutError:
+        raise Exception("TangoFlux服务调用超时")
+    except Exception as e:
+        logger.error(f"TangoFlux服务调用失败: {e}")
+        raise Exception(f"TangoFlux服务不可用: {str(e)}")
 
 @router.get("/categories", response_model=List[EnvironmentSoundCategoryResponse])
 async def get_categories(
@@ -167,6 +213,46 @@ async def get_environment_sounds(
         "pages": (total + page_size - 1) // page_size
     }
 
+@router.get("/stats")
+async def get_environment_sound_stats(db: Session = Depends(get_db)):
+    """获取环境音统计数据"""
+    
+    # 总数统计
+    total_sounds = db.query(EnvironmentSound).count()
+    completed_sounds = db.query(EnvironmentSound).filter(EnvironmentSound.generation_status == "completed").count()
+    processing_sounds = db.query(EnvironmentSound).filter(EnvironmentSound.generation_status == "processing").count()
+    failed_sounds = db.query(EnvironmentSound).filter(EnvironmentSound.generation_status == "failed").count()
+    
+    # 播放和下载统计
+    total_plays = db.query(func.sum(EnvironmentSound.play_count)).scalar() or 0
+    total_downloads = db.query(func.sum(EnvironmentSound.download_count)).scalar() or 0
+    total_favorites = db.query(func.sum(EnvironmentSound.favorite_count)).scalar() or 0
+    
+    # 分类统计
+    category_stats = db.query(
+        EnvironmentSoundCategory.name,
+        func.count(EnvironmentSound.id).label('count')
+    ).join(EnvironmentSound).group_by(EnvironmentSoundCategory.id, EnvironmentSoundCategory.name).all()
+    
+    # 今日新增
+    today = datetime.now().date()
+    today_sounds = db.query(EnvironmentSound).filter(
+        func.date(EnvironmentSound.created_at) == today
+    ).count()
+    
+    return {
+        "total_sounds": total_sounds,
+        "completed_sounds": completed_sounds,
+        "processing_sounds": processing_sounds,
+        "failed_sounds": failed_sounds,
+        "total_plays": total_plays,
+        "total_downloads": total_downloads,
+        "total_favorites": total_favorites,
+        "today_sounds": today_sounds,
+        "category_stats": [{"name": name, "count": count} for name, count in category_stats],
+        "completion_rate": round(completed_sounds / total_sounds * 100, 1) if total_sounds > 0 else 0
+    }
+
 @router.get("/{sound_id}", response_model=EnvironmentSoundResponse)
 async def get_environment_sound(
     sound_id: int,
@@ -215,10 +301,10 @@ async def generate_environment_sound(
     )
     
     return {
-        "success": True,
-        "message": "环境音生成任务已启动",
         "sound_id": sound.id,
-        "estimated_time": request.duration * 0.5  # 估算生成时间
+        "status": "processing",
+        "message": "环境音生成任务已启动",
+        "estimated_time": int(request.duration * 0.5)  # 估算生成时间
     }
 
 @router.post("/{sound_id}/regenerate")
@@ -361,6 +447,40 @@ async def delete_environment_sound(
     
     return {"success": True, "message": "环境音已删除"}
 
+@router.post("/debug/fix-processing")
+async def fix_processing_sounds(db: Session = Depends(get_db)):
+    """调试端点：修复处理中的环境音状态"""
+    try:
+        # 查找处理中超过10分钟的环境音
+        threshold_time = datetime.now() - timedelta(minutes=10)
+        
+        processing_sounds = db.query(EnvironmentSound).filter(
+            EnvironmentSound.generation_status == "processing",
+            EnvironmentSound.created_at < threshold_time
+        ).all()
+        
+        fixed_count = 0
+        for sound in processing_sounds:
+            sound.generation_status = "failed"
+            sound.error_message = "生成超时，已自动修复状态"
+            fixed_count += 1
+            logger.info(f"修复环境音 {sound.id} 状态: {sound.name}")
+        
+        db.commit()
+        
+        return {
+            "success": True,
+            "message": f"成功修复 {fixed_count} 个环境音状态",
+            "fixed_count": fixed_count
+        }
+        
+    except Exception as e:
+        logger.error(f"修复处理中状态失败: {e}")
+        return {
+            "success": False,
+            "message": f"修复失败: {str(e)}"
+        }
+
 # 辅助函数
 
 async def generate_audio_task(
@@ -377,56 +497,50 @@ async def generate_audio_task(
     try:
         sound = db.query(EnvironmentSound).filter(EnvironmentSound.id == sound_id).first()
         if not sound:
+            logger.error(f"环境音 {sound_id} 不存在")
             return
         
-        # 调用TangoFlux API
-        payload = {
-            "prompt": prompt,
-            "duration": duration,
-            "steps": steps,
-            "cfg_scale": cfg_scale
-        }
+        logger.info(f"开始生成环境音 {sound_id}: {prompt}")
         
-        response = requests.post(
-            f"{TANGOFLUX_API_URL}/api/v1/audio/generate",
-            json=payload,
-            timeout=300  # 5分钟超时
+        # 调用TangoFlux服务生成音频
+        audio_data = await call_tangoflux_generate(prompt, duration, steps, cfg_scale)
+        logger.info(f"TangoFlux生成完成，音频大小: {len(audio_data)} bytes")
+        
+        # 直接保存音频文件，无需临时文件
+        file_path = await save_audio_file(
+            audio_data,
+            filename=f"env_sound_{sound_id}_{int(datetime.now().timestamp())}.wav",
+            subfolder="environment_sounds"
         )
+        logger.info(f"音频文件保存完成: {file_path}")
         
-        if response.status_code == 200:
-            result = response.json()
-            if result.get("success"):
-                # 保存音频文件
-                audio_data = base64.b64decode(result["audio_base64"])
-                file_path = save_audio_file(
-                    audio_data,
-                    filename=f"env_sound_{sound_id}_{int(datetime.now().timestamp())}.wav",
-                    subfolder="environment_sounds"
-                )
-                
-                # 更新数据库
-                sound.file_path = file_path
-                sound.file_size = len(audio_data)
-                sound.generation_time = result["parameters"]["generation_time"]
-                sound.generation_status = "completed"
-                sound.sample_rate = result["audio_info"]["sample_rate"]
-                sound.channels = result["audio_info"]["channels"]
-                
-            else:
-                sound.generation_status = "failed"
-                sound.error_message = result.get("error", "生成失败")
-        else:
-            sound.generation_status = "failed"
-            sound.error_message = f"API调用失败: {response.status_code}"
+        # 更新数据库
+        sound.file_path = file_path
+        sound.file_size = len(audio_data)
+        sound.generation_status = "completed"
+        sound.sample_rate = 44100
+        sound.channels = 2  # 立体声
+        sound.generated_at = datetime.now()
+        
+        db.commit()
+        logger.info(f"环境音 {sound_id} 生成成功: {file_path}")
             
     except Exception as e:
-        sound.generation_status = "failed"
-        sound.error_message = str(e)
-        logger.error(f"生成环境音失败: {e}")
+        logger.error(f"生成环境音 {sound_id} 失败: {e}", exc_info=True)
+        try:
+            if sound:
+                sound.generation_status = "failed"
+                sound.error_message = str(e)
+                db.commit()
+                logger.info(f"环境音 {sound_id} 状态已更新为失败")
+        except Exception as update_error:
+            logger.error(f"更新环境音 {sound_id} 失败状态时出错: {update_error}")
     
     finally:
-        db.commit()
-        db.close()
+        try:
+            db.close()
+        except Exception as close_error:
+            logger.error(f"关闭数据库连接失败: {close_error}")
 
 def log_usage(db: Session, sound_id: int, action: str, request: Request):
     """记录使用日志"""

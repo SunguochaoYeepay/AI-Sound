@@ -12,6 +12,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # 安装系统依赖
 RUN apt-get update && apt-get install -y \
     curl \
+    git \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 # 复制requirements文件并安装Python依赖
@@ -37,7 +39,8 @@ RUN mkdir -p /app/data/audio \
              /app/data/database \
              /app/data/logs \
              /app/data/config \
-             /app/data/backups
+             /app/data/backups \
+             /app/data/environment_sounds
 
 # 暴露端口
 EXPOSE 8000

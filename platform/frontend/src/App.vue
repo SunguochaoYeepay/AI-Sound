@@ -60,7 +60,18 @@
               <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
             </svg>
           </template>
-          <span style="font-weight: 500;">声音库管理</span>
+          <span style="font-weight: 500;">角色音管理</span>
+        </a-menu-item>
+
+        <a-menu-item key="environment-sounds" @click="navigateTo('environment-sounds')">
+          <template #icon>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/>
+              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/>
+              <path d="M11 7h2v2h-2zm0 4h2v6h-2z"/>
+            </svg>
+          </template>
+          <span style="font-weight: 500;">环境音管理</span>
         </a-menu-item>
 
         <a-menu-item key="books" @click="navigateTo('books')">
@@ -89,6 +100,8 @@
           </template>
           <span style="font-weight: 500;">音频资源库</span>
         </a-menu-item>
+
+       
 
         <a-menu-divider style="background-color: rgba(255,255,255,0.1); margin: 16px 0;" />
 
@@ -233,6 +246,7 @@ const updateSelectedKeys = () => {
     '/novel-reader/detail': 'novel-projects',
     '/synthesis': 'novel-projects',
     '/audio-library': 'audio-library',
+    '/environment-sounds': 'environment-sounds',
     '/settings': 'settings'
   }
   
@@ -275,6 +289,7 @@ const navigateTo = (view) => {
     'books': '/books',
     'novel-projects': '/novel-reader',
     'audio-library': '/audio-library',
+    'environment-sounds': '/environment-sounds',
     'settings': '/settings'
   }
   
@@ -301,6 +316,7 @@ const getPageTitle = () => {
     '/novel-reader/detail': '语音合成',
     '/synthesis': '合成中心',
     '/audio-library': '音频资源库',
+    '/environment-sounds': '环境音管理',
     '/settings': '系统设置'
   }
   

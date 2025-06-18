@@ -10,6 +10,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://ai_sound_user:ai_sound_password@database:5432/ai_sound
       - MEGATTS3_URL=http://megatts3:7929
+      - TANGOFLUX_URL=http://tangoflux:7930
       - OLLAMA_URL=http://host.docker.internal:11434  # Windows宿主机Ollama服务
       - AUDIO_DIR=/app/data/audio
       - UPLOADS_DIR=/app/data/uploads
@@ -23,6 +24,7 @@ services:
       - database
       - redis
       - megatts3
+      - tangoflux
     networks:
       - ai-sound-network
     restart: unless-stopped
@@ -99,6 +101,37 @@ services:
       timeout: 30s
       retries: 3
 
+  # TangoFlux环境音生成服务
+  tangoflux:
+    build:
+      context: .
+      dockerfile: docker/tangoflux/Dockerfile
+    container_name: ai-sound-tangoflux
+    command: python tangoflux_api_server.py
+    ports:
+      - "7930:7930"
+    volumes:
+      - ./data/environment_sounds:/app/data/environment_sounds
+    networks:
+      - ai-sound-network
+    restart: unless-stopped
+    environment:
+      - CUDA_VISIBLE_DEVICES=0
+      - TANGOFLUX_MODEL_NAME=declare-lab/TangoFlux
+      - TANGOFLUX_DEVICE=cuda
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7930/health"]
+      interval: 60s
+      timeout: 30s
+      retries: 3
+
   # Nginx网关
   nginx:
     image: nginx:alpine
@@ -111,6 +144,7 @@ services:
       - ./nginx-dist:/usr/share/nginx/html:ro  # 前端构建产物
       - ./data/audio:/usr/share/nginx/audio:ro
       - ./data/voice_profiles:/usr/share/nginx/voice_profiles:ro
+      - ./data/environment_sounds:/usr/share/nginx/environment_sounds:ro
       - ./data/logs/nginx:/var/log/nginx
     depends_on:
       - backend

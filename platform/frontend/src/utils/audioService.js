@@ -6,7 +6,14 @@ import { message } from 'ant-design-vue'
  */
 export class AudioService {
   constructor() {
-    this.store = useAudioPlayerStore()
+    this._store = null
+  }
+
+  get store() {
+    if (!this._store) {
+      this._store = useAudioPlayerStore()
+    }
+    return this._store
   }
 
   /**
@@ -286,26 +293,31 @@ export class AudioService {
   }
 }
 
-// 创建全局实例
-export const audioService = new AudioService()
+// 延迟创建全局实例
+let _audioService = null
+
+export const getAudioService = () => {
+  if (!_audioService) {
+    _audioService = new AudioService()
+  }
+  return _audioService
+}
 
 // 便捷函数导出
-export const {
-  playChapterAudio,
-  playProjectAudio,
-  playSegmentAudio,
-  playLibraryAudio,
-  playVoicePreview,
-  playCustomAudio,
-  playEnvironmentSound,
-  pause: pauseAudio,
-  stop: stopAudio,
-  setVolume,
-  setPlaybackRate,
-  getCurrentState,
-  isCurrentlyPlaying,
-  isCurrentAudio,
-  cleanup: cleanupAudio
-} = audioService
+export const playChapterAudio = (...args) => getAudioService().playChapterAudio(...args)
+export const playProjectAudio = (...args) => getAudioService().playProjectAudio(...args)
+export const playSegmentAudio = (...args) => getAudioService().playSegmentAudio(...args)
+export const playLibraryAudio = (...args) => getAudioService().playLibraryAudio(...args)
+export const playVoicePreview = (...args) => getAudioService().playVoicePreview(...args)
+export const playCustomAudio = (...args) => getAudioService().playCustomAudio(...args)
+export const playEnvironmentSound = (...args) => getAudioService().playEnvironmentSound(...args)
+export const pauseAudio = () => getAudioService().pause()
+export const stopAudio = () => getAudioService().stop()
+export const setVolume = (...args) => getAudioService().setVolume(...args)
+export const setPlaybackRate = (...args) => getAudioService().setPlaybackRate(...args)
+export const getCurrentState = () => getAudioService().getCurrentState()
+export const isCurrentlyPlaying = (...args) => getAudioService().isCurrentlyPlaying(...args)
+export const isCurrentAudio = (...args) => getAudioService().isCurrentAudio(...args)
+export const cleanupAudio = () => getAudioService().cleanup()
 
-export default audioService 
+export default getAudioService 

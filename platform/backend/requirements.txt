@@ -27,6 +27,13 @@ python-magic==0.4.27
 # 音频处理
 pydub==0.25.1
 wave==0.0.2
+torchaudio>=2.0.0
+
+# TangoFlux环境音生成
+torch>=2.0.0
+transformers>=4.30.0
+diffusers>=0.20.0
+accelerate>=0.20.0
 
 # JSON与数据处理
 orjson==3.9.10

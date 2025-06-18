@@ -19,6 +19,7 @@ from .audio_library import router as audio_library_router
 from .intelligent_analysis import router as intelligent_analysis_router
 from .content_preparation import router as content_preparation_router
 from .novel_reader import router as novel_reader_router
+from .environment_sounds import router as environment_sounds_router
 from app.voice_clone import router as voice_clone_router
 from app.monitor import router as monitor_router
 
@@ -90,4 +91,5 @@ api.include_router(novel_reader_router, tags=["Novel Reader"])
 api.include_router(voice_clone_router, tags=["Voice Clone"])
 api.include_router(monitor_router, tags=["System Monitor"])
 api.include_router(intelligent_analysis_router, tags=["Intelligent Analysis"])
-api.include_router(content_preparation_router, tags=["Content Preparation"]) 
+api.include_router(content_preparation_router, tags=["Content Preparation"])
+api.include_router(environment_sounds_router, prefix="/environment-sounds", tags=["Environment Sounds"]) 

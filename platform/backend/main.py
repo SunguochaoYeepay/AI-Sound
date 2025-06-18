@@ -47,6 +47,7 @@ os.makedirs("data/projects", exist_ok=True)
 os.makedirs("data/texts", exist_ok=True)
 os.makedirs("data/config", exist_ok=True)
 os.makedirs("data/backups", exist_ok=True)
+os.makedirs("data/environment_sounds", exist_ok=True)
 
 # 配置音频文件类型
 mimetypes.add_type('audio/wav', '.wav')
@@ -124,6 +125,7 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.mount("/audio", StaticFiles(directory="data/audio"), name="audio")
 app.mount("/uploads", StaticFiles(directory="data/uploads"), name="uploads")
 app.mount("/voice_profiles", StaticFiles(directory="data/voice_profiles"), name="voice_profiles")
+app.mount("/environment_sounds", StaticFiles(directory="data/environment_sounds"), name="environment_sounds")
 
 # 注册API路由
 app.include_router(api_router, prefix="/api")

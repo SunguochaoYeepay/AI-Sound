@@ -4,63 +4,63 @@
     <template v-if="size === 'default'">
       <div class="player-header" v-if="showTitle">
         <h4>{{ displayTitle }}</h4>
-      </div>
-      
-      <div class="player-controls">
-        <a-button
-          type="text"
+    </div>
+    
+    <div class="player-controls">
+      <a-button
+        type="text"
           :loading="audioStore.loading"
-          @click="togglePlay"
-          class="play-button"
+        @click="togglePlay"
+        class="play-button"
           size="large"
-        >
+      >
           <PlayCircleOutlined v-if="!audioStore.isPlaying" />
-          <PauseCircleOutlined v-else />
-        </a-button>
+        <PauseCircleOutlined v-else />
+      </a-button>
 
         <div class="progress-area">
-          <div class="time-display">
+        <div class="time-display">
             {{ audioStore.formattedCurrentTime }} / {{ audioStore.formattedDuration }}
-          </div>
-          <a-slider
-            :value="audioStore.progress"
-            :min="0"
-            :max="100"
-            @change="onProgressChange"
-            :tip-formatter="null"
-            class="progress-slider"
-            :disabled="audioStore.duration === 0"
-          />
         </div>
+        <a-slider
+            :value="audioStore.progress"
+          :min="0"
+          :max="100"
+          @change="onProgressChange"
+          :tip-formatter="null"
+          class="progress-slider"
+            :disabled="audioStore.duration === 0"
+        />
+      </div>
 
-        <div class="action-buttons">
+      <div class="action-buttons">
           <a-tooltip title="下载音频">
-            <a-button
-              type="text"
-              @click="handleDownload"
+        <a-button
+          type="text"
+          @click="handleDownload"
               :icon="h(DownloadOutlined)"
             />
           </a-tooltip>
-          
+        
           <a-dropdown>
             <a-button type="text" :icon="h(MoreOutlined)" />
-            <template #overlay>
-              <a-menu>
+          <template #overlay>
+            <a-menu>
                 <a-menu-item @click="() => audioStore.setPlaybackRate(0.5)">
-                  <span>0.5x 慢速</span>
-                </a-menu-item>
+                <span>0.5x 慢速</span>
+              </a-menu-item>
                 <a-menu-item @click="() => audioStore.setPlaybackRate(1.0)">
-                  <span>1.0x 正常</span>
-                </a-menu-item>
+                <span>1.0x 正常</span>
+              </a-menu-item>
                 <a-menu-item @click="() => audioStore.setPlaybackRate(1.5)">
-                  <span>1.5x 快速</span>
-                </a-menu-item>
+                <span>1.5x 快速</span>
+              </a-menu-item>
                 <a-menu-item @click="() => audioStore.setPlaybackRate(2.0)">
-                  <span>2.0x 超快</span>
-                </a-menu-item>
-              </a-menu>
-            </template>
-          </a-dropdown>
+                <span>2.0x 超快</span>
+              </a-menu-item>
+            </a-menu>
+          </template>
+        </a-dropdown>
 
           <a-tooltip title="音量控制">
             <a-dropdown>
@@ -105,9 +105,9 @@
           <a-button type="text" size="small" @click="handleDownload">
             <DownloadOutlined />
           </a-button>
-        </div>
       </div>
-      
+    </div>
+
       <div class="small-progress">
         <a-slider
           :value="audioStore.progress"
@@ -431,7 +431,7 @@ defineExpose({
   .player-controls {
     gap: 12px;
   }
-  
+
   .action-buttons {
     gap: 2px;
   }

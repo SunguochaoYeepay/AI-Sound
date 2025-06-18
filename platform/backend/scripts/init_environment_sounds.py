@@ -24,48 +24,56 @@ def create_categories():
             "name": "自然音效",
             "description": "来自大自然的各种声音，如雨声、风声、鸟叫等",
             "icon": "leaf",
+            "color": "#52c41a",
             "sort_order": 100
         },
         {
             "name": "城市环境",
             "description": "城市生活中的各种环境音，如交通、人群、建筑等",
             "icon": "building",
+            "color": "#1890ff",
             "sort_order": 90
         },
         {
             "name": "室内环境",
             "description": "室内场景的环境音，如咖啡厅、图书馆、办公室等",
             "icon": "home",
+            "color": "#fa8c16",
             "sort_order": 80
         },
         {
             "name": "机械音效",
             "description": "各种机械设备产生的声音",
             "icon": "setting",
+            "color": "#722ed1",
             "sort_order": 70
         },
         {
             "name": "动物声音",
             "description": "各种动物的叫声和活动声音",
             "icon": "bug",
+            "color": "#13c2c2",
             "sort_order": 60
         },
         {
             "name": "水声音效",
             "description": "与水相关的各种声音，如海浪、河流、瀑布等",
             "icon": "water",
+            "color": "#1677ff",
             "sort_order": 50
         },
         {
             "name": "天气音效",
             "description": "各种天气现象产生的声音",
             "icon": "cloud",
+            "color": "#8c8c8c",
             "sort_order": 40
         },
         {
             "name": "音乐环境",
             "description": "背景音乐和音乐环境音效",
             "icon": "sound",
+            "color": "#eb2f96",
             "sort_order": 30
         }
     ]

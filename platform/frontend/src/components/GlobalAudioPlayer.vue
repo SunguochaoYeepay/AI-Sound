@@ -52,11 +52,11 @@
       <!-- 扩展控制 -->
       <div class="extended-controls">
         <!-- 音量控制 -->
-        <a-dropdown placement="topCenter">
+        <a-dropdown placement="top">
           <a-button type="text" class="control-button" title="音量控制">
             <SoundOutlined v-if="audioStore.volume > 0.5" />
             <CustomerServiceOutlined v-else-if="audioStore.volume > 0" />
-            <MutedOutlined v-else />
+            <SoundFilled v-else style="opacity: 0.3" />
           </a-button>
           <template #overlay>
             <div class="volume-control">
@@ -73,7 +73,7 @@
         </a-dropdown>
 
         <!-- 播放速度 -->
-        <a-dropdown placement="topCenter">
+        <a-dropdown placement="top">
           <a-button type="text" class="control-button" title="播放速度">
             {{ audioStore.playbackRate }}x
           </a-button>
@@ -128,7 +128,7 @@ import {
   StopOutlined,
   SoundOutlined,
   CustomerServiceOutlined,
-  MutedOutlined,
+  SoundFilled,
   DownloadOutlined,
   CloseOutlined,
   ExclamationCircleOutlined

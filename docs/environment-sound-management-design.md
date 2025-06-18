@@ -463,50 +463,125 @@ async playEnvironmentSound(sound) {
 
 ## 🚀 部署方案
 
-### 🐳 Docker配置
+### 🐳 Docker集成部署（推荐方案）
 
-#### 1. TangoFlux容器
+> **重要决策**: 将TangoFlux集成到现有AI-Sound容器中，而非独立部署，避免网络调用复杂性
+
+#### 1. 后端容器集成TangoFlux
 ```dockerfile
-# MegaTTS/TangoFlux/Dockerfile
-FROM python:3.9-slim
+# docker/backend/Dockerfile 更新
+FROM python:3.10-slim
 
 WORKDIR /app
-COPY requirements.txt .
-RUN pip install -r requirements.txt
 
-COPY . .
-EXPOSE 7930
+# 安装系统依赖（包含TangoFlux需要的库）
+RUN apt-get update && apt-get install -y \
+    curl \
+    git \
+    ffmpeg \
+    libsndfile1 \
+    && rm -rf /var/lib/apt/lists/*
 
-CMD ["python", "tangoflux_api_server.py"]
+# 复制requirements（包含TangoFlux依赖）
+COPY platform/backend/requirements.txt ./requirements.txt
+COPY MegaTTS/TangoFlux/requirements.txt ./tangoflux_requirements.txt
+
+# 安装Python依赖
+RUN pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir -r tangoflux_requirements.txt
+
+# 复制应用代码
+COPY platform/backend/app/ ./app/
+COPY platform/backend/main.py ./main.py
+
+# 复制TangoFlux模块
+COPY MegaTTS/TangoFlux/tangoflux/ ./tangoflux/
+COPY MegaTTS/TangoFlux/tangoflux_api_server.py ./tangoflux_api_server.py
+COPY MegaTTS/TangoFlux/start_tangoflux_api.py ./start_tangoflux_api.py
+
+# 创建目录结构
+RUN mkdir -p /app/data/environment_sounds \
+             /app/data/environment_sounds/temp \
+             /app/data/audio \
+             /app/data/uploads \
+             /app/data/voice_profiles
+
+# 暴露端口（8000主服务 + 7930内部TangoFlux）
+EXPOSE 8000
+
+# 启动脚本（同时启动主服务和TangoFlux）
+CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 ```
 
-#### 2. Docker Compose扩展
+#### 2. Docker Compose配置更新
 ```yaml
-# docker-compose.yml 新增服务
+# docker-compose.yml 更新backend服务
 services:
-  tangoflux:
-    build: ./MegaTTS/TangoFlux
-    ports:
-      - "7930:7930"
-    volumes:
-      - ./storage/environment_sounds:/app/storage
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+    container_name: ai-sound-backend
     environment:
-      - CUDA_VISIBLE_DEVICES=0
+      - DATABASE_URL=postgresql://ai_sound_user:ai_sound_password@database:5432/ai_sound
+      - MEGATTS3_URL=http://megatts3:7929
+      - TANGOFLUX_URL=http://localhost:7930  # 内部调用
+      - OLLAMA_URL=http://host.docker.internal:11434
+      - AUDIO_DIR=/app/data/audio
+      - ENVIRONMENT_SOUNDS_DIR=/app/data/environment_sounds  # 新增
+      - UPLOADS_DIR=/app/data/uploads
+      - VOICE_PROFILES_DIR=/app/data/voice_profiles
+      - DEBUG=false
+    volumes:
+      - ./data:/app/data  # 统一数据存储
+    ports:
+      - "7930:7930"  # 暴露TangoFlux端口供外部调试
     depends_on:
       - database
+      - redis
+      - megatts3
+    networks:
+      - ai-sound-network
     restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
 ```
 
-### 📁 文件存储
+### 📁 统一文件存储结构
+
+> **重要决策**: 参考TTS3模式，环境音文件统一存储在data目录下，便于管理和备份
+
 ```
-storage/
-├── environment_sounds/           # 环境音文件
-│   ├── 2024/01/                 # 按年月分目录
-│   │   ├── env_sound_1_xxx.wav
-│   │   └── env_sound_2_xxx.wav
-│   └── temp/                    # 临时文件
-└── logs/
-    └── environment_sounds.log   # 操作日志
+data/
+├── audio/                        # TTS生成的音频文件
+│   ├── tts_*.wav                # TTS音频文件
+│   ├── segment_*.wav            # 章节音频
+│   └── project_*.wav            # 项目音频
+├── environment_sounds/           # 环境音文件（新增）
+│   ├── 2024/                    # 按年份分目录
+│   │   ├── 01/                  # 按月份分目录
+│   │   │   ├── env_rain_20240115_abc123.wav
+│   │   │   ├── env_ocean_20240115_def456.wav
+│   │   │   └── metadata.json    # 元数据文件
+│   │   └── 02/
+│   ├── temp/                    # 临时生成文件
+│   │   ├── generating_*.wav     # 生成中的文件
+│   │   └── failed_*.wav         # 生成失败的文件
+│   └── cache/                   # 缓存文件
+│       ├── thumbnails/          # 音频缩略图
+│       └── waveforms/           # 波形数据
+├── voice_profiles/              # 现有声音配置
+├── uploads/                     # 上传文件
+├── tts/                        # TTS3专用目录
+├── cache/                      # Redis缓存
+└── logs/                       # 日志文件
+    ├── environment_sounds.log   # 环境音操作日志
+    └── tts.log                 # TTS日志
 ```
 
 ---

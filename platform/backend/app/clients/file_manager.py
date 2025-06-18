@@ -300,5 +300,71 @@ class FileManager:
         return f"{bytes_size:.1f} PB"
 
 
+    async def save_audio_file(
+        self,
+        audio_data: bytes,
+        filename: str,
+        subfolder: str = "environment_sounds"
+    ) -> str:
+        """
+        保存音频文件到指定子文件夹
+        
+        Args:
+            audio_data: 音频数据
+            filename: 文件名
+            subfolder: 子文件夹名称
+        
+        Returns:
+            保存的文件路径
+        """
+        try:
+            # 创建子文件夹
+            audio_subfolder = self.audio_dir / subfolder
+            audio_subfolder.mkdir(exist_ok=True)
+            
+            # 生成唯一文件名
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            name, ext = os.path.splitext(filename)
+            if not ext:
+                ext = ".wav"  # 默认wav格式
+            safe_filename = f"{timestamp}_{self._sanitize_filename(name)}{ext}"
+            
+            file_path = audio_subfolder / safe_filename
+            
+            # 异步写入文件
+            async with aiofiles.open(file_path, 'wb') as f:
+                await f.write(audio_data)
+            
+            logger.info(f"音频文件保存成功: {file_path}")
+            return str(file_path)
+            
+        except Exception as e:
+            logger.error(f"音频文件保存失败: {e}")
+            raise
+    
+    def get_audio_file_path(self, filename: str, subfolder: str = "environment_sounds") -> str:
+        """
+        获取音频文件的完整路径
+        
+        Args:
+            filename: 文件名
+            subfolder: 子文件夹名称
+        
+        Returns:
+            文件完整路径
+        """
+        audio_subfolder = self.audio_dir / subfolder
+        return str(audio_subfolder / filename)
+
+
 # 全局文件管理器实例
-file_manager = FileManager() 
+file_manager = FileManager()
+
+# 导出函数供其他模块使用
+async def save_audio_file(audio_data: bytes, filename: str, subfolder: str = "environment_sounds") -> str:
+    """保存音频文件的便捷函数"""
+    return await file_manager.save_audio_file(audio_data, filename, subfolder)
+
+def get_audio_file_path(filename: str, subfolder: str = "environment_sounds") -> str:
+    """获取音频文件路径的便捷函数"""
+    return file_manager.get_audio_file_path(filename, subfolder) 

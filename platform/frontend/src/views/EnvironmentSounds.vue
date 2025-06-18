@@ -385,7 +385,7 @@ import {
 
 import GenerateModal from '@/components/environment-sounds/GenerateModal.vue'
 import EditModal from '@/components/environment-sounds/EditModal.vue'
-import { audioService } from '@/utils/audioService'
+import { getAudioService } from '@/utils/audioService'
 import api from '@/api'
 
 // 响应式数据
@@ -448,7 +448,7 @@ const loadInitialData = async () => {
 
 const loadCategories = async () => {
   try {
-    const response = await api.get('/api/v1/environment-sounds/categories')
+    const response = await api.getCategories()
     categories.value = response.data
   } catch (error) {
     console.error('加载分类失败:', error)
@@ -457,7 +457,7 @@ const loadCategories = async () => {
 
 const loadTags = async () => {
   try {
-    const response = await api.get('/api/v1/environment-sounds/tags')
+    const response = await api.getTags()
     tags.value = response.data
   } catch (error) {
     console.error('加载标签失败:', error)
@@ -466,7 +466,7 @@ const loadTags = async () => {
 
 const loadPresets = async () => {
   try {
-    const response = await api.get('/api/v1/environment-sounds/presets')
+    const response = await api.getPresets()
     presets.value = response.data
   } catch (error) {
     console.error('加载预设失败:', error)
@@ -475,7 +475,7 @@ const loadPresets = async () => {
 
 const loadStats = async () => {
   try {
-    const response = await api.get('/api/v1/environment-sounds/stats')
+    const response = await api.getStats()
     Object.assign(stats, response.data)
   } catch (error) {
     console.error('加载统计数据失败:', error)
@@ -501,7 +501,7 @@ const loadSounds = async () => {
       delete params.tag_ids
     }
 
-    const response = await api.get('/api/v1/environment-sounds/', { params })
+    const response = await api.getEnvironmentSounds(params)
     const data = response.data
 
     sounds.value = data.sounds
@@ -535,10 +535,10 @@ const playSound = async (sound) => {
     playingId.value = sound.id
     
     // 记录播放日志
-    await api.post(`/api/v1/environment-sounds/${sound.id}/play`)
+    await api.playEnvironmentSound(sound.id)
     
     // 使用统一音频服务播放
-    await audioService.playEnvironmentSound(sound)
+    await getAudioService().playEnvironmentSound(sound)
     
     // 更新播放计数
     sound.play_count += 1
@@ -553,9 +553,7 @@ const playSound = async (sound) => {
 
 const downloadSound = async (sound) => {
   try {
-    const response = await api.get(`/api/v1/environment-sounds/${sound.id}/download`, {
-      responseType: 'blob'
-    })
+    const response = await api.downloadEnvironmentSound(sound.id)
     
     // 创建下载链接
     const url = window.URL.createObjectURL(new Blob([response.data]))
@@ -579,7 +577,7 @@ const downloadSound = async (sound) => {
 
 const toggleFavorite = async (sound) => {
   try {
-    const response = await api.post(`/api/v1/environment-sounds/${sound.id}/favorite`)
+    const response = await api.toggleFavorite(sound.id)
     const result = response.data
     
     sound.is_favorited = result.is_favorited
@@ -595,7 +593,7 @@ const toggleFavorite = async (sound) => {
 
 const regenerateSound = async (sound) => {
   try {
-    await api.post(`/api/v1/environment-sounds/${sound.id}/regenerate`)
+    await api.regenerateEnvironmentSound(sound.id)
     sound.generation_status = 'processing'
     sound.error_message = null
     message.success('重新生成任务已启动')
@@ -620,7 +618,7 @@ const deleteSound = (sound) => {
     content: `确定要删除环境音"${sound.name}"吗？此操作不可恢复。`,
     onOk: async () => {
       try {
-        await api.delete(`/api/v1/environment-sounds/${sound.id}`)
+        await api.deleteEnvironmentSound(sound.id)
         message.success('删除成功')
         loadSounds()
         loadStats()
@@ -658,7 +656,7 @@ const onSoundUpdated = () => {
 const checkGenerationStatus = (soundId) => {
   const interval = setInterval(async () => {
     try {
-      const response = await api.get(`/api/v1/environment-sounds/${soundId}`)
+      const response = await api.getEnvironmentSound(soundId)
       const sound = response.data
       
       // 更新列表中的对应项

@@ -796,3 +796,18 @@ export const environmentSoundsAPI = {
     ...updates
   })
 }
+
+// 默认导出所有API
+const api = {
+  ...systemAPI,
+  ...voiceAPI,
+  ...charactersAPI,
+  ...readerAPI,
+  ...chaptersAPI,
+  ...audioAPI,
+  ...monitorAPI,
+  ...intelligentAnalysisAPI,
+  ...environmentSoundsAPI
+}
+
+export default api
