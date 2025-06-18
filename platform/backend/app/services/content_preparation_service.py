@@ -372,11 +372,10 @@ class ContentPreparationService:
                 detected_characters = synthesis_json['characters']
             
             # 创建新的分析结果记录
-            # 使用一个特殊的session_id来标识智能准备
-            special_session_id = 999999  # 特殊的session_id用于智能准备
+            # 智能准备不依赖项目session，session_id设为None
             
             new_result = AnalysisResult(
-                session_id=special_session_id,  # 使用特殊session_id
+                session_id=None,  # 智能准备独立于项目session
                 chapter_id=chapter_id,
                 original_analysis=analysis_result,
                 detected_characters=detected_characters,

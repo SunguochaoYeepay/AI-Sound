@@ -6,7 +6,10 @@ export const systemAPI = {
   healthCheck: () => apiClient.get('/health'),
   
   // 获取系统信息
-  getSystemInfo: () => apiClient.get('/')
+  getSystemInfo: () => apiClient.get('/'),
+  
+  // 触发章节智能准备
+  prepareChapterSynthesis: (chapterId) => apiClient.post(`/analysis/chapter/${chapterId}/prepare`)
 }
 
 // 语音克隆API

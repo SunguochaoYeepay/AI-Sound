@@ -245,10 +245,25 @@
           <!-- 空状态 -->
           <div v-else class="empty-preview">
             <a-empty 
-              description="请先选择章节并加载智能准备结果"
+              description="未找到智能准备结果"
               :image="Empty.PRESENTED_IMAGE_SIMPLE"
             >
-              <p class="empty-hint">{{ getStartHint() }}</p>
+              <div class="empty-hint">
+                <p v-if="!selectedChapter">{{ getStartHint() }}</p>
+                <div v-else class="no-preparation-content">
+                  <p>当前章节尚未进行智能准备</p>
+                  <p class="chapter-info">选中章节: 第{{ getSelectedChapterInfo()?.chapter_number }}章 {{ getSelectedChapterInfo()?.chapter_title || getSelectedChapterInfo()?.title }}</p>
+                  <a-space direction="vertical" style="margin-top: 16px;">
+                    <a-button type="primary" @click="triggerIntelligentPreparation" :loading="loadingResults">
+                      🎭 开始智能准备
+                    </a-button>
+                    <a-button type="dashed" @click="refreshPreparationResults" :loading="loadingResults">
+                      🔄 重新加载
+                    </a-button>
+                  </a-space>
+                  <p class="help-text">智能准备将分析章节内容，识别角色对话并生成合成配置</p>
+                </div>
+              </div>
             </a-empty>
           </div>
         </div>
@@ -579,6 +594,13 @@ const loadChapters = async () => {
     if (response.data.success) {
       availableChapters.value = response.data.data || []
       message.success(`加载了 ${availableChapters.value.length} 个章节`)
+      
+      // 🎯 默认选中第一个章节
+      if (availableChapters.value.length > 0 && !selectedChapter.value) {
+        const firstChapter = availableChapters.value[0]
+        console.log('🎯 默认选中第一个章节:', firstChapter.chapter_title)
+        await selectChapter(firstChapter.id)
+      }
     } else {
       message.error('加载章节失败: ' + response.data.message)
     }
@@ -591,9 +613,9 @@ const loadChapters = async () => {
 }
 
 // 自动加载章节（因为现在固定为章节模式）
-const autoLoadChapters = () => {
+const autoLoadChapters = async () => {
   if (availableChapters.value.length === 0) {
-    loadChapters()
+    await loadChapters()
   }
 }
 
@@ -1560,7 +1582,7 @@ const playAudio = async (type, audioUrl, id, name) => {
       if (currentlyPlaying.value?.type === type && currentlyPlaying.value?.id === id) {
         currentlyPlaying.value = null
         playingChapterAudio.value = null
-    playingFinalAudio.value = false
+      playingFinalAudio.value = false
         playingSegment.value = null
         message.info(`${name}播放已停止`)
       return
@@ -2132,6 +2154,41 @@ const refreshPreparationResults = async () => {
   await loadPreparationResults()
 }
 
+// 获取选中章节信息
+const getSelectedChapterInfo = () => {
+  if (!selectedChapter.value || !availableChapters.value.length) return null
+  return availableChapters.value.find(chapter => chapter.id === selectedChapter.value)
+}
+
+// 触发智能准备
+const triggerIntelligentPreparation = async () => {
+  if (!selectedChapter.value) {
+    message.warning('请先选择章节')
+    return
+  }
+  
+  loadingResults.value = true
+  try {
+    console.log('🎭 开始智能准备章节:', selectedChapter.value)
+    
+    // 调用智能准备API
+    const response = await systemAPI.prepareChapterSynthesis(selectedChapter.value)
+    
+    if (response.data.success) {
+      message.success('智能准备完成！')
+      // 重新加载智能准备结果
+      await loadPreparationResults()
+    } else {
+      message.error('智能准备失败: ' + response.data.message)
+    }
+  } catch (error) {
+    console.error('智能准备失败:', error)
+    message.error('智能准备失败: ' + error.message)
+  } finally {
+    loadingResults.value = false
+  }
+}
+
 // 清空智能准备结果
 const clearPreparationResults = () => {
   preparationResults.value = null
@@ -2296,7 +2353,7 @@ onMounted(async () => {
   await loadVoices()
   
   // 自动加载章节（因为现在固定为章节模式）
-  autoLoadChapters()
+  await autoLoadChapters()
   
   // 如果有已完成的片段，加载它们
   if (project.value?.statistics?.completedSegments > 0) {
@@ -3320,6 +3377,23 @@ const getSelectedChapterNumber = () => {
   margin-top: 12px;
   font-size: 14px;
   color: #666;
+}
+
+.no-preparation-content {
+  text-align: center;
+  
+  .chapter-info {
+    color: #1890ff;
+    font-weight: 500;
+    margin: 8px 0;
+  }
+  
+  .help-text {
+    color: #999;
+    font-size: 12px;
+    margin-top: 12px;
+    line-height: 1.4;
+  }
 }
 
 /* 进度抽屉样式 */
