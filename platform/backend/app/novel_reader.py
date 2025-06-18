@@ -20,6 +20,7 @@ from app.database import get_db
 from .models import NovelProject, VoiceProfile, Book, SystemLog, AudioFile, BookChapter  # 🚀 TextSegment已删除
 from app.tts_client import MegaTTS3Client, TTSRequest, get_tts_client
 from app.utils import log_system_event, update_usage_stats, save_upload_file
+from app.websocket.manager import websocket_manager
 # from tts_memory_optimizer import synthesis_context, optimize_tts_memory  # 暂时禁用以避免torch依赖
 
 logger = logging.getLogger(__name__)
@@ -1312,7 +1313,9 @@ async def process_audio_generation_from_synthesis_plan(
         logger.info(f"[SYNTHESIS_PLAN] 最终项目状态: {project.status}, 进度: {completed_count}/{len(synthesis_data)}")
         
         if failed_segments:
-            project.error_message = f"有 {len(failed_segments)} 个段落处理失败"
+            # 生成详细的错误摘要
+            error_summary = generate_detailed_error_summary(failed_segments, len(synthesis_data))
+            project.error_message = error_summary
         
         db.commit()
         
@@ -1355,22 +1358,115 @@ async def process_audio_generation_from_synthesis_plan(
         logger.info(f"[SYNTHESIS_PLAN] 项目 {project_id} 音频合成任务完成")
         
     except Exception as e:
-        logger.error(f"[SYNTHESIS_PLAN] 项目 {project_id} 音频合成任务异常: {str(e)}")
+        logger.error(f"[SYNTHESIS_PLAN] 项目 {project_id} 音频合成任务异常: {str(e)}", exc_info=True)
         try:
             db = next(get_db())
             project = db.query(NovelProject).filter(NovelProject.id == project_id).first()
             if project:
                 project.status = 'failed'
-                project.error_message = f"合成任务异常: {str(e)}"
+                # 生成更详细的错误信息
+                error_details = analyze_synthesis_exception(e)
+                project.error_message = error_details
                 project.completed_at = datetime.utcnow()
                 db.commit()
-        except:
-            pass
+                
+                # 发送详细错误信息到前端
+                await websocket_manager.publish_to_topic(
+                    f"synthesis_{project_id}",
+                    {
+                        "type": "progress_update", 
+                        "data": {
+                            "type": "synthesis",
+                            "project_id": project_id,
+                            "status": "failed",
+                            "error_message": error_details,
+                            "timestamp": datetime.utcnow().isoformat()
+                        }
+                    }
+                )
+        except Exception as inner_e:
+            logger.error(f"更新项目失败状态时出错: {str(inner_e)}")
     finally:
         try:
             db.close()
         except:
             pass
+
+
+def generate_detailed_error_summary(failed_segments: List[Dict], total_segments: int) -> str:
+    """生成详细的错误摘要"""
+    if not failed_segments:
+        return "未知错误"
+    
+    # 统计错误类型
+    error_types = {}
+    for segment in failed_segments:
+        error = segment.get('error', '未知错误')
+        # 简化错误类型分类
+        if 'TTS' in error or 'tts' in error.lower():
+            error_type = 'TTS服务异常'
+        elif 'GPU' in error or 'CUDA' in error or 'memory' in error.lower():
+            error_type = 'GPU/显存问题'
+        elif 'timeout' in error.lower() or '超时' in error:
+            error_type = '请求超时'
+        elif 'voice' in error.lower() or '声音' in error:
+            error_type = '声音配置问题'
+        elif 'network' in error.lower() or '网络' in error:
+            error_type = '网络连接问题'
+        elif 'encoding' in error.lower() or '编码' in error:
+            error_type = '文本编码问题'
+        else:
+            error_type = '其他错误'
+        
+        error_types[error_type] = error_types.get(error_type, 0) + 1
+    
+    # 构建详细错误信息
+    total_failed = len(failed_segments)
+    success_rate = round(((total_segments - total_failed) / total_segments) * 100, 1)
+    
+    error_summary = f"{total_failed}个段落合成失败 (成功率: {success_rate}%)"
+    
+    # 添加错误类型统计
+    if error_types:
+        error_details = []
+        for error_type, count in sorted(error_types.items(), key=lambda x: x[1], reverse=True):
+            error_details.append(f"{error_type} ({count}个)")
+        error_summary += f"，主要原因: {', '.join(error_details[:3])}"  # 只显示前3个主要错误类型
+        
+        # 如果有更多错误类型，显示省略信息
+        if len(error_details) > 3:
+            error_summary += f" 等{len(error_details)}种问题"
+    
+    return error_summary
+
+
+def analyze_synthesis_exception(exception: Exception) -> str:
+    """分析合成异常并返回用户友好的错误信息"""
+    error_str = str(exception).lower()
+    error_type = type(exception).__name__
+    
+    # 根据异常类型和内容提供具体的错误信息
+    if 'connection' in error_str or 'timeout' in error_str:
+        return f"网络连接问题：TTS服务连接超时或中断，请检查服务状态后重试"
+    elif 'gpu' in error_str or 'cuda' in error_str or 'memory' in error_str:
+        return f"GPU资源问题：显存不足或CUDA错误，建议减少并行任务数或等待GPU资源释放"
+    elif 'json' in error_str or 'parse' in error_str:
+        return f"数据解析错误：智能准备结果格式异常，请重新进行智能准备"
+    elif 'permission' in error_str or 'access' in error_str:
+        return f"文件访问权限问题：无法创建或写入音频文件，请检查目录权限"
+    elif 'disk' in error_str or 'space' in error_str:
+        return f"磁盘空间不足：请清理存储空间后重试"
+    elif 'tts' in error_str:
+        return f"TTS服务异常：语音合成引擎内部错误，请检查TTS服务状态"
+    elif error_type == 'KeyError':
+        return f"配置缺失错误：合成计划中缺少必要的配置信息，请重新进行智能准备"
+    elif error_type == 'TypeError' or error_type == 'ValueError':
+        return f"数据类型错误：合成参数格式不正确，请检查角色声音配置"
+    elif error_type == 'FileNotFoundError':
+        return f"文件缺失错误：找不到必要的音频文件或配置文件"
+    else:
+        # 提供通用但比"系统内部错误"更有用的信息
+        return f"合成任务异常 ({error_type}): {str(exception)[:100]}{'...' if len(str(exception)) > 100 else ''}"
 
 
 async def merge_audio_files_from_plan(

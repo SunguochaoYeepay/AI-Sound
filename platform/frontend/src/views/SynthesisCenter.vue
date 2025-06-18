@@ -281,11 +281,28 @@
     >
       <!-- 进度监控内容保持原有逻辑 -->
       <div class="progress-container">
-        <!-- 简化的进度显示 -->
+                  <!-- 简化的进度显示 -->
         <div class="simple-progress">
           <!-- 标题和控制按钮在一行 -->
           <div class="progress-title-row">
             <span class="progress-title">{{ getSynthesisProgressTitle() }}</span>
+            
+            <!-- 实时通信状态指示器 -->
+            <div class="websocket-status" v-if="project?.status === 'processing'">
+              <a-tag 
+                :color="wsStore.connected ? 'success' : 'warning'" 
+                size="small"
+                style="margin-right: 8px;"
+              >
+                <template #icon>
+                  <svg width="10" height="10" viewBox="0 0 24 24" :fill="wsStore.connected ? '#52c41a' : '#fa8c16'">
+                    <circle cx="12" cy="12" r="6"/>
+                  </svg>
+                </template>
+                {{ wsStore.connected ? '实时连接' : '连接中断' }}
+              </a-tag>
+            </div>
+            
             <!-- 合成控制按钮 -->
             <div class="synthesis-controls" v-if="project?.status === 'processing' || project?.status === 'paused'">
               <a-space size="small">
@@ -312,9 +329,9 @@
           
           <!-- 进度条 -->
           <a-progress 
-            :percent="progressData.progress" 
-            :status="progressData.status === 'failed' ? 'exception' : progressData.status === 'completed' ? 'success' : 'active'"
-            :stroke-color="progressData.status === 'completed' ? '#52c41a' : '#1890ff'"
+            :percent="getCorrectProgress()" 
+            :status="getProgressStatus()"
+            :stroke-color="getProgressColor()"
             :show-info="true"
             size="default"
           />
@@ -339,9 +356,84 @@
             </span>
         </div>
 
-        <!-- 当前处理状态 -->
+                  <!-- 当前处理状态 -->
           <div class="current-status" v-if="progressData.current_processing && progressData.status === 'processing'">
             <span class="status-text">{{ progressData.current_processing }}</span>
+          </div>
+          
+          <!-- 持久化错误通知 -->
+          <div class="persistent-error-notice" v-if="progressData.status === 'failed' || (progressData.status === 'partial_completed' && progressData.failed_segments > 0)">
+            <a-alert
+              :type="progressData.status === 'failed' ? 'error' : 'warning'"
+              :show-icon="true"
+              :closable="false"
+              style="margin-bottom: 16px;"
+            >
+              <template #message>
+                <div class="error-notice-content">
+                  <div class="error-title">
+                    {{ progressData.status === 'failed' ? '🚨 合成完全失败' : '⚠️ 合成部分失败' }}
+                  </div>
+                  <div class="error-summary">
+                    {{ getErrorSummary() }}
+                  </div>
+                </div>
+              </template>
+            </a-alert>
+          </div>
+          
+          <!-- 🚀 新增：成功完成提示（当partial_completed且无失败时） -->
+          <div class="persistent-success-notice" v-if="progressData.status === 'partial_completed' && progressData.failed_segments === 0">
+            <a-alert
+              type="success"
+              :show-icon="true"
+              :closable="false"
+              style="margin-bottom: 16px;"
+            >
+              <template #message>
+                <div class="success-notice-content">
+                  <div class="success-title">
+                    ✅ 合成完成
+                  </div>
+                  <div class="success-summary">
+                    {{ getErrorSummary() }}
+                  </div>
+                </div>
+              </template>
+            </a-alert>
+          </div>
+          
+          <!-- 失败详情显示 -->
+          <div class="failure-details" v-if="(progressData.status === 'failed' || progressData.status === 'partial_completed') && progressData.failed_segments > 0">
+            <div class="failure-header">
+              <span class="failure-title">❌ 失败详情 ({{ progressData.failed_segments }} 个段落)</span>
+              <a-button size="small" type="primary" @click="retryFailedSegments" :loading="resumingGeneration">
+                🔄 重试失败段落
+              </a-button>
+            </div>
+            
+            <!-- 失败原因说明 -->
+            <div class="failure-reasons">
+              <div class="failure-reason-item">
+                <span class="reason-icon">🔧</span>
+                <span class="reason-text">可能原因：声音配置缺失、TTS服务异常、或文本处理错误</span>
+              </div>
+              <div class="failure-reason-item">
+                <span class="reason-icon">💡</span>
+                <span class="reason-text">建议：检查角色声音分配，确保TTS服务正常运行</span>
+              </div>
+            </div>
+            
+            <!-- 项目错误信息 -->
+            <div class="project-error" v-if="project?.error_message">
+              <div class="error-info-row">
+                <span class="error-label">错误信息：</span>
+                <span class="error-message">{{ project.error_message }}</span>
+              </div>
+              <a-button size="small" type="dashed" @click="copyErrorInfo" style="margin-top: 8px;">
+                📋 复制错误信息
+              </a-button>
+            </div>
           </div>
         </div>
       </div>
@@ -359,11 +451,15 @@ import { message, Modal, Empty } from 'ant-design-vue'
 import { ArrowLeftOutlined, ReloadOutlined } from '@ant-design/icons-vue'
 import { readerAPI, charactersAPI, intelligentAnalysisAPI, systemAPI, booksAPI } from '@/api'
 import { useWebSocketStore } from '@/stores/websocket.js'
+import { useAudioPlayerStore } from '@/stores/audioPlayer'
 import { getAudioService } from '@/utils/audioService'
 
 const router = useRouter()
 const route = useRoute()
 const wsStore = useWebSocketStore()
+
+// 使用统一的音频播放服务
+const audioStore = useAudioPlayerStore()
 
 // 响应式数据
 const loading = ref(true)
@@ -373,9 +469,7 @@ const resumingGeneration = ref(false)
 const cancelingGeneration = ref(false)
 const refreshing = ref(false)
 const project = ref(null)
-const detectedCharacters = ref([])
 const availableVoices = ref([])
-const characterVoiceMapping = reactive({})
 const progressTimer = ref(null)
 const previewLoading = ref(null)
 const currentPlayingVoice = ref(null)
@@ -388,10 +482,7 @@ const availableChapters = ref([])
 const selectedChapter = ref(null) // 改为单选
 const loadingChapters = ref(false)
 
-// Mock分析相关
-const mockAnalyzing = ref(false)
-const applyingMock = ref(false)
-const mockResult = ref(null)
+// Mock分析相关代码已移除，如需要请使用智能准备功能
 
 // 智能准备结果相关
 const preparationResults = ref(null)
@@ -413,7 +504,7 @@ const downloadingAudio = ref(false)
 const playingFinalAudio = ref(false)
 const playingChapterAudio = ref(null) // 正在播放的章节ID
 const currentlyPlaying = ref(null) // 当前播放信息 { type, id, name }
-const unifiedAudioPlayer = ref(null) // 统一音频播放器
+// unifiedAudioPlayer已移除，统一使用audioStore
 
 // 合成配置
 const synthesisConfig = reactive({
@@ -423,10 +514,7 @@ const synthesisConfig = reactive({
 
 // 其他状态变量
 const showAllSegments = ref(false)
-const jsonTestModalVisible = ref(false)
-const jsonTestContent = ref('')
-const jsonTestExecuting = ref(false)
-const jsonValidationResult = ref(null)
+// JSON测试功能已移除，请使用标准的智能准备流程
 // 合成进度监控抽屉相关
 const synthesisStartTime = ref(null)
 const segmentStatuses = ref([]) // 段落状态列表
@@ -497,7 +585,7 @@ const progressPercent = computed(() => {
 // 音频预览URL
 const audioPreviewUrl = computed(() => {
   // 只有项目完成且有最终音频路径时才返回URL
-  if (!project.value?.final_audio_path || project.value.status !== 'completed') {
+  if (!project.value?.final_audio_path || !project.value?.id || project.value.status !== 'completed') {
     return null
   }
   // 构建音频预览URL
@@ -533,9 +621,7 @@ const closeSynthesisDrawer = () => {
   synthesisProgressDrawer.value = false
 }
 
-const showJsonTestModal = () => {
-  jsonTestModalVisible.value = true
-}
+// showJsonTestModal 方法已移除
 
 const getStatusColor = (status) => {
   const colors = {
@@ -628,10 +714,6 @@ const selectChapter = async (chapterId) => {
   } else {
     // 清空准备结果
     preparationResults.value = null
-    detectedCharacters.value = []
-    Object.keys(characterVoiceMapping).forEach(key => {
-      delete characterVoiceMapping[key]
-    })
   }
 }
 
@@ -640,10 +722,6 @@ const clearChapterSelection = () => {
   selectedChapter.value = null
   // 清空智能准备结果
   preparationResults.value = null
-  detectedCharacters.value = []
-  Object.keys(characterVoiceMapping).forEach(key => {
-    delete characterVoiceMapping[key]
-  })
   message.info('已清空章节选择和智能准备结果')
 }
 
@@ -671,439 +749,27 @@ const getChapterStatusClass = (chapter) => {
   return `status-${status}`
 }
 
-// Mock分析方法
-const runMockAnalysis = async () => {
-  if (!project.value?.id) {
-    message.error('请先选择项目')
-    return
-  }
-  
-  mockAnalyzing.value = true
-  try {
-    console.log('=== 开始智能分析测试 ===')
-    console.log('选中的章节:', selectedChapter.value)
-    
-    // 构建分析参数，包含选中的章节
-    const analysisParams = {
-      chapter_ids: selectedChapter.value ? [selectedChapter.value] : null
-    }
-    
-    const response = await intelligentAnalysisAPI.analyzeProject(project.value.id, analysisParams)
-    
-    if (response.data.success) {
-      mockResult.value = response.data.data
-      message.success('智能分析完成！AI已生成可直接执行的合成计划')
-      console.log('智能分析结果:', mockResult.value)
-      
-      // 记录数据源信息
-      const source = response.data.source || 'unknown'
-      if (source === 'chapter_analysis') {
-        console.log('✅ 使用章节分析结果 (已去除Dify依赖)')
-        
-        // 显示新的统计信息
-        const voiceSummary = mockResult.value.voice_assignment_summary
-        if (voiceSummary) {
-          message.info(`角色分析完成：${voiceSummary.assigned_voices}/${voiceSummary.total_characters} 个角色已分配声音`)
-        }
-      }
-    } else {
-      // 增强错误处理：特别处理章节未分析的情况
-      const errorData = response.data.data || {}
-      const errorStatus = errorData.status
-      
-      if (errorStatus === 'pending_analysis') {
-        // 章节分析未完成的特殊处理
-        const pendingCount = errorData.pending_chapters || 0
-        const totalCount = errorData.total_chapters || 0
-        const analyzedCount = errorData.analyzed_chapters || 0
-        
-        console.warn('❌ 章节分析未完成:', {
-          total: totalCount,
-          analyzed: analyzedCount,
-          pending: pendingCount,
-          pendingList: errorData.pending_chapter_list
-        })
-        
-        // 显示详细的错误信息和解决方案
-        Modal.warning({
-          title: '需要先完成章节分析',
-          width: 600,
-          content: h('div', [
-            h('p', `项目共有 ${totalCount} 个章节，已完成 ${analyzedCount} 个，还需要分析 ${pendingCount} 个章节。`),
-            h('p', { style: 'margin-top: 12px; font-weight: bold;' }, '解决方案：'),
-            h('ol', { style: 'margin: 8px 0; padding-left: 20px;' }, [
-              h('li', '前往书籍管理页面'),
-              h('li', '找到对应的书籍，点击"查看详情"'),
-              h('li', '对未分析的章节点击"🎭 智能准备"按钮'),
-              h('li', '等待所有章节分析完成后，再回到合成中心'),
-            ]),
-            errorData.pending_chapter_list && errorData.pending_chapter_list.length > 0 ? 
-              h('div', { style: 'margin-top: 12px;' }, [
-                h('p', { style: 'font-weight: bold; margin-bottom: 8px;' }, '待分析章节：'),
-                h('ul', { style: 'margin: 0; padding-left: 20px; max-height: 120px; overflow-y: auto;' }, 
-                  errorData.pending_chapter_list.slice(0, 10).map(ch => 
-                    h('li', { key: ch.id }, `第${ch.chapter_number}章: ${ch.chapter_title}`)
-                  )
-                ),
-                errorData.pending_chapter_list.length > 10 ? 
-                  h('p', { style: 'color: #999; font-size: 12px; margin-top: 4px;' }, 
-                    `... 等其他 ${errorData.pending_chapter_list.length - 10} 个章节`
-                  ) : null
-              ]) : null
-          ]),
-          okText: '我知道了'
-        })
-      } else {
-        // 其他类型的错误
-        message.error('智能分析失败: ' + response.data.message)
-      }
-    }
-  } catch (error) {
-    console.error('智能分析错误:', error)
-    
-    // 增强错误处理
-    if (error.response && error.response.status === 500) {
-      message.error('服务器内部错误，请稍后重试或联系管理员')
-    } else if (error.response && error.response.status === 404) {
-      message.error('项目不存在，请检查项目是否有效')
-    } else {
-      message.error('智能分析失败: ' + error.message)
-    }
-  } finally {
-    mockAnalyzing.value = false
-  }
-}
+// Mock分析方法和相关代码已完全移除
 
-const applyMockResult = async () => {
-  if (!mockResult.value || !project.value?.id) {
-    message.error('没有可应用的分析结果')
-    return
-  }
-  
-  applyingMock.value = true
-  try {
-    console.log('=== 应用智能分析结果 ===')
-    const response = await intelligentAnalysisAPI.applyAnalysis(project.value.id, mockResult.value)
-    
-    if (response.data.success) {
-      message.success('智能分析结果已应用！')
-      console.log('应用结果:', response.data.applied_mapping)
-      
-      // 检查是否有章节映射信息
-      if (mockResult.value.chapter_mapping) {
-        const chapterCount = Object.keys(mockResult.value.chapter_mapping).length
-        console.log(`✅ 应用了 ${chapterCount} 个章节的分析结果`)
-      }
-      
-      // 检查声音分配统计
-      if (mockResult.value.voice_assignment_summary) {
-        const summary = mockResult.value.voice_assignment_summary
-        message.info(`角色配置已更新：${summary.assigned_voices}/${summary.total_characters} 个角色已分配声音`)
-      }
-      
-      // 使用智能分析的角色结果更新角色配置
-      updateCharactersFromAnalysis()
-      
-      // 刷新项目数据以显示新的角色映射
-      await loadProject()
-    } else {
-      message.error('应用失败: ' + response.data.message)
-    }
-  } catch (error) {
-    console.error('应用智能分析结果错误:', error)
-    message.error('应用失败: ' + error.message)
-  } finally {
-    applyingMock.value = false
-  }
-}
+// Mock相关的applyMockResult、updateCharactersFromAnalysis、getCharacterSampleText方法已移除
 
-// 从智能分析结果更新角色配置
-const updateCharactersFromAnalysis = () => {
-  if (!mockResult.value) return
-  
-  // 清空现有角色数据
-  detectedCharacters.value = []
-  
-  // 优先从synthesis_plan中提取实际的角色
-  const characterStats = {}
-  
-  if (mockResult.value.synthesis_plan) {
-    mockResult.value.synthesis_plan.forEach(segment => {
-      const speaker = segment.speaker
-      if (speaker && speaker.trim()) {
-        if (!characterStats[speaker]) {
-          characterStats[speaker] = {
-            name: speaker,
-            count: 0,
-            samples: [],
-            voice_id: segment.voice_id,
-            voice_name: segment.voice_name || '未分配'
-          }
-        }
-        characterStats[speaker].count++
-        
-        // 收集示例文本（最多3个）
-        if (characterStats[speaker].samples.length < 3 && segment.text) {
-          const sampleText = segment.text.slice(0, 30) + (segment.text.length > 30 ? '...' : '')
-          if (!characterStats[speaker].samples.includes(sampleText)) {
-            characterStats[speaker].samples.push(sampleText)
-          }
-        }
-        
-        // 更新voice_id（如果segment中有更新的）
-        if (segment.voice_id && !characterStats[speaker].voice_id) {
-          characterStats[speaker].voice_id = segment.voice_id
-          characterStats[speaker].voice_name = segment.voice_name || '未分配'
-        }
-      }
-    })
-  }
-  
-  // 如果synthesis_plan中没有角色，则使用characters数组作为备选
-  if (Object.keys(characterStats).length === 0 && mockResult.value.characters) {
-    mockResult.value.characters.forEach(char => {
-      characterStats[char.name] = {
-        name: char.name,
-        count: 1,
-        samples: [getCharacterSampleText(char.name)],
-        voice_id: char.voice_id,
-        voice_name: char.voice_name || '未分配'
-      }
-    })
-  }
-  
-  // 转换为detectedCharacters格式
-  detectedCharacters.value = Object.values(characterStats).map(char => ({
-    name: char.name,
-    character_id: char.name,
-    count: char.count,
-    samples: char.samples.length > 0 ? char.samples : [getCharacterSampleText(char.name)],
-    voice_id: char.voice_id,
-    voice_name: char.voice_name
-  }))
-  
-  // 自动应用AI推荐的角色映射到characterVoiceMapping
-  Object.values(characterStats).forEach(char => {
-    if (char.voice_id) {
-      characterVoiceMapping[char.name] = char.voice_id
-    }
-  })
-  
-  console.log('已更新角色配置:', {
-    characters: detectedCharacters.value,
-    characterVoiceMapping: characterVoiceMapping,
-    extractedFromSynthesisPlan: Object.keys(characterStats).length,
-    totalSegments: mockResult.value.synthesis_plan?.length || 0
-  })
-}
+// clearMockResult 方法已移除
 
-// 获取角色示例文本
-const getCharacterSampleText = (characterName) => {
-  // 从合成计划中找到该角色的文本示例
-  if (mockResult.value?.synthesis_plan) {
-    const characterSegment = mockResult.value.synthesis_plan.find(segment => 
-      segment.speaker === characterName
-    )
-    if (characterSegment) {
-      return characterSegment.text.slice(0, 30) + '...'
-    }
-  }
-  
-  // 默认示例文本
-  const samples = {
-    '李维': '数据的流动模式确实很有趣。',
-    '艾莉': '你有没有觉得这些数据像是在讲故事？',
-    '系统旁白': '在数字化时代的浪潮中，数据如同蚕茧般包裹着我们的生活。',
-    '心理旁白': '李维思考着艾莉的话，意识到数据背后可能隐藏着更深层的含义。'
-  }
-  
-  return samples[characterName] || '这是一段示例文本用于声音试听。'
-}
+// JSON测试方法已全部移除
 
-const clearMockResult = () => {
-  mockResult.value = null
-  message.info('智能分析结果已清空')
-}
+// formatJsonContent 方法已移除
 
-// JSON测试方法
-
-const cancelJsonTest = () => {
-  jsonTestModalVisible.value = false
-  jsonTestContent.value = ''
-  jsonValidationResult.value = null
-}
-
-const formatJsonContent = () => {
-  try {
-    if (!jsonTestContent.value.trim()) {
-      message.warning('请先输入JSON内容')
-      return
-    }
-    
-    const parsed = JSON.parse(jsonTestContent.value)
-    jsonTestContent.value = JSON.stringify(parsed, null, 2)
-    message.success('JSON格式化完成')
-  } catch (error) {
-    message.error('JSON格式错误: ' + error.message)
-  }
-}
-
-const validateJsonContent = () => {
-  try {
-    if (!jsonTestContent.value.trim()) {
-      jsonValidationResult.value = {
-        valid: false,
-        message: '请输入JSON内容',
-        description: '输入框不能为空'
-      }
-      return
-    }
-    
-    const parsed = JSON.parse(jsonTestContent.value)
-    
-    // 支持两种格式：直接包含字段 或 嵌套在data字段中
-    const dataObj = parsed.data || parsed
-    
-    // 验证必要字段
-    const requiredFields = ['project_info', 'characters']
-    // segments字段改为synthesis_plan，这是实际使用的字段名
-    const optionalFields = ['synthesis_plan', 'segments']
-    const missingRequired = requiredFields.filter(field => !dataObj[field])
-    const hasSegments = optionalFields.some(field => Array.isArray(dataObj[field]) && dataObj[field].length > 0)
-    
-    if (missingRequired.length > 0) {
-      jsonValidationResult.value = {
-        valid: false,
-        message: '缺少必要字段',
-        description: `缺少以下字段: ${missingRequired.join(', ')}`
-      }
-      return
-    }
-    
-    // 检查角色数据
-    if (!Array.isArray(dataObj.characters) || dataObj.characters.length === 0) {
-      jsonValidationResult.value = {
-        valid: false,
-        message: '角色数据无效',
-        description: 'characters字段必须是非空数组'
-      }
-      return
-    }
-    
-    // 检查分段数据 (synthesis_plan 或 segments)
-    if (!hasSegments) {
-      jsonValidationResult.value = {
-        valid: false,
-        message: '分段数据无效',
-        description: 'synthesis_plan 或 segments 字段必须是非空数组'
-      }
-      return
-    }
-    
-    // 详细检查synthesis_plan的数据格式
-    const segmentData = dataObj.synthesis_plan || dataObj.segments
-    const segmentCount = segmentData.length
-    const formatErrors = []
-    
-    segmentData.forEach((segment, index) => {
-      const segmentNum = index + 1
-      
-      // 检查必要字段
-      if (!segment.text || segment.text.trim() === '') {
-        formatErrors.push(`第${segmentNum}段缺少text字段`)
-      }
-      
-      // 检查voice_id字段（支持多种格式）
-      const hasVoiceId = segment.voice_id || segment.voiceId || 
-                        segment.voice_config?.voice_id || segment.voice_config?.voiceId
-      const hasSpeaker = segment.speaker || segment.character
-      
-      if (!hasVoiceId && !hasSpeaker) {
-        formatErrors.push(`第${segmentNum}段缺少voice_id或speaker字段`)
-      }
-      
-      // 如果使用voice_config嵌套结构，给出格式建议
-      if (segment.voice_config && !segment.voice_id) {
-        formatErrors.push(`第${segmentNum}段使用了voice_config嵌套结构，建议改为直接的voice_id字段`)
-      }
-    })
-    
-    if (formatErrors.length > 0) {
-      jsonValidationResult.value = {
-        valid: false,
-        message: 'synthesis_plan格式错误',
-        description: `发现 ${formatErrors.length} 个问题:\n${formatErrors.join('\n')}\n\n推荐格式: 每个段落应包含 text, voice_id, speaker 字段`
-      }
-      return
-    }
-    
-    jsonValidationResult.value = {
-      valid: true,
-      message: 'JSON格式验证通过',
-      description: `包含 ${dataObj.characters.length} 个角色，${segmentCount} 个文本段落`
-    }
-    
-  } catch (error) {
-    jsonValidationResult.value = {
-      valid: false,
-      message: 'JSON语法错误',
-      description: error.message
-    }
-  }
-}
-
-const clearJsonContent = () => {
-  jsonTestContent.value = ''
-  jsonValidationResult.value = null
-  message.info('内容已清空')
-}
-
-const executeJsonTest = async () => {
-  if (!jsonTestContent.value.trim()) {
-    message.error('请输入JSON内容')
-    return
-  }
-  
-  jsonTestExecuting.value = true
-  try {
-    console.log('=== 开始执行JSON测试 ===')
-    
-    // 先验证JSON格式
-    validateJsonContent()
-    if (!jsonValidationResult.value?.valid) {
-      message.error('JSON格式验证失败，请修正后重试')
-      return
-    }
-    
-    // 解析JSON数据
-    const parsed = JSON.parse(jsonTestContent.value)
-    console.log('解析的JSON数据:', parsed)
-    
-    // 支持两种格式：直接包含字段 或 嵌套在data字段中
-    const dataObj = parsed.data || parsed
-    mockResult.value = dataObj
-    
-    // 关闭弹窗
-    jsonTestModalVisible.value = false
-    
-    // 更新角色配置
-    updateCharactersFromAnalysis()
-    
-    message.success('JSON测试数据已加载！请查看匹配结果并应用配置')
-    console.log('JSON测试结果已设置:', mockResult.value)
-    
-  } catch (error) {
-    console.error('JSON测试执行错误:', error)
-    message.error('执行失败: ' + error.message)
-  } finally {
-    jsonTestExecuting.value = false
-  }
-}
+// 所有JSON测试相关的残留方法已完全清理
 
 // 加载项目详情
 const loadProject = async () => {
   try {
-    const projectId = route.params.projectId
+    const projectId = route.params?.projectId
+    if (!projectId) {
+      throw new Error('项目ID不存在，请检查URL路径')
+    }
+    
+    console.log('🔍 [loadProject] 项目ID:', projectId)
     const response = await readerAPI.getProjectDetail(projectId)
     
     if (response.data.success) {
@@ -1187,7 +853,6 @@ const loadProject = async () => {
       
       console.log('🔍 最终的currentProgressData:', currentProgressData.value)
       
-      await analyzeCharacters()
     }
   } catch (error) {
     console.error('加载项目失败:', error)
@@ -1204,7 +869,10 @@ const refreshProjectData = async () => {
   refreshing.value = true
   try {
     console.log('🔄 手动刷新项目数据...')
-    const projectId = route.params.projectId
+    const projectId = route.params?.projectId
+    if (!projectId) {
+      throw new Error('项目ID不存在，无法刷新数据')
+    }
     
     // 重新加载项目数据
     const response = await readerAPI.getProjectDetail(projectId)
@@ -1287,39 +955,7 @@ const refreshProjectData = async () => {
   }
 }
 
-// 分析角色
-const analyzeCharacters = async () => {
-  if (!project.value?.segments) return
-  
-  try {
-    const characterStats = {}
-    project.value.segments.forEach(segment => {
-      const speaker = segment.detected_speaker || '温柔女声'
-      if (!characterStats[speaker]) {
-        characterStats[speaker] = {
-          name: speaker,
-          count: 0,
-          samples: []
-        }
-      }
-      characterStats[speaker].count++
-      if (characterStats[speaker].samples.length < 3 && segment.text_content) {
-        characterStats[speaker].samples.push(segment.text_content.slice(0, 30) + '...')
-      }
-    })
-    
-    detectedCharacters.value = Object.values(characterStats)
-    
-    // 加载现有的角色映射
-    if (project.value.character_mapping) {
-      Object.assign(characterVoiceMapping, project.value.character_mapping)
-    }
-    
-  } catch (error) {
-    console.error('分析角色失败:', error)
-    message.error('分析角色失败')
-  }
-}
+// 已删除：过时的角色分析方法，现在使用智能准备结果
 
 // 加载可用声音
 const loadVoices = async () => {
@@ -1570,30 +1206,27 @@ const cancelSynthesis = async () => {
   })
 }
 
-// 统一音频播放器
+// audioStore重复声明已移除
+
 const playAudio = async (type, audioUrl, id, name) => {
   try {
-    // 停止当前播放
-    if (unifiedAudioPlayer.value) {
-      unifiedAudioPlayer.value.pause()
-      unifiedAudioPlayer.value = null
-      
-      // 如果点击的是当前播放的内容，则停止播放
-      if (currentlyPlaying.value?.type === type && currentlyPlaying.value?.id === id) {
-        currentlyPlaying.value = null
-        playingChapterAudio.value = null
-      playingFinalAudio.value = false
-        playingSegment.value = null
-        message.info(`${name}播放已停止`)
-      return
-    }
+    // 构建音频信息对象
+    const audioInfo = {
+      id: `${type}_${id}`,
+      title: name,
+      url: audioUrl,
+      type: type,
+      metadata: {
+        originalType: type,
+        originalId: id
+      }
     }
     
-    // 创建新的音频播放器
-    unifiedAudioPlayer.value = new Audio(audioUrl)
+    // 使用统一的音频播放器
+    await audioStore.playAudio(audioInfo)
+    
+    // 更新本地播放状态（用于UI显示）
     currentlyPlaying.value = { type, id, name }
-    
-    // 更新对应的播放状态
     if (type === 'chapter') {
       playingChapterAudio.value = id
     } else if (type === 'final') {
@@ -1602,48 +1235,9 @@ const playAudio = async (type, audioUrl, id, name) => {
       playingSegment.value = id
     }
     
-    // 设置事件监听器
-    unifiedAudioPlayer.value.addEventListener('loadstart', () => {
-      message.success(`开始播放${name}`)
-    })
-    
-    unifiedAudioPlayer.value.addEventListener('ended', () => {
-      currentlyPlaying.value = null
-      playingChapterAudio.value = null
-      playingFinalAudio.value = false
-      playingSegment.value = null
-      unifiedAudioPlayer.value = null
-      message.success(`${name}播放完成`)
-    })
-    
-    unifiedAudioPlayer.value.addEventListener('error', (e) => {
-      console.error('音频播放错误:', e)
-      currentlyPlaying.value = null
-      playingChapterAudio.value = null
-      playingFinalAudio.value = false
-      playingSegment.value = null
-      unifiedAudioPlayer.value = null
-      message.error(`${name}播放失败，请检查音频文件是否存在`)
-    })
-    
-    // 开始播放
-    await unifiedAudioPlayer.value.play()
-    
   } catch (error) {
     console.error('播放音频失败:', error)
-    currentlyPlaying.value = null
-    playingChapterAudio.value = null
-    playingFinalAudio.value = false
-    playingSegment.value = null
-    unifiedAudioPlayer.value = null
-    
-    if (error.name === 'NotAllowedError') {
-      message.error('浏览器不允许自动播放音频，请先与页面交互')
-    } else if (error.name === 'NotSupportedError') {
-      message.error('音频格式不支持')
-    } else {
-      message.error(`播放${name}失败: ` + error.message)
-    }
+    message.error(`播放${name}失败: ` + error.message)
   }
 }
 
@@ -1835,7 +1429,8 @@ const refreshProjectStatus = async () => {
 
 // 查看项目详情
 const viewProjectDetail = () => {
-  router.push(`/novel-reader/detail/${project.value.id}`)
+  // 已删除简化版项目详情页，直接停留在当前合成中心
+message.info('已在合成中心，查看项目详情')
 }
 
 // 音频预览相关处理
@@ -1999,25 +1594,35 @@ const startWebSocketProgressMonitoring = () => {
         loadProject()
         const failedCount = progressDataFromWS.failed_segments || 0
         if (failedCount > 0) {
-          message.warning(`⚠️ 合成部分完成！${progressDataFromWS.completed_segments}/${progressDataFromWS.total_segments} 个段落成功，${failedCount} 个失败`)
+          // 部分失败时显示详细信息，持续时间更长
+          message.warning({
+            content: `⚠️ 合成部分完成！${progressDataFromWS.completed_segments}/${progressDataFromWS.total_segments} 个段落成功，${failedCount} 个失败。详细信息请查看下方失败详情。`,
+            duration: 8 // 8秒
+          })
+          // 部分失败时保持抽屉开启，显示失败详情
         } else {
           message.success('🎉 音频合成部分完成！')
+          // 完全成功时延迟关闭抽屉
+          setTimeout(() => {
+            synthesisProgressDrawer.value = false
+          }, 2000)
         }
-        
-        // 延迟关闭抽屉
-        setTimeout(() => {
-          synthesisProgressDrawer.value = false
-        }, 2000)
       } else if (progressDataFromWS.status === 'failed') {
         stopWebSocketProgressMonitoring()  
         stopElapsedTimer()
         loadProject()
-        message.error('❌ 音频合成失败')
         
-        // 失败时也自动关闭抽屉
-        setTimeout(() => {
-          synthesisProgressDrawer.value = false
-        }, 3000)
+        // 显示详细的失败信息，持续时间更长
+        const errorMsg = project.value?.error_message || '未知错误'
+        message.error({
+          content: `❌ 音频合成失败：${errorMsg}。请查看下方失败详情并尝试重试。`,
+          duration: 10 // 10秒
+        })
+        
+        // 失败时不自动关闭抽屉，让用户可以查看失败详情
+        // setTimeout(() => {
+        //   synthesisProgressDrawer.value = false
+        // }, 3000)
       } else if (progressDataFromWS.status === 'cancelled') {
         stopWebSocketProgressMonitoring()
         stopElapsedTimer()
@@ -2125,16 +1730,6 @@ const loadPreparationResults = async () => {
         }
       })
       
-      // 更新检测到的角色
-      detectedCharacters.value = Object.values(allCharacters)
-      
-      // 自动应用AI推荐的角色映射
-      Object.values(allCharacters).forEach(char => {
-        if (char.voice_id) {
-          characterVoiceMapping[char.name] = char.voice_id
-        }
-      })
-      
       // 静默加载完成，不显示提示
       
     } else {
@@ -2192,10 +1787,6 @@ const triggerIntelligentPreparation = async () => {
 // 清空智能准备结果
 const clearPreparationResults = () => {
   preparationResults.value = null
-  detectedCharacters.value = []
-  Object.keys(characterVoiceMapping).forEach(key => {
-    delete characterVoiceMapping[key]
-  })
   message.info('智能准备结果已清空')
 }
 
@@ -2348,47 +1939,73 @@ const filterVoiceOption = (input, option) => {
 // WebSocket设置 - 已移除，统一使用startWebSocketProgressMonitoring方法
 
 // 生命周期
-onMounted(async () => {
-  await loadProject()
-  await loadVoices()
-  
-  // 自动加载章节（因为现在固定为章节模式）
-  await autoLoadChapters()
-  
-  // 如果有已完成的片段，加载它们
-  if (project.value?.statistics?.completedSegments > 0) {
-    await loadCompletedSegments()
-  }
-  
-  // 根据项目状态进行相应处理
-  console.log('🔍 [INIT] 项目状态:', project.value?.status)
-  
-  if (project.value?.status === 'processing') {
-    console.log('🔍 [INIT] 项目正在处理中，启动WebSocket监控')
-    currentProcessingSegment.value = getCurrentProcessingSegment()
-    
-    // 自动初始化合成进度监控
-    initializeSynthesisMonitoring()
-    
-    // 自动打开进度监控抽屉
-    synthesisProgressDrawer.value = true
-    
-    startWebSocketProgressMonitoring()
-  } else if (project.value?.status === 'completed' && project.value?.total_segments > 0) {
-    // 如果项目已完成，确保进度数据正确显示
-    console.log('🔍 [INIT] 项目已完成，初始化完成后的进度数据...')
-    progressData.value = {
-      progress: 100,
-      status: 'completed',
-      completed_segments: project.value.total_segments,
-      total_segments: project.value.total_segments,
-      failed_segments: 0,
-      current_processing: '合成已完成'
+onMounted(() => {
+  // 使用立即执行的异步函数来处理初始化
+  (async () => {
+    try {
+      console.log('🔍 [INIT] 开始初始化SynthesisCenter...')
+      
+      // 逐个加载，便于调试
+      console.log('🔍 [INIT] 1. 加载项目信息...')
+      await loadProject()
+      console.log('🔍 [INIT] 项目加载完成:', project.value?.id)
+      
+      console.log('🔍 [INIT] 2. 加载声音列表...')
+      await loadVoices()
+      console.log('🔍 [INIT] 声音列表加载完成:', availableVoices.value?.length)
+      
+      // 自动加载章节（因为现在固定为章节模式）
+      console.log('🔍 [INIT] 3. 自动加载章节...')
+      await autoLoadChapters()
+      console.log('🔍 [INIT] 章节加载完成:', availableChapters.value?.length)
+      
+      // 如果有已完成的片段，加载它们
+      if (project.value?.statistics?.completedSegments > 0) {
+        console.log('🔍 [INIT] 4. 加载已完成的片段...')
+        await loadCompletedSegments()
+      }
+      
+      // 根据项目状态进行相应处理
+      console.log('🔍 [INIT] 项目状态:', project.value?.status)
+      
+      if (project.value?.status === 'processing') {
+        console.log('🔍 [INIT] 项目正在处理中，启动WebSocket监控')
+        currentProcessingSegment.value = getCurrentProcessingSegment()
+        
+        // 自动初始化合成进度监控
+        initializeSynthesisMonitoring()
+        
+        // 自动打开进度监控抽屉
+        synthesisProgressDrawer.value = true
+        
+        startWebSocketProgressMonitoring()
+      } else if (project.value?.status === 'completed' && project.value?.total_segments > 0) {
+        // 如果项目已完成，确保进度数据正确显示
+        console.log('🔍 [INIT] 项目已完成，初始化完成后的进度数据...')
+        progressData.value = {
+          progress: 100,
+          status: 'completed',
+          completed_segments: project.value.total_segments,
+          total_segments: project.value.total_segments,
+          failed_segments: 0,
+          current_processing: '合成已完成'
+        }
+        console.log('✅ [INIT] 完成后进度数据:', progressData.value)
+      } else {
+        console.log('🔍 [INIT] 项目状态:', project.value?.status, '无需特殊处理')
+      }
+      
+      console.log('✅ [INIT] SynthesisCenter初始化完成!')
+    } catch (error) {
+      console.error('🔴 [INIT] 初始化过程中发生错误:', error)
+      console.error('🔴 [INIT] 错误堆栈:', error.stack)
+      message.error('页面初始化失败: ' + error.message)
+    } finally {
+      // 确保loading状态被正确重置
+      loading.value = false
+      console.log('🔍 [INIT] Loading状态已重置为false')
     }
-    console.log('✅ [INIT] 完成后进度数据:', progressData.value)
-  } else {
-    console.log('🔍 [INIT] 项目状态:', project.value?.status, '无需特殊处理')
-  }
+  })()
 })
 
 // 页面切换前的清理
@@ -2402,11 +2019,8 @@ onUnmounted(() => {
   stopWebSocketProgressMonitoring()
   stopElapsedTimer()
   
-  // 清理统一音频播放器
-  if (unifiedAudioPlayer.value) {
-    unifiedAudioPlayer.value.pause()
-    unifiedAudioPlayer.value = null
-  }
+  // 清理音频播放器
+  audioStore.cleanup()
   currentlyPlaying.value = null
   playingChapterAudio.value = null
   playingFinalAudio.value = false
@@ -2616,10 +2230,122 @@ const retryAllFailedSegments = async () => {
     }
   } catch (error) {
     console.error('重试所有失败段落失败:', error)
-    message.error('重试失败: ' + error.message)
+    message.error({
+      content: '重试失败: ' + error.message + '。请检查网络连接和服务状态后再次尝试。',
+      duration: 8
+    })
   } finally {
     resumingGeneration.value = false
   }
+}
+
+// 重试失败段落（别名方法，供抽屉使用）
+const retryFailedSegments = async () => {
+  await retryAllFailedSegments()
+}
+
+// 获取错误摘要信息
+const getErrorSummary = () => {
+  console.log('🔍 getErrorSummary 调用，当前数据:', {
+    status: progressData.value.status,
+    completed: progressData.value.completed_segments,
+    total: progressData.value.total_segments,
+    failed: progressData.value.failed_segments,
+    project_error: project.value?.error_message
+  })
+  
+  if (progressData.value.status === 'failed') {
+    const errorMsg = project.value?.error_message || '未知原因导致合成失败'
+    return `所有段落合成失败，原因：${errorMsg}`
+  } else if (progressData.value.status === 'partial_completed') {
+    const successCount = progressData.value.completed_segments || 0
+    const totalCount = progressData.value.total_segments || 0
+    const failedCount = progressData.value.failed_segments || 0
+    
+            // 🚀 修复：如果没有失败段落，不应该显示错误信息
+        if (failedCount === 0) {
+          // 清除项目的历史错误信息，因为当前合成已成功
+          if (project.value?.error_message) {
+            console.log('🚀 清除历史错误信息:', project.value.error_message)
+          }
+          return `${successCount}/${totalCount} 个段落成功完成`
+        }
+    
+    const errorMsg = project.value?.error_message || `${failedCount}个段落处理失败，具体原因未知`
+    return `${successCount}/${totalCount} 个段落成功，${failedCount} 个失败。原因：${errorMsg}`
+  }
+  return '未知错误状态'
+}
+
+// 复制错误信息
+const copyErrorInfo = async () => {
+  try {
+    const errorInfo = {
+      项目名称: project.value?.name || '未知项目',
+      项目ID: project.value?.id || '未知',
+      错误状态: progressData.value.status,
+      完成段落: progressData.value.completed_segments,
+      总段落数: progressData.value.total_segments,
+      失败段落: progressData.value.failed_segments,
+      错误信息: project.value?.error_message || '无详细信息',
+      时间戳: new Date().toLocaleString('zh-CN')
+    }
+    
+    const errorText = Object.entries(errorInfo)
+      .map(([key, value]) => `${key}: ${value}`)
+      .join('\n')
+    
+    await navigator.clipboard.writeText(errorText)
+    message.success('错误信息已复制到剪贴板')
+  } catch (error) {
+    console.error('复制失败:', error)
+    message.error('复制失败，请手动选择文本复制')
+  }
+}
+
+// 获取正确的进度百分比
+const getCorrectProgress = () => {
+  // 确保失败状态显示正确的进度
+  if (progressData.value.status === 'failed') {
+    // 完全失败时，显示实际完成的段落比例
+    if (progressData.value.total_segments > 0) {
+      return Math.round((progressData.value.completed_segments / progressData.value.total_segments) * 100)
+    }
+    return 0
+  } else if (progressData.value.status === 'partial_completed') {
+    // 部分完成时，显示实际完成的段落比例
+    if (progressData.value.total_segments > 0) {
+      return Math.round((progressData.value.completed_segments / progressData.value.total_segments) * 100)
+    }
+    return 0
+  }
+  
+  // 其他状态使用原始进度值
+  return progressData.value.progress || 0
+}
+
+// 获取进度条状态
+const getProgressStatus = () => {
+  if (progressData.value.status === 'failed') {
+    return 'exception'
+  } else if (progressData.value.status === 'completed') {
+    return 'success'
+  } else if (progressData.value.status === 'partial_completed') {
+    return 'exception' // 部分完成也显示为异常状态
+  }
+  return 'active'
+}
+
+// 获取进度条颜色
+const getProgressColor = () => {
+  if (progressData.value.status === 'completed') {
+    return '#52c41a' // 绿色
+  } else if (progressData.value.status === 'failed') {
+    return '#ff4d4f' // 红色
+  } else if (progressData.value.status === 'partial_completed') {
+    return '#faad14' // 橙色
+  }
+  return '#1890ff' // 蓝色（进行中）
 }
 
 // 注释：downloadFinalAudio函数已在上面定义，这里删除重复定义
@@ -2662,15 +2388,30 @@ const formatTime = (timestamp) => {
 const updateProgressDataFromWebSocket = (data) => {
   console.log('🔍 [WEBSOCKET] updateProgressDataFromWebSocket收到数据:', data)
   
-  // 计算进度百分比 - 优先使用后端传来的进度值
+  // 计算进度百分比 - 针对失败状态进行特殊处理
   let finalProgress = 0
   let finalCompletedSegments = data.completed_segments || 0
   
-  if (data.progress !== undefined && data.progress !== null) {
-    // 优先使用后端直接传来的进度值
+  // 🚨 失败状态特殊处理：进度应该基于实际完成的段落，不能是100%
+  if (data.status === 'failed') {
+    // 完全失败时，进度应该是0（除非有部分段落成功）
+    if (data.total_segments > 0 && finalCompletedSegments > 0) {
+      finalProgress = Math.round((finalCompletedSegments / data.total_segments) * 100)
+    } else {
+      finalProgress = 0
+    }
+    console.log('🚨 [WEBSOCKET] 失败状态修正：progress =', finalProgress)
+  } else if (data.status === 'partial_completed') {
+    // 部分完成时，进度基于实际完成的段落数
+    if (data.total_segments > 0) {
+      finalProgress = Math.round((finalCompletedSegments / data.total_segments) * 100)
+    }
+    console.log('⚠️ [WEBSOCKET] 部分完成状态修正：progress =', finalProgress)
+  } else if (data.progress !== undefined && data.progress !== null && data.status !== 'failed') {
+    // 其他状态优先使用后端传来的进度值（但排除失败状态）
     finalProgress = Math.round(data.progress)
     
-    // 🔍 数据一致性检查：如果进度不为0但完成段落为0，估算完成段落数
+    // 数据一致性检查：如果进度不为0但完成段落为0，估算完成段落数
     if (finalProgress > 0 && finalCompletedSegments === 0 && data.total_segments > 0) {
       finalCompletedSegments = Math.floor((finalProgress / 100) * data.total_segments)
       console.warn('⚠️ [WEBSOCKET] 数据修正：进度', finalProgress, '% 但完成段落为0，估算完成段落数:', finalCompletedSegments)
@@ -2839,11 +2580,17 @@ const retryChapterFailedSegments = async (chapterId) => {
       // 显示进度抽屉
       synthesisProgressDrawer.value = true
     } else {
-      message.error('重试章节失败段落失败: ' + response.data.message)
+      message.error({
+        content: '重试章节失败段落失败: ' + response.data.message + '。请检查章节状态和声音配置。',
+        duration: 8
+      })
     }
   } catch (error) {
     console.error('重试章节失败段落失败:', error)
-    message.error('重试章节失败段落失败: ' + (error.response?.data?.message || error.message))
+    message.error({
+      content: '重试章节失败段落失败: ' + (error.response?.data?.message || error.message) + '。请检查网络连接和服务状态。',
+      duration: 8
+    })
   } finally {
     resumingGeneration.value = false
   }
@@ -3404,11 +3151,16 @@ const getSelectedChapterNumber = () => {
 /* 简化的进度显示 */
 .simple-progress {
   .progress-title-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 12px;
-  }
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.websocket-status {
+  display: flex;
+  align-items: center;
+}
   
   .progress-title {
     font-size: 16px;
@@ -4333,6 +4085,110 @@ const getSelectedChapterNumber = () => {
         padding: 8px 24px;
         font-size: 14px;
       }
+    }
+  }
+
+  /* 失败详情样式 */
+  .failure-details {
+    margin-top: 16px;
+    padding: 16px;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+  }
+
+  .failure-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+
+  .failure-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #dc2626;
+  }
+
+  .failure-reasons {
+    margin-bottom: 12px;
+  }
+
+  .failure-reason-item {
+    display: flex;
+    align-items: flex-start;
+    margin-bottom: 8px;
+  }
+
+  .reason-icon {
+    margin-right: 8px;
+    font-size: 14px;
+  }
+
+  .reason-text {
+    font-size: 12px;
+    color: #6b7280;
+    line-height: 1.4;
+  }
+
+  .project-error {
+    padding: 8px 12px;
+    background: #fee2e2;
+    border-radius: 4px;
+
+    .error-info-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      margin-bottom: 8px;
+    }
+  }
+
+  .error-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #dc2626;
+    margin-right: 8px;
+    min-width: 60px;
+  }
+
+  .error-message {
+    font-size: 12px;
+    color: #991b1b;
+    flex: 1;
+    word-break: break-word;
+  }
+
+  /* 持久化错误通知样式 */
+  .persistent-error-notice {
+    .error-notice-content {
+      .error-title {
+        font-size: 14px;
+        font-weight: 600;
+        margin-bottom: 4px;
+      }
+      
+      .error-summary {
+        font-size: 12px;
+        line-height: 1.4;
+        opacity: 0.9;
+      }
+    }
+  }
+}
+
+.persistent-success-notice {
+  .success-notice-content {
+    .success-title {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    
+    .success-summary {
+      font-size: 12px;
+      line-height: 1.4;
+      opacity: 0.9;
     }
   }
 }

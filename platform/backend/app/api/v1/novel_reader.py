@@ -387,7 +387,30 @@ async def get_generation_progress(
         # 数据验证和修复
         if total > 0 and processed > total:
             logger.warning(f"项目 {project_id} 数据异常: processed_segments({processed}) > total_segments({total})")
-            processed = total
+            # 详细记录数据状态
+            logger.warning(f"  项目状态: {project.status}")
+            logger.warning(f"  项目processed_segments字段: {project.processed_segments}")
+            logger.warning(f"  AudioFile实际数量: {processed}")
+            logger.warning(f"  项目total_segments字段: {project.total_segments}")
+            
+            # 根据项目状态决定修复策略
+            if project.status in ['completed', 'partial_completed']:
+                # 已完成的项目，以AudioFile数量为准，更新total_segments
+                logger.info(f"  修复策略: 更新total_segments为实际AudioFile数量 {processed}")
+                project.total_segments = processed
+                total = processed
+            else:
+                # 进行中或其他状态的项目，以total_segments为准，更新processed_segments
+                logger.info(f"  修复策略: 限制processed_segments为total_segments {total}")
+                processed = total
+                project.processed_segments = processed
+            
+            db.commit()
+            logger.info(f"  数据修复完成: total={total}, processed={processed}")
+        
+        # 确保processed_segments字段与实际AudioFile数量同步
+        if project.processed_segments != processed:
+            logger.debug(f"同步项目processed_segments: {project.processed_segments} -> {processed}")
             project.processed_segments = processed
             db.commit()
         

@@ -243,7 +243,7 @@ const updateSelectedKeys = () => {
     '/novel-reader': 'novel-projects',
     '/novel-reader/create': 'novel-projects',
     '/novel-reader/edit': 'novel-projects',
-    '/novel-reader/detail': 'novel-projects',
+          // '/novel-reader/detail': 'novel-projects', // 路由已删除
     '/synthesis': 'novel-projects',
     '/audio-library': 'audio-library',
     '/environment-sounds': 'environment-sounds',
@@ -313,7 +313,7 @@ const getPageTitle = () => {
     '/novel-reader': '语音合成',
     '/novel-reader/create': '语音合成',
     '/novel-reader/edit': '语音合成',
-    '/novel-reader/detail': '语音合成',
+          // '/novel-reader/detail': '语音合成', // 路由已删除
     '/synthesis': '合成中心',
     '/audio-library': '音频资源库',
     '/environment-sounds': '环境音管理',
@@ -335,14 +335,13 @@ const getSystemStatusColor = () => {
   const status = systemStatus.value
   const dbOk = status.database === 'healthy'
   const ttsOk = status.tts_service === 'healthy'
-  const wsOk = wsStore.connected
   
   // 处理初始状态或未知状态
   if (status.database === 'unknown' || status.tts_service === 'unknown') {
     return '#1890ff' // 蓝色表示检查中
   }
   
-  if (dbOk && ttsOk && wsOk) return '#52c41a'
+  if (dbOk && ttsOk) return '#52c41a'
   if (!dbOk || !ttsOk) return '#ff4d4f'
   return '#fa8c16'
 }
@@ -352,17 +351,15 @@ const getSystemStatusText = () => {
   const status = systemStatus.value
   const dbOk = status.database === 'healthy'
   const ttsOk = status.tts_service === 'healthy'
-  const wsOk = wsStore.connected
   
   // 处理初始状态或未知状态
   if (status.database === 'unknown' || status.tts_service === 'unknown') {
     return 'AI-Sound 状态检查中...'
   }
   
-  if (dbOk && ttsOk && wsOk) return 'AI-Sound 运行正常'
+  if (dbOk && ttsOk) return 'AI-Sound 运行正常'
   if (!dbOk) return '数据库连接异常'
   if (!ttsOk) return 'TTS服务异常'
-  if (!wsOk) return '实时通信断开'
   return 'AI-Sound 部分异常'
 }
 
@@ -374,8 +371,9 @@ const initializeApp = async () => {
   // 立即执行一次健康检查
   await checkSystemHealth()
   
-  // 设置定期健康检查
-  setInterval(checkSystemHealth, 30000) // 每30秒检查一次
+  // 🚀 临时禁用定期健康检查轮询
+  // TODO: 后续可以通过WebSocket事件驱动的方式更新系统状态
+  // setInterval(checkSystemHealth, 300000) // 每5分钟检查一次
 }
 
 // 系统健康检查

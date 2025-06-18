@@ -40,6 +40,13 @@ export const useWebSocketStore = defineStore('websocket', () => {
   
   // WebSocket URL
   const getWebSocketUrl = () => {
+    // 在开发环境中，使用相对路径通过Vite代理
+    if (import.meta.env.DEV) {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+      return `${protocol}//${window.location.host}/ws`
+    }
+    
+    // 生产环境使用配置的URL
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
     // 移除协议前缀（如果存在）
@@ -57,6 +64,13 @@ export const useWebSocketStore = defineStore('websocket', () => {
       try {
         connecting.value = true
         const wsUrl = getWebSocketUrl()
+        
+        console.log('🔌 尝试连接WebSocket:', wsUrl)
+        console.log('🔍 环境信息:', {
+          dev: import.meta.env.DEV,
+          baseUrl: import.meta.env.VITE_API_BASE_URL,
+          location: window.location.host
+        })
         
         ws.value = new WebSocket(wsUrl)
         

@@ -5,13 +5,14 @@ import Characters from '../views/Characters.vue'
 import Books from '../views/Books.vue'
 import BookDetail from '../views/BookDetail.vue'
 import BookCreate from '../views/BookCreate.vue'
-import NovelReader from '../views/NovelReader.vue'
+// NovelReader.vue已删除，项目详情功能整合到SynthesisCenter
 import NovelProjects from '../views/NovelProjects.vue'
 import NovelProjectCreate from '../views/NovelProjectCreate.vue'
 import SynthesisCenter from '../views/SynthesisCenter.vue'
 import SynthesisResults from '../views/SynthesisResults.vue'
 import AudioLibrary from '../views/AudioLibrary.vue'
 import EnvironmentSounds from '../views/EnvironmentSounds.vue'
+import WebSocketTest from '../views/WebSocketTest.vue'
 import Settings from '../views/Settings.vue'
 
 const routes = [
@@ -72,11 +73,7 @@ const routes = [
     name: 'NovelProjectEdit',
     component: NovelProjectCreate
   },
-  {
-    path: '/novel-reader/detail/:id',
-    name: 'NovelReaderDetail',
-    component: NovelReader
-  },
+  // novel-reader/detail 路由已删除，项目详情重定向到合成中心
   // 合成中心路由
   {
     path: '/synthesis/:projectId',
@@ -98,6 +95,11 @@ const routes = [
     path: '/environment-sounds',
     name: 'EnvironmentSounds',
     component: EnvironmentSounds
+  },
+  {
+    path: '/websocket-test',
+    name: 'WebSocketTest',
+    component: WebSocketTest
   },
   {
     path: '/settings',

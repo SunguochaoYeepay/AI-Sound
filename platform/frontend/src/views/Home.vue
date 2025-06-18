@@ -145,13 +145,13 @@
           </a-col>
           <a-col :xs="24" :sm="8">
             <a-statistic
-              title="实时连接"
-              :value="wsConnected ? '已连接' : '未连接'"
-              :value-style="{ color: wsConnected ? '#3f8600' : '#cf1322' }"
+              title="音频文件"
+              :value="audioLibraryCount"
+              :value-style="{ color: '#3f8600' }"
             >
               <template #prefix>
-                <svg width="16" height="16" viewBox="0 0 24 24" :fill="wsConnected ? '#3f8600' : '#cf1322'">
-                  <path d="M12 2C6.48 2 2 6.48 2 12S6.48 22 12 22 22 17.52 22 12 17.52 2 12 2ZM10 17L5 12L6.41 10.59L10 14.17L17.59 6.58L19 8L10 17Z"/>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="#3f8600">
+                  <path d="M12 3l1.5 4.5h4.5l-3.75 2.7 1.5 4.5L12 12l-3.75 2.7 1.5-4.5L6 7.5h4.5L12 3z"/>
                 </svg>
               </template>
             </a-statistic>
@@ -169,8 +169,8 @@
           </a-col>
           <a-col :span="12">
             <div class="status-detail">
-              <span class="detail-label">连接统计:</span>
-              <span class="detail-value">发送: {{ wsStats.messagesSent }} | 接收: {{ wsStats.messagesReceived }}</span>
+              <span class="detail-label">平台版本:</span>
+              <span class="detail-value">v2.0.0</span>
             </div>
           </a-col>
         </a-row>
@@ -292,9 +292,8 @@ const refreshing = ref(false)
 
 // 计算属性
 const systemStatus = computed(() => appStore.systemStatus)
-const wsConnected = computed(() => wsStore.connected)
-const wsStats = computed(() => wsStore.stats || { messagesSent: 0, messagesReceived: 0 })
 const notifications = computed(() => appStore.notifications || [])
+const audioLibraryCount = computed(() => 1247) // 模拟音频文件数量
 
 const recentNotifications = computed(() => 
   notifications.value.slice(0, 3)
@@ -303,6 +302,12 @@ const recentNotifications = computed(() =>
 const lastCheckTime = computed(() => {
   if (!systemStatus.value.last_check) return '未检查'
   return dayjs(systemStatus.value.last_check).format('HH:mm:ss')
+})
+
+const wsStats = computed(() => {
+  return {
+    connections: wsStore.connected ? 1 : 0
+  }
 })
 
 // 方法

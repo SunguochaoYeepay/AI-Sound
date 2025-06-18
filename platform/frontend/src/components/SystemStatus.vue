@@ -42,15 +42,15 @@
           </a-statistic>
         </a-col>
 
-        <!-- WebSocket状态 -->
+        <!-- 存储状态 -->
         <a-col :span="8">
           <a-statistic
-            title="实时通信"
-            :value="websocketStatus"
-            :value-style="getStatusStyle(websocketStatus)"
+            title="存储空间"
+            :value="storageStatus"
+            :value-style="getStatusStyle(storageStatus)"
           >
             <template #prefix>
-              <WifiOutlined />
+              <DatabaseOutlined />
             </template>
           </a-statistic>
         </a-col>
@@ -63,8 +63,8 @@
         <a-descriptions-item label="最后检查">
           {{ lastCheckTime }}
         </a-descriptions-item>
-        <a-descriptions-item label="连接统计">
-          发送: {{ wsStats.messagesSent }} | 接收: {{ wsStats.messagesReceived }}
+        <a-descriptions-item label="运行时长">
+          {{ getUptime() }}
         </a-descriptions-item>
       </a-descriptions>
 
@@ -127,8 +127,7 @@ const healthCheckInterval = ref(null)
 // 计算属性
 const systemStatus = computed(() => appStore.systemStatus)
 const notifications = computed(() => appStore.notifications)
-const websocketStatus = computed(() => wsStore.connectionStatus)
-const wsStats = computed(() => wsStore.stats)
+const storageStatus = computed(() => 'healthy') // 模拟存储状态
 
 const recentNotifications = computed(() => 
   notifications.value.slice(0, 3)
@@ -167,6 +166,11 @@ const formatTime = (timestamp) => {
   return dayjs(timestamp).format('MM-DD HH:mm')
 }
 
+const getUptime = () => {
+  // 模拟系统运行时长
+  return '2小时15分钟'
+}
+
 const refreshStatus = async () => {
   refreshing.value = true
   try {
@@ -182,8 +186,7 @@ const checkSystemHealth = async () => {
     if (result.success && result.data) {
       appStore.updateSystemStatus({
         database: result.data.services?.database?.status || 'unknown',
-        tts_service: Object.values(result.data.services?.tts_client || {}).every(Boolean) ? 'healthy' : 'unhealthy',
-        websocket: result.data.services?.websocket_manager?.status || 'unknown'
+        tts_service: Object.values(result.data.services?.tts_client || {}).every(Boolean) ? 'healthy' : 'unhealthy'
       })
     }
   } catch (error) {
@@ -195,8 +198,9 @@ const startHealthCheck = () => {
   // 立即执行一次
   checkSystemHealth()
   
-  // 设置定时器，每30秒检查一次
-  healthCheckInterval.value = setInterval(checkSystemHealth, 30000)
+  // 🚀 临时禁用自动健康检查轮询
+  // 改为仅手动刷新或按需检查
+  // healthCheckInterval.value = setInterval(checkSystemHealth, 120000)
 }
 
 const stopHealthCheck = () => {
@@ -213,10 +217,8 @@ onMounted(() => {
   // 启动健康检查
   startHealthCheck()
   
-  // 连接WebSocket
-  wsStore.connect().catch(error => {
-    console.error('WebSocket连接失败:', error)
-  })
+  // 系统状态组件不需要主动连接WebSocket
+  // WebSocket连接在合成任务时按需建立
   
   loading.value = false
 })

@@ -1,6 +1,6 @@
 """
 小说章节合成语音前内容准备服务
-实现智能角色识别、情绪分析、参数配置等核心功能
+重构后的精简版本 - 主要负责流程控制和协调各个专门服务
 """
 
 import asyncio
@@ -14,139 +14,21 @@ from sqlalchemy.orm import Session
 
 from ..models import BookChapter, VoiceProfile
 from ..exceptions import ServiceException
+from .chapter_chunker import ChapterChunker
+from .ai_tts_optimizer import AITTSOptimizer
+from .intelligent_voice_mapper import IntelligentVoiceMapper
 
 logger = logging.getLogger(__name__)
 
 
-class ChapterChunker:
-    """章节智能分块器 - 解决大模型上下文限制"""
-    
-    def __init__(self, max_tokens: int = 3000):
-        self.max_tokens = max_tokens
-        self.overlap_tokens = 200  # 重叠token数，保持上下文连贯性
-    
-    def chunk_chapter(self, chapter_content: str) -> List[Dict]:
-        """智能分块章节内容"""
-        # 1. 按自然段落分割
-        paragraphs = self._split_by_paragraphs(chapter_content)
-        
-        # 2. 估算token数量
-        chunks = []
-        current_chunk = []
-        current_tokens = 0
-        
-        for para in paragraphs:
-            para_tokens = self._estimate_tokens(para)
-            
-            # 如果单个段落就超长，需要强制分割
-            if para_tokens > self.max_tokens:
-                if current_chunk:
-                    chunks.append(self._create_chunk(current_chunk))
-                    current_chunk = []
-                    current_tokens = 0
-                
-                # 强制分割超长段落
-                sub_chunks = self._force_split_paragraph(para)
-                chunks.extend(sub_chunks)
-                continue
-            
-            # 检查是否需要新建chunk
-            if current_tokens + para_tokens > self.max_tokens:
-                chunks.append(self._create_chunk(current_chunk))
-                
-                # 保持重叠上下文
-                overlap_paras = self._get_overlap_context(current_chunk)
-                current_chunk = overlap_paras + [para]
-                current_tokens = sum(self._estimate_tokens(p) for p in current_chunk)
-            else:
-                current_chunk.append(para)
-                current_tokens += para_tokens
-        
-        # 处理最后一个chunk
-        if current_chunk:
-            chunks.append(self._create_chunk(current_chunk))
-        
-        return chunks
-    
-    def _split_by_paragraphs(self, text: str) -> List[str]:
-        """按自然段落分割文本"""
-        # 按双换行符分割段落
-        paragraphs = re.split(r'\n\s*\n', text.strip())
-        # 过滤空段落
-        return [p.strip() for p in paragraphs if p.strip()]
-    
-    def _estimate_tokens(self, text: str) -> int:
-        """估算文本的token数量（中文按字符数估算）"""
-        # 简单估算：中文字符 * 1.5 + 英文单词数
-        chinese_chars = len(re.findall(r'[\u4e00-\u9fff]', text))
-        english_words = len(re.findall(r'[a-zA-Z]+', text))
-        return int(chinese_chars * 1.5 + english_words)
-    
-    def _create_chunk(self, paragraphs: List[str]) -> Dict:
-        """创建分块数据"""
-        content = "\n\n".join(paragraphs)
-        return {
-            "content": content,
-            "paragraph_count": len(paragraphs),
-            "estimated_tokens": self._estimate_tokens(content),
-            "chunk_type": "normal"
-        }
-    
-    def _force_split_paragraph(self, paragraph: str) -> List[Dict]:
-        """强制分割超长段落"""
-        # 按句号分割
-        sentences = re.split(r'[。！？]', paragraph)
-        chunks = []
-        current_chunk = []
-        current_tokens = 0
-        
-        for sentence in sentences:
-            if not sentence.strip():
-                continue
-                
-            sentence = sentence.strip() + "。"  # 恢复句号
-            sentence_tokens = self._estimate_tokens(sentence)
-            
-            if current_tokens + sentence_tokens > self.max_tokens:
-                if current_chunk:
-                    chunks.append(self._create_chunk(current_chunk))
-                current_chunk = [sentence]
-                current_tokens = sentence_tokens
-            else:
-                current_chunk.append(sentence)
-                current_tokens += sentence_tokens
-        
-        if current_chunk:
-            chunks.append(self._create_chunk(current_chunk))
-        
-        return chunks
-    
-    def _get_overlap_context(self, paragraphs: List[str]) -> List[str]:
-        """获取重叠上下文"""
-        if not paragraphs:
-            return []
-        
-        # 取最后1-2个段落作为重叠上下文
-        overlap_tokens = 0
-        overlap_paras = []
-        
-        for para in reversed(paragraphs):
-            para_tokens = self._estimate_tokens(para)
-            if overlap_tokens + para_tokens <= self.overlap_tokens:
-                overlap_paras.insert(0, para)
-                overlap_tokens += para_tokens
-            else:
-                break
-        
-        return overlap_paras
-
-
 class ContentPreparationService:
-    """内容准备服务主控制器"""
+    """内容准备服务主控制器 - 重构后的精简版本"""
     
     def __init__(self, db: Session):
         self.db = db
         self.chunker = ChapterChunker()
+        self.tts_optimizer = None  # 延迟初始化
+        self.voice_mapper = IntelligentVoiceMapper(db)
         self.ollama_detector = None  # 延迟初始化
     
     async def prepare_chapter_for_synthesis(
@@ -234,7 +116,7 @@ class ContentPreparationService:
             detected_characters = self._ensure_narrator_character(detected_characters)
             
             # 7. 智能语音映射
-            voice_mapping = await self._intelligent_voice_mapping(detected_characters, user_preferences)
+            voice_mapping = await self.voice_mapper.intelligent_voice_mapping(detected_characters, user_preferences)
             
             # 8. 转换为合成格式
             synthesis_json = self._adapt_to_synthesis_format(
@@ -670,17 +552,18 @@ class ContentPreparationService:
             voice_id = voice_mapping.get(segment['speaker'])
             voice_name = voice_id_to_name.get(voice_id, f"Voice_{voice_id}") if voice_id else "未分配"
             
+            # 🎯 智能TTS参数配置 - 基于角色和文本内容
+            if not self.tts_optimizer:
+                self.tts_optimizer = AITTSOptimizer(self.ollama_detector)
+            tts_params = self.tts_optimizer.get_smart_tts_params(segment, analysis_result.get('detected_characters', []))
+            
             synthesis_plan.append({
                 "segment_id": segment_id,
                 "text": segment['text'],  # 🔒 原文不变
                 "speaker": segment['speaker'],
                 "voice_id": voice_id,
                 "voice_name": voice_name,
-                "parameters": {
-                    "timeStep": 32,  # 默认参数
-                    "pWeight": 1.4,
-                    "tWeight": 3.0
-                }
+                "parameters": tts_params
             })
             segment_id += 1
         
@@ -696,6 +579,8 @@ class ContentPreparationService:
             "synthesis_plan": synthesis_plan,
             "characters": characters
         }
+    
+
     
     def _clean_and_normalize(self, text: str) -> str:
         """清理和标准化文本"""
@@ -713,70 +598,7 @@ class ContentPreparationService:
         english_words = len(re.findall(r'[a-zA-Z]+', text))
         return int(chinese_chars * 1.5 + english_words)
     
-    async def _intelligent_voice_mapping(
-        self, 
-        detected_characters: List[Dict], 
-        user_preferences: Dict = None
-    ) -> Dict[str, int]:
-        """智能语音匹配"""
-        
-        # 获取可用语音
-        available_voices = await self._get_available_voices()
-        voice_mapping = {}
-        
-        # 简单的匹配逻辑（可以后续优化）
-        for i, character in enumerate(detected_characters):
-            char_name = character['name']
-            
-            # 为旁白角色特殊处理
-            if char_name == '旁白':
-                narrator_voice = self._get_narrator_voice_mapping(available_voices)
-                if narrator_voice:
-                    voice_mapping[char_name] = narrator_voice
-                continue
-            
-            # 其他角色简单分配
-            if i < len(available_voices):
-                voice_mapping[char_name] = available_voices[i]['id']
-        
-        return voice_mapping
-    
-    def _get_narrator_voice_mapping(self, available_voices: List[Dict]) -> Optional[int]:
-        """为旁白角色选择合适的语音"""
-        
-        # 优先选择标记为"旁白"或"中性"的语音
-        for voice in available_voices:
-            if voice.get('type') == 'neutral' or '旁白' in voice.get('name', ''):
-                return voice.get('id')
-        
-        # 其次选择女性温和声音
-        for voice in available_voices:
-            if voice.get('type') == 'female' and '温柔' in voice.get('name', ''):
-                return voice.get('id')
-        
-        # 最后选择第一个可用声音
-        if available_voices:
-            return available_voices[0].get('id')
-        
-        return None
-    
-    async def _get_available_voices(self) -> List[Dict]:
-        """获取可用语音列表"""
-        try:
-            from app.models import VoiceProfile
-            voices = self.db.query(VoiceProfile).filter(VoiceProfile.status == 'active').all()
-            return [
-                {
-                    'id': voice.id,
-                    'name': voice.name,
-                    'voice_type': voice.type,
-                    'description': voice.description or ""
-                }
-                for voice in voices
-            ]
-        except Exception as e:
-            logger.error(f"获取可用语音失败: {str(e)}")
-            return []
+
 
     async def get_content_stats(self, chapter_id: int, db: Session) -> Dict:
         """
