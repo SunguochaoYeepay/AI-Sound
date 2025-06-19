@@ -4,6 +4,7 @@
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import desc, asc, func, or_, and_
 from typing import Dict, List, Any, Optional
@@ -198,6 +199,13 @@ async def get_audio_stats(
             AudioFile.status == 'active'
         ).scalar() or 0
         
+        # 今日新增统计
+        today = datetime.now().date()
+        today_files = db.query(func.count(AudioFile.id)).filter(
+            AudioFile.status == 'active',
+            func.date(AudioFile.created_at) == today
+        ).scalar() or 0
+        
         # 按项目统计
         project_stats = db.query(
             NovelProject.id,
@@ -224,7 +232,8 @@ async def get_audio_stats(
                     "total_size_bytes": total_size,
                     "total_size_mb": round(total_size / (1024 * 1024), 2),
                     "total_duration_seconds": total_duration,
-                    "total_duration_minutes": round(total_duration / 60, 1)
+                    "total_duration_minutes": round(total_duration / 60, 1),
+                    "today_count": today_files
                 },
                 "by_project": [
                     {
@@ -249,6 +258,49 @@ async def get_audio_stats(
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"获取统计信息失败: {str(e)}")
+
+@router.get("/download/{file_id}", summary="下载单个音频文件")
+async def download_audio_file(
+    file_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    下载单个音频文件
+    """
+    try:
+        logger.info(f"🔍 [下载请求] 查找音频文件 ID: {file_id}")
+        
+        audio_file = db.query(AudioFile).filter(AudioFile.id == file_id).first()
+        if not audio_file:
+            logger.error(f"❌ [下载失败] 音频文件不存在: ID={file_id}")
+            raise HTTPException(status_code=404, detail=f"音频文件不存在: ID={file_id}")
+        
+        logger.info(f"✅ [找到文件] ID={audio_file.id}, filename={audio_file.filename}, path={audio_file.file_path}")
+        
+        if not audio_file.file_path:
+            logger.error(f"❌ [下载失败] 文件路径为空: ID={file_id}")
+            raise HTTPException(status_code=404, detail="音频文件路径为空")
+        
+        if not os.path.exists(audio_file.file_path):
+            logger.error(f"❌ [下载失败] 物理文件不存在: ID={file_id}, path={audio_file.file_path}")
+            raise HTTPException(status_code=404, detail=f"音频文件物理文件不存在: {audio_file.file_path}")
+        
+        # 生成下载文件名
+        download_name = audio_file.original_name or audio_file.filename
+        
+        logger.info(f"📦 [开始下载] ID={file_id}, filename={download_name}, path={audio_file.file_path}")
+        
+        return FileResponse(
+            path=audio_file.file_path,
+            filename=download_name,
+            media_type='audio/wav'
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ [下载异常] ID={file_id}, error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"下载音频文件失败: {str(e)}")
 
 @router.post("/files/{file_id}/favorite")
 async def toggle_favorite(

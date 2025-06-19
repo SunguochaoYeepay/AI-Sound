@@ -225,43 +225,7 @@
       </a-table>
     </a-card>
 
-    <!-- 音频播放器弹窗 -->
-    <a-modal
-      v-model:open="playerVisible"
-      title="音频播放器"
-      :footer="null"
-      width="600px"
-      centered
-    >
-      <div v-if="currentAudio" class="audio-player-modal">
-        <div class="audio-info">
-          <h3>{{ currentAudio.originalName }}</h3>
-          <div class="audio-meta">
-            <a-space split>
-              <span>时长: {{ currentAudio.durationFormatted }}</span>
-              <span>大小: {{ currentAudio.fileSizeMB }}MB</span>
-              <span v-if="currentAudio.projectName">项目: {{ currentAudio.projectName }}</span>
-            </a-space>
-          </div>
-        </div>
-        
-        <div class="audio-player">
-          <audio
-            ref="audioRef"
-            controls
-            style="width: 100%"
-            :src="currentAudio.audioUrl"
-            @loadedmetadata="onAudioLoaded"
-            @error="onAudioError"
-          />
-        </div>
-        
-        <div v-if="currentAudio.textContent" class="audio-text">
-          <h4>对应文本：</h4>
-          <div class="text-content">{{ currentAudio.textContent }}</div>
-        </div>
-      </div>
-    </a-modal>
+
   </div>
 </template>
 
@@ -284,6 +248,7 @@ import {
 } from '@ant-design/icons-vue'
 import { audioAPI, readerAPI } from '@/api'
 import apiClient from '@/api/config'
+import { getAudioService } from '@/utils/audioService'
 
 // 路由
 const router = useRouter()
@@ -297,9 +262,9 @@ const audioList = ref([])
 const projectList = ref([])
 const stats = ref({})
 const selectedRowKeys = ref([])
-const playerVisible = ref(false)
-const currentAudio = ref(null)
-const audioRef = ref(null)
+
+// 音频服务实例
+const audioService = getAudioService()
 
 // 筛选条件
 const filters = reactive({
@@ -389,6 +354,36 @@ const formatDuration = (seconds) => {
   return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
 }
 
+// 🔧 根据文件名推断音频类型
+const inferAudioType = (filename) => {
+  if (!filename) return 'unknown'
+  
+  const name = filename.toLowerCase()
+  
+  // 测试音频：包含test字样
+  if (name.includes('test')) {
+    return 'test'
+  }
+  
+  // 分段音频：包含segment或_数字_
+  if (name.includes('segment') || /\d+_\d+/.test(name)) {
+    return 'segment'
+  }
+  
+  // 项目合成：包含project、final、complete
+  if (name.includes('project') || name.includes('final') || name.includes('complete')) {
+    return 'project'
+  }
+  
+  // 单句合成：包含single、voice、preview
+  if (name.includes('single') || name.includes('voice') || name.includes('preview')) {
+    return 'single'
+  }
+  
+  // 默认为分段音频（最常见的类型）
+  return 'segment'
+}
+
 // 方法
 const refreshAudioList = async () => {
   loading.value = true
@@ -417,7 +412,7 @@ const refreshAudioList = async () => {
         filePath: item.file_path,
         fileSize: item.file_size,
         fileSizeMB: item.file_size ? (item.file_size / 1024 / 1024).toFixed(2) : '0.00',
-        audioType: item.audio_type,
+        audioType: item.audio_type || inferAudioType(item.filename),  // 🔧 推断音频类型
         textContent: item.text_content,
         isFavorite: item.is_favorite,
         createdAt: item.created_at,
@@ -425,7 +420,7 @@ const refreshAudioList = async () => {
         durationFormatted: formatDuration(item.duration),
         projectName: item.project?.name,
         segmentOrder: item.segment_order,
-        audioUrl: item.filename ? `/audio/${item.filename}` : null
+        audioUrl: item.id ? `/api/v1/audio-library/download/${item.id}` : null
       }))
       pagination.total = response.data.pagination.total
       pagination.current = response.data.pagination.page
@@ -444,7 +439,19 @@ const loadStats = async () => {
   try {
     const response = await audioAPI.getStats()
     if (response.data.success) {
-      stats.value = response.data.data
+      // 🔧 修复：适配后端返回的数据结构
+      const backendData = response.data.data
+      stats.value = {
+        overview: {
+          totalFiles: backendData.summary?.total_files || 0,
+          totalSizeMB: backendData.summary?.total_size_mb || 0,
+          totalDurationFormatted: formatDuration(backendData.summary?.total_duration_seconds || 0),
+          todayCount: backendData.summary?.today_count || 0  // 后端可能没有实现，默认为0
+        },
+        byProject: backendData.by_project || [],
+        byType: backendData.by_type || []
+      }
+      console.log('📊 统计数据加载成功:', stats.value)
     }
   } catch (error) {
     console.error('获取统计信息失败:', error)
@@ -478,9 +485,35 @@ const syncAudioFiles = async () => {
   }
 }
 
-const playAudio = (record) => {
-  currentAudio.value = record
-  playerVisible.value = true
+const playAudio = async (record) => {
+  try {
+    console.log('🎵 [AudioLibrary] 播放音频:', record)
+    console.log('🎵 [AudioLibrary] 音频URL:', record.audioUrl)
+    
+    // 验证audioUrl是否存在
+    if (!record.audioUrl) {
+      throw new Error('音频URL不存在')
+    }
+    
+    // 构建音频信息，使用统一播放组件
+    await audioService.playCustomAudio(
+      record.audioUrl, 
+      record.originalName || record.filename,
+      {
+        audioId: record.id,
+        audioType: record.audioType,
+        projectName: record.projectName,
+        textContent: record.textContent,
+        duration: record.duration,
+        fileSize: record.fileSizeMB
+      }
+    )
+    
+    console.log('🎵 [AudioLibrary] 播放请求发送成功')
+  } catch (error) {
+    console.error('🎵 [AudioLibrary] 播放失败:', error)
+    message.error('播放失败: ' + error.message)
+  }
 }
 
 const downloadSingle = async (record) => {
@@ -602,15 +635,6 @@ const toggleFavorite = async (record) => {
 
 const onTableChange = (pag, filters, sorter) => {
   console.log('Table change:', pag, filters, sorter)
-}
-
-const onAudioLoaded = () => {
-  console.log('Audio loaded')
-}
-
-const onAudioError = (error) => {
-  console.error('Audio error:', error)
-  message.error('音频加载失败')
 }
 
 const getTypeColor = (type) => {
@@ -744,49 +768,6 @@ onMounted(() => {
 
 .favorite-active {
   color: #ff4d4f !important;
-}
-
-.audio-player-modal {
-  padding: 16px 0;
-}
-
-.audio-info {
-  margin-bottom: 16px;
-}
-
-.audio-info h3 {
-  margin: 0 0 8px 0;
-  font-size: 16px;
-}
-
-.audio-meta {
-  color: #666;
-  font-size: 14px;
-}
-
-.audio-player {
-  margin-bottom: 16px;
-}
-
-.audio-text {
-  border-top: 1px solid #f0f0f0;
-  padding-top: 16px;
-}
-
-.audio-text h4 {
-  margin: 0 0 8px 0;
-  font-size: 14px;
-  color: #333;
-}
-
-.text-content {
-  background: #f5f5f5;
-  padding: 12px;
-  border-radius: 4px;
-  font-size: 14px;
-  line-height: 1.6;
-  max-height: 120px;
-  overflow-y: auto;
 }
 
 .title-with-back {
