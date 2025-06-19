@@ -120,6 +120,9 @@
                 :segment="segment"
                 :segment-index="segmentIndex"
                 :project-id="project?.id"
+                :is-completed="isSegmentCompleted(segmentIndex)"
+                :project-status="project?.status || 'pending'"
+                :current-segment="project?.current_segment || 0"
                 @play-segment="handlePlaySegment"
               />
               
@@ -248,6 +251,28 @@ const getChapterCharacterCount = (chapterResult) => {
 const getSelectedChapterInfo = () => {
   if (!props.selectedChapter || !props.availableChapters.length) return null
   return props.availableChapters.find(chapter => chapter.id === props.selectedChapter)
+}
+
+// 判断段落是否已完成合成
+const isSegmentCompleted = (segmentIndex) => {
+  // 如果项目状态是已完成，则所有段落都已完成
+  if (props.project?.status === 'completed') {
+    return true
+  }
+  
+  // 如果项目状态是部分完成，检查具体段落状态
+  if (props.project?.status === 'partial_completed') {
+    const processedSegments = props.project?.processed_segments || 0
+    return segmentIndex < processedSegments
+  }
+  
+  // 如果项目正在处理，检查当前进度
+  if (props.project?.status === 'processing') {
+    const currentSegment = props.project?.current_segment || 0
+    return segmentIndex < currentSegment
+  }
+  
+  return false
 }
 
 const getStartHint = () => {

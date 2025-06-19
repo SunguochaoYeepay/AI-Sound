@@ -1491,6 +1491,43 @@ async def retry_chapter_failed_segments(
         logger.error(f"重试章节失败段落失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"重试章节失败段落失败: {str(e)}")
 
+@router.get("/projects/{project_id}/segments/{segment_id}/download")
+async def download_segment_audio(
+    project_id: int,
+    segment_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    下载单个段落音频
+    """
+    try:
+        # 查找段落对应的AudioFile
+        audio_file = db.query(AudioFile).filter(
+            AudioFile.project_id == project_id,
+            AudioFile.paragraph_index == segment_id,
+            AudioFile.audio_type == 'segment'
+        ).first()
+        
+        if not audio_file:
+            raise HTTPException(status_code=404, detail=f"段落 {segment_id} 的音频文件不存在")
+        
+        if not os.path.exists(audio_file.file_path):
+            raise HTTPException(status_code=404, detail="音频文件物理文件不存在")
+        
+        logger.info(f"下载段落音频: 项目{project_id}, 段落{segment_id}, 文件: {audio_file.file_path}")
+        
+        return FileResponse(
+            path=audio_file.file_path,
+            filename=f"segment_{segment_id}_{audio_file.character_name or 'unknown'}.wav",
+            media_type="audio/wav"
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"下载段落音频失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"下载段落音频失败: {str(e)}")
+
 @router.get("/projects/{project_id}/chapters/{chapter_id}/download")
 async def download_chapter_audio(
     project_id: int,
