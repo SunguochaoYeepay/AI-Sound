@@ -356,8 +356,8 @@
       </a-card>
     </div>
 
-    <!-- 生成环境音弹窗 -->
-    <GenerateModal
+    <!-- 生成环境音抽屉 -->
+    <GenerateDrawer
       v-model:visible="showGenerateModal"
       :categories="categories"
       :tags="tags"
@@ -387,7 +387,7 @@ import {
   LoadingOutlined, StarFilled, ArrowLeftOutlined
 } from '@ant-design/icons-vue'
 
-import GenerateModal from '@/components/environment-sounds/GenerateModal.vue'
+import GenerateDrawer from '@/components/environment-sounds/GenerateDrawer.vue'
 import EditModal from '@/components/environment-sounds/EditModal.vue'
 import { getAudioService } from '@/utils/audioService'
 import api from '@/api'
@@ -724,6 +724,10 @@ const goBack = () => {
 
 .page-header {
   margin-bottom: 24px;
+  padding: 32px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(102, 126, 234, 0.3);
 }
 
 .header-content {
@@ -743,13 +747,13 @@ const goBack = () => {
   padding: 4px 8px;
   display: flex;
   align-items: center;
-  color: #666;
+  color: rgba(255, 255, 255, 0.8);
   transition: all 0.2s;
 }
 
 .back-btn:hover {
-  color: #1890ff;
-  background: #f0f6ff;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .title-section .page-title {
@@ -758,17 +762,17 @@ const goBack = () => {
   margin: 0 0 8px 0;
   font-size: 28px;
   font-weight: 600;
-  color: #1a1a1a;
+  color: white;
 }
 
 .title-icon {
   margin-right: 12px;
-  color: #1890ff;
+  color: #ffffff;
 }
 
 .page-description {
   margin: 0;
-  color: #666;
+  color: rgba(255, 255, 255, 0.85);
   font-size: 14px;
   line-height: 1.5;
 }

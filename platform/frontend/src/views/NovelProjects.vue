@@ -3,16 +3,21 @@
     <!-- 页面头部 -->
     <div class="page-header">
       <div class="header-content">
-        <h1>语音合成项目</h1>
-        <p>管理文本转语音项目，创建和生成多角色朗读音频</p>
-      </div>
-      <div class="header-actions">
-        <a-button type="primary" size="large" @click="goToCreatePage">
-          <template #icon>
+        <div class="title-section">
+          <h1 class="page-title">
+            <SoundOutlined class="title-icon" />
+            语音合成项目
+          </h1>
+          <p class="page-description">
+            管理文本转语音项目，创建和生成多角色朗读音频
+          </p>
+        </div>
+        <div class="action-section">
+          <a-button type="primary" size="large" @click="goToCreatePage">
             <PlusOutlined />
-          </template>
-          新建项目
-        </a-button>
+            新建项目
+          </a-button>
+        </div>
       </div>
     </div>
 
@@ -334,7 +339,7 @@
 import { ref, computed, onMounted, h } from 'vue'
 import { useRouter } from 'vue-router'
 import { message, Modal } from 'ant-design-vue'
-import { PlusOutlined, ReloadOutlined } from '@ant-design/icons-vue'
+import { PlusOutlined, ReloadOutlined, SoundOutlined } from '@ant-design/icons-vue'
 import { readerAPI } from '@/api'
 
 const router = useRouter()
@@ -663,32 +668,38 @@ onMounted(() => {
 
 /* 页面头部 */
 .page-header {
-  background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
-  padding: 40px;
-  border-radius: 16px;
   margin-bottom: 32px;
+  padding: 32px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(102, 126, 234, 0.3);
+}
+
+.header-content {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  box-shadow: 0 8px 32px rgba(6, 182, 212, 0.2);
+  align-items: flex-start;
 }
 
-.header-content h1 {
-  margin: 0;
-  color: white;
-  font-size: 28px;
-  font-weight: 700;
-}
-
-.header-content p {
-  margin: 8px 0 0 0;
-  color: rgba(255,255,255,0.9);
-  font-size: 16px;
-}
-
-.header-actions {
+.title-section .page-title {
   display: flex;
-  gap: 16px;
+  align-items: center;
+  margin: 0 0 8px 0;
+  font-size: 28px;
+  font-weight: 600;
+  color: white;
+}
+
+.title-icon {
+  margin-right: 12px;
+  color: #ffffff;
+}
+
+.page-description {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 14px;
+  line-height: 1.5;
 }
 
 /* 统计卡片 */

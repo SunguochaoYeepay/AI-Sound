@@ -3,16 +3,25 @@
     <!-- 页面头部 -->
     <div class="page-header">
       <div class="header-content">
-        <h1>📚 书籍管理</h1>
-        <p>管理您的小说、图书内容，为语音合成项目提供文本素材</p>
-      </div>
-      <div class="header-actions">
-        <a-button type="primary" @click="$router.push('/books/create')">
-          <template #icon>
+        <div class="title-section">
+          <h1 class="page-title">
+            <BookOutlined class="title-icon" />
+            书籍管理
+          </h1>
+          <p class="page-description">
+            管理您的小说、图书内容，为语音合成项目提供文本素材
+          </p>
+        </div>
+        <div class="action-section">
+          <a-button 
+            type="primary" 
+            size="large"
+            @click="$router.push('/books/create')"
+          >
             <PlusOutlined />
-          </template>
-          新建书籍
-        </a-button>
+            新建书籍
+          </a-button>
+        </div>
       </div>
     </div>
 
@@ -126,10 +135,10 @@
                     </div>
                     <div class="book-stats">
                       <span class="stat-item">
-                        <FileTextOutlined /> {{ book.wordCount.toLocaleString() }} 字
+                        <FileTextOutlined /> {{ (book.wordCount || 0).toLocaleString() }} 字
                       </span>
                       <span class="stat-item">
-                        <BookOutlined /> {{ book.chapterCount }} 章节
+                        <BookOutlined /> {{ book.chapterCount || 0 }} 章节
                       </span>
                     </div>
                     <div class="book-description">
@@ -346,25 +355,38 @@ onMounted(() => {
 }
 
 .page-header {
+  margin-bottom: 24px;
+  padding: 32px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(102, 126, 234, 0.3);
+}
+
+.header-content {
   display: flex;
   justify-content: space-between;
+  align-items: flex-start;
+}
+
+.title-section .page-title {
+  display: flex;
   align-items: center;
-  margin-bottom: 24px;
-  padding: 24px;
-  background: white;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  margin: 0 0 8px 0;
+  font-size: 28px;
+  font-weight: 600;
+  color: white;
 }
 
-.header-content h1 {
+.title-icon {
+  margin-right: 12px;
+  color: #ffffff;
+}
+
+.page-description {
   margin: 0;
-  color: #1f2937;
-  font-size: 24px;
-}
-
-.header-content p {
-  margin: 8px 0 0 0;
-  color: #6b7280;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 14px;
+  line-height: 1.5;
 }
 
 .search-section {

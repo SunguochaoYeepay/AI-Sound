@@ -49,7 +49,7 @@
         :available-chapters="chapters"
         :synthesis-starting="synthesisStarting"
         :playing-chapter-audio="playingChapterAudio"
-        :can-start="canStartSynthesis"
+        :can-start="canStartSynthesis && !synthesisStarting"
         :synthesis-running="synthesisRunning"
         :selected-chapter-status="getSelectedChapterStatus()"
         @play-segment="handlePlaySegment"
