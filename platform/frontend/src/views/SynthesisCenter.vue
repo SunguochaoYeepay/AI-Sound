@@ -39,6 +39,7 @@
         @play-chapter="handlePlayChapter"
         @download-chapter="handleDownloadChapter"
         @start-synthesis="handleStartSynthesis"
+        @start-environment-synthesis="handleShowEnvironmentConfig"
         @pause-synthesis="handlePauseSynthesis"
         @cancel-synthesis="handleCancelSynthesis"
         @retry-synthesis="handleRetrySynthesis"
@@ -57,6 +58,16 @@
       @close="handleProgressDrawerClose"
       @update:visible="progressDrawerVisible = $event"
       @showFailureDetails="handleShowFailureDetails"
+    />
+
+    <!-- 环境音配置弹窗 -->
+    <EnvironmentConfigModal
+      :visible="environmentConfigVisible"
+      :loading="synthesisStarting"
+      :initial-volume="environmentVolume"
+      @confirm="handleEnvironmentSynthesis"
+      @cancel="handleCancelEnvironmentConfig"
+      @update:visible="environmentConfigVisible = $event"
     />
 
     <!-- 暂时注释掉失败详情弹窗
@@ -85,6 +96,7 @@ import ProjectHeader from '@/components/synthesis-center/ProjectHeader.vue'
 import ChapterSelector from '@/components/synthesis-center/ChapterSelector.vue'
 import ContentPreview from '@/components/synthesis-center/ContentPreview.vue'
 import ProgressDrawer from '@/components/synthesis-center/ProgressDrawer.vue'
+import EnvironmentConfigModal from '@/components/synthesis-center/EnvironmentConfigModal.vue'
 // 暂时注释掉失败详情模态框的导入
 // import FailureDetailsModal from '@/components/synthesis-center/FailureDetailsModal.vue'
 
@@ -116,6 +128,10 @@ const websocketStatus = ref('disconnected')
 const failureDetailsVisible = ref(false)
 const failedSegmentsList = ref([])
 const retryLoading = ref(false)
+
+// 环境音配置相关状态
+const environmentConfigVisible = ref(false)
+const environmentVolume = ref(0.3)
 
 // WebSocket 连接
 let websocket = null
@@ -726,6 +742,62 @@ const getSelectedChapterStatus = () => {
   }
   
   return statusMap[status] || 'pending'
+}
+
+// 环境音合成相关方法
+const handleShowEnvironmentConfig = () => {
+  environmentConfigVisible.value = true
+}
+
+const handleCancelEnvironmentConfig = () => {
+  environmentConfigVisible.value = false
+}
+
+const handleEnvironmentSynthesis = async (config) => {
+  try {
+    environmentConfigVisible.value = false
+    synthesisStarting.value = true
+    
+    // 更新环境音音量配置
+    environmentVolume.value = config.environmentVolume
+    
+    console.log('开始环境音混合合成，章节:', selectedChapter.value, '音量:', config.environmentVolume)
+    
+    // 准备请求参数，包含环境音配置
+    const requestParams = {
+      enable_environment: true,
+      environment_volume: config.environmentVolume
+    }
+    
+    // 调用合成API，传递环境音参数
+    const response = await api.startGeneration(project.value.id, {
+      chapter_ids: selectedChapter.value ? [selectedChapter.value] : undefined,
+      ...requestParams
+    })
+    
+    if (response.data.success) {
+      message.success('环境音混合合成已开始！')
+      synthesisRunning.value = true
+      progressDrawerVisible.value = true
+      
+      // 启动进度监控
+      if (progressRefreshInterval) {
+        clearInterval(progressRefreshInterval)
+      }
+      progressRefreshInterval = setInterval(() => {
+        if (synthesisRunning.value) {
+          loadSynthesisProgress()
+        }
+      }, 3000)
+    } else {
+      message.error(response.data.message || '环境音合成失败')
+    }
+  } catch (error) {
+    console.error('环境音合成失败:', error)
+    message.error('环境音合成失败: ' + (error.response?.data?.detail || error.message))
+  } finally {
+    synthesisStarting.value = false
+  }
 }
 </script>
 

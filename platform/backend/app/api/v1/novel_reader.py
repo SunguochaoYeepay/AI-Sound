@@ -1389,21 +1389,52 @@ async def start_chapter_synthesis(
     chapter_id: int,
     background_tasks: BackgroundTasks,
     parallel_tasks: int = Form(1, description="并行任务数"),
+    enable_environment: bool = Form(False, description="启用环境音混合"),
+    environment_volume: float = Form(0.3, description="环境音音量"),
     db: Session = Depends(get_db)
 ):
     """
     开始单章节合成
     """
     try:
-        # 调用通用的项目启动API，但只处理指定章节
-        return await start_project_generation(
-            project_id=project_id,
-            background_tasks=background_tasks,
-            parallel_tasks=parallel_tasks,
-            synthesis_mode="chapters",
-            chapter_ids=str(chapter_id),
-            db=db
-        )
+        # 如果启用了环境音，调用主要的 novel_reader API
+        if enable_environment:
+            from app.novel_reader import start_audio_generation as main_start_generation
+            
+            # 构造表单数据
+            from fastapi import Request
+            import json
+            
+            # 直接调用 novel_reader 的 start_audio_generation 函数
+            # 但需要模拟表单参数
+            class MockForm:
+                def __init__(self, **kwargs):
+                    self.__dict__.update(kwargs)
+            
+            # 使用mock参数调用主函数（绕过路由装饰器）
+            from app.novel_reader import router as main_router
+            from fastapi.background import BackgroundTasks as MainBackgroundTasks
+            
+            # 直接导入并调用函数
+            from app import novel_reader
+            return await novel_reader.start_audio_generation(
+                project_id=project_id,
+                background_tasks=background_tasks,
+                parallel_tasks=parallel_tasks,
+                enable_environment=enable_environment,
+                environment_volume=environment_volume,
+                db=db
+            )
+        else:
+            # 普通TTS合成，调用现有逻辑
+            return await start_project_generation(
+                project_id=project_id,
+                background_tasks=background_tasks,
+                parallel_tasks=parallel_tasks,
+                synthesis_mode="chapters",
+                chapter_ids=str(chapter_id),
+                db=db
+            )
     except Exception as e:
         logger.error(f"开始章节合成失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"开始章节合成失败: {str(e)}")

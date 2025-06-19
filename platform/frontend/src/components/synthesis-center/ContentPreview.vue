@@ -35,15 +35,38 @@
                 <a-space size="small">
                   <!-- 待处理状态：显示开始合成按钮 -->
                   <template v-if="selectedChapterStatus === 'pending'">
-                    <a-button
-                      type="primary"
-                      size="small"
-                      :disabled="!canStart"
-                      :loading="synthesisStarting"
-                      @click="$emit('start-synthesis')"
-                    >
-                      开始合成
-                    </a-button>
+                    <a-dropdown>
+                      <a-button
+                        type="primary"
+                        size="small"
+                        :disabled="!canStart"
+                        :loading="synthesisStarting"
+                      >
+                        🎯 开始合成 <DownOutlined />
+                      </a-button>
+                      <template #overlay>
+                        <a-menu>
+                          <a-menu-item key="normal" @click="$emit('start-synthesis')">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                              <span>🎤</span>
+                              <div>
+                                <div style="font-weight: 500;">TTS语音合成</div>
+                                <div style="font-size: 11px; color: #666;">仅生成对话语音</div>
+                              </div>
+                            </div>
+                          </a-menu-item>
+                          <a-menu-item key="environment" @click="$emit('start-environment-synthesis')">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                              <span>🌍</span>
+                              <div>
+                                <div style="font-weight: 500;">环境音混合合成</div>
+                                <div style="font-size: 11px; color: #666;">智能生成环境音效并混合</div>
+                              </div>
+                            </div>
+                          </a-menu-item>
+                        </a-menu>
+                      </template>
+                    </a-dropdown>
                   </template>
 
                   <!-- 已完成状态：显示播放和下载按钮 -->
@@ -198,6 +221,7 @@ const emit = defineEmits([
   'play-chapter',
   'download-chapter',
   'start-synthesis',
+  'start-environment-synthesis',
   'pause-synthesis',
   'cancel-synthesis',
   'retry-synthesis',
