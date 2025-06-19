@@ -335,8 +335,24 @@ const getStatusColor = (status) => {
   return colors[displayStatus] || 'default'
 }
 
-const handlePlaySegment = (segment) => {
-  emit('play-segment', segment)
+const handlePlaySegment = (segmentIndexOrSegment, segment) => {
+  // 兼容两种调用方式：
+  // 1. handlePlaySegment(segment) - 直接传递segment
+  // 2. handlePlaySegment(segmentIndex, segment) - 从DialogueBubble传递的
+  
+  if (typeof segmentIndexOrSegment === 'number' && segment) {
+    // 第二种情况：segmentIndexOrSegment是索引，segment是真正的segment对象
+    // 添加索引信息到segment对象
+    const segmentWithIndex = {
+      ...segment,
+      index: segmentIndexOrSegment + 1, // 转换为1基础索引
+      segment_id: segmentIndexOrSegment + 1
+    }
+    emit('play-segment', segmentWithIndex)
+  } else {
+    // 第一种情况：segmentIndexOrSegment就是segment对象
+    emit('play-segment', segmentIndexOrSegment)
+  }
 }
 
 const handleRefreshPreparation = () => {

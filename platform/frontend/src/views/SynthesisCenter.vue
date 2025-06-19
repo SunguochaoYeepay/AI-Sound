@@ -549,8 +549,17 @@ const handleDownloadAudio = async () => {
 
 const handlePlaySegment = async (segment) => {
   try {
-    await playSegmentAudio(project.value.id, segment.id)
-    message.success(`播放片段: ${segment.content?.substring(0, 20)}...`)
+    // segment可能有id、segment_id或者需要从索引推导
+    const segmentId = segment.id || segment.segment_id || segment.index
+    
+    if (!segmentId) {
+      console.error('无法获取段落ID:', segment)
+      message.error('无法获取段落ID')
+      return
+    }
+    
+    await playSegmentAudio(project.value.id, segmentId)
+    message.success(`播放片段: ${segment.text?.substring(0, 20) || segment.content?.substring(0, 20)}...`)
   } catch (error) {
     console.error('Failed to play segment:', error)
     message.error('播放片段失败')
