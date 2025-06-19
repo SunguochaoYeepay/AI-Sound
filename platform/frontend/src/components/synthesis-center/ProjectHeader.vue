@@ -1,16 +1,26 @@
 <template>
-  <div class="panel-header">
-    <div class="header-with-back">
-      <a-button type="text" @click="$emit('back')" class="back-btn">
-        <template #icon><ArrowLeftOutlined /></template>
-      </a-button>
-      <div class="project-info">
-        <h3>📚 {{ project?.book?.title || project?.name || '加载中...' }}</h3>
-        <div class="project-meta">
-          <span class="project-subtitle">{{ project?.book?.author || '项目管理' }}</span>
-          <a-tag :color="getStatusColor(project?.status)" size="small" class="status-tag">
-            {{ getStatusText(project?.status) }}
-          </a-tag>
+  <div class="page-header">
+    <div class="header-content">
+      <div class="title-section">
+        <div class="title-with-back">
+          <a-button type="text" @click="$emit('back')" class="back-btn">
+            <template #icon><ArrowLeftOutlined /></template>
+          </a-button>
+          <h1 class="page-title">
+            <SoundOutlined class="title-icon" />
+            语音合成
+          </h1>
+        </div>
+        <div class="project-info">
+          <p class="page-description">
+            {{ project?.book?.title || project?.name || '加载中...' }}
+          </p>
+          <div class="project-meta">
+            <span class="project-subtitle">{{ project?.book?.author || '项目管理' }}</span>
+            <a-tag :color="getStatusColor(project?.status)" size="small" class="status-tag">
+              {{ getStatusText(project?.status) }}
+            </a-tag>
+          </div>
         </div>
       </div>
     </div>
@@ -18,7 +28,7 @@
 </template>
 
 <script setup>
-import { ArrowLeftOutlined } from '@ant-design/icons-vue'
+import { ArrowLeftOutlined, SoundOutlined } from '@ant-design/icons-vue'
 
 const props = defineProps({
   project: {
@@ -86,40 +96,62 @@ const getStatusColor = (status) => {
 </script>
 
 <style scoped>
-.panel-header {
-  padding: 16px 20px;
-  border-bottom: 1px solid #f0f0f0;
+.page-header {
+  margin-bottom: 0;
+  padding: 24px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 0;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.15);
 }
 
-.header-with-back {
+.header-content {
   display: flex;
+  justify-content: space-between;
   align-items: flex-start;
-  gap: 12px;
+}
+
+.title-with-back {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .back-btn {
   flex-shrink: 0;
-  margin-top: 2px;
-  padding: 4px;
+  padding: 4px 8px;
   border-radius: 6px;
   transition: all 0.2s;
+  color: rgba(255, 255, 255, 0.8);
 }
 
 .back-btn:hover {
-  background: #f0f6ff;
-  color: #1890ff;
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+
+.page-title {
+  display: flex;
+  align-items: center;
+  margin: 0;
+  font-size: 24px;
+  font-weight: 600;
+  color: white;
+}
+
+.title-icon {
+  margin-right: 12px;
+  color: #ffffff;
 }
 
 .project-info {
-  flex: 1;
-  min-width: 0;
+  margin-top: 8px;
 }
 
-.project-info h3 {
-  margin: 0 0 6px;
+.page-description {
+  margin: 0 0 8px 0;
+  color: rgba(255, 255, 255, 0.9);
   font-size: 16px;
-  font-weight: 600;
-  color: #1f2937;
+  font-weight: 500;
   line-height: 1.4;
 }
 
@@ -132,10 +164,12 @@ const getStatusColor = (status) => {
 
 .project-subtitle {
   font-size: 12px;
-  color: #666;
+  color: rgba(255, 255, 255, 0.7);
 }
 
 .status-tag {
   font-size: 11px;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.2);
 }
 </style> 

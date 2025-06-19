@@ -39,7 +39,7 @@
                       <a-button
                         type="primary"
                         size="small"
-                        :disabled="!canStart"
+                        :disabled="!canStart || synthesisStarting"
                         :loading="synthesisStarting"
                       >
                         🎯 开始合成 <DownOutlined />

@@ -3,35 +3,29 @@
     <!-- 页面头部 -->
     <div class="page-header">
       <div class="header-content">
-        <div class="title-with-back">
-          
-          <div>
-        <h1 style="margin: 0; color: white; font-size: 28px; font-weight: 700;">
-          声音库管理
-        </h1>
-        <p style="margin: 8px 0 0 0; color: rgba(255,255,255,0.9); font-size: 16px;">
-          管理已克隆的声音样本，评估质量并优化参数配置
-        </p>
-          </div>
+        <div class="title-section">
+          <h1 class="page-title">
+            <UserOutlined class="title-icon" />
+            角色管理
+          </h1>
+          <p class="page-description">
+            管理您的角色库，为语音合成项目提供声音素材
+          </p>
         </div>
-      </div>
-      <div class="header-actions">
-        <a-button type="primary" size="large" @click="showSmartDiscoveryModal" ghost>
-          <template #icon>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M9.5,3A6.5,6.5 0 0,1 16,9.5C16,11.11 15.41,12.59 14.44,13.73L14.71,14H15.5L20.5,19L19,20.5L14,15.5V14.71L13.73,14.44C12.59,15.41 11.11,16 9.5,16A6.5,6.5 0 0,1 3,9.5A6.5,6.5 0 0,1 9.5,3M9.5,5C7,5 5,7 5,9.5C5,12 7,14 9.5,14C12,14 14,12 14,9.5C14,7 12,5 9.5,5Z"/>
-            </svg>
-          </template>
-          智能发现
-        </a-button>
-        <a-button size="large" @click="addNewVoice" style="background: white; color: #06b6d4; border-color: white;">
-          <template #icon>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z"/>
-            </svg>
-          </template>
-          添加声音
-        </a-button>
+        <div class="action-section">
+          <a-button type="primary" size="large" @click="() => showSmartDiscoveryModal = true" ghost>
+            <template #icon>
+              <SearchOutlined />
+            </template>
+            智能发现
+          </a-button>
+          <a-button type="primary" size="large" @click="$router.push('/characters/create')">
+            <template #icon>
+              <PlusOutlined />
+            </template>
+            新建角色
+          </a-button>
+        </div>
       </div>
     </div>
 
@@ -1064,13 +1058,13 @@
 </template>
 
 <script setup>
-import { ref, computed, reactive, onMounted, watch } from 'vue'
+import { ref, computed, reactive, onMounted, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { charactersAPI } from '@/api'
 import { API_BASE_URL } from '@/api/config'
 import { bookAPI, chapterAPI } from '../api/v2.js'
-import { ArrowLeftOutlined } from '@ant-design/icons-vue'
+import { ArrowLeftOutlined, PlusOutlined, UserOutlined, SearchOutlined } from '@ant-design/icons-vue'
 
 // 路由
 const router = useRouter()
@@ -1420,19 +1414,21 @@ const selectVoice = (voice) => {
   showDetailDrawer.value = true
 }
 
-const playVoice = (voice) => {
-  if (voice.audioUrl || voice.sampleAudioUrl || voice.referenceAudioUrl) {
-    // 优先使用样本音频，然后是参考音频
+// 播放音频的安全处理
+const playVoice = async (voice) => {
+  if (!voice || (!voice.audioUrl && !voice.sampleAudioUrl && !voice.referenceAudioUrl)) {
+    message.warning('该声音暂无可播放的音频样本')
+    return
+  }
+
+  try {
     const audioUrl = voice.sampleAudioUrl || voice.audioUrl || voice.referenceAudioUrl
     const audio = new Audio(audioUrl)
-    audio.play().then(() => {
-      message.success(`正在播放：${voice.name}`)
-    }).catch(error => {
-      console.error('播放音频失败:', error)
-      message.error('播放音频失败，请检查音频文件是否存在')
-    })
-  } else {
-    message.warning('该声音暂无可播放的音频样本')
+    await audio.play()
+    message.success(`正在播放：${voice.name}`)
+  } catch (error) {
+    console.error('播放音频失败:', error)
+    message.error('播放音频失败，请检查音频文件是否存在')
   }
 }
 
@@ -1575,24 +1571,31 @@ const beforeImportUpload = (file) => {
 
 // 智能发现方法
 const closeSmartDiscovery = () => {
-  showSmartDiscoveryModal.value = false
-  resetDiscoveryState()
+  nextTick(() => {
+    showSmartDiscoveryModal.value = false
+    resetDiscoveryState()
+  })
 }
 
+// 重置状态的安全处理
 const resetDiscoveryState = () => {
-  discoveryStep.value = 0
-  smartDiscovery.selectedBook = null
-  smartDiscovery.selectedChapters = []
-  smartDiscovery.analysisProgress = 0
-  smartDiscovery.analysisComplete = false
-  smartDiscovery.discoveredCharacters = []
-  smartDiscovery.configuredCharacters = []
-  smartDiscovery.creationResults = []
-  booksData.value = []
-  chaptersData.value = []
-  newCharacters.value = []
-  selectedConfigs.value = []
-  createdCharacters.value = []
+  nextTick(() => {
+    discoveryStep.value = 0
+    if (smartDiscovery) {
+      smartDiscovery.selectedBook = null
+      smartDiscovery.selectedChapters = []
+      smartDiscovery.analysisProgress = 0
+      smartDiscovery.analysisComplete = false
+      smartDiscovery.discoveredCharacters = []
+      smartDiscovery.configuredCharacters = []
+      smartDiscovery.creationResults = []
+    }
+    booksData.value = []
+    chaptersData.value = []
+    newCharacters.value = []
+    selectedConfigs.value = []
+    createdCharacters.value = []
+  })
 }
 
 const nextStep = () => {
@@ -2147,19 +2150,33 @@ const playCurrentAudio = () => {
 }
 
 // 监听选择变化
-watch(selectedChapters, updateChapterCheckState)
-watch(selectedConfigs, updateConfigCheckState)
+watch([selectedChapters, selectedConfigs], () => {
+  nextTick(() => {
+    updateChapterCheckState()
+    updateConfigCheckState()
+  })
+})
 
 // 监听智能发现模态框打开
-watch(showSmartDiscoveryModal, (newVal) => {
+watch(showSmartDiscoveryModal, async (newVal) => {
   if (newVal) {
-    loadBooks()
+    try {
+      await loadBooks()
+    } catch (error) {
+      console.error('加载书籍列表失败:', error)
+      message.error('加载书籍列表失败，请重试')
+    }
   }
 })
 
 // 组件挂载时加载数据
-onMounted(() => {
-  loadVoiceLibrary()
+onMounted(async () => {
+  try {
+    await loadVoiceLibrary()
+  } catch (error) {
+    console.error('初始化加载失败:', error)
+    message.error('加载数据失败，请刷新页面重试')
+  }
 })
 
 // 智能发现相关数据
@@ -2261,35 +2278,49 @@ const goBack = () => {
 }
 
 .page-header {
-  background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
-  border-radius: 16px;
+  margin-bottom: 24px;
   padding: 32px;
-  margin-bottom: 32px;
-  box-shadow: 0 8px 25px -3px rgba(6, 182, 212, 0.3), 0 4px 6px -2px rgba(6, 182, 212, 0.05);
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(102, 126, 234, 0.3);
+}
+
+.header-content {
   display: flex;
   justify-content: space-between;
-  align-items: flex-end;
+  align-items: flex-start;
 }
 
-.header-content h1 {
-  margin: 0 0 8px 0;
-  color: white;
-  font-size: 32px;
-  font-weight: 800;
-  letter-spacing: -0.025em;
-}
-
-.header-content p {
-  margin: 0;
-  color: rgba(255, 255, 255, 0.9);
-  font-size: 16px;
-  font-weight: 400;
-}
-
-.header-actions {
+.title-section {
   display: flex;
-  gap: 12px;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.page-title {
+  display: flex;
   align-items: center;
+  margin: 0;
+  font-size: 28px;
+  font-weight: 600;
+  color: white;
+}
+
+.title-icon {
+  margin-right: 12px;
+  color: #ffffff;
+}
+
+.page-description {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.action-section {
+  display: flex;
+  gap: 16px;
 }
 
 .filter-controls {
@@ -3204,11 +3235,5 @@ const goBack = () => {
   color: white;
   background: rgba(255, 255, 255, 0.1);
   border-color: rgba(255, 255, 255, 0.5);
-}
-
-.title-with-back {
-  display: flex;
-  align-items: flex-start;
-  gap: 16px;
 }
 </style>
