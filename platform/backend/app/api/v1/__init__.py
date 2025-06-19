@@ -16,6 +16,7 @@ from .presets import router as presets_router
 from .projects import router as projects_router
 from .characters import router as characters_router
 from .audio_library import router as audio_library_router
+from .audio_sync import router as audio_sync_router
 from .intelligent_analysis import router as intelligent_analysis_router
 from .content_preparation import router as content_preparation_router
 from .novel_reader import router as novel_reader_router
@@ -87,6 +88,7 @@ api.include_router(presets_router, tags=["Presets"])
 # api.include_router(projects_router, tags=["Projects"])  # 🚀 已迁移到novel_reader，暂时注释避免冲突
 api.include_router(characters_router, tags=["Characters"])
 api.include_router(audio_library_router, tags=["Audio Library"])
+api.include_router(audio_sync_router, tags=["Audio Sync"])
 api.include_router(novel_reader_router, tags=["Novel Reader"])
 api.include_router(voice_clone_router, tags=["Voice Clone"])
 api.include_router(monitor_router, tags=["System Monitor"])

@@ -678,7 +678,7 @@ export const audioAPI = {
   // 获取统计信息
   getStats: () => apiClient.get('/audio-library/stats'),
   
-  // 同步音频文件
+  // 同步音频文件（旧版，保持兼容性）
   syncFiles: () => apiClient.post('/audio-library/sync'),
   
   // 下载单个音频文件
@@ -702,6 +702,89 @@ export const audioAPI = {
     const formData = new FormData()
     formData.append('is_favorite', isFavorite)
     return apiClient.put(`/audio-library/files/${fileId}/favorite`, formData)
+  }
+}
+
+// 音频同步API（新版增强功能）
+export const audioSyncAPI = {
+  // 同步所有音频文件
+  syncAll: (fullScan = false, background = false) => {
+    const params = new URLSearchParams()
+    if (fullScan) params.append('full_scan', 'true')
+    if (background) params.append('background', 'true')
+    
+    const queryString = params.toString()
+    const url = queryString ? `/audio-sync/sync-all?${queryString}` : '/audio-sync/sync-all'
+    
+    return apiClient.post(url)
+  },
+  
+  // 同步音频库文件
+  syncAudioLibrary: (fullScan = false) => {
+    const params = new URLSearchParams()
+    if (fullScan) params.append('full_scan', 'true')
+    
+    const queryString = params.toString()
+    const url = queryString ? `/audio-sync/sync-audio-library?${queryString}` : '/audio-sync/sync-audio-library'
+    
+    return apiClient.post(url)
+  },
+  
+  // 同步环境音文件
+  syncEnvironmentSounds: (fullScan = false) => {
+    const params = new URLSearchParams()
+    if (fullScan) params.append('full_scan', 'true')
+    
+    const queryString = params.toString()
+    const url = queryString ? `/audio-sync/sync-environment-sounds?${queryString}` : '/audio-sync/sync-environment-sounds'
+    
+    return apiClient.post(url)
+  },
+  
+  // 验证文件完整性
+  verifyIntegrity: () => apiClient.get('/audio-sync/verify-integrity'),
+  
+  // 清理孤立记录
+  cleanupOrphaned: (dryRun = true) => {
+    const params = new URLSearchParams()
+    if (!dryRun) params.append('dry_run', 'false')
+    
+    const queryString = params.toString()
+    const url = queryString ? `/audio-sync/cleanup-orphaned?${queryString}` : '/audio-sync/cleanup-orphaned'
+    
+    return apiClient.post(url)
+  },
+  
+  // 获取同步状态
+  getStatus: () => apiClient.get('/audio-sync/status'),
+  
+  // 调度器管理
+  scheduler: {
+    // 获取调度器状态
+    getStatus: () => apiClient.get('/audio-sync/scheduler/status'),
+    
+    // 启动调度器
+    start: () => apiClient.post('/audio-sync/scheduler/start'),
+    
+    // 停止调度器
+    stop: () => apiClient.post('/audio-sync/scheduler/stop'),
+    
+    // 手动触发同步
+    triggerSync: (fullScan = false) => {
+      const params = new URLSearchParams()
+      if (fullScan) params.append('full_scan', 'true')
+      
+      const queryString = params.toString()
+      const url = queryString ? `/audio-sync/scheduler/trigger?${queryString}` : '/audio-sync/scheduler/trigger'
+      
+      return apiClient.post(url)
+    },
+    
+    // 暂停任务
+    pauseJob: (jobId) => apiClient.post(`/audio-sync/scheduler/jobs/${jobId}/pause`),
+    
+    // 恢复任务
+    resumeJob: (jobId) => apiClient.post(`/audio-sync/scheduler/jobs/${jobId}/resume`)
   }
 }
 

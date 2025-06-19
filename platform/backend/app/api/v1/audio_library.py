@@ -279,17 +279,41 @@ async def toggle_favorite(
         db.rollback()
         raise HTTPException(status_code=500, detail=f"切换收藏状态失败: {str(e)}")
 
-@router.post("/sync", summary="同步音频文件到数据库")
-async def sync_audio_files(
+@router.post("/sync", summary="同步音频文件到数据库（Legacy）")
+async def sync_audio_files_legacy(
     db: Session = Depends(get_db)
 ):
     """
-    扫描音频目录，将现有文件同步到数据库
+    旧版音频文件同步功能（保持兼容性）
+    推荐使用 /audio-sync/ 下的新版同步API
     """
     try:
+        # 导入新的同步服务
+        from app.services.audio_sync_service import audio_sync_service
+        
+        # 使用新服务进行同步
+        result = audio_sync_service.sync_audio_files(db, full_scan=False)
+        
+        return {
+            "success": True,
+            "message": f"音频文件同步完成（使用增强版同步服务）",
+            "synced_count": result.new_files + result.updated_files,
+            "skipped_count": result.scanned_files - result.new_files - result.updated_files,
+            "details": {
+                "scanned_files": result.scanned_files,
+                "new_files": result.new_files,
+                "updated_files": result.updated_files,
+                "orphaned_records": result.orphaned_records,
+                "errors": result.errors
+            }
+        }
+        
+    except ImportError:
+        # 如果新服务不可用，回退到旧版逻辑
+        logger.warning("新版同步服务不可用，回退到旧版同步逻辑")
+        
         if not os.path.exists(AUDIO_DIR):
             logger.warning(f"音频目录不存在: {AUDIO_DIR}")
-            # 创建目录而不是抛出异常
             os.makedirs(AUDIO_DIR, exist_ok=True)
             return {
                 "success": True,
@@ -338,21 +362,8 @@ async def sync_audio_files(
             
             if filename.startswith('segment_'):
                 audio_type = 'segment'
-                # 尝试从文件名解析段落信息
-                parts = filename.split('_')
-                if len(parts) >= 2 and parts[1].isdigit():
-                    segment_order = int(parts[1])
-                    # 🚀 新架构：不再查询TextSegment，直接留空
-                    # segment = db.query(TextSegment).filter(
-                    #     TextSegment.paragraph_index == segment_order
-                    # ).first()
-                    # if segment:
-                    #     segment_id = segment.id
-                    #     project_id = segment.project_id
-                    pass  # 同步功能已废弃，新架构不依赖旧文件
             elif filename.startswith('project_'):
                 audio_type = 'project'
-                # 尝试从文件名解析项目ID
                 parts = filename.split('_')
                 if len(parts) >= 2 and parts[1].isdigit():
                     project_id = int(parts[1])
@@ -384,7 +395,7 @@ async def sync_audio_files(
         
         return {
             "success": True,
-            "message": f"音频文件同步完成",
+            "message": f"音频文件同步完成（旧版）",
             "synced_count": synced_count,
             "skipped_count": skipped_count
         }
