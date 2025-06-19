@@ -388,59 +388,14 @@ async def delete_project(
         logger.error(f"删除项目失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"删除失败: {str(e)}")
 
-@router.get("/{project_id}/progress")
-async def get_project_progress(
-    project_id: int,
-    db: Session = Depends(get_db)
-):
-    """获取项目进度"""
-    try:
-        project = db.query(NovelProject).filter(NovelProject.id == project_id).first()
-        if not project:
-            raise HTTPException(status_code=404, detail="项目不存在")
-        
-        # 🚀 新架构：基于AudioFile统计
-        from app.models import AudioFile
-        audio_files = db.query(AudioFile).filter(
-            AudioFile.project_id == project_id,
-            AudioFile.audio_type == 'segment'
-        ).all()
-        
-        completed_count = len(audio_files)
-        total_count = project.total_segments or 0
-        failed_count = max(0, total_count - completed_count)
-        
-        status_counts = {
-            'completed': completed_count,
-            'failed': failed_count,
-            'pending': 0,  # 新架构没有pending状态
-            'processing': 0  # 新架构没有processing状态
-        }
-        
-        # 计算进度
-        total = project.total_segments or 0
-        processed = project.processed_segments or 0
-        progress = round((processed / total) * 100, 1) if total > 0 else 0
-        
-        return {
-            "success": True,
-            "data": {
-                "project_id": project_id,
-                "status": project.status,
-                "progress": progress,
-                "total_segments": total,
-                "processed_segments": processed,
-                "segment_status_counts": status_counts,
-                "current_segment": project.current_segment,
-                "estimated_completion": project.estimated_completion.isoformat() if project.estimated_completion else None
-            }
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"获取项目进度失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"获取进度失败: {str(e)}")
+# 注释掉projects API的进度端点，统一使用novel_reader API
+# @router.get("/{project_id}/progress")
+# async def get_project_progress(
+#     project_id: int,
+#     db: Session = Depends(get_db)
+# ):
+#     """获取项目进度 - 已弃用，请使用 /api/v1/novel-reader/projects/{project_id}/progress"""
+#     pass
 
 @router.post("/{project_id}/start")
 async def start_project_generation(

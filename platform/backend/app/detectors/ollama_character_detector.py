@@ -24,17 +24,27 @@ class OllamaCharacterDetector:
         
     async def analyze_text(self, text: str, chapter_info: dict) -> dict:
         """使用Ollama分析文本中的角色 - 直接AI分析，简单高效"""
+        # 🔧 使用统一的WebSocket管理器
         try:
-            from ...utils.websocket_manager import send_analysis_progress
+            from app.websocket.manager import websocket_manager
+            
+            async def send_analysis_progress(session_id, progress, message):
+                await websocket_manager.publish_to_topic(
+                    f"analysis_session_{session_id}",
+                    {
+                        "type": "progress_update",
+                        "data": {
+                            "progress": progress,
+                            "message": message,
+                            "session_id": session_id
+                        }
+                    }
+                )
         except ImportError:
-            # 如果相对导入失败，尝试绝对导入
-            try:
-                from app.utils.websocket_manager import send_analysis_progress
-            except ImportError:
-                # 如果都失败，定义一个mock函数
-                async def send_analysis_progress(session_id, progress, message):
-                    logger.info(f"[进度 {progress}%] {message}")
-                logger.warning("无法导入websocket_manager，使用日志记录进度")
+            # 如果导入失败，定义一个mock函数
+            async def send_analysis_progress(session_id, progress, message):
+                logger.info(f"[进度 {progress}%] {message}")
+            logger.warning("无法导入websocket_manager，使用日志记录进度")
         
         start_time = time.time()
         session_id = chapter_info.get('session_id', chapter_info['chapter_id'])
@@ -116,6 +126,13 @@ class OllamaCharacterDetector:
 - 所有"某某说："、"某某道："、"某某低声道："等描述性动作文字都是旁白
 - 只有引号""内的实际对话内容才是角色发言
 - 纯叙述文字（如"只见山势险峻"、"此时天色已晚"）都是旁白
+
+**🎯 角色名称一致性要求（核心）**：
+- 同一角色必须使用统一的名称，避免多种称呼
+- 优先使用具体人名（如"鲁元公主"），避免泛指称呼（如"女子"、"少女"、"小姐"）
+- 如果文中同时出现"鲁元公主"和"女子"，统一使用"鲁元公主"
+- 如果文中同时出现"林渊"和"那人"，统一使用"林渊"
+- 确保characters列表和segments中的speaker完全一致
 
 输出格式（严格JSON）：
 {{

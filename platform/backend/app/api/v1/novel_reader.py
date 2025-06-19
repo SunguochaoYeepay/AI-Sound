@@ -441,15 +441,17 @@ async def get_generation_progress(
             failed = 0
         
         # 记录调试信息
-        logger.debug(f"项目 {project_id} 进度查询: 状态={project.status}, 总数={total}, 完成={processed}, 进度={progress_percentage}%")
+        logger.info(f"🔍 项目 {project_id} 进度查询: 状态={project.status}, 总数={total}, 完成={processed}, 进度={progress_percentage}%")
+        logger.info(f"🔍 AudioFile实际数量: {audio_count}, 项目total_segments: {project.total_segments}, 项目processed_segments: {project.processed_segments}")
         
-        return {
+        progress_data = {
             "success": True,
             "data": {
                 "project_id": project.id,
                 "status": project.status,
                 "progress_percentage": progress_percentage,
                 "current_segment": project.current_segment,
+                "current_processing": f"当前段落: {project.current_segment}" if project.current_segment else "",
                 "segments": {
                     "total": total,
                     "completed": processed,
@@ -464,10 +466,14 @@ async def get_generation_progress(
                 "debug_info": {
                     "raw_total_segments": project.total_segments,
                     "raw_processed_segments": project.processed_segments,
+                    "audio_file_count": audio_count,
                     "calculated_progress": progress_percentage
                 }
             }
         }
+        
+        logger.info(f"🔍 返回进度数据: {progress_data}")
+        return progress_data
         
     except HTTPException:
         raise
@@ -546,23 +552,39 @@ async def start_project_generation(
                 detail="智能准备结果中没有合成段落数据，请重新进行智能准备"
             )
         
-        # 根据状态决定是否重置进度
-        if project.status in ['completed', 'processing']:
-            # 完全重置：已完成或正在处理中的项目
-            project.processed_segments = 0
-            project.current_segment = 0
-            project.started_at = None
-            project.completed_at = None
-        elif project.status == 'failed':
-            # 部分重置：失败项目重置时间但保留进度（用户可能想重试失败的部分）
-            project.started_at = None
-            project.completed_at = None
-        # partial_completed 状态不重置，继续上次的进度
+        # 🚀 用户点击重新合成 = 强制重新合成！不要过度智能判断！
+        logger.info(f"[FORCE_RESYNTH] 用户要求重新合成，清理现有数据并重新开始")
         
-        # 更新项目状态
+        # 清理该项目的现有AudioFile（用户要求重新合成就是要从头开始）
+        existing_audio_files = db.query(AudioFile).filter(
+            AudioFile.project_id == project_id,
+            AudioFile.audio_type == 'segment'
+        ).all()
+        
+        logger.info(f"[FORCE_RESYNTH] 删除 {len(existing_audio_files)} 个现有音频文件")
+        for audio_file in existing_audio_files:
+            # 删除物理文件
+            if audio_file.file_path and os.path.exists(audio_file.file_path):
+                try:
+                    os.remove(audio_file.file_path)
+                    logger.debug(f"[FORCE_RESYNTH] 删除音频文件: {audio_file.file_path}")
+                except Exception as e:
+                    logger.warning(f"[FORCE_RESYNTH] 删除音频文件失败: {e}")
+            
+            # 删除数据库记录
+            db.delete(audio_file)
+        
+        db.commit()
+        logger.info(f"[FORCE_RESYNTH] 清理完成，准备重新合成")
+        
+        # 重置项目状态
         project.status = 'processing'
         project.total_segments = len(synthesis_data)
+        project.processed_segments = 0
+        project.current_segment = 0
         project.started_at = datetime.utcnow()
+        project.completed_at = None
+        project.error_message = None
         db.commit()
         
         # 启动后台任务处理音频生成
@@ -1121,6 +1143,129 @@ async def retry_all_failed_segments(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"重试失败段落失败: {str(e)}")
+
+@router.get("/projects/{project_id}/failed-segments")
+async def get_failed_segments(
+    project_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    🚀 获取项目失败段落详情（基于AudioFile缺失判断失败）
+    """
+    try:
+        project = db.query(NovelProject).filter(NovelProject.id == project_id).first()
+        if not project:
+            raise HTTPException(status_code=404, detail="项目不存在")
+        
+        if not project.book_id:
+            raise HTTPException(status_code=400, detail="项目未关联书籍，无法获取失败段落信息")
+        
+        # 🚀 新架构：获取智能准备结果，确定应该有哪些段落
+        from app.models import AnalysisResult, BookChapter
+        analysis_results = db.query(AnalysisResult).join(
+            BookChapter, AnalysisResult.chapter_id == BookChapter.id
+        ).filter(
+            BookChapter.book_id == project.book_id,
+            AnalysisResult.status == 'completed',
+            AnalysisResult.synthesis_plan.isnot(None)
+        ).all()
+        
+        if not analysis_results:
+            return {
+                "success": True,
+                "data": [],
+                "message": "未找到智能准备结果，无法确定失败段落"
+            }
+        
+        # 收集所有应该合成的段落信息
+        expected_segments = {}  # segment_id -> segment_data
+        for result in analysis_results:
+            if result.synthesis_plan and 'synthesis_plan' in result.synthesis_plan:
+                plan_segments = result.synthesis_plan['synthesis_plan']
+                for segment_data in plan_segments:
+                    segment_id = segment_data.get('segment_id')
+                    if segment_id:
+                        expected_segments[segment_id] = {
+                            "segment_id": segment_id,
+                            "text": segment_data.get('text', ''),
+                            "speaker": segment_data.get('speaker', ''),
+                            "voice_id": segment_data.get('voice_id'),
+                            "chapter_id": result.chapter_id,
+                            "chapter_number": result.chapter.chapter_number if result.chapter else None,
+                            "parameters": segment_data.get('parameters', {})
+                        }
+        
+        # 🚀 新架构：查找已存在的AudioFile段落ID
+        existing_audio_files = db.query(AudioFile).filter(
+            AudioFile.project_id == project_id,
+            AudioFile.audio_type == 'segment',
+            AudioFile.paragraph_index.isnot(None)
+        ).all()
+        
+        existing_segments = set(af.paragraph_index for af in existing_audio_files)
+        
+        # 计算失败（缺失）的段落
+        failed_segments = []
+        for segment_id, segment_info in expected_segments.items():
+            if segment_id not in existing_segments:
+                # 判断失败原因
+                error_type = "synthesis_failed"
+                error_message = "音频合成失败"
+                
+                # 检查声音配置
+                voice_id = segment_info.get('voice_id')
+                if not voice_id:
+                    error_type = "voice_not_configured"
+                    error_message = "未配置声音档案"
+                else:
+                    # 检查声音档案是否存在
+                    voice = db.query(VoiceProfile).filter(VoiceProfile.id == voice_id).first()
+                    if not voice:
+                        error_type = "voice_not_found"
+                        error_message = f"声音档案不存在 (ID: {voice_id})"
+                    else:
+                        # 检查声音文件是否完整
+                        file_validation = voice.validate_files()
+                        if not file_validation['valid']:
+                            error_type = "voice_files_missing"
+                            error_message = f"声音文件缺失: {', '.join(file_validation['missing_files'])}"
+                
+                failed_segments.append({
+                    "segment_id": segment_id,
+                    "index": segment_id,
+                    "speaker": segment_info.get('speaker', '未知角色'),
+                    "text": segment_info.get('text', '')[:100] + ("..." if len(segment_info.get('text', '')) > 100 else ""),
+                    "full_text": segment_info.get('text', ''),
+                    "voice_id": voice_id,
+                    "chapter_id": segment_info.get('chapter_id'),
+                    "chapter_number": segment_info.get('chapter_number'),
+                    "error_type": error_type,
+                    "error_message": error_message,
+                    "parameters": segment_info.get('parameters', {}),
+                    "retry_available": True
+                })
+        
+        # 按段落ID排序
+        failed_segments.sort(key=lambda x: x['segment_id'])
+        
+        logger.info(f"项目 {project_id} 失败段落查询: 预期{len(expected_segments)}个，已完成{len(existing_segments)}个，失败{len(failed_segments)}个")
+        
+        return {
+            "success": True,
+            "data": failed_segments,
+            "summary": {
+                "total_expected": len(expected_segments),
+                "completed": len(existing_segments),
+                "failed": len(failed_segments),
+                "project_status": project.status
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取失败段落失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取失败段落失败: {str(e)}")
 
 @router.get("/projects/{project_id}/download-partial")
 async def download_partial_audio(

@@ -4,12 +4,12 @@ from app.models import NovelProject, AudioFile
 from collections import Counter
 
 db = next(get_db())
-project = db.query(NovelProject).filter(NovelProject.id == 24).first()
+project = db.query(NovelProject).filter(NovelProject.id == 38).first()
 print(f"项目状态: {project.status}")
 
 # 新架构：基于AudioFile统计
 audio_files = db.query(AudioFile).filter(
-    AudioFile.project_id == 24,
+    AudioFile.project_id == 38,
     AudioFile.audio_type == 'segment'
 ).all()
 

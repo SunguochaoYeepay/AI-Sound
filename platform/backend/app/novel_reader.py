@@ -1148,6 +1148,10 @@ async def process_audio_generation_from_synthesis_plan(
                             except Exception as e:
                                 logger.error(f"[NEW_ARCH] 获取章节信息失败: {e}")
                         
+                        # 🚀 注释掉防重复检查：用户点击重新合成时已清理了所有现有文件
+                        # 重新合成时不需要检查重复，因为启动时已经清理过了
+                        logger.debug(f"[SYNTHESIS_PLAN] 开始合成段落 {segment_id}，角色: {speaker}")
+                        
                         # 保存AudioFile记录（新架构：包含完整合成信息）
                         audio_file = AudioFile(
                             filename=audio_filename,
@@ -1203,6 +1207,12 @@ async def process_audio_generation_from_synthesis_plan(
         for i, segment in enumerate(synthesis_data):
             logger.info(f"[SYNTHESIS_PLAN] 处理进度: {i+1}/{len(synthesis_data)}")
             
+            # 🔧 实时统计已完成段落数（基于当前project状态）
+            current_completed = db.query(AudioFile).filter(
+                AudioFile.project_id == project_id,
+                AudioFile.audio_type == 'segment'
+            ).count()
+            
             # 发送段落开始处理的进度更新到前端
             try:
                 await websocket_manager.publish_to_topic(
@@ -1214,7 +1224,7 @@ async def process_audio_generation_from_synthesis_plan(
                             "project_id": project_id,
                             "status": "running",
                             "progress": round((i / len(synthesis_data)) * 100),
-                            "completed_segments": completed_count,
+                            "completed_segments": current_completed,
                             "total_segments": len(synthesis_data),
                             "failed_segments": len(failed_segments),
                             "current_processing": f"正在处理段落 {i+1} - {segment.get('speaker', '未知角色')}: {segment.get('text', '')[:50]}...",
@@ -1228,6 +1238,35 @@ async def process_audio_generation_from_synthesis_plan(
             try:
                 result = await process_segment(segment, i)
                 results.append(result)
+                
+                # 🔧 每完成一个段落就实时发送进度更新
+                if result and not isinstance(result, Exception) and "error" not in result:
+                    updated_completed = db.query(AudioFile).filter(
+                        AudioFile.project_id == project_id,
+                        AudioFile.audio_type == 'segment'
+                    ).count()
+                    
+                    try:
+                        await websocket_manager.publish_to_topic(
+                            f"synthesis_{project_id}",
+                            {
+                                "type": "progress_update",
+                                "data": {
+                                    "type": "synthesis",
+                                    "project_id": project_id,
+                                    "status": "running",
+                                    "progress": round(((i + 1) / len(synthesis_data)) * 100),
+                                    "completed_segments": updated_completed,
+                                    "total_segments": len(synthesis_data),
+                                    "failed_segments": len(failed_segments),
+                                    "current_processing": f"已完成段落 {i+1} - {segment.get('speaker', '未知角色')}",
+                                    "timestamp": datetime.utcnow().isoformat()
+                                }
+                            }
+                        )
+                    except Exception as ws_error:
+                        logger.error(f"[SYNTHESIS_PLAN] 完成进度推送失败: {str(ws_error)}")
+                        
             except Exception as e:
                 logger.error(f"[SYNTHESIS_PLAN] 段落 {i+1} 处理异常: {str(e)}")
                 results.append(e)
@@ -1249,40 +1288,34 @@ async def process_audio_generation_from_synthesis_plan(
                     "timestamp": datetime.utcnow().isoformat()
                 })
             elif result:
+                # 重新合成模式：所有成功的结果都计数（不存在"existing"状态）
                 completed_count += 1
                 output_files.append(result)
-                logger.info(f"[SYNTHESIS_PLAN] 段落 {result['segment_id']} 完成")
-                
-                # 实时更新项目的 processed_segments
-                project.processed_segments = completed_count
-                project.current_segment = result['segment_id']
-                
-                # 确保total_segments字段正确设置
-                if not project.total_segments or project.total_segments != len(synthesis_data):
-                    project.total_segments = len(synthesis_data)
-                    logger.info(f"[SYNTHESIS_PLAN] 更新项目总段落数为: {project.total_segments}")
-                
-                db.commit()
-                logger.debug(f"[SYNTHESIS_PLAN] 项目进度更新: {completed_count}/{len(synthesis_data)}")
-                
-                # 发送进度更新到前端
-                await websocket_manager.publish_to_topic(
-                    f"synthesis_{project_id}",
-                    {
-                        "type": "progress_update",
-                        "data": {
-                            "type": "synthesis",
-                            "project_id": project_id,
-                            "status": "running",
-                            "progress": round((completed_count / len(synthesis_data)) * 100),
-                            "completed_segments": completed_count,
-                            "total_segments": len(synthesis_data),
-                            "failed_segments": len(failed_segments),
-                            "current_processing": f"段落 {result['segment_id']} 合成完成 - {result.get('speaker', '未知角色')}",
-                            "timestamp": datetime.utcnow().isoformat()
-                        }
-                    }
-                )
+                logger.info(f"[SYNTHESIS_PLAN] 段落 {result['segment_id']} 合成完成")
+        
+        # 🚀 完善进度统计：基于实际AudioFile数量而非当前批次
+        actual_audio_count = db.query(AudioFile).filter(
+            AudioFile.project_id == project_id,
+            AudioFile.audio_type == 'segment'
+        ).count()
+        
+        # 🚀 智能total_segments设置：取当前智能准备结果和实际AudioFile数量的最大值
+        expected_total = len(synthesis_data)
+        actual_total = actual_audio_count
+        final_total = max(expected_total, actual_total)
+        
+        # 更新项目进度（基于实际数据）
+        project.total_segments = final_total
+        project.processed_segments = actual_total
+        
+        if output_files:
+            # 设置当前处理的最后一个段落
+            last_result = [r for r in output_files if r.get('segment_id')][-1] if output_files else None
+            if last_result:
+                project.current_segment = last_result['segment_id']
+        
+        logger.info(f"[SYNTHESIS_PLAN] 智能进度统计: 预期{expected_total}个，实际{actual_total}个，最终设置{final_total}个")
+        db.commit()
         
         logger.info(f"[SYNTHESIS_PLAN] 处理完成: 成功 {completed_count}/{len(synthesis_data)} 个段落")
         
@@ -1296,21 +1329,19 @@ async def process_audio_generation_from_synthesis_plan(
             except Exception as e:
                 logger.error(f"[SYNTHESIS_PLAN] 音频合并失败: {str(e)}")
         
-        # 更新项目状态
-        if completed_count == len(synthesis_data):
+        # 🚀 基于实际AudioFile数量更新项目状态
+        if actual_total >= expected_total:
             project.status = 'completed'
-        elif completed_count > 0:
+        elif actual_total > 0:
             project.status = 'partial_completed'
         else:
             project.status = 'failed'
         
-        # 确保数据一致性
-        project.total_segments = len(synthesis_data)
-        project.processed_segments = completed_count
+        # 🚀 最终数据一致性确认（使用之前计算的final_total）
         project.completed_at = datetime.utcnow()
         project.final_audio_path = final_audio_path
         
-        logger.info(f"[SYNTHESIS_PLAN] 最终项目状态: {project.status}, 进度: {completed_count}/{len(synthesis_data)}")
+        logger.info(f"[SYNTHESIS_PLAN] 最终项目状态: {project.status}, 实际进度: {actual_total}/{final_total}")
         
         if failed_segments:
             # 生成详细的错误摘要
@@ -1319,7 +1350,8 @@ async def process_audio_generation_from_synthesis_plan(
         
         db.commit()
         
-        # 发送最终状态更新到前端
+        # 🚀 发送基于实际数据的最终状态更新到前端
+        progress_percentage = round((actual_total / final_total) * 100) if final_total > 0 else 0
         await websocket_manager.publish_to_topic(
             f"synthesis_{project_id}",
             {
@@ -1328,10 +1360,10 @@ async def process_audio_generation_from_synthesis_plan(
                     "type": "synthesis",
                     "project_id": project_id,
                     "status": project.status,
-                    "progress": 100 if project.status == 'completed' else round((completed_count / len(synthesis_data)) * 100),
-                    "completed_segments": completed_count,
-                    "total_segments": len(synthesis_data),
-                    "failed_segments": len(failed_segments),
+                    "progress": progress_percentage,
+                    "completed_segments": actual_total,
+                    "total_segments": final_total,
+                    "failed_segments": max(0, final_total - actual_total),
                     "current_processing": f"合成{'完成' if project.status == 'completed' else '结束'}",
                     "final_audio_path": final_audio_path,
                     "timestamp": datetime.utcnow().isoformat()
@@ -1339,7 +1371,7 @@ async def process_audio_generation_from_synthesis_plan(
             }
         )
         
-        # 记录完成日志
+        # 🚀 记录基于实际数据的完成日志
         await log_system_event(
             db=db,
             level="info",
@@ -1347,11 +1379,14 @@ async def process_audio_generation_from_synthesis_plan(
             module="novel_reader",
             details={
                 "project_id": project_id,
-                "total_segments": len(synthesis_data),
-                "completed_segments": completed_count,
+                "expected_segments": expected_total,
+                "actual_segments": actual_total,
+                "final_total_segments": final_total,
+                "new_generated": completed_count,
                 "failed_segments": len(failed_segments),
                 "final_audio_path": final_audio_path,
-                "data_source": "智能准备结果"
+                "data_source": "智能准备结果",
+                "status": project.status
             }
         )
         

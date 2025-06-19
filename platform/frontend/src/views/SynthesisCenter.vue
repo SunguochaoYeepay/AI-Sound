@@ -59,7 +59,7 @@
       @showFailureDetails="handleShowFailureDetails"
     />
 
-    <!-- 失败详情弹窗 -->
+    <!-- 暂时注释掉失败详情弹窗
     <FailureDetailsModal
       :visible="failureDetailsVisible"
       :failed-segments="failedSegmentsList"
@@ -70,6 +70,7 @@
       @retryFailedSegments="handleRetryFailedSegments"
       @goToPreparation="handleGoToPreparation"
     />
+    -->
   </div>
 </template>
 
@@ -84,7 +85,8 @@ import ProjectHeader from '@/components/synthesis-center/ProjectHeader.vue'
 import ChapterSelector from '@/components/synthesis-center/ChapterSelector.vue'
 import ContentPreview from '@/components/synthesis-center/ContentPreview.vue'
 import ProgressDrawer from '@/components/synthesis-center/ProgressDrawer.vue'
-import FailureDetailsModal from '@/components/synthesis-center/FailureDetailsModal.vue'
+// 暂时注释掉失败详情模态框的导入
+// import FailureDetailsModal from '@/components/synthesis-center/FailureDetailsModal.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -128,6 +130,12 @@ const canStartSynthesis = computed(() => {
 onMounted(async () => {
   await loadProject()
   await loadChapters()
+  
+  // 如果有选中的章节，立即加载智能准备结果
+  if (selectedChapter.value) {
+    await loadPreparationResults()
+  }
+  
   initWebSocket()
 })
 
@@ -168,15 +176,18 @@ const loadSynthesisProgress = async () => {
     const response = await api.getProgress(projectId)
     if (response.data.success && response.data.data) {
       const progressInfo = response.data.data
+      
+      // 🔧 修复：正确解析API返回的数据格式
+      const segments = progressInfo.segments || {}
       progressData.value = {
-        progress: progressInfo.progress || 0,
+        progress: progressInfo.progress_percentage || 0,
         status: progressInfo.status || project.value?.status || 'pending',
-        completed_segments: progressInfo.completed_segments || 0,
-        total_segments: progressInfo.total_segments || 0,
-        failed_segments: progressInfo.failed_segments || 0,
-        current_processing: progressInfo.current_processing || ''
+        completed_segments: segments.completed || 0,
+        total_segments: segments.total || 0,
+        failed_segments: segments.failed || 0,
+        current_processing: progressInfo.current_processing || `当前段落: ${progressInfo.current_segment || 0}`
       }
-      console.log('📊 加载进度信息:', progressData.value)
+      console.log('📊 加载进度信息 (API格式):', progressData.value)
     } else {
       // 如果API返回空数据，从项目统计信息中推导
       if (project.value?.statistics) {
@@ -248,6 +259,7 @@ const loadChapters = async () => {
         
         if (chapters.value.length > 0) {
           selectedChapter.value = chapters.value[0].id
+          console.log('✅ 设置默认选中章节:', selectedChapter.value)
         }
       } else {
         console.log('No chapters found in response')
@@ -283,26 +295,42 @@ const handleChapterSelect = async (chapterId) => {
 const loadPreparationResults = async () => {
   if (!project.value?.book_id) {
     console.warn('项目未关联书籍，无法加载智能准备结果')
+    preparationResults.value = null
     return
   }
   
   if (!selectedChapter.value) {
     console.warn('请先选择要合成的章节')
+    preparationResults.value = null
     return
   }
   
   contentLoading.value = true
+  console.log(`🔍 开始加载章节 ${selectedChapter.value} 的智能准备结果...`)
+  
   try {
     // 只获取选中章节的智能准备结果
     const response = await apiClient.get(`/books/${project.value.book_id}/analysis-results?chapter_ids=${selectedChapter.value}`)
+    console.log('📊 API响应:', response.data)
     
     if (response.data.success) {
-      // 🔧 修复：检查是否有实际的准备结果数据
-      if (response.data.data && response.data.data.length > 0) {
-        preparationResults.value = response.data
-        console.log('智能准备结果加载成功:', preparationResults.value)
+      // 检查是否有实际的准备结果数据
+      if (response.data.data && Array.isArray(response.data.data) && response.data.data.length > 0) {
+        // 进一步检查数据是否包含有效的合成计划
+        const hasValidData = response.data.data.some(chapter => 
+          chapter.synthesis_json && 
+          chapter.synthesis_json.synthesis_plan && 
+          chapter.synthesis_json.synthesis_plan.length > 0
+        )
+        
+        if (hasValidData) {
+          preparationResults.value = response.data
+          console.log('✅ 智能准备结果加载成功，包含有效数据:', preparationResults.value)
+        } else {
+          preparationResults.value = null
+          console.log('⚠️ 智能准备结果数据为空或无效，将显示准备按钮')
+        }
       } else {
-        // 🔧 修复：如果没有数据，设置为null以触发显示智能准备按钮
         preparationResults.value = null
         console.log('📋 该章节暂无智能准备结果，将显示准备按钮')
       }
@@ -312,10 +340,10 @@ const loadPreparationResults = async () => {
     }
   } catch (error) {
     console.error('加载智能准备结果失败:', error)
-    // 🔧 修复：异常时也设置为null
     preparationResults.value = null
   } finally {
     contentLoading.value = false
+    console.log(`🔍 章节 ${selectedChapter.value} 的准备结果加载完成，preparationResults:`, preparationResults.value)
   }
 }
 

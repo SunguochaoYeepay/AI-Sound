@@ -479,10 +479,12 @@ class ChapterAnalysisService:
                     char_with_voice['voice_type'] = assigned_voice.type
                     char_with_voice['voice_description'] = assigned_voice.description
                 else:
+                    # 🔧 关键修复：即使没有分配声音，也必须保留角色！
                     char_with_voice['voice_id'] = None
                     char_with_voice['voice_name'] = '未分配'
                     char_with_voice['voice_type'] = 'unknown'
                     char_with_voice['voice_description'] = ''
+                    logger.warning(f"角色 '{char_name}' 未能分配声音，但保留在characters列表中")
                 
                 assigned_characters.append(char_with_voice)
             
@@ -556,6 +558,31 @@ class ChapterAnalysisService:
                     plan_item['voice_id'] = None
                     plan_item['voice_name'] = '未分配'
             
+            # 🔧 数据一致性检查和修复
+            character_names = {char['name'] for char in characters_with_voices}
+            synthesis_speakers = {item.get('speaker') for item in synthesis_plan}
+            
+            # 找出在synthesis_plan中但不在characters中的角色
+            missing_characters = synthesis_speakers - character_names
+            if missing_characters:
+                logger.warning(f"发现不一致：synthesis_plan中有角色但characters中缺失: {missing_characters}")
+                
+                # 自动添加缺失的角色到characters列表（使用默认配置）
+                for missing_char in missing_characters:
+                    if missing_char and missing_char.strip():  # 过滤空值
+                        default_char = {
+                            'name': missing_char,
+                            'voice_id': None,
+                            'voice_name': '未分配',
+                            'voice_type': 'unknown',
+                            'frequency': 1,
+                            'gender': 'unknown',
+                            'personality': 'calm',
+                            'is_main_character': False
+                        }
+                        characters_with_voices.append(default_char)
+                        logger.info(f"自动添加缺失角色: {missing_char}")
+            
             # 构建最终的合成格式
             synthesis_format = {
                 'project_info': aggregated_data['project_info'],
@@ -566,6 +593,12 @@ class ChapterAnalysisService:
                     'total_characters': len(characters_with_voices),
                     'assigned_voices': len([c for c in characters_with_voices if c.get('voice_id')]),
                     'unassigned_characters': len([c for c in characters_with_voices if not c.get('voice_id')])
+                },
+                'data_consistency_check': {
+                    'characters_count': len(character_names),
+                    'synthesis_speakers_count': len(synthesis_speakers),
+                    'missing_characters_found': len(missing_characters),
+                    'missing_characters': list(missing_characters) if missing_characters else []
                 }
             }
             

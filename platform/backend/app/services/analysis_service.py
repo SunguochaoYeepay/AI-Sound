@@ -14,15 +14,16 @@ from sqlalchemy import and_, or_
 from ..models import Book, BookChapter, NovelProject, AnalysisSession, AnalysisResult
 # from .dify_client import DifyClient  # 🚀 已删除 - 文件不存在
 from ..exceptions import ServiceException, DifyAPIException
-from ..utils.websocket_manager import ProgressWebSocketManager
+# 使用统一的WebSocket管理器
+from ..websocket.manager import websocket_manager
 
 
 class AnalysisSessionManager:
     """分析会话管理器"""
     
-    def __init__(self, db: Session, websocket_manager: ProgressWebSocketManager):
+    def __init__(self, db: Session, ws_manager=None):
         self.db = db
-        self.websocket_manager = websocket_manager
+        self.websocket_manager = ws_manager or websocket_manager
         # self.dify_client = DifyClient()  # 🚀 已删除 - 文件不存在
         
     async def create_session(
@@ -252,18 +253,21 @@ class AnalysisSessionManager:
         session.progress = progress
         session.current_processing = message
         
-        # 通过WebSocket发送更新
-        await self.websocket_manager.send_progress_update(
-            session_id=f"analysis_{session.id}",
-            data={
-                "session_id": session.id,
-                "status": session.status,
-                "progress": progress,
-                "completed_tasks": completed,
-                "total_tasks": session.total_tasks,
-                "failed_tasks": session.failed_tasks,
-                "current_processing": message,
-                "timestamp": datetime.utcnow().isoformat()
+        # 🔧 使用统一的WebSocket管理器发送进度更新
+        await self.websocket_manager.publish_to_topic(
+            f"analysis_session_{session.id}",
+            {
+                "type": "progress_update",
+                "data": {
+                    "session_id": session.id,
+                    "status": session.status,
+                    "progress": progress,
+                    "completed_tasks": completed,
+                    "total_tasks": session.total_tasks,
+                    "failed_tasks": session.failed_tasks,
+                    "current_processing": message,
+                    "timestamp": datetime.utcnow().isoformat()
+                }
             }
         )
 
@@ -333,9 +337,9 @@ class AnalysisSessionManager:
 class AnalysisService:
     """智能分析服务主类"""
     
-    def __init__(self, db: Session, websocket_manager: ProgressWebSocketManager = None):
+    def __init__(self, db: Session, ws_manager=None):
         self.db = db
-        self.websocket_manager = websocket_manager or ProgressWebSocketManager()
+        self.websocket_manager = ws_manager or websocket_manager
         self.session_manager = AnalysisSessionManager(db, self.websocket_manager)
     
     async def start_analysis(
