@@ -5,9 +5,7 @@
       <a-page-header sub-title="统一管理所有生成的音频文件">
         <template #title>
           <div class="title-with-back">
-            <a-button type="text" @click="goBack" class="back-btn">
-              <template #icon><ArrowLeftOutlined /></template>
-            </a-button>
+            
             <span>音频资源库</span>
           </div>
         </template>

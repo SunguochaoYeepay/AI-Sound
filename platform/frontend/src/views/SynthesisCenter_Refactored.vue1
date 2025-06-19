@@ -1,0 +1,356 @@
+<template>
+  <div class="synthesis-center">
+    <!-- 项目头部 -->
+    <ProjectHeader 
+      :project="project"
+      :loading="loading"
+      @back="handleBack"
+    />
+
+    <!-- 主要内容区域 -->
+    <div class="main-content">
+      <!-- 章节选择器 -->
+      <ChapterSelector
+        :chapters="chapters"
+        :selected-chapter="selectedChapter"
+        :loading="chaptersLoading"
+        @select="handleChapterSelect"
+      />
+
+      <!-- 内容预览区域 -->
+      <ContentPreview
+        :project="project"
+        :selected-chapter="selectedChapter"
+        :chapter-content="chapterContent"
+        :content-loading="contentLoading"
+        :segments="segments"
+        :preparation-results="preparationResults"
+        :available-chapters="chapters"
+        :synthesis-starting="synthesisStarting"
+        :playing-chapter-audio="playingChapterAudio"
+        @play-segment="handlePlaySegment"
+        @refresh-preparation="handleRefreshPreparation"
+        @trigger-preparation="handleTriggerPreparation"
+        @start-chapter-synthesis="handleStartChapterSynthesis"
+        @play-chapter="handlePlayChapter"
+        @download-chapter="handleDownloadChapter"
+      />
+    </div>
+
+    <!-- 合成控制面板 -->
+    <SynthesisControls
+      :project="project"
+      :selected-chapter="selectedChapter"
+      :synthesis-running="synthesisRunning"
+      @start-synthesis="handleStartSynthesis"
+      @pause-synthesis="handlePauseSynthesis"
+      @cancel-synthesis="handleCancelSynthesis"
+      @retry-synthesis="handleRetrySynthesis"
+      @play-audio="handlePlayAudio"
+      @download-audio="handleDownloadAudio"
+    />
+
+    <!-- 进度监控抽屉 -->
+    <ProgressDrawer
+      :visible="progressDrawerVisible"
+      :progress-data="progressData"
+      :project-status="project?.status"
+      :websocket-status="websocketStatus"
+      @close="handleProgressDrawerClose"
+      @update:visible="progressDrawerVisible = $event"
+    />
+  </div>
+</template>
+
+<script setup>
+import { ref, onMounted, onUnmounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { message } from 'ant-design-vue'
+import api from '@/api'
+import { playSegmentAudio, playChapterAudio } from '@/utils/audioService'
+import ProjectHeader from '@/components/synthesis-center/ProjectHeader.vue'
+import ChapterSelector from '@/components/synthesis-center/ChapterSelector.vue'
+import ContentPreview from '@/components/synthesis-center/ContentPreview.vue'
+import SynthesisControls from '@/components/synthesis-center/SynthesisControls.vue'
+import ProgressDrawer from '@/components/synthesis-center/ProgressDrawer.vue'
+
+const route = useRoute()
+const router = useRouter()
+
+// 基础数据
+const project = ref(null)
+const chapters = ref([])
+const selectedChapter = ref(null)
+const chapterContent = ref(null)
+const segments = ref([])
+const preparationResults = ref(null)
+
+// 加载状态
+const loading = ref(true)
+const chaptersLoading = ref(false)
+const contentLoading = ref(false)
+const synthesisStarting = ref(false)
+const playingChapterAudio = ref(null)
+
+// 合成相关状态
+const synthesisRunning = ref(false)
+const progressDrawerVisible = ref(false)
+const progressData = ref({})
+const websocketStatus = ref('disconnected')
+
+// WebSocket 连接
+let websocket = null
+
+// 初始化
+onMounted(async () => {
+  await loadProject()
+  await loadChapters()
+  initWebSocket()
+})
+
+onUnmounted(() => {
+  if (websocket) {
+    websocket.close()
+  }
+})
+
+// 加载项目信息
+const loadProject = async () => {
+  try {
+    loading.value = true
+    const projectId = route.params.id
+    const response = await api.getProject(projectId)
+    if (response.data.success) {
+      project.value = response.data.data
+    }
+  } catch (error) {
+    console.error('Failed to load project:', error)
+    message.error('加载项目失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+// 加载章节列表（简化版本）
+const loadChapters = async () => {
+  try {
+    chaptersLoading.value = true
+    // 从项目数据中获取章节信息
+    if (project.value?.book) {
+      const chapters_data = project.value.book.chapters || []
+      chapters.value = chapters_data
+      
+      if (chapters.value.length > 0) {
+        selectedChapter.value = chapters.value[0].id
+      }
+    }
+  } catch (error) {
+    console.error('Failed to load chapters:', error)
+    message.error('加载章节失败')
+  } finally {
+    chaptersLoading.value = false
+  }
+}
+
+// 选择章节
+const handleChapterSelect = async (chapterId) => {
+  selectedChapter.value = chapterId
+  contentLoading.value = true
+  
+  // 简化的内容加载
+  try {
+    preparationResults.value = null
+    setTimeout(() => {
+      contentLoading.value = false
+    }, 500)
+  } catch (error) {
+    console.error('Failed to load chapter content:', error)
+    message.error('加载章节内容失败')
+    contentLoading.value = false
+  }
+}
+
+// WebSocket 初始化
+const initWebSocket = () => {
+  const projectId = route.params.id
+  const wsUrl = `ws://localhost:8000/ws/synthesis/${projectId}`
+  
+  try {
+    websocket = new WebSocket(wsUrl)
+    
+    websocket.onopen = () => {
+      websocketStatus.value = 'connected'
+    }
+    
+    websocket.onmessage = (event) => {
+      const data = JSON.parse(event.data)
+      progressData.value = data
+      
+      if (data.status === 'completed') {
+        loadProject()
+        synthesisRunning.value = false
+      }
+    }
+    
+    websocket.onclose = () => {
+      websocketStatus.value = 'disconnected'
+    }
+    
+    websocket.onerror = (error) => {
+      websocketStatus.value = 'error'
+      console.error('WebSocket error:', error)
+    }
+  } catch (error) {
+    console.error('WebSocket initialization failed:', error)
+  }
+}
+
+// 处理函数
+const handleBack = () => {
+  router.push('/novel-reader')
+}
+
+const handleStartSynthesis = async () => {
+  try {
+    synthesisStarting.value = true
+    const response = await api.startGeneration(project.value.id, {
+      chapter_ids: selectedChapter.value ? [selectedChapter.value] : undefined
+    })
+    
+    if (response.data.success) {
+      message.success('开始合成音频')
+      synthesisRunning.value = true
+      progressDrawerVisible.value = true
+    }
+  } catch (error) {
+    console.error('Failed to start synthesis:', error)
+    message.error('启动合成失败')
+  } finally {
+    synthesisStarting.value = false
+  }
+}
+
+const handlePauseSynthesis = async () => {
+  try {
+    await api.pauseGeneration(project.value.id)
+    message.success('已暂停合成')
+    synthesisRunning.value = false
+  } catch (error) {
+    console.error('Failed to pause synthesis:', error)
+    message.error('暂停合成失败')
+  }
+}
+
+const handleCancelSynthesis = async () => {
+  try {
+    // 暂时使用暂停API，实际需要取消API
+    await api.pauseGeneration(project.value.id)
+    message.success('已取消合成')
+    synthesisRunning.value = false
+    progressDrawerVisible.value = false
+  } catch (error) {
+    console.error('Failed to cancel synthesis:', error)
+    message.error('取消合成失败')
+  }
+}
+
+const handleRetrySynthesis = async () => {
+  try {
+    await api.resumeGeneration(project.value.id, {})
+    message.success('重新开始合成')
+    synthesisRunning.value = true
+    progressDrawerVisible.value = true
+  } catch (error) {
+    console.error('Failed to retry synthesis:', error)
+    message.error('重试合成失败')
+  }
+}
+
+const handlePlayAudio = async () => {
+  try {
+    playingChapterAudio.value = selectedChapter.value
+    await playChapterAudio(project.value.id, selectedChapter.value)
+    message.success('开始播放音频')
+  } catch (error) {
+    console.error('Failed to play audio:', error)
+    message.error('播放音频失败')
+  } finally {
+    playingChapterAudio.value = null
+  }
+}
+
+const handleDownloadAudio = async () => {
+  try {
+    const response = await api.downloadChapterAudio(project.value.id, selectedChapter.value)
+    
+    const blob = new Blob([response.data], { type: 'audio/wav' })
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `第${selectedChapter.value}章.wav`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    window.URL.revokeObjectURL(url)
+    
+    message.success('下载完成')
+  } catch (error) {
+    console.error('Failed to download audio:', error)
+    message.error('下载音频失败')
+  }
+}
+
+const handlePlaySegment = async (segment) => {
+  try {
+    await playSegmentAudio(project.value.id, segment.id)
+    message.success(`播放片段: ${segment.content?.substring(0, 20)}...`)
+  } catch (error) {
+    console.error('Failed to play segment:', error)
+    message.error('播放片段失败')
+  }
+}
+
+const handleProgressDrawerClose = () => {
+  progressDrawerVisible.value = false
+}
+
+// ContentPreview 事件处理
+const handleRefreshPreparation = () => {
+  message.info('刷新智能准备结果')
+  loadProject()
+}
+
+const handleTriggerPreparation = () => {
+  message.info('触发智能准备')
+}
+
+const handleStartChapterSynthesis = (chapterId) => {
+  selectedChapter.value = chapterId
+  handleStartSynthesis()
+}
+
+const handlePlayChapter = (chapterId) => {
+  selectedChapter.value = chapterId
+  handlePlayAudio()
+}
+
+const handleDownloadChapter = (chapterId) => {
+  selectedChapter.value = chapterId
+  handleDownloadAudio()
+}
+</script>
+
+<style scoped>
+.synthesis-center {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.main-content {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+</style> 

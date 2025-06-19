@@ -5,9 +5,7 @@
       <div class="header-content">
         <div class="title-section">
           <div class="title-with-back">
-            <a-button type="text" @click="goBack" class="back-btn">
-              <template #icon><ArrowLeftOutlined /></template>
-            </a-button>
+            
             <h1 class="page-title">
               <SoundOutlined class="title-icon" />
               环境音管理

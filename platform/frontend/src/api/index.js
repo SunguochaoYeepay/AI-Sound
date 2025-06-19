@@ -311,6 +311,9 @@ export const readerAPI = {
   // 重试所有失败的段落
   retryAllFailedSegments: (projectId) => apiClient.post(`/novel-reader/projects/${projectId}/retry-failed-segments`),
   
+  // 获取失败段落详情
+  getFailedSegments: (projectId) => apiClient.get(`/novel-reader/projects/${projectId}/failed-segments`),
+  
   // 下载部分完成的音频
   downloadPartialAudio: (projectId) => apiClient.get(`/novel-reader/projects/${projectId}/download-partial`, {
     responseType: 'blob'

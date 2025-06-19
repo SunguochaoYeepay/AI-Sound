@@ -9,9 +9,7 @@
         <p style="margin: 8px 0 0 0; color: #64748b; font-size: 16px;">
           基于MegaTTS3 WaveVAE decoder-only架构，需要同时提供音频文件和latent特征文件
         </p>
-        <div style="margin-top: 8px; padding: 8px 12px; background: #fef3cd; border: 1px solid #fde68a; border-radius: 6px; color: #92400e; font-size: 14px;">
-          ⚠️ 重要：MegaTTS3必须同时使用 .wav 和 .npy 文件才能工作
-        </div>
+        
       </div>
       <div class="status-badges">
         <a-tag color="#10b981" size="large">

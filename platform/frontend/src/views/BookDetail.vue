@@ -271,7 +271,7 @@
               >
                 <div class="project-name">{{ project.name }}</div>
                 <div class="project-meta">
-                  <span class="project-status">{{ project.status }}</span>
+                  <span class="project-status">{{ getProjectStatusText(project.status) }}</span>
                   <span class="project-date">{{ formatDate(project.created_at) }}</span>
                 </div>
               </div>
@@ -385,6 +385,21 @@ const getStatusText = (status) => {
     draft: '草稿',
     published: '已发布',
     archived: '已归档'
+  }
+  return texts[status] || status
+}
+
+// 项目状态文本转换
+const getProjectStatusText = (status) => {
+  const texts = {
+    pending: '待开始',
+    processing: '合成中',
+    paused: '已暂停',
+    completed: '已完成',
+    partial_completed: '部分完成',
+    failed: '失败',
+    cancelled: '已取消',
+    configured: '已配置'
   }
   return texts[status] || status
 }

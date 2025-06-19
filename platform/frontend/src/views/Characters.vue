@@ -4,9 +4,7 @@
     <div class="page-header">
       <div class="header-content">
         <div class="title-with-back">
-          <a-button type="text" @click="goBack" class="back-btn-header">
-            <template #icon><ArrowLeftOutlined /></template>
-          </a-button>
+          
           <div>
         <h1 style="margin: 0; color: white; font-size: 28px; font-weight: 700;">
           声音库管理
