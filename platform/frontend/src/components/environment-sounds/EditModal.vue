@@ -164,7 +164,7 @@
 <script setup>
 import { ref, reactive, computed, watch } from 'vue'
 import { message } from 'ant-design-vue'
-import api from '@/api'
+import apiClient from '@/api/config'
 
 // Props
 const props = defineProps({
@@ -273,7 +273,7 @@ const handleUpdate = async () => {
       delete updateData.tag_ids
     }
 
-    await api.put(`/api/v1/environment-sounds/${props.sound.id}`, updateData)
+    await apiClient.put(`/environment-sounds/${props.sound.id}`, updateData)
     
     message.success('环境音更新成功')
     emit('updated')

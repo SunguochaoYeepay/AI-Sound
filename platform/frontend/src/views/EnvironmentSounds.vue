@@ -16,15 +16,27 @@
           </p>
         </div>
         <div class="action-section">
-          <a-button 
-            type="primary" 
-            size="large"
-            @click="showGenerateModal = true"
-            :loading="generating"
-          >
-            <PlusOutlined />
-            生成环境音
-          </a-button>
+          <a-space>
+            <a-button 
+              type="primary" 
+              size="large"
+              @click="showSmartAnalysisModal = true"
+              :loading="analyzing"
+              ghost
+            >
+              <BulbOutlined />
+              🧠 智能分析
+            </a-button>
+            <a-button 
+              type="primary" 
+              size="large"
+              @click="showGenerateModal = true"
+              :loading="generating"
+            >
+              <PlusOutlined />
+              生成环境音
+            </a-button>
+          </a-space>
         </div>
       </div>
     </div>
@@ -373,24 +385,334 @@
       :tags="tags"
       @updated="onSoundUpdated"
     />
+
+    <!-- 智能分析抽屉 -->
+    <a-drawer
+      v-model:open="showSmartAnalysisModal"
+      title="🧠 智能场景分析"
+      placement="right"
+      width="1000px"
+      :closable="true"
+      :maskClosable="false"
+      destroyOnClose
+      class="smart-analysis-drawer"
+    >
+      <div class="smart-analysis-content">
+        <!-- 步骤指示器 -->
+        <div class="steps-container">
+          <a-steps :current="analysisStep" direction="horizontal" size="small">
+            <a-step title="输入文本" description="导入小说章节或输入文本" />
+            <a-step title="智能分析" description="AI分析场景和氛围" />
+            <a-step title="生成计划" description="制定环境音生成计划" />
+            <a-step title="批量生成" description="自动生成环境音" />
+          </a-steps>
+        </div>
+
+        <!-- 步骤1: 文本输入 -->
+        <div v-if="analysisStep === 0" class="analysis-step">
+          <h3>选择文本来源</h3>
+          <a-radio-group v-model:value="textSource" style="margin-bottom: 16px;">
+            <a-radio value="manual">手动输入</a-radio>
+            <a-radio value="chapter">导入章节</a-radio>
+          </a-radio-group>
+
+          <div v-if="textSource === 'manual'">
+            <a-textarea
+              v-model:value="analysisText"
+              placeholder="请输入要分析的文本内容，例如小说片段、剧本等..."
+              :rows="8"
+              style="margin-bottom: 16px;"
+            />
+          </div>
+
+          <div v-if="textSource === 'chapter'">
+            <a-select
+              v-model:value="selectedBook"
+              placeholder="选择书籍"
+              style="width: 100%; margin-bottom: 16px;"
+              @change="loadBookChapters"
+            >
+              <a-select-option
+                v-for="book in books"
+                :key="book.id"
+                :value="book.id"
+              >
+                {{ book.title }}
+              </a-select-option>
+            </a-select>
+
+            <a-select
+              v-model:value="selectedChapter"
+              placeholder="选择章节"
+              style="width: 100%; margin-bottom: 16px;"
+              @change="loadChapterContent"
+            >
+              <a-select-option
+                v-for="chapter in chapters"
+                :key="chapter.id"
+                :value="chapter.id"
+              >
+                {{ chapter.chapter_title || chapter.title }}
+              </a-select-option>
+            </a-select>
+
+            <a-textarea
+              v-model:value="analysisText"
+              placeholder="章节内容将在这里显示..."
+              :rows="8"
+              style="margin-bottom: 16px;"
+              readonly
+            />
+          </div>
+
+          <div class="step-actions">
+            <a-button type="primary" @click="startAnalysis" :disabled="!analysisText.trim()">
+              开始分析
+            </a-button>
+          </div>
+        </div>
+
+        <!-- 步骤2: 分析进行中和结果 -->
+        <div v-if="analysisStep === 1" class="analysis-step">
+          <div v-if="analyzing" class="analyzing-state">
+            <a-spin size="large">
+              <template #indicator>
+                <BulbOutlined style="font-size: 24px" spin />
+              </template>
+            </a-spin>
+            <h3 style="margin-top: 16px;">正在分析场景...</h3>
+            <p>AI正在深度理解文本内容，识别场景、氛围和情感变化</p>
+            <a-progress :percent="analysisProgress" status="active" />
+          </div>
+
+          <div v-if="analysisResult && !analyzing" class="analysis-result">
+            <h3>分析结果</h3>
+            
+            <!-- 分析摘要 -->
+            <a-card title="分析摘要" style="margin-bottom: 16px;">
+              <a-descriptions :column="2" size="small">
+                <a-descriptions-item label="场景数量">{{ analysisResult.total_scenes }}</a-descriptions-item>
+                <a-descriptions-item label="分析模式">{{ analysisResult.llm_provider || '基础分析' }}</a-descriptions-item>
+                <a-descriptions-item label="置信度">{{ (analysisResult.confidence_score * 100).toFixed(1) }}%</a-descriptions-item>
+                <a-descriptions-item label="处理时间">{{ analysisResult.processing_time.toFixed(2) }}s</a-descriptions-item>
+              </a-descriptions>
+              
+              <div v-if="analysisResult.narrative_analysis" style="margin-top: 16px;">
+                <a-tag color="blue">{{ analysisResult.narrative_analysis.genre || '未知体裁' }}</a-tag>
+                <a-tag color="green">{{ analysisResult.narrative_analysis.pace || '中等节奏' }}</a-tag>
+                <span style="margin-left: 8px; color: #666;">
+                  {{ analysisResult.narrative_analysis.emotional_arc }}
+                </span>
+              </div>
+            </a-card>
+
+            <!-- 场景列表 -->
+            <a-card title="识别的场景">
+              <div class="scenes-list">
+                <div
+                  v-for="(scene, index) in analysisResult.analyzed_scenes"
+                  :key="index"
+                  class="scene-item"
+                >
+                  <div class="scene-header">
+                    <h4>场景 {{ index + 1 }}</h4>
+                    <a-tag :color="getSceneColor(scene.atmosphere)">{{ scene.atmosphere }}</a-tag>
+                  </div>
+                  <div class="scene-details">
+                    <a-space>
+                      <a-tag>📍 {{ scene.location }}</a-tag>
+                      <a-tag>🌤️ {{ scene.weather }}</a-tag>
+                      <a-tag>🕐 {{ scene.time_of_day }}</a-tag>
+                      <a-tag>🎯 {{ (scene.confidence * 100).toFixed(0) }}%</a-tag>
+                    </a-space>
+                  </div>
+                  <div v-if="scene.keywords && scene.keywords.length > 0" class="scene-keywords">
+                    <a-tag
+                      v-for="keyword in scene.keywords"
+                      :key="keyword"
+                      size="small"
+                      color="default"
+                    >
+                      {{ keyword }}
+                    </a-tag>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="step-actions" style="margin-top: 16px;">
+                <a-space>
+                  <a-button @click="analysisStep = 0">重新分析</a-button>
+                  <a-button type="primary" @click="generateSmartPrompts">
+                    生成智能提示词
+                  </a-button>
+                </a-space>
+              </div>
+            </a-card>
+          </div>
+        </div>
+
+        <!-- 步骤3: 智能提示词和生成计划 -->
+        <div v-if="analysisStep === 2" class="analysis-step">
+          <div v-if="generatingPrompts" class="generating-state">
+            <a-spin size="large" />
+            <h3 style="margin-top: 16px;">正在生成智能提示词...</h3>
+          </div>
+
+          <div v-if="smartPrompts && !generatingPrompts" class="smart-prompts-result">
+            <h3>智能提示词方案</h3>
+            
+            <!-- 音景推荐 -->
+            <a-card v-if="smartPrompts.soundscape_recommendation" title="整体音景设计" style="margin-bottom: 16px;">
+              <a-descriptions :column="2" size="small">
+                <a-descriptions-item label="主要元素">
+                  <a-tag v-for="element in smartPrompts.soundscape_recommendation.primary_elements" :key="element" color="blue">
+                    {{ element }}
+                  </a-tag>
+                </a-descriptions-item>
+                <a-descriptions-item label="次要元素">
+                  <a-tag v-for="element in smartPrompts.soundscape_recommendation.secondary_elements" :key="element" color="green">
+                    {{ element }}
+                  </a-tag>
+                </a-descriptions-item>
+                <a-descriptions-item label="建议总时长">{{ smartPrompts.soundscape_recommendation.overall_duration }}秒</a-descriptions-item>
+                <a-descriptions-item label="环境层次">{{ smartPrompts.soundscape_recommendation.ambient_layers?.join(', ') }}</a-descriptions-item>
+              </a-descriptions>
+            </a-card>
+
+            <!-- 提示词列表 -->
+            <a-card title="生成提示词">
+              <div class="prompts-list">
+                <div
+                  v-for="(prompt, index) in smartPrompts.smart_prompts"
+                  :key="index"
+                  class="prompt-item"
+                >
+                  <div class="prompt-header">
+                    <h4>{{ prompt.title }}</h4>
+                    <a-space>
+                      <a-tag color="orange">{{ prompt.duration }}s</a-tag>
+                      <a-tag :color="getPriorityColor(prompt.priority)">优先级 {{ prompt.priority }}</a-tag>
+                      <a-checkbox v-model:checked="prompt.selected">生成</a-checkbox>
+                    </a-space>
+                  </div>
+                  
+                  <div class="prompt-content">
+                    <a-typography-paragraph :copyable="{ text: prompt.prompt }">
+                      <code>{{ prompt.prompt }}</code>
+                    </a-typography-paragraph>
+                  </div>
+
+                  <div v-if="prompt.dynamic_elements && prompt.dynamic_elements.length > 0" class="prompt-features">
+                    <strong>动态元素:</strong>
+                    <a-tag
+                      v-for="element in prompt.dynamic_elements"
+                      :key="element"
+                      size="small"
+                      color="purple"
+                    >
+                      {{ element }}
+                    </a-tag>
+                  </div>
+
+                  <div class="prompt-settings">
+                    <a-space>
+                      <span>淡入: {{ prompt.fade_settings.fade_in }}s</span>
+                      <span>淡出: {{ prompt.fade_settings.fade_out }}s</span>
+                      <span>复杂度: {{ prompt.generation_tips.complexity }}</span>
+                    </a-space>
+                  </div>
+                </div>
+              </div>
+
+              <div class="step-actions" style="margin-top: 16px;">
+                <a-space>
+                  <a-button @click="analysisStep = 1">返回分析</a-button>
+                  <a-button @click="selectAllPrompts">全选</a-button>
+                  <a-button @click="selectNonePrompts">全不选</a-button>
+                  <a-button type="primary" @click="startBatchGeneration" :disabled="!hasSelectedPrompts">
+                    开始批量生成 ({{ selectedPromptsCount }})
+                  </a-button>
+                </a-space>
+              </div>
+            </a-card>
+          </div>
+        </div>
+
+        <!-- 步骤4: 批量生成进度 -->
+        <div v-if="analysisStep === 3" class="analysis-step">
+          <h3>批量生成进行中</h3>
+          
+          <a-card>
+            <div class="generation-progress">
+              <a-progress 
+                :percent="Math.round((batchProgress.completed / batchProgress.total) * 100)"
+                :status="batchProgress.status"
+                style="margin-bottom: 16px;"
+              />
+              
+              <a-descriptions :column="2" size="small">
+                <a-descriptions-item label="总任务">{{ batchProgress.total }}</a-descriptions-item>
+                <a-descriptions-item label="已完成">{{ batchProgress.completed }}</a-descriptions-item>
+                <a-descriptions-item label="进行中">{{ batchProgress.processing }}</a-descriptions-item>
+                <a-descriptions-item label="失败">{{ batchProgress.failed }}</a-descriptions-item>
+              </a-descriptions>
+
+              <div v-if="batchProgress.currentTask" style="margin-top: 16px;">
+                <h4>当前任务</h4>
+                <p>{{ batchProgress.currentTask.title }}</p>
+                <a-progress :percent="batchProgress.currentTask.progress" size="small" />
+              </div>
+            </div>
+
+            <!-- 生成日志 -->
+            <div v-if="generationLogs.length > 0" class="generation-logs" style="margin-top: 16px;">
+              <h4>生成日志</h4>
+              <div class="logs-container">
+                <div
+                  v-for="(log, index) in generationLogs"
+                  :key="index"
+                  class="log-item"
+                  :class="log.type"
+                >
+                  <span class="log-time">{{ log.time }}</span>
+                  <span class="log-message">{{ log.message }}</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="step-actions" style="margin-top: 16px;">
+              <a-space>
+                <a-button v-if="batchProgress.status !== 'active'" @click="showSmartAnalysisModal = false">
+                  关闭
+                </a-button>
+                <a-button v-if="batchProgress.status === 'active'" @click="cancelBatchGeneration" danger>
+                  取消生成
+                </a-button>
+              </a-space>
+            </div>
+          </a-card>
+        </div>
+      </div>
+    </a-drawer>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, computed } from 'vue'
+import { ref, reactive, onMounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { message, Modal } from 'ant-design-vue'
 import {
   SoundOutlined, PlusOutlined, SearchOutlined, PlayCircleOutlined,
   DownloadOutlined, HeartOutlined, MoreOutlined, EditOutlined,
   DeleteOutlined, CopyOutlined, RedoOutlined, CheckCircleOutlined,
-  LoadingOutlined, StarFilled, ArrowLeftOutlined
+  LoadingOutlined, StarFilled, ArrowLeftOutlined, BulbOutlined
 } from '@ant-design/icons-vue'
 
 import GenerateDrawer from '@/components/environment-sounds/GenerateDrawer.vue'
 import EditModal from '@/components/environment-sounds/EditModal.vue'
 import { getAudioService } from '@/utils/audioService'
-import api from '@/api'
+import { environmentSoundsAPI, booksAPI, chaptersAPI } from '@/api'
+import apiClient, { llmAnalysisClient } from '@/api/config'
 
 // 路由
 const router = useRouter()
@@ -437,6 +759,34 @@ const showGenerateModal = ref(false)
 const showEditModal = ref(false)
 const editingSound = ref(null)
 
+// 智能分析相关
+const showSmartAnalysisModal = ref(false)
+const analyzing = ref(false)
+const analysisStep = ref(0)
+const analysisProgress = ref(0)
+const textSource = ref('manual')
+const analysisText = ref('')
+const analysisResult = ref(null)
+const smartPrompts = ref(null)
+const generatingPrompts = ref(false)
+
+// 书籍和章节数据
+const books = ref([])
+const chapters = ref([])
+const selectedBook = ref(null)
+const selectedChapter = ref(null)
+
+// 批量生成相关
+const batchProgress = reactive({
+  total: 0,
+  completed: 0,
+  processing: 0,
+  failed: 0,
+  status: 'idle', // idle, active, completed, error
+  currentTask: null
+})
+const generationLogs = ref([])
+
 // 生命周期
 onMounted(() => {
   loadInitialData()
@@ -455,7 +805,7 @@ const loadInitialData = async () => {
 
 const loadCategories = async () => {
   try {
-    const response = await api.getCategories()
+    const response = await environmentSoundsAPI.getCategories()
     categories.value = response.data
   } catch (error) {
     console.error('加载分类失败:', error)
@@ -464,7 +814,7 @@ const loadCategories = async () => {
 
 const loadTags = async () => {
   try {
-    const response = await api.getTags()
+    const response = await environmentSoundsAPI.getTags()
     tags.value = response.data
   } catch (error) {
     console.error('加载标签失败:', error)
@@ -473,7 +823,7 @@ const loadTags = async () => {
 
 const loadPresets = async () => {
   try {
-    const response = await api.getPresets()
+    const response = await environmentSoundsAPI.getPresets()
     presets.value = response.data
   } catch (error) {
     console.error('加载预设失败:', error)
@@ -482,7 +832,7 @@ const loadPresets = async () => {
 
 const loadStats = async () => {
   try {
-    const response = await api.getStats()
+    const response = await environmentSoundsAPI.getStats()
     Object.assign(stats, response.data)
   } catch (error) {
     console.error('加载统计数据失败:', error)
@@ -508,7 +858,7 @@ const loadSounds = async () => {
       delete params.tag_ids
     }
 
-    const response = await api.getEnvironmentSounds(params)
+    const response = await environmentSoundsAPI.getEnvironmentSounds(params)
     const data = response.data
 
     sounds.value = data.sounds
@@ -542,7 +892,7 @@ const playSound = async (sound) => {
     playingId.value = sound.id
     
     // 记录播放日志
-    await api.playEnvironmentSound(sound.id)
+    await environmentSoundsAPI.playEnvironmentSound(sound.id)
     
     // 使用统一音频服务播放
     await getAudioService().playEnvironmentSound(sound)
@@ -560,7 +910,7 @@ const playSound = async (sound) => {
 
 const downloadSound = async (sound) => {
   try {
-    const response = await api.downloadEnvironmentSound(sound.id)
+    const response = await environmentSoundsAPI.downloadEnvironmentSound(sound.id)
     
     // 创建下载链接
     const url = window.URL.createObjectURL(new Blob([response.data]))
@@ -584,7 +934,7 @@ const downloadSound = async (sound) => {
 
 const toggleFavorite = async (sound) => {
   try {
-    const response = await api.toggleFavorite(sound.id)
+    const response = await environmentSoundsAPI.toggleFavorite(sound.id)
     const result = response.data
     
     sound.is_favorited = result.is_favorited
@@ -600,7 +950,7 @@ const toggleFavorite = async (sound) => {
 
 const regenerateSound = async (sound) => {
   try {
-    await api.regenerateEnvironmentSound(sound.id)
+    await environmentSoundsAPI.regenerateEnvironmentSound(sound.id)
     sound.generation_status = 'processing'
     sound.error_message = null
     message.success('重新生成任务已启动')
@@ -625,7 +975,7 @@ const deleteSound = (sound) => {
     content: `确定要删除环境音"${sound.name}"吗？此操作不可恢复。`,
     onOk: async () => {
       try {
-        await api.deleteEnvironmentSound(sound.id)
+        await environmentSoundsAPI.deleteEnvironmentSound(sound.id)
         message.success('删除成功')
         loadSounds()
         loadStats()
@@ -663,7 +1013,7 @@ const onSoundUpdated = () => {
 const checkGenerationStatus = (soundId) => {
   const interval = setInterval(async () => {
     try {
-      const response = await api.getEnvironmentSound(soundId)
+      const response = await environmentSoundsAPI.getEnvironmentSound(soundId)
       const sound = response.data
       
       // 更新列表中的对应项
@@ -690,6 +1040,282 @@ const checkGenerationStatus = (soundId) => {
     }
   }, 3000) // 每3秒检查一次
 }
+
+// 智能分析方法
+const loadBooks = async () => {
+  try {
+    const response = await booksAPI.getBooks()
+    books.value = response.data.data || []
+  } catch (error) {
+    console.error('加载书籍失败:', error)
+    message.error('加载书籍失败')
+  }
+}
+
+const loadBookChapters = async () => {
+  if (!selectedBook.value) return
+  
+  try {
+    const response = await booksAPI.getBookChapters(selectedBook.value)
+    chapters.value = response.data.data || response.data || []
+  } catch (error) {
+    console.error('加载章节失败:', error)
+    message.error('加载章节失败')
+  }
+}
+
+const loadChapterContent = async () => {
+  if (!selectedChapter.value) return
+  
+  try {
+    const response = await chaptersAPI.getChapter(selectedChapter.value)
+    analysisText.value = response.data.data?.content || response.data.content || ''
+  } catch (error) {
+    console.error('加载章节内容失败:', error)
+    message.error('加载章节内容失败')
+  }
+}
+
+const startAnalysis = async () => {
+  if (!analysisText.value.trim()) {
+    message.error('请输入要分析的文本')
+    return
+  }
+
+  analyzing.value = true
+  analysisStep.value = 1
+  analysisProgress.value = 0
+
+  try {
+    // 模拟进度更新
+    const progressInterval = setInterval(() => {
+      if (analysisProgress.value < 90) {
+        analysisProgress.value += Math.random() * 20
+      }
+    }, 500)
+
+    // 调用分析API - 使用专门的LLM分析客户端（超长超时）
+    const response = await llmAnalysisClient.post('/scene-analysis/analyze-text', {
+      text: analysisText.value,
+      use_llm: true,
+      llm_provider: 'auto',
+      include_recommendations: true
+    })
+
+    clearInterval(progressInterval)
+    analysisProgress.value = 100
+
+    analysisResult.value = response.data
+    message.success('场景分析完成！')
+
+  } catch (error) {
+    console.error('分析失败:', error)
+    message.error('分析失败: ' + (error.response?.data?.detail || error.message))
+  } finally {
+    analyzing.value = false
+  }
+}
+
+const generateSmartPrompts = async () => {
+  if (!analysisResult.value) return
+
+  generatingPrompts.value = true
+  analysisStep.value = 2
+
+  try {
+    const response = await apiClient.post('/scene-analysis/generate-smart-prompts', {
+      text: analysisText.value,
+      llm_provider: 'auto'
+    })
+
+    smartPrompts.value = response.data
+    
+    // 为每个提示词添加选中状态
+    smartPrompts.value.smart_prompts.forEach(prompt => {
+      prompt.selected = true // 默认全选
+    })
+
+    message.success('智能提示词生成完成！')
+
+  } catch (error) {
+    console.error('生成提示词失败:', error)
+    message.error('生成提示词失败: ' + (error.response?.data?.detail || error.message))
+  } finally {
+    generatingPrompts.value = false
+  }
+}
+
+const startBatchGeneration = async () => {
+  const selectedPrompts = smartPrompts.value.smart_prompts.filter(p => p.selected)
+  
+  if (selectedPrompts.length === 0) {
+    message.error('请至少选择一个提示词')
+    return
+  }
+
+  analysisStep.value = 3
+  batchProgress.total = selectedPrompts.length
+  batchProgress.completed = 0
+  batchProgress.processing = 0
+  batchProgress.failed = 0
+  batchProgress.status = 'active'
+  generationLogs.value = []
+
+  // 添加开始日志
+  addGenerationLog('info', '开始批量生成环境音...')
+
+  try {
+    // 逐个生成环境音
+    for (let i = 0; i < selectedPrompts.length; i++) {
+      const prompt = selectedPrompts[i]
+      
+      batchProgress.currentTask = {
+        title: prompt.title,
+        progress: 0
+      }
+      
+      try {
+        addGenerationLog('info', `开始生成: ${prompt.title}`)
+        
+        // 模拟进度更新
+        const taskProgressInterval = setInterval(() => {
+          if (batchProgress.currentTask && batchProgress.currentTask.progress < 90) {
+            batchProgress.currentTask.progress += Math.random() * 15
+          }
+        }, 1000)
+
+        // 调用生成API
+        const response = await environmentSoundsAPI.generateEnvironmentSound({
+          name: prompt.title,
+          prompt: prompt.prompt,
+          duration: prompt.duration,
+          category_id: null,
+          tag_ids: [],
+          metadata: {
+            generated_from_analysis: true,
+            source_text: analysisText.value.substring(0, 200) + '...',
+            scene_details: prompt.scene_details,
+            generation_method: 'smart_analysis'
+          }
+        })
+
+        clearInterval(taskProgressInterval)
+        batchProgress.currentTask.progress = 100
+        
+        batchProgress.completed++
+        addGenerationLog('success', `✅ ${prompt.title} 生成完成`)
+
+        // 开始检查生成状态
+        if (response.data.id) {
+          checkGenerationStatus(response.data.id)
+        }
+
+      } catch (error) {
+        batchProgress.failed++
+        addGenerationLog('error', `❌ ${prompt.title} 生成失败: ${error.message}`)
+        console.error(`生成 ${prompt.title} 失败:`, error)
+      }
+    }
+
+    batchProgress.status = 'completed'
+    batchProgress.currentTask = null
+    addGenerationLog('info', '批量生成完成！')
+    
+    message.success('批量生成任务完成！')
+    
+    // 刷新环境音列表
+    await loadSounds()
+    await loadStats()
+
+  } catch (error) {
+    batchProgress.status = 'error'
+    addGenerationLog('error', `批量生成失败: ${error.message}`)
+    message.error('批量生成失败')
+  }
+}
+
+const cancelBatchGeneration = () => {
+  batchProgress.status = 'cancelled'
+  batchProgress.currentTask = null
+  addGenerationLog('warning', '批量生成已取消')
+  message.info('批量生成已取消')
+}
+
+const addGenerationLog = (type, message) => {
+  generationLogs.value.push({
+    type,
+    message,
+    time: new Date().toLocaleTimeString()
+  })
+}
+
+const selectAllPrompts = () => {
+  if (smartPrompts.value && smartPrompts.value.smart_prompts) {
+    smartPrompts.value.smart_prompts.forEach(prompt => {
+      prompt.selected = true
+    })
+  }
+}
+
+const selectNonePrompts = () => {
+  if (smartPrompts.value && smartPrompts.value.smart_prompts) {
+    smartPrompts.value.smart_prompts.forEach(prompt => {
+      prompt.selected = false
+    })
+  }
+}
+
+// 计算属性
+const hasSelectedPrompts = computed(() => {
+  return smartPrompts.value && smartPrompts.value.smart_prompts 
+    ? smartPrompts.value.smart_prompts.some(p => p.selected)
+    : false
+})
+
+const selectedPromptsCount = computed(() => {
+  return smartPrompts.value && smartPrompts.value.smart_prompts 
+    ? smartPrompts.value.smart_prompts.filter(p => p.selected).length
+    : 0
+})
+
+// 样式相关方法
+const getSceneColor = (atmosphere) => {
+  const colorMap = {
+    'calm': 'blue',
+    'tense': 'red', 
+    'romantic': 'pink',
+    'action': 'orange',
+    'mysterious': 'purple',
+    'scary': 'volcano',
+    'joyful': 'green',
+    'sad': 'grey'
+  }
+  return colorMap[atmosphere] || 'default'
+}
+
+const getPriorityColor = (priority) => {
+  if (priority >= 4) return 'red'
+  if (priority >= 3) return 'orange'
+  if (priority >= 2) return 'blue'
+  return 'default'
+}
+
+// 监听智能分析模态框打开
+watch(showSmartAnalysisModal, (newValue) => {
+  if (newValue) {
+    // 重置状态
+    analysisStep.value = 0
+    analysisText.value = ''
+    analysisResult.value = null
+    smartPrompts.value = null
+    selectedBook.value = null
+    selectedChapter.value = null
+    textSource.value = 'manual'
+    
+    // 加载书籍数据
+    loadBooks()
+  }
+})
 
 // 辅助方法
 const getStatusType = (status) => {
@@ -907,6 +1533,180 @@ const goBack = () => {
   margin-top: 24px;
 }
 
+/* 智能分析抽屉样式 */
+.smart-analysis-drawer :deep(.ant-drawer-body) {
+  padding: 24px;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.smart-analysis-content {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.steps-container {
+  margin-bottom: 24px;
+  padding: 16px;
+  background: #fafafa;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.analysis-step {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.analyzing-state, .generating-state {
+  text-align: center;
+  padding: 40px 20px;
+}
+
+.analyzing-state h3, .generating-state h3 {
+  color: #1890ff;
+  margin-bottom: 8px;
+}
+
+.scenes-list {
+  space-y: 16px;
+}
+
+.scene-item {
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+  background: #fafafa;
+}
+
+.scene-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.scene-header h4 {
+  margin: 0;
+  color: #1890ff;
+}
+
+.scene-details {
+  margin-bottom: 8px;
+}
+
+.scene-keywords {
+  margin-top: 8px;
+}
+
+.prompts-list {
+  space-y: 20px;
+}
+
+.prompt-item {
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 20px;
+  background: #fff;
+}
+
+.prompt-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.prompt-header h4 {
+  margin: 0;
+  color: #2c3e50;
+  font-size: 16px;
+}
+
+.prompt-content {
+  margin-bottom: 12px;
+}
+
+.prompt-content code {
+  background: #f6f8fa;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 13px;
+  line-height: 1.6;
+  display: block;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.prompt-features {
+  margin-bottom: 8px;
+  color: #666;
+}
+
+.prompt-settings {
+  font-size: 12px;
+  color: #888;
+}
+
+.step-actions {
+  margin-top: 24px;
+  text-align: center;
+}
+
+.generation-progress {
+  text-align: center;
+}
+
+.generation-logs {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.logs-container {
+  background: #f8f9fa;
+  border-radius: 4px;
+  padding: 12px;
+  font-family: monospace;
+  font-size: 12px;
+}
+
+.log-item {
+  display: flex;
+  margin-bottom: 4px;
+  line-height: 1.4;
+}
+
+.log-time {
+  color: #666;
+  margin-right: 8px;
+  min-width: 80px;
+}
+
+.log-message {
+  flex: 1;
+}
+
+.log-item.success .log-message {
+  color: #52c41a;
+}
+
+.log-item.error .log-message {
+  color: #ff4d4f;
+}
+
+.log-item.warning .log-message {
+  color: #fa8c16;
+}
+
+.log-item.info .log-message {
+  color: #1890ff;
+}
+
 /* 响应式设计 */
 @media (max-width: 768px) {
   .environment-sounds-page {
@@ -928,6 +1728,39 @@ const goBack = () => {
   
   .filter-section :deep(.ant-form-item) {
     margin-bottom: 16px;
+  }
+
+  /* 移动端抽屉全屏显示 */
+  .smart-analysis-drawer :deep(.ant-drawer) {
+    width: 100vw !important;
+  }
+  
+  .smart-analysis-drawer :deep(.ant-drawer-body) {
+    padding: 16px;
+  }
+
+  .prompt-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  
+  .step-actions {
+    margin-top: 16px;
+  }
+  
+  .step-actions :deep(.ant-space) {
+    width: 100%;
+    justify-content: center;
+  }
+  
+  .steps-container {
+    margin-bottom: 16px;
+    padding: 12px;
+  }
+  
+  .steps-container :deep(.ant-steps) {
+    font-size: 12px;
   }
 }
 </style> 

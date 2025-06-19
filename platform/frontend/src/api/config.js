@@ -52,5 +52,39 @@ export const downloadClient = axios.create({
   maxBodyLength: 100 * 1024 * 1024 // 100MB
 })
 
+// 创建用于LLM分析的实例（超长超时时间）
+export const llmAnalysisClient = axios.create({
+  baseURL: API_BASE_URL,
+  timeout: 120000, // 2分钟超时时间，用于LLM分析
+  headers: {
+    'Content-Type': 'application/json'
+  },
+  maxContentLength: 20 * 1024 * 1024, // 20MB
+  maxBodyLength: 20 * 1024 * 1024 // 20MB
+})
+
+// LLM分析客户端拦截器
+llmAnalysisClient.interceptors.request.use(
+  (config) => {
+    console.log(`[LLM API请求] ${config.method?.toUpperCase()} ${config.url}`, config.data || '')
+    return config
+  },
+  (error) => {
+    console.error('[LLM API请求错误]', error)
+    return Promise.reject(error)
+  }
+)
+
+llmAnalysisClient.interceptors.response.use(
+  (response) => {
+    console.log(`[LLM API响应] ${response.config.url}`, response.data)
+    return response
+  },
+  (error) => {
+    console.error('[LLM API响应错误]', error.response?.data || error.message)
+    return Promise.reject(error)
+  }
+)
+
 export default apiClient
 export { API_BASE_URL } 
