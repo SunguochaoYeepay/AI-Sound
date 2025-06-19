@@ -1117,18 +1117,21 @@ const handleEnvironmentSynthesis = async (config) => {
   gap: 1px;
 }
 
-/* 章节选择器 - 固定较小宽度 */
+/* 章节选择器 - 固定较小宽度，可滚动 */
 .main-content > :first-child {
   flex: 0 0 280px;
   min-width: 280px;
   max-width: 280px;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
-/* 内容预览区域 - 占用剩余空间 */
+/* 内容预览区域 - 占用剩余空间，可滚动 */
 .main-content > :last-child {
   flex: 1;
   min-width: 0;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 /* 迷你进度条样式 */

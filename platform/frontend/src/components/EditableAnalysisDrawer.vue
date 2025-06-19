@@ -239,6 +239,7 @@ import { ref, computed, watch, reactive, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
 import { booksAPI } from '@/api'
 import { charactersAPI } from '@/api'
+import { getAudioService } from '@/utils/audioService'
 
 // Props
 const props = defineProps({
@@ -270,6 +271,9 @@ const editableSegments = ref([])
 
 // 新增：可用声音列表
 const availableVoices = ref([])
+
+// 音频服务实例
+const audioService = getAudioService()
 
 // 计算属性
 const processingInfo = computed(() => {
@@ -537,11 +541,55 @@ const testVoice = async (character) => {
     })
     
     if (response.data && response.data.success) {
-      // 播放音频
-      const audioUrl = response.data.audio_url
-      const audio = new Audio(audioUrl)
-      audio.play()
-      message.success(`正在播放${character.name}的声音测试`)
+      console.log('[EditableAnalysisDrawer] API响应完整数据:', response.data)
+      console.log('[EditableAnalysisDrawer] 音频URL详细检查:', {
+        audio_url: response.data.audio_url,
+        audioUrl: response.data.audioUrl, 
+        keys: Object.keys(response.data)
+      })
+      // 🔧 修复：使用正确的字段名
+      const audioUrl = response.data.audioUrl || response.data.audio_url
+      
+      console.log('[EditableAnalysisDrawer] 准备播放音频:', {
+        audioUrl: audioUrl,
+        title: `${character.name} - 声音试听`,
+        audioService: audioService
+      })
+      
+      if (!audioUrl) {
+        console.error('[EditableAnalysisDrawer] 音频URL为空!')
+        message.error('获取音频URL失败')
+        return
+      }
+      
+      // 🔍 测试音频URL是否可以直接访问
+      console.log('[EditableAnalysisDrawer] 测试音频URL直接访问...')
+      try {
+        const testResponse = await fetch(audioUrl, { 
+          method: 'HEAD',
+          mode: 'cors'
+        })
+        console.log('[EditableAnalysisDrawer] URL访问测试结果:', {
+          status: testResponse.status,
+          headers: Object.fromEntries(testResponse.headers.entries()),
+          url: audioUrl
+        })
+      } catch (fetchError) {
+        console.error('[EditableAnalysisDrawer] URL访问测试失败:', fetchError)
+      }
+      
+      try {
+        await audioService.playCustomAudio(audioUrl, `${character.name} - 声音试听`, {
+          voiceId: character.voice_id,
+          voiceName: character.name,
+          testText
+        })
+        console.log('[EditableAnalysisDrawer] playCustomAudio 调用成功')
+        message.success(`正在播放${character.name}的声音测试`)
+      } catch (playError) {
+        console.error('[EditableAnalysisDrawer] playCustomAudio 调用失败:', playError)
+        message.error('播放音频失败')
+      }
     } else {
       message.error('声音测试失败')
     }

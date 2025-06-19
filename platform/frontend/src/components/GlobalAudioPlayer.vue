@@ -21,8 +21,10 @@
           class="control-button play-button"
           size="large"
         >
-          <PlayCircleOutlined v-if="!audioStore.isPlaying" />
-          <PauseCircleOutlined v-else />
+          <template #icon>
+            <PlayCircleOutlined v-if="!audioStore.isPlaying && !audioStore.loading" />
+            <PauseCircleOutlined v-else-if="audioStore.isPlaying && !audioStore.loading" />
+          </template>
         </a-button>
 
         <div class="progress-container">
@@ -232,7 +234,7 @@ const downloadAudio = async () => {
   background: white;
   border-top: 1px solid #f0f0f0;
   box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.1);
-  z-index: 1000;
+  z-index: 9999;
   transition: all 0.3s ease;
 }
 
