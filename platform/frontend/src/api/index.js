@@ -270,15 +270,40 @@ export const readerAPI = {
       formData.append('chapter_ids', data.chapter_ids.join(','))
     }
     
+    // 环境音混合参数
+    if (data.enable_environment !== undefined) {
+      formData.append('enable_environment', data.enable_environment)
+    }
+    if (data.environment_volume !== undefined) {
+      formData.append('environment_volume', data.environment_volume)
+    }
+    
     return apiClient.post(`/novel-reader/projects/${projectId}/start`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data'
       }
     })
+    },
+
+  // 章节级别的环境音混合合成
+  startChapterEnvironmentSynthesis: (projectId, chapterId, data = {}) => {
+    const formData = new FormData()
+    formData.append('parallel_tasks', data.parallel_tasks || 1)
+    formData.append('enable_environment', data.enable_environment || false)
+    formData.append('environment_volume', data.environment_volume || 0.3)
+    
+    return apiClient.post(`/novel-reader/projects/${projectId}/chapters/${chapterId}/start`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    })
   },
-  
+
   // 暂停生成
   pauseGeneration: (projectId) => apiClient.post(`/novel-reader/projects/${projectId}/pause`),
+  
+  // 取消生成
+  cancelGeneration: (projectId) => apiClient.post(`/novel-reader/projects/${projectId}/cancel`),
   
   // 恢复生成
   resumeGeneration: (projectId, data) => {

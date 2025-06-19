@@ -200,8 +200,7 @@ const loadSynthesisProgress = async () => {
         status: progressInfo.status || project.value?.status || 'pending',
         completed_segments: segments.completed || 0,
         total_segments: segments.total || 0,
-        failed_segments: segments.failed || 0,
-        current_processing: progressInfo.current_processing || `当前段落: ${progressInfo.current_segment || 0}`
+        failed_segments: segments.failed || 0
       }
       console.log('📊 加载进度信息 (API格式):', progressData.value)
     } else {
@@ -483,6 +482,7 @@ const handleStartSynthesis = async () => {
 
 const handlePauseSynthesis = async () => {
   try {
+    console.log('📌 开始暂停合成，项目ID:', project.value.id)
     await api.pauseGeneration(project.value.id)
     message.success('已暂停合成')
     synthesisRunning.value = false
@@ -492,16 +492,19 @@ const handlePauseSynthesis = async () => {
       clearInterval(progressRefreshInterval)
       progressRefreshInterval = null
     }
+    
+    // 重新加载项目状态
+    await loadProject()
   } catch (error) {
     console.error('Failed to pause synthesis:', error)
-    message.error('暂停合成失败')
+    message.error('暂停合成失败: ' + (error.response?.data?.detail || error.message))
   }
 }
 
 const handleCancelSynthesis = async () => {
   try {
-    // 暂时使用暂停API，实际需要取消API
-    await api.pauseGeneration(project.value.id)
+    console.log('📌 开始取消合成，项目ID:', project.value.id)
+    await api.cancelGeneration(project.value.id)
     message.success('已取消合成')
     synthesisRunning.value = false
     progressDrawerVisible.value = false
@@ -511,9 +514,12 @@ const handleCancelSynthesis = async () => {
       clearInterval(progressRefreshInterval)
       progressRefreshInterval = null
     }
+    
+    // 重新加载项目状态
+    await loadProject()
   } catch (error) {
     console.error('Failed to cancel synthesis:', error)
-    message.error('取消合成失败')
+    message.error('取消合成失败: ' + (error.response?.data?.detail || error.message))
   }
 }
 
@@ -729,6 +735,11 @@ const getSelectedChapterStatus = () => {
   const chapter = chapters.value.find(ch => ch.id === selectedChapter.value)
   if (!chapter) return 'pending'
   
+  // 优先判断项目状态：如果项目是pending或ready状态，章节也应该是pending
+  if (project.value?.status === 'pending' || project.value?.status === 'ready') {
+    return 'pending'
+  }
+  
   // 使用章节的analysis_status或synthesis_status
   const status = chapter.analysis_status || chapter.synthesis_status || 'pending'
   
@@ -738,7 +749,9 @@ const getSelectedChapterStatus = () => {
     'processing': 'processing', 
     'completed': 'completed',
     'failed': 'failed',
-    'ready': 'pending'
+    'ready': 'pending',
+    'not_started': 'pending',
+    'prepared': 'pending'  // 智能准备完成但未开始合成
   }
   
   return statusMap[status] || 'pending'
@@ -758,22 +771,27 @@ const handleEnvironmentSynthesis = async (config) => {
     environmentConfigVisible.value = false
     synthesisStarting.value = true
     
+    // 检查是否选择了章节
+    if (!selectedChapter.value) {
+      message.error('请先选择要合成的章节')
+      return
+    }
+    
     // 更新环境音音量配置
     environmentVolume.value = config.environmentVolume
     
     console.log('开始环境音混合合成，章节:', selectedChapter.value, '音量:', config.environmentVolume)
     
-    // 准备请求参数，包含环境音配置
-    const requestParams = {
-      enable_environment: true,
-      environment_volume: config.environmentVolume
-    }
-    
-    // 调用合成API，传递环境音参数
-    const response = await api.startGeneration(project.value.id, {
-      chapter_ids: selectedChapter.value ? [selectedChapter.value] : undefined,
-      ...requestParams
-    })
+    // 调用章节级别的环境音混合API
+    const response = await api.startChapterEnvironmentSynthesis(
+      project.value.id, 
+      selectedChapter.value, 
+      {
+        enable_environment: true,
+        environment_volume: config.environmentVolume,
+        parallel_tasks: 1
+      }
+    )
     
     if (response.data.success) {
       message.success('环境音混合合成已开始！')

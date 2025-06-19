@@ -648,6 +648,49 @@ async def pause_generation(
         db.rollback()
         raise HTTPException(status_code=500, detail=f"暂停项目失败: {str(e)}")
 
+@router.post("/projects/{project_id}/cancel")
+async def cancel_generation(
+    project_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    取消项目生成
+    将项目状态设置为 'cancelled'，并清理相关进度数据
+    """
+    try:
+        project = db.query(NovelProject).filter(NovelProject.id == project_id).first()
+        if not project:
+            raise HTTPException(status_code=404, detail="项目不存在")
+        
+        if project.status not in ['processing', 'paused']:
+            raise HTTPException(status_code=400, detail=f"项目状态为 {project.status}，无法取消")
+        
+        # 更新项目状态为取消
+        project.status = 'cancelled'
+        
+        # 重置进度相关字段
+        project.processed_segments = 0
+        project.total_segments = None
+        project.current_segment = None
+        project.failed_segments = 0
+        
+        db.commit()
+        
+        return {
+            "success": True,
+            "message": "项目已取消",
+            "data": {
+                "project_id": project.id,
+                "status": project.status
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"取消项目失败: {str(e)}")
+
 @router.post("/projects/{project_id}/resume")
 async def resume_generation(
     project_id: int,

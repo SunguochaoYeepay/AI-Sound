@@ -560,8 +560,12 @@ const createProject = async () => {
     }
   } catch (error) {
     console.error('项目创建失败:', error)
-    const errorMsg = error.response?.data?.detail || '操作失败'
-    message.error(errorMsg)
+    // 优先使用后端返回的具体错误信息
+    const errorMsg = error.response?.data?.message || 
+                     error.response?.data?.detail || 
+                     error.message || 
+                     '项目创建失败'
+    message.error(`创建失败：${errorMsg}`)
   } finally {
     creating.value = false
   }

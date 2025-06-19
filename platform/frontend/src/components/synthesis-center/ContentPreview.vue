@@ -114,19 +114,31 @@
                     </a-button>
                   </template>
                   
-                  <!-- 更多操作下拉菜单 -->
+                  <!-- 重新合成下拉菜单 -->
                   <a-dropdown v-if="selectedChapterStatus === 'completed' || selectedChapterStatus === 'partial_completed'">
                     <a-button size="small">
-                      更多
+                      重新合成
                       <DownOutlined />
                     </a-button>
                     <template #overlay>
                       <a-menu>
-                        <a-menu-item @click="$emit('restart-synthesis')">
-                          重新合成
+                        <a-menu-item key="restart-normal" @click="$emit('restart-synthesis')">
+                          <div style="display: flex; align-items: center; gap: 8px;">
+                            <span>🎤</span>
+                            <div>
+                              <div style="font-weight: 500;">TTS语音合成</div>
+                              <div style="font-size: 11px; color: #666;">仅生成对话语音</div>
+                            </div>
+                          </div>
                         </a-menu-item>
-                        <a-menu-item @click="handleRefreshPreparation">
-                          刷新数据
+                        <a-menu-item key="restart-environment" @click="$emit('start-environment-synthesis')">
+                          <div style="display: flex; align-items: center; gap: 8px;">
+                            <span>🌍</span>
+                            <div>
+                              <div style="font-weight: 500;">环境音混合合成</div>
+                              <div style="font-size: 11px; color: #666;">智能生成环境音效并混合</div>
+                            </div>
+                          </div>
                         </a-menu-item>
                       </a-menu>
                     </template>

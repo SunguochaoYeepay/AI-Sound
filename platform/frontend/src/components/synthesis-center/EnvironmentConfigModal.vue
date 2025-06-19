@@ -1,10 +1,11 @@
 <template>
   <a-modal
-    v-model:open="visible"
+    :open="visible"
     title="🌍 环境音混合配置"
     :width="500"
     @ok="handleConfirm"
     @cancel="handleCancel"
+    @update:open="handleModalClose"
     :ok-text="'开始环境音混合合成'"
     :cancel-text="'取消'"
     :ok-button-props="{ loading: loading }"
@@ -106,6 +107,11 @@ const handleConfirm = () => {
 const handleCancel = () => {
   emit('cancel')
   emit('update:visible', false)
+}
+
+// 处理模态框关闭
+const handleModalClose = (value) => {
+  emit('update:visible', value)
 }
 </script>
 

@@ -14,22 +14,7 @@
         <!-- 标题和控制按钮在一行 -->
         <div class="progress-title-row">
           <span class="progress-title">{{ progressTitle }}</span>
-          
-          <!-- 实时通信状态指示器 -->
-          <div class="websocket-status" v-if="projectStatus === 'processing'">
-            <a-tag 
-              :color="wsConnected ? 'success' : 'warning'" 
-              size="small"
-              style="margin-right: 8px;"
-            >
-              <template #icon>
-                <svg width="10" height="10" viewBox="0 0 24 24" :fill="wsConnected ? '#52c41a' : '#fa8c16'">
-                  <circle cx="12" cy="12" r="6"/>
-                </svg>
-              </template>
-              {{ wsConnected ? '实时连接' : '连接中断' }}
-            </a-tag>
-          </div>
+         
           
           <!-- 合成控制按钮 -->
           <div class="synthesis-controls" v-if="projectStatus === 'processing' || projectStatus === 'paused'">
@@ -37,7 +22,7 @@
               <a-button 
                 v-if="projectStatus === 'processing'"
                 size="small"
-                @click="$emit('pauseSynthesis')"
+                @click="handlePause"
                 :loading="pauseLoading"
                 danger
               >
@@ -45,7 +30,7 @@
               </a-button>
               <a-button 
                 size="small"
-                @click="$emit('cancelSynthesis')"
+                @click="handleCancel"
                 :loading="cancelLoading"
                 danger
               >
@@ -78,16 +63,8 @@
             <span class="stat-value failed">{{ progressData.failed_segments }}</span>
           </span>
           
-          <span class="stat-item">
-            <span class="stat-label">用时:</span>
-            <span class="stat-value time">{{ elapsedTime }}秒</span>
-          </span>
         </div>
 
-        <!-- 当前处理状态 -->
-        <div class="current-status" v-if="progressData.current_processing && progressData.status === 'processing'">
-          <span class="status-text">{{ progressData.current_processing }}</span>
-        </div>
         
         <!-- 简化的错误提示 -->
         <div class="simple-error-notice" v-if="displayStatus === 'failed'">
@@ -156,7 +133,18 @@ const props = defineProps({
   }
 })
 
-defineEmits(['close', 'pauseSynthesis', 'cancelSynthesis', 'retryFailedSegments', 'showFailureDetails'])
+const emit = defineEmits(['close', 'pauseSynthesis', 'cancelSynthesis', 'retryFailedSegments', 'showFailureDetails'])
+
+// 处理函数
+const handlePause = () => {
+  console.log('📌 暂停按钮被点击')
+  emit('pauseSynthesis')
+}
+
+const handleCancel = () => {
+  console.log('📌 取消按钮被点击')
+  emit('cancelSynthesis')
+}
 
 // 计算属性
 const progressTitle = computed(() => {
