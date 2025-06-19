@@ -14,13 +14,12 @@
         <!-- 标题和控制按钮在一行 -->
         <div class="progress-title-row">
           <span class="progress-title">{{ progressTitle }}</span>
-         
           
           <!-- 合成控制按钮 -->
-          <div class="synthesis-controls" v-if="projectStatus === 'processing' || projectStatus === 'paused'">
+          <div class="synthesis-controls" v-if="showSynthesisControls">
             <a-space size="small">
               <a-button 
-                v-if="projectStatus === 'processing'"
+                v-if="showPauseButton"
                 size="small"
                 @click="handlePause"
                 :loading="pauseLoading"
@@ -118,6 +117,15 @@ const props = defineProps({
     type: Boolean,
     default: false
   },
+  // 🔧 新增：章节信息props
+  selectedChapter: {
+    type: Number,
+    default: null
+  },
+  chapters: {
+    type: Array,
+    default: () => []
+  },
   // Loading states
   pauseLoading: {
     type: Boolean,
@@ -147,33 +155,74 @@ const handleCancel = () => {
 }
 
 // 计算属性
+const showSynthesisControls = computed(() => {
+  // 如果项目状态是processing或paused，显示控制按钮
+  if (props.projectStatus === 'processing' || props.projectStatus === 'paused') {
+    return true
+  }
+  
+  // 如果进度状态显示正在运行，也显示控制按钮
+  const progressStatus = props.progressData.status
+  if (progressStatus === 'processing' || progressStatus === 'running') {
+    return true
+  }
+  
+  return false
+})
+
+const showPauseButton = computed(() => {
+  // 只有在真正处理中时才显示暂停按钮
+  return props.projectStatus === 'processing' || props.progressData.status === 'processing' || props.progressData.status === 'running'
+})
+
 const progressTitle = computed(() => {
   const status = props.progressData.status
   const current = props.progressData.current_processing
   const completed = props.progressData.completed_segments
   const total = props.progressData.total_segments
   
-  if (current && status === 'processing') {
-    return `正在合成: ${current} (${completed}/${total})`
+  // 🔧 获取当前章节信息
+  const getChapterInfo = () => {
+    if (props.selectedChapter && props.chapters.length > 0) {
+      const chapter = props.chapters.find(ch => ch.id === props.selectedChapter)
+      if (chapter) {
+        return `第${chapter.chapter_number || chapter.id}章：${chapter.title || '未命名章节'}`
+      }
+    }
+    return '当前章节'
+  }
+  
+  const chapterInfo = getChapterInfo()
+  
+  // 🔧 处理正在合成状态 - 显示当前段落详情和章节信息
+  if (status === 'processing' || status === 'running') {
+    if (current && current.trim()) {
+      // 如果有具体的当前处理段落信息
+      const currentText = current.length > 50 ? current.substring(0, 50) + '...' : current
+      return `🎤 正在合成第${completed + 1}段: "${currentText}" - ${chapterInfo} (${completed}/${total})`
+    } else {
+      // 没有具体段落信息时的回退显示
+      return `🎤 合成进行中 - 第${completed + 1}/${total}段 - ${chapterInfo}`
+    }
   }
   
   if (status === 'completed') {
-    return `合成完成 - 共${total}个段落`
+    return `✅ 合成完成 - 共${total}个段落 - ${chapterInfo}`
   }
   
   if (status === 'failed') {
-    return `合成失败 - 已完成${completed}/${total}`
+    return `❌ 合成失败 - 已完成${completed}/${total}段 - ${chapterInfo}`
   }
   
   if (status === 'paused') {
-    return `合成暂停 - 已完成${completed}/${total}`
+    return `⏸️ 合成已暂停 - 已完成${completed}/${total}段 - ${chapterInfo}`
   }
   
   if (total > 0) {
-    return `合成监控 - ${completed}/${total}`
+    return `📊 合成监控 - ${completed}/${total}段 - ${chapterInfo}`
   }
   
-  return '合成进度监控'
+  return `📊 合成进度监控 - ${chapterInfo}`
 })
 
 const displayStatus = computed(() => {

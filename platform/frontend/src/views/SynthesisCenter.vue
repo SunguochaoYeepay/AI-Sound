@@ -7,6 +7,26 @@
       @back="handleBack"
     />
 
+    <!-- 迷你进度条 (在抽屉关闭时显示) -->
+    <div 
+      v-if="synthesisRunning && !progressDrawerVisible" 
+      class="mini-progress-bar"
+      @click="progressDrawerVisible = true"
+    >
+      <div class="mini-progress-content">
+        <span class="mini-progress-text">
+          合成进行中: {{ progressData.completed_segments || 0 }}/{{ progressData.total_segments || 0 }}
+        </span>
+        <a-progress 
+          :percent="Math.round((progressData.completed_segments || 0) / Math.max(progressData.total_segments || 1, 1) * 100)" 
+          :show-info="false"
+          size="small"
+          :stroke-color="progressData.status === 'failed' ? '#ff4d4f' : '#1890ff'"
+        />
+        <span class="mini-progress-tip">点击查看详情</span>
+      </div>
+    </div>
+
     <!-- 主要内容区域 -->
     <div class="main-content">
       <!-- 章节选择器 -->
@@ -55,9 +75,13 @@
       :progress-data="progressData"
       :project-status="project?.status || 'pending'"
       :ws-connected="websocketStatus === 'connected'"
+      :selected-chapter="selectedChapter"
+      :chapters="chapters"
       @close="handleProgressDrawerClose"
       @update:visible="progressDrawerVisible = $event"
       @showFailureDetails="handleShowFailureDetails"
+      @pauseSynthesis="handlePauseSynthesis"
+      @cancelSynthesis="handleCancelSynthesis"
     />
 
     <!-- 环境音配置弹窗 -->
@@ -86,7 +110,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import api from '@/api'
@@ -139,7 +163,30 @@ let progressRefreshInterval = null
 
 // 计算属性
 const canStartSynthesis = computed(() => {
-  return selectedChapter.value && project.value && !synthesisRunning.value
+  if (!selectedChapter.value || !project.value) {
+    return false
+  }
+  
+  // 检查本地合成状态
+  if (synthesisRunning.value || synthesisStarting.value) {
+    return false
+  }
+  
+  // 检查项目的真实状态 - 防止重复合成
+  const projectStatus = project.value.status
+  if (projectStatus === 'processing' || projectStatus === 'paused') {
+    console.log('⚠️ 项目正在处理中，禁用合成按钮', { projectStatus, synthesisRunning: synthesisRunning.value })
+    return false
+  }
+  
+  // 检查进度状态
+  const progressStatus = progressData.value?.status
+  if (progressStatus === 'processing' || progressStatus === 'running') {
+    console.log('⚠️ 进度显示正在运行，禁用合成按钮', { progressStatus, synthesisRunning: synthesisRunning.value })
+    return false
+  }
+  
+  return true
 })
 
 // 初始化
@@ -150,6 +197,12 @@ onMounted(async () => {
   // 如果有选中的章节，立即加载智能准备结果
   if (selectedChapter.value) {
     await loadPreparationResults()
+  }
+  
+  // 🔧 如果项目正在合成，自动显示进度抽屉
+  if (project.value?.status === 'processing') {
+    progressDrawerVisible.value = true
+    console.log('📊 页面初始化时发现项目正在合成，自动显示进度抽屉')
   }
   
   initWebSocket()
@@ -202,6 +255,21 @@ const loadSynthesisProgress = async () => {
         total_segments: segments.total || 0,
         failed_segments: segments.failed || 0
       }
+      
+      // 🔧 根据项目状态同步前端合成状态
+      const projectStatus = project.value?.status
+      if (projectStatus === 'processing') {
+        synthesisRunning.value = true
+        // 🔧 自动显示进度抽屉
+        if (!progressDrawerVisible.value) {
+          progressDrawerVisible.value = true
+          console.log('📊 项目正在合成中，自动显示进度抽屉')
+        }
+      } else if (projectStatus === 'paused' || projectStatus === 'cancelled' || projectStatus === 'completed' || projectStatus === 'failed') {
+        synthesisRunning.value = false
+        console.log('📊 项目非运行状态，重置前端状态', projectStatus)
+      }
+      
       console.log('📊 加载进度信息 (API格式):', progressData.value)
     } else {
       // 如果API返回空数据，从项目统计信息中推导
@@ -258,10 +326,10 @@ const loadSynthesisProgress = async () => {
 }
 
 // 加载章节列表
-const loadChapters = async () => {
+const loadChapters = async (allowChapterReset = true) => {
   try {
     chaptersLoading.value = true
-    console.log('Loading chapters, project:', project.value)
+    console.log('Loading chapters, project:', project.value, 'allowChapterReset:', allowChapterReset)
     
     if (project.value?.book_id) {
       // 直接使用apiClient调用正确的API路径
@@ -273,8 +341,22 @@ const loadChapters = async () => {
         console.log('Found chapters:', chapters.value)
         
         if (chapters.value.length > 0) {
-          selectedChapter.value = chapters.value[0].id
-          console.log('✅ 设置默认选中章节:', selectedChapter.value)
+          // 🔧 根据allowChapterReset参数决定是否允许重置章节选择
+          if (!selectedChapter.value && allowChapterReset) {
+            selectedChapter.value = chapters.value[0].id
+            console.log('✅ 设置默认选中章节:', selectedChapter.value)
+          } else if (selectedChapter.value && allowChapterReset) {
+            // 验证当前选中的章节是否还存在
+            const currentChapterExists = chapters.value.some(ch => ch.id === selectedChapter.value)
+            if (!currentChapterExists) {
+              selectedChapter.value = chapters.value[0].id
+              console.log('✅ 当前选中章节不存在，重置为默认章节:', selectedChapter.value)
+            } else {
+              console.log('✅ 保持当前选中章节:', selectedChapter.value)
+            }
+          } else if (!allowChapterReset) {
+            console.log('🔒 跳过章节重置，保持当前选择:', selectedChapter.value)
+          }
         }
       } else {
         console.log('No chapters found in response')
@@ -293,8 +375,20 @@ const loadChapters = async () => {
   }
 }
 
+// 🔧 监控章节选择变化
+watch(selectedChapter, (newChapter, oldChapter) => {
+  if (newChapter !== oldChapter) {
+    console.log('🔄 章节选择发生变化:', {
+      从: oldChapter,
+      到: newChapter,
+      调用栈: new Error().stack
+    })
+  }
+}, { immediate: false })
+
 // 选择章节
 const handleChapterSelect = async (chapterId) => {
+  console.log('👆 用户手动选择章节:', chapterId)
   selectedChapter.value = chapterId
   
   // 自动加载智能准备结果
@@ -437,6 +531,19 @@ const handleBack = () => {
 
 const handleStartSynthesis = async () => {
   try {
+    // 🔧 防重复合成检查
+    if (!canStartSynthesis.value) {
+      message.warning('当前无法开始合成，请检查项目状态')
+      return
+    }
+    
+    // 🔧 重新获取最新项目状态进行二次确认
+    await loadProject()
+    if (project.value.status === 'processing' || project.value.status === 'paused') {
+      message.warning(`项目正在${project.value.status === 'processing' ? '合成中' : '暂停状态'}，无法重复合成`)
+      return
+    }
+    
     synthesisStarting.value = true
     const response = await api.startGeneration(project.value.id, {
       chapter_ids: selectedChapter.value ? [selectedChapter.value] : undefined
@@ -538,8 +645,21 @@ const handleRetrySynthesis = async () => {
 const handlePlayAudio = async () => {
   try {
     playingChapterAudio.value = selectedChapter.value
-    await playChapterAudio(project.value.id, selectedChapter.value)
-    message.success('开始播放音频')
+    
+    // 🎯 构建章节完整标题
+    const currentChapter = chapters.value.find(ch => ch.id === selectedChapter.value)
+    const chapterTitle = currentChapter ? 
+      `第${currentChapter.chapter_number || currentChapter.id}章：${currentChapter.title || currentChapter.chapter_title || '未命名章节'}` : 
+      `章节${selectedChapter.value}`
+    
+    console.log(`🎵 播放章节：`, {
+      项目ID: project.value.id,
+      章节ID: selectedChapter.value,
+      章节标题: chapterTitle
+    })
+    
+    await playChapterAudio(project.value.id, selectedChapter.value, chapterTitle)
+    message.success(`🎵 播放：${chapterTitle}`)
   } catch (error) {
     console.error('Failed to play audio:', error)
     message.error('播放音频失败')
@@ -571,25 +691,89 @@ const handleDownloadAudio = async () => {
 
 const handlePlaySegment = async (segment) => {
   try {
-    // segment可能有id、segment_id或者需要从索引推导
-    const segmentId = segment.id || segment.segment_id || segment.index
+    // 🔧 修复：优先使用segment_id，其次是id，最后才是index
+    const segmentId = segment.segment_id || segment.id || segment.index || segment.ui_index
+    
+    console.log('🎵 handlePlaySegment调用 - 完整调试信息:', {
+      '当前选中章节': selectedChapter.value,
+      '段落对象': segment,
+      'segment_id字段': segment.segment_id,
+      'id字段': segment.id,
+      'index字段': segment.index,
+      'ui_index字段': segment.ui_index,
+      '最终使用的段落ID': segmentId,
+      '项目ID': project.value.id,
+      '文本预览': segment.text?.substring(0, 50),
+      '即将调用API': `/api/v1/novel-reader/projects/${project.value.id}/segments/${segmentId}/download`
+    })
+    
+    // 🚨 重要检查：如果segment_id异常大，发出警告
+    if (segmentId > 50) {
+      console.warn('🚨 异常检测：段落ID过大！', {
+        异常段落ID: segmentId,
+        当前选中章节: selectedChapter.value,
+        可能原因: '这个segment_id可能是全局累计的，而不是当前章节的段落序号',
+        建议: '需要修复segment_id生成逻辑或查找逻辑'
+      })
+      
+      // 显示用户警告但不阻止播放
+      message.warning(`⚠️ 段落ID为${segmentId}，可能播放错误的音频`)
+    }
     
     if (!segmentId) {
-      console.error('无法获取段落ID:', segment)
+      console.error('❌ 无法获取段落ID:', segment)
       message.error('无法获取段落ID')
       return
     }
     
-    await playSegmentAudio(project.value.id, segmentId)
-    message.success(`播放片段: ${segment.text?.substring(0, 20) || segment.content?.substring(0, 20)}...`)
+    // 🎯 构建丰富的段落信息
+    const currentChapter = chapters.value.find(ch => ch.id === selectedChapter.value)
+    const chapterInfo = currentChapter ? 
+      `第${currentChapter.chapter_number || currentChapter.id}章：${currentChapter.title || currentChapter.chapter_title || '未命名章节'}` : 
+      `章节${selectedChapter.value}`
+    
+    const segmentText = segment.text || segment.content || ''
+    const segmentPreview = segmentText.length > 30 ? 
+      segmentText.substring(0, 30) + '...' : 
+      segmentText
+    
+    const fullTitle = `${chapterInfo} - 段落${segmentId}: ${segmentPreview}`
+    
+    console.log(`🎵 即将播放：`, {
+      项目ID: project.value.id,
+      段落ID: segmentId,
+      章节信息: chapterInfo,
+      段落文本: segmentPreview,
+      完整标题: fullTitle,
+      '🔍 章节对象详情': currentChapter,
+      '当前章节title字段': currentChapter?.title,
+      '当前章节chapter_title字段': currentChapter?.chapter_title,
+      '所有章节数据': chapters.value
+    })
+    
+    // 🎯 传递丰富的标题信息给音频服务
+    await playSegmentAudio(project.value.id, segmentId, fullTitle)
+    message.success(`🎵 播放：${fullTitle}`)
   } catch (error) {
-    console.error('Failed to play segment:', error)
-    message.error('播放片段失败')
+    console.error('❌ 播放段落失败 - 完整错误信息:', {
+      段落对象: segment,
+      使用的segmentId: segment.segment_id || segment.id || segment.index,
+      项目ID: project.value.id,
+      错误信息: error.message,
+      API响应: error.response?.data,
+      完整错误: error
+    })
+    message.error('播放片段失败: ' + (error.response?.data?.detail || error.message))
   }
 }
 
 const handleProgressDrawerClose = () => {
   progressDrawerVisible.value = false
+  
+  // 🔧 如果合成正在进行，提示用户可以通过底部进度条重新打开
+  if (synthesisRunning.value) {
+    message.info('合成进度已最小化到底部，点击底部进度条可重新打开', 3)
+  }
 }
 
 // 失败详情处理
@@ -680,7 +864,12 @@ const createMockFailedSegments = () => {
 // ContentPreview 事件处理
 const handleRefreshPreparation = () => {
   message.info('刷新智能准备结果')
+  // 🔧 只刷新项目状态，不重新加载章节（避免章节选择重置）
   loadProject()
+  // 🔧 如果有选中章节，只刷新准备结果
+  if (selectedChapter.value) {
+    loadPreparationResults()
+  }
 }
 
 const handleTriggerPreparation = () => {
@@ -705,6 +894,19 @@ const handleDownloadChapter = (chapterId) => {
 // 重新合成处理函数
 const handleRestartSynthesis = async () => {
   try {
+    // 🔧 防重复合成检查
+    if (!canStartSynthesis.value) {
+      message.warning('当前无法重新合成，请检查项目状态')
+      return
+    }
+    
+    // 🔧 重新获取最新项目状态进行二次确认
+    await loadProject()
+    if (project.value.status === 'processing' || project.value.status === 'paused') {
+      message.warning(`项目正在${project.value.status === 'processing' ? '合成中' : '暂停状态'}，无法重新合成`)
+      return
+    }
+    
     synthesisStarting.value = true
     
     // 重新启动选中章节的合成
@@ -769,13 +971,27 @@ const handleCancelEnvironmentConfig = () => {
 const handleEnvironmentSynthesis = async (config) => {
   try {
     environmentConfigVisible.value = false
-    synthesisStarting.value = true
+    
+    // 🔧 防重复合成检查
+    if (!canStartSynthesis.value) {
+      message.warning('当前无法开始环境音合成，请检查项目状态')
+      return
+    }
     
     // 检查是否选择了章节
     if (!selectedChapter.value) {
       message.error('请先选择要合成的章节')
       return
     }
+    
+    // 🔧 重新获取最新项目状态进行二次确认
+    await loadProject()
+    if (project.value.status === 'processing' || project.value.status === 'paused') {
+      message.warning(`项目正在${project.value.status === 'processing' ? '合成中' : '暂停状态'}，无法进行环境音合成`)
+      return
+    }
+    
+    synthesisStarting.value = true
     
     // 更新环境音音量配置
     environmentVolume.value = config.environmentVolume
@@ -846,5 +1062,52 @@ const handleEnvironmentSynthesis = async (config) => {
   flex: 1;
   min-width: 0;
   overflow: hidden;
+}
+
+/* 迷你进度条样式 */
+.mini-progress-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: #fff;
+  border-top: 1px solid #e8e8e8;
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.1);
+  z-index: 1000;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.mini-progress-bar:hover {
+  background: #f5f5f5;
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.mini-progress-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 8px 16px;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.mini-progress-text {
+  font-size: 13px;
+  font-weight: 500;
+  color: #1f2937;
+  white-space: nowrap;
+}
+
+.mini-progress-bar .ant-progress {
+  flex: 1;
+  margin: 0;
+}
+
+.mini-progress-tip {
+  font-size: 12px;
+  color: #666;
+  white-space: nowrap;
 }
 </style> 

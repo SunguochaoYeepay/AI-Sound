@@ -66,20 +66,20 @@ export class AudioService {
    * 播放段落音频
    * @param {number} projectId 项目ID
    * @param {number} segmentId 段落ID
-   * @param {string} segmentText 段落文本
+   * @param {string} segmentTitle 段落完整标题（包含章节信息）
    */
-  async playSegmentAudio(projectId, segmentId, segmentText = `段落 ${segmentId}`) {
+  async playSegmentAudio(projectId, segmentId, segmentTitle = `段落 ${segmentId}`) {
     const audioInfo = {
       id: `segment_${projectId}_${segmentId}`,
-      title: `段落 ${segmentId}`,
+      title: segmentTitle, // 🎯 使用传入的完整标题
       url: `/api/v1/novel-reader/projects/${projectId}/segments/${segmentId}/download`,
       type: 'segment',
       metadata: {
         projectId,
         segmentId,
-        text: segmentText,
+        text: segmentTitle,
         onEnded: () => {
-          console.log(`段落 ${segmentId} 播放完成`)
+          console.log(`段落播放完成: ${segmentTitle}`)
         }
       }
     }

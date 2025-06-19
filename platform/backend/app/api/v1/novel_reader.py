@@ -1575,24 +1575,55 @@ async def download_segment_audio(
     下载单个段落音频
     """
     try:
-        # 查找段落对应的AudioFile
+        # 🔧 智能查找段落音频：同时支持paragraph_index和基于章节的segment_id
+        
+        # 方法1：直接按paragraph_index查找
         audio_file = db.query(AudioFile).filter(
             AudioFile.project_id == project_id,
             AudioFile.paragraph_index == segment_id,
             AudioFile.audio_type == 'segment'
         ).first()
         
+        # 方法2：如果没找到，尝试从当前章节的智能准备结果中查找对应关系
         if not audio_file:
-            raise HTTPException(status_code=404, detail=f"段落 {segment_id} 的音频文件不存在")
+            # 获取项目的所有音频文件，并尝试匹配
+            all_audio_files = db.query(AudioFile).filter(
+                AudioFile.project_id == project_id,
+                AudioFile.audio_type == 'segment'
+            ).order_by(AudioFile.paragraph_index).all()
+            
+            logger.warning(f"未找到段落 {segment_id}，项目共有 {len(all_audio_files)} 个音频文件")
+            
+            # 输出调试信息
+            for af in all_audio_files[:10]:  # 只显示前10个
+                logger.info(f"音频文件: paragraph_index={af.paragraph_index}, 章节={af.chapter_number}, 文件={af.filename}")
+            
+            # 如果只有一个文件，直接返回（可能是测试情况）
+            if len(all_audio_files) == 1:
+                audio_file = all_audio_files[0]
+                logger.info(f"只有一个音频文件，直接返回: {audio_file.filename}")
+        
+        if not audio_file:
+            # 提供更详细的错误信息
+            available_segments = db.query(AudioFile.paragraph_index).filter(
+                AudioFile.project_id == project_id,
+                AudioFile.audio_type == 'segment'
+            ).distinct().all()
+            available_list = [str(s[0]) for s in available_segments if s[0] is not None]
+            
+            raise HTTPException(
+                status_code=404, 
+                detail=f"段落 {segment_id} 的音频文件不存在。可用段落: {', '.join(available_list[:10])}"
+            )
         
         if not os.path.exists(audio_file.file_path):
             raise HTTPException(status_code=404, detail="音频文件物理文件不存在")
         
-        logger.info(f"下载段落音频: 项目{project_id}, 段落{segment_id}, 文件: {audio_file.file_path}")
+        logger.info(f"✅ 下载段落音频: 项目{project_id}, 请求段落{segment_id}, 实际段落{audio_file.paragraph_index}, 文件: {audio_file.file_path}")
         
         return FileResponse(
             path=audio_file.file_path,
-            filename=f"segment_{segment_id}_{audio_file.character_name or 'unknown'}.wav",
+            filename=f"segment_{audio_file.paragraph_index}_{audio_file.character_name or 'unknown'}.wav",
             media_type="audio/wav"
         )
         

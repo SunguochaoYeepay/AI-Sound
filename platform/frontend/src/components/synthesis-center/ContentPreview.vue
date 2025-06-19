@@ -257,6 +257,21 @@ const canStartSynthesis = computed(() => {
 
 const getDisplaySegments = (chapterResult) => {
   const segments = chapterResult.synthesis_json?.synthesis_plan || []
+  
+  // 🔧 调试：输出段落数据结构
+  if (segments.length > 0) {
+    console.log('📝 段落数据结构示例:', {
+      章节ID: chapterResult.chapter_id,
+      段落总数: segments.length,
+      第一个段落: segments[0],
+      segment_id字段: segments[0]?.segment_id,
+      前3个段落的ID: segments.slice(0, 3).map(s => ({ 
+        segment_id: s.segment_id, 
+        text: s.text?.substring(0, 20) 
+      }))
+    })
+  }
+  
   return showAllSegments.value ? segments : segments.slice(0, 10)
 }
 
@@ -378,15 +393,25 @@ const handlePlaySegment = (segmentIndexOrSegment, segment) => {
   
   if (typeof segmentIndexOrSegment === 'number' && segment) {
     // 第二种情况：segmentIndexOrSegment是索引，segment是真正的segment对象
-    // 添加索引信息到segment对象
-    const segmentWithIndex = {
+    // 🔧 修复：使用segment对象中的真正segment_id，而不是数组索引
+    const segmentWithCorrectId = {
       ...segment,
-      index: segmentIndexOrSegment + 1, // 转换为1基础索引
-      segment_id: segmentIndexOrSegment + 1
+      // 保持原有的segment_id，如果没有则使用UI索引作为后备
+      segment_id: segment.segment_id || segment.id || (segmentIndexOrSegment + 1),
+      ui_index: segmentIndexOrSegment + 1 // 保留UI索引用于显示
     }
-    emit('play-segment', segmentWithIndex)
+    console.log('🎵 播放段落 (来自DialogueBubble):', {
+      ui_index: segmentIndexOrSegment + 1,
+      segment_id: segmentWithCorrectId.segment_id,
+      text: segment.text?.substring(0, 30)
+    })
+    emit('play-segment', segmentWithCorrectId)
   } else {
     // 第一种情况：segmentIndexOrSegment就是segment对象
+    console.log('🎵 播放段落 (直接调用):', {
+      segment_id: segmentIndexOrSegment.segment_id || segmentIndexOrSegment.id,
+      text: segmentIndexOrSegment.text?.substring(0, 30)
+    })
     emit('play-segment', segmentIndexOrSegment)
   }
 }
