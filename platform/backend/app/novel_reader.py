@@ -523,13 +523,15 @@ async def start_audio_generation(
     project_id: int,
     background_tasks: BackgroundTasks,
     parallel_tasks: int = Form(1, description="并行任务数"),
+    enable_environment: bool = Form(False, description="启用环境音混合"),
+    environment_volume: float = Form(0.3, description="环境音音量"),
     db: Session = Depends(get_db)
 ):
     """
     开始音频生成 - 智能准备唯一策略
     只支持使用智能准备结果进行合成
     """
-    logger.info(f"[DEBUG] 开始音频生成请求: project_id={project_id}, parallel_tasks={parallel_tasks}")
+    logger.info(f"[DEBUG] 开始音频生成请求: project_id={project_id}, parallel_tasks={parallel_tasks}, enable_environment={enable_environment}")
     
     try:
         # 查询项目
@@ -635,13 +637,34 @@ async def start_audio_generation(
         db.commit()
         
         logger.info(f"[DEBUG] 启动智能准备模式的后台任务...")
-        # 启动后台任务，直接传递 synthesis_data
-        background_tasks.add_task(
-            process_audio_generation_from_synthesis_plan,
-            project_id,
-            synthesis_data,
-            parallel_tasks
-        )
+        
+        if enable_environment:
+            # 使用环境音混合协调器
+            from app.services.sequential_synthesis_coordinator import SequentialSynthesisCoordinator
+            coordinator = SequentialSynthesisCoordinator()
+            
+            async def environment_synthesis_wrapper():
+                try:
+                    result = await coordinator.synthesize_with_environment(
+                        project_id=project_id,
+                        synthesis_data=synthesis_data,
+                        enable_environment=True,
+                        environment_volume=environment_volume,
+                        parallel_tasks=parallel_tasks
+                    )
+                    logger.info(f"[ENV_SYNTHESIS] 环境音混合完成: {result}")
+                except Exception as e:
+                    logger.error(f"[ENV_SYNTHESIS] 环境音混合失败: {str(e)}")
+                    
+            background_tasks.add_task(environment_synthesis_wrapper)
+        else:
+            # 传统TTS合成
+            background_tasks.add_task(
+                process_audio_generation_from_synthesis_plan,
+                project_id,
+                synthesis_data,
+                parallel_tasks
+            )
         
         # 记录开始生成日志
         await log_system_event(
@@ -658,11 +681,14 @@ async def start_audio_generation(
         )
         
         logger.info(f"[DEBUG] 智能准备模式任务启动成功")
+        synthesis_mode = "环境音混合模式" if enable_environment else "智能准备模式"
         return {
             "success": True,
-            "message": "音频生成已启动（智能准备模式）",
+            "message": f"音频生成已启动（{synthesis_mode}）",
             "total_segments": len(synthesis_data),
-            "parallel_tasks": parallel_tasks
+            "parallel_tasks": parallel_tasks,
+            "enable_environment": enable_environment,
+            "environment_volume": environment_volume if enable_environment else None
         }
         
     except HTTPException:

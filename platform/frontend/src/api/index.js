@@ -323,6 +323,14 @@ export const readerAPI = {
     formData.append('chapter_id', chapterId)
     formData.append('parallel_tasks', data.parallel_tasks || 1)
     
+    // 环境音混合参数
+    if (data.enable_environment !== undefined) {
+      formData.append('enable_environment', data.enable_environment)
+    }
+    if (data.environment_volume !== undefined) {
+      formData.append('environment_volume', data.environment_volume)
+    }
+    
     return apiClient.post(`/novel-reader/projects/${projectId}/chapters/${chapterId}/start`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data'

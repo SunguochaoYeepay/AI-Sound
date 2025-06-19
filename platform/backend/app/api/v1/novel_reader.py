@@ -1244,6 +1244,8 @@ async def start_chapter_synthesis(
     chapter_id: int,
     background_tasks: BackgroundTasks,
     parallel_tasks: int = Form(1, description="并行任务数"),
+    enable_environment: bool = Form(False, description="启用环境音混合"),
+    environment_volume: float = Form(0.3, description="环境音音量"),
     db: Session = Depends(get_db)
 ):
     """

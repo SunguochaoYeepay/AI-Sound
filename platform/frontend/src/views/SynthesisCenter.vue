@@ -127,17 +127,39 @@
                       <!-- 章节级合成按钮组 -->
                       <a-space size="small">
                         <!-- 合成当前章节按钮 -->
-                        <a-button
-                          v-if="project.status === 'pending' || project.status === 'failed' || project.status === 'configured'"
-                          type="primary"
-                          size="small"
-                          :disabled="!canStartSynthesis"
-                          :loading="synthesisStarting"
-                          @click="startChapterSynthesis(chapterResult.chapter_id)"
-                          class="start-btn"
-                        >
-                          🎯 合成此章
-                        </a-button>
+                        <a-dropdown v-if="project.status === 'pending' || project.status === 'failed' || project.status === 'configured'">
+                          <a-button
+                            type="primary"
+                            size="small"
+                            :disabled="!canStartSynthesis"
+                            :loading="synthesisStarting"
+                            class="start-btn"
+                          >
+                            🎯 合成此章 <DownOutlined />
+                          </a-button>
+                          <template #overlay>
+                            <a-menu>
+                              <a-menu-item key="normal" @click="startChapterSynthesis(chapterResult.chapter_id, false)">
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                  <span>🎤</span>
+                                  <div>
+                                    <div style="font-weight: 500;">TTS语音合成</div>
+                                    <div style="font-size: 11px; color: #666;">仅生成对话语音</div>
+                                  </div>
+                                </div>
+                              </a-menu-item>
+                              <a-menu-item key="environment" @click="showEnvironmentConfigModal(chapterResult.chapter_id)">
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                  <span>🌍</span>
+                                  <div>
+                                    <div style="font-weight: 500;">环境音混合合成</div>
+                                    <div style="font-size: 11px; color: #666;">智能生成环境音效并混合</div>
+                                  </div>
+                                </div>
+                              </a-menu-item>
+                            </a-menu>
+                          </template>
+                        </a-dropdown>
 
                         <!-- 已完成状态按钮：使用智能状态判断 -->
                         <template v-if="getDisplayStatus(project.status) === 'completed'">
@@ -442,6 +464,72 @@
       </div>
     </a-drawer>
 
+    <!-- 环境音配置弹窗 -->
+    <a-modal
+      v-model:open="environmentConfigModal"
+      title="🌍 环境音混合配置"
+      :width="500"
+      @ok="startEnvironmentSynthesis"
+      @cancel="environmentConfigModal = false"
+      :ok-text="'开始环境音混合合成'"
+      :cancel-text="'取消'"
+      :ok-button-props="{ loading: synthesisStarting }"
+    >
+      <div class="environment-config-content">
+        <div class="config-section">
+          <h4>🎵 环境音效配置</h4>
+          <p class="config-description">
+            系统将自动分析文本内容，生成适合的环境音效并与语音进行智能混合。
+          </p>
+          
+          <div class="config-item">
+            <label class="config-label">环境音音量：</label>
+            <a-slider
+              v-model:value="synthesisConfig.environmentVolume"
+              :min="0"
+              :max="1"
+              :step="0.1"
+              :marks="{
+                0: '0%',
+                0.3: '30%',
+                0.5: '50%',
+                0.7: '70%',
+                1: '100%'
+              }"
+              style="margin: 8px 0;"
+            />
+            <div class="volume-hint">
+              当前音量：{{ Math.round(synthesisConfig.environmentVolume * 100) }}%
+            </div>
+          </div>
+        </div>
+        
+        <div class="config-section">
+          <h4>🎬 会生成的环境音效</h4>
+          <div class="environment-examples">
+            <a-tag color="blue">🌆 日出日落</a-tag>
+            <a-tag color="green">🌳 森林鸟叫</a-tag>
+            <a-tag color="cyan">🌊 海浪声</a-tag>
+            <a-tag color="orange">🏏️ 城市噪音</a-tag>
+            <a-tag color="purple">⛈️ 雷雨声</a-tag>
+            <a-tag color="gold">🎵 背景音乐</a-tag>
+          </div>
+          <p class="examples-note">
+            基于文本内容自动选择适合的环境音效
+          </p>
+        </div>
+        
+        <div class="config-section">
+          <h4>⚠️ 注意事项</h4>
+          <ul class="warning-list">
+            <li>环境音生成需要额外时间，合成时间会显著增加</li>
+            <li>需要足够的GPU资源来处理TTS和环境音生成</li>
+            <li>最终文件大小会比普通TTS大一些</li>
+          </ul>
+        </div>
+      </div>
+    </a-modal>
+    
     <!-- JSON测试弹窗保持原有 -->
     <!-- ... 其他弹窗组件 ... -->
   </div>
@@ -451,7 +539,7 @@
 import { ref, reactive, computed, onMounted, onUnmounted, nextTick, h } from 'vue'
 import { useRouter, useRoute, onBeforeRouteLeave } from 'vue-router'
 import { message, Modal, Empty } from 'ant-design-vue'
-import { ArrowLeftOutlined, ReloadOutlined } from '@ant-design/icons-vue'
+import { ArrowLeftOutlined, ReloadOutlined, DownOutlined } from '@ant-design/icons-vue'
 import { readerAPI, charactersAPI, intelligentAnalysisAPI, systemAPI, booksAPI } from '@/api'
 import { useWebSocketStore } from '@/stores/websocket.js'
 import { useAudioPlayerStore } from '@/stores/audioPlayer'
@@ -512,11 +600,17 @@ const currentlyPlaying = ref(null) // 当前播放信息 { type, id, name }
 // 合成配置
 const synthesisConfig = reactive({
   quality: 'standard',
-  parallelTasks: 1
+  parallelTasks: 1,
+  enableEnvironment: false,
+  environmentVolume: 0.3
 })
 
 // 其他状态变量
 const showAllSegments = ref(false)
+
+// 环境音混合配置
+const environmentConfigModal = ref(false)
+const selectedChapterForEnvironment = ref(null)
 // JSON测试功能已移除，请使用标准的智能准备流程
 // 合成进度监控抽屉相关
 const synthesisStartTime = ref(null)
@@ -2518,17 +2612,25 @@ const updateProgressDataFromWebSocket = (data) => {
 }
 
 // 章节级别合成方法
-const startChapterSynthesis = async (chapterId) => {
+const startChapterSynthesis = async (chapterId, enableEnvironment = false) => {
   try {
     synthesisStarting.value = true
     
-    console.log('开始合成章节:', chapterId)
+    console.log('开始合成章节:', chapterId, '环境音:', enableEnvironment)
+    
+    // 准备请求参数
+    const requestParams = {
+      parallel_tasks: synthesisConfig.parallelTasks,
+      enable_environment: enableEnvironment,
+      environment_volume: enableEnvironment ? synthesisConfig.environmentVolume : undefined
+    }
     
     // 调用单章节合成API
-    const response = await readerAPI.startChapterSynthesis(project.value.id, chapterId)
+    const response = await readerAPI.startChapterSynthesis(project.value.id, chapterId, requestParams)
     
     if (response.data.success) {
-      message.success('章节合成已开始！')
+      const mode = enableEnvironment ? '环境音混合' : 'TTS语音'
+      message.success(`章节${mode}合成已开始！`)
       project.value.status = 'processing'
       
       // 开始WebSocket监控
@@ -2546,6 +2648,24 @@ const startChapterSynthesis = async (chapterId) => {
   } finally {
     synthesisStarting.value = false
   }
+}
+
+// 显示环境音配置弹窗
+const showEnvironmentConfigModal = (chapterId) => {
+  selectedChapterForEnvironment.value = chapterId
+  environmentConfigModal.value = true
+}
+
+// 开始环境音合成
+const startEnvironmentSynthesis = async () => {
+  if (!selectedChapterForEnvironment.value) {
+    message.error('未选择章节')
+    return
+  }
+  
+  environmentConfigModal.value = false
+  await startChapterSynthesis(selectedChapterForEnvironment.value, true)
+  selectedChapterForEnvironment.value = null
 }
 
 const restartChapterSynthesis = async (chapterId) => {
@@ -3591,6 +3711,82 @@ const getSelectedChapterNumber = () => {
   gap: 8px;
 }
 
+/* 环境音配置弹窗样式 */
+.environment-config-content {
+  .config-section {
+    margin-bottom: 24px;
+    
+    h4 {
+      margin: 0 0 12px 0;
+      font-size: 16px;
+      font-weight: 600;
+      color: #1f2937;
+    }
+    
+    .config-description {
+      margin-bottom: 16px;
+      color: #6b7280;
+      line-height: 1.6;
+      background: #f8fafc;
+      padding: 12px;
+      border-radius: 6px;
+      border-left: 3px solid #1890ff;
+    }
+    
+    .config-item {
+      margin-bottom: 16px;
+      
+      .config-label {
+        display: block;
+        margin-bottom: 8px;
+        font-weight: 500;
+        color: #374151;
+      }
+      
+      .volume-hint {
+        text-align: center;
+        font-size: 13px;
+        color: #1890ff;
+        font-weight: 600;
+        margin-top: 8px;
+      }
+    }
+    
+    .environment-examples {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 12px;
+      
+      .ant-tag {
+        margin: 0;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+      }
+    }
+    
+    .examples-note {
+      font-size: 12px;
+      color: #6b7280;
+      margin: 0;
+      font-style: italic;
+    }
+    
+    .warning-list {
+      margin: 0;
+      padding-left: 16px;
+      color: #6b7280;
+      
+      li {
+        margin-bottom: 6px;
+        line-height: 1.5;
+        font-size: 13px;
+      }
+    }
+  }
+}
+
 /* 响应式设计 */
 @media (max-width: 768px) {
   .synthesis-center-container {
@@ -3612,6 +3808,17 @@ const getSelectedChapterNumber = () => {
     flex-direction: column;
     align-items: flex-start;
     gap: 8px;
+  }
+  
+  .environment-config-content {
+    .environment-examples {
+      gap: 4px;
+      
+      .ant-tag {
+        font-size: 11px;
+        padding: 2px 6px;
+      }
+    }
   }
 }
 
