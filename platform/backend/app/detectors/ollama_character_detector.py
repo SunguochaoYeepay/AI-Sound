@@ -127,6 +127,13 @@ class OllamaCharacterDetector:
 - 只有引号""内的实际对话内容才是角色发言
 - 纯叙述文字（如"只见山势险峻"、"此时天色已晚"）都是旁白
 
+**🧠 心理描写特殊规则（重要）**：
+- "他心里想"、"她暗自琢磨"、"林渊想到"后的引号内容是该角色的心理活动
+- 示例："他心里暗自琢磨，\"说不定是什么失传的古代密码？\"" 
+  → 分为两段：第一段"他心里暗自琢磨，"（旁白），第二段"\"说不定是什么失传的古代密码？\""（该角色内心独白）
+- 心理描写关键词：心里想、心想、暗想、暗道、心道、琢磨、思考、想到、心中暗想等
+- 心理描写同样算作角色发言，text_type标记为"inner_monologue"
+
 **🎯 角色名称一致性要求（核心）**：
 - 同一角色必须使用统一的名称，避免多种称呼
 - 优先使用具体人名（如"鲁元公主"），避免泛指称呼（如"女子"、"少女"、"小姐"）
@@ -137,12 +144,17 @@ class OllamaCharacterDetector:
 输出格式（严格JSON）：
 {{
   "segments": [
-    {{"order": 1, "text": "文本内容", "speaker": "说话者", "text_type": "dialogue/narration", "confidence": 0.9}}
+    {{"order": 1, "text": "文本内容", "speaker": "说话者", "text_type": "dialogue/narration/inner_monologue", "confidence": 0.9}}
   ],
   "characters": [
     {{"name": "角色名", "frequency": 出现次数, "gender": "male/female/neutral", "personality": "calm/brave/gentle", "personality_description": "性格描述", "is_main_character": true/false, "confidence": 0.8}}
   ]
 }}
+
+text_type说明：
+- dialogue：角色对话（说出的话）
+- narration：旁白叙述
+- inner_monologue：角色内心独白/心理活动
 
 重要提醒：
 - 角色名必须完整（如"孙悟空"而不是"悟空"）
@@ -206,13 +218,18 @@ class OllamaCharacterDetector:
                 # 处理segments
                 segments = []
                 for i, seg_data in enumerate(data.get('segments', [])):
+                    # 支持新的text_type: inner_monologue
+                    text_type = seg_data.get('text_type', 'narration')
+                    if text_type not in ['dialogue', 'narration', 'inner_monologue']:
+                        text_type = 'narration'  # 默认为旁白
+                        
                     segments.append({
                         'order': seg_data.get('order', i + 1),
                         'text': seg_data.get('text', ''),
                         'speaker': seg_data.get('speaker', '旁白'),
                         'confidence': seg_data.get('confidence', 0.8),
                         'detection_rule': 'ollama_ai',
-                        'text_type': seg_data.get('text_type', 'narration')
+                        'text_type': text_type
                     })
                 
                 # 处理characters

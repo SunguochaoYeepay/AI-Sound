@@ -69,7 +69,10 @@ class ContentPreparationService:
             
             # 检查用户偏好，决定是否使用简化模式
             use_simple_mode = user_preferences and user_preferences.get("processing_mode") == "fast"
-            logger.info(f"🔍 处理模式决策: processing_mode={processing_mode}, use_simple_mode={use_simple_mode}")
+            # 🔧 新增：支持TTS优化模式
+            tts_optimization_mode = user_preferences and user_preferences.get("tts_optimization", "balanced")
+            
+            logger.info(f"🔍 处理模式决策: processing_mode={processing_mode}, use_simple_mode={use_simple_mode}, tts_optimization={tts_optimization_mode}")
             
             if use_simple_mode:
                 # 使用简化的本地分析，不依赖Ollama
@@ -118,10 +121,11 @@ class ContentPreparationService:
             # 7. 智能语音映射
             voice_mapping = await self.voice_mapper.intelligent_voice_mapping(detected_characters, user_preferences)
             
-            # 8. 转换为合成格式
+            # 8. 转换为合成格式（应用TTS优化配置）
             synthesis_json = self._adapt_to_synthesis_format(
                 analysis_result, 
-                voice_mapping
+                voice_mapping,
+                tts_optimization_mode=tts_optimization_mode
             )
             
             # 9. 保存分析结果到数据库
@@ -522,7 +526,8 @@ class ContentPreparationService:
         self, 
         analysis_result: Dict, 
         voice_mapping: Dict[str, int],
-        available_voices: List[Dict] = None
+        available_voices: List[Dict] = None,
+        tts_optimization_mode: str = "balanced"
     ) -> Dict:
         """适配为现有合成系统的JSON格式"""
         
@@ -555,6 +560,17 @@ class ContentPreparationService:
             # 🎯 智能TTS参数配置 - 基于角色和文本内容
             if not self.tts_optimizer:
                 self.tts_optimizer = AITTSOptimizer(self.ollama_detector)
+                # 根据优化模式配置TTS分析
+                if tts_optimization_mode == "fast":
+                    self.tts_optimizer.set_enable_ai_analysis(False)
+                    logger.info("🚀 TTS优化器设置为快速模式（禁用AI分析）")
+                elif tts_optimization_mode == "quality":
+                    self.tts_optimizer.set_enable_ai_analysis(True)
+                    logger.info("🎯 TTS优化器设置为质量模式（启用AI分析）")
+                else:  # balanced
+                    self.tts_optimizer.set_enable_ai_analysis(True)
+                    logger.info("⚖️ TTS优化器设置为平衡模式")
+            
             tts_params = self.tts_optimizer.get_smart_tts_params(segment, analysis_result.get('detected_characters', []))
             
             synthesis_plan.append({

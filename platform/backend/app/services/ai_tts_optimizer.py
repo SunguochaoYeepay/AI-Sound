@@ -1,6 +1,7 @@
 """
 AI TTS参数优化器服务
 基于大模型智能分析文本内容和角色特征，生成最佳TTS参数配置
+优化版：旁白使用默认值，减少token消耗
 """
 
 import json
@@ -13,33 +14,73 @@ logger = logging.getLogger(__name__)
 
 
 class AITTSOptimizer:
-    """AI TTS参数优化器 - 基于大模型智能分析"""
+    """AI TTS参数优化器 - 优化版，旁白使用默认值"""
+    
+    # 旁白默认参数（不走AI分析）
+    NARRATOR_DEFAULT_PARAMS = {
+        "timeStep": 32,
+        "pWeight": 2.0,
+        "tWeight": 3.0
+    }
+    
+    # 角色类型默认参数
+    CHARACTER_DEFAULT_PARAMS = {
+        "timeStep": 30,
+        "pWeight": 1.4,
+        "tWeight": 3.0
+    }
     
     def __init__(self, ollama_detector=None):
         self.ollama_detector = ollama_detector
+        self.enable_ai_analysis = True  # 可以通过环境变量控制
     
     def get_smart_tts_params(self, segment: Dict, detected_characters: List[Dict]) -> Dict:
-        """🎯 AI智能TTS参数配置 - 基于大模型分析，而非硬编码规则"""
+        """🎯 智能TTS参数配置 - 优化版"""
         
         speaker = segment.get('speaker', '旁白')
         text = segment.get('text', '')
         emotion = segment.get('emotion', 'neutral')
         
-        try:
-            # 尝试调用AI智能分析TTS参数
-            ai_params = self._ai_analyze_tts_params(segment, detected_characters)
-            if ai_params:
-                return ai_params
-        except Exception as e:
-            logger.warning(f"AI TTS参数分析失败，降级到规则模式: {str(e)}")
+        # 🔧 优化1：旁白直接使用默认参数，不走AI分析
+        if '旁白' in speaker or speaker == 'narrator':
+            logger.debug(f"旁白使用默认参数: {self.NARRATOR_DEFAULT_PARAMS}")
+            return {
+                **self.NARRATOR_DEFAULT_PARAMS,
+                "narrator_mode": True,
+                "skip_ai_analysis": True
+            }
         
-        # 降级方案：使用简化规则（不再有复杂硬编码）
+        # 🔧 优化2：短文本（<20字符）使用默认参数
+        if len(text.strip()) < 20:
+            logger.debug(f"短文本使用默认参数: {text[:10]}...")
+            return {
+                **self.CHARACTER_DEFAULT_PARAMS,
+                "short_text_mode": True
+            }
+        
+        # 🔧 优化3：neutral情感的普通对话也可以使用默认参数
+        if emotion == 'neutral' and len(text) < 50:
+            logger.debug(f"中性短对话使用默认参数: {text[:15]}...")
+            return {
+                **self.CHARACTER_DEFAULT_PARAMS,
+                "neutral_mode": True
+            }
+        
+        try:
+            # 只对真正需要分析的内容使用AI
+            if self.enable_ai_analysis:
+                ai_params = self._ai_analyze_tts_params(segment, detected_characters)
+                if ai_params:
+                    return ai_params
+        except Exception as e:
+            logger.warning(f"AI TTS参数分析失败，使用默认参数: {str(e)}")
+        
+        # 降级方案：使用简化规则
         return self._fallback_tts_params(speaker, text, emotion)
     
     def _ai_analyze_tts_params(self, segment: Dict, detected_characters: List[Dict]) -> Dict:
-        """使用AI智能分析TTS参数"""
+        """使用AI智能分析TTS参数 - 简化版提示词"""
         
-        # 获取角色信息
         speaker = segment.get('speaker', '旁白')
         text = segment.get('text', '')
         emotion = segment.get('emotion', 'neutral')
@@ -51,8 +92,8 @@ class AITTSOptimizer:
                 character_info = char
                 break
         
-        # 构建AI分析提示词
-        prompt = self._build_tts_analysis_prompt(segment, character_info)
+        # 🔧 优化：使用简化的提示词
+        prompt = self._build_simplified_tts_prompt(segment, character_info)
         
         # 调用Ollama分析
         response = self._call_ollama_for_tts(prompt)
@@ -62,71 +103,47 @@ class AITTSOptimizer:
         
         return None
     
-    def _build_tts_analysis_prompt(self, segment: Dict, character_info: Dict = None) -> str:
-        """构建TTS参数分析提示词"""
+    def _build_simplified_tts_prompt(self, segment: Dict, character_info: Dict = None) -> str:
+        """构建简化的TTS参数分析提示词 - 大幅减少token消耗"""
         
         speaker = segment.get('speaker', '旁白')
         text = segment.get('text', '')
         emotion = segment.get('emotion', 'neutral')
         
-        character_desc = "未知角色"
+        # 角色特征简化描述
+        char_traits = "普通角色"
         if character_info:
-            personality = character_info.get('personality', 'calm')
             gender = character_info.get('gender', 'unknown')
-            desc = character_info.get('personality_description', '')
-            character_desc = f"{gender}角色，性格{personality}，{desc}"
+            personality = character_info.get('personality', 'calm')
+            char_traits = f"{gender}/{personality}"
         
-        prompt = f"""你是专业的语音合成参数调优专家。请根据以下信息分析并生成最佳的TTS参数配置。
+        # 🔧 大幅简化的提示词
+        prompt = f"""分析TTS参数。
 
-当前段落信息：
-- 说话者：{speaker}
-- 文本内容："{text}"
-- 检测情感：{emotion}
-- 角色特征：{character_desc}
+角色: {speaker} ({char_traits})
+文本: "{text}"
+情感: {emotion}
 
-TTS参数说明：
-- timeStep (10-40)：推理步数，影响生成质量和速度
-  * 20-25：快速生成，适合短句
-  * 30-35：标准质量，适合一般对话
-  * 35-40：高质量，适合重要台词
-  
-- pWeight (1.0-2.5)：发音强度权重，控制清晰度
-  * 1.0-1.5：保持自然口音，适合温柔角色
-  * 1.5-2.0：标准清晰度，适合一般对话
-  * 2.0-2.5：高清晰度，适合旁白或激烈情感
-  
-- tWeight (2.0-5.0)：音色相似度权重，控制表现力
-  * 2.0-3.0：基础相似度，保持稳定
-  * 3.0-4.0：增强表现力，适合情感对话
-  * 4.0-5.0：强烈表现力，适合剧烈情感
+参数范围:
+- timeStep: 20-40 (质量vs速度)
+- pWeight: 1.0-2.5 (清晰度)  
+- tWeight: 2.0-4.0 (表现力)
 
-应用场景参考：
-- 标准语音合成：pWeight=2.0, tWeight=3.0
-- 方言/口音保留：pWeight=1.0-1.5, tWeight=3.0-5.0  
-- 情感语音（惊喜/悲伤）：pWeight=1.5-2.5, tWeight≥3.0
-- 含噪声参考音频：pWeight≥3.0, tWeight≥3.0
-- 旁白叙述：pWeight=2.0, tWeight=3.0
-- 温柔角色：pWeight=1.2, tWeight=2.8
-- 激烈角色：pWeight=1.6, tWeight=3.2
+参考配置:
+- 标准对话: timeStep=30, pWeight=1.4, tWeight=3.0
+- 激烈情感: timeStep=28, pWeight=1.6, tWeight=3.5
+- 温柔角色: timeStep=32, pWeight=1.2, tWeight=2.8
 
-请基于文本内容、角色特征、情感状态进行智能分析，输出最适合的参数。
-
-输出格式（仅输出JSON）：
-{{
-    "timeStep": 数值,
-    "pWeight": 数值,
-    "tWeight": 数值,
-    "reasoning": "参数选择的分析依据"
-}}"""
+输出JSON:
+{{"timeStep": 数值, "pWeight": 数值, "tWeight": 数值, "reason": "简短理由"}}"""
         
         return prompt
     
     def _call_ollama_for_tts(self, prompt: str) -> Optional[str]:
-        """调用Ollama进行TTS参数分析"""
+        """调用Ollama进行TTS参数分析 - 优化超时和参数"""
         try:
             # 尝试复用现有的Ollama检测器
             if hasattr(self, 'ollama_detector') and self.ollama_detector:
-                # 使用简化的调用方式
                 response = self.ollama_detector._call_ollama(prompt)
                 return response
             else:
@@ -139,14 +156,15 @@ TTS参数说明：
                     "prompt": prompt,
                     "stream": False,
                     "options": {
-                        "temperature": 0.3,
-                        "top_p": 0.8,
-                        "max_tokens": 500,
-                        "num_ctx": 2048
+                        "temperature": 0.1,  # 降低温度，更确定的输出
+                        "top_p": 0.9,
+                        "max_tokens": 200,   # 🔧 大幅减少max_tokens
+                        "num_ctx": 1024      # 🔧 减少上下文长度
                     }
                 }
                 
-                response = requests.post(api_url, json=payload, timeout=60)
+                # 🔧 减少超时时间
+                response = requests.post(api_url, json=payload, timeout=30)
                 
                 if response.status_code == 200:
                     result = response.json()
@@ -170,63 +188,66 @@ TTS参数说明：
                 data = json.loads(json_str)
                 
                 # 验证参数范围
-                time_step = int(data.get('timeStep', 32))
+                time_step = int(data.get('timeStep', 30))
                 p_w = float(data.get('pWeight', 1.4))
                 t_w = float(data.get('tWeight', 3.0))
                 
                 # 参数范围检查和修正
-                time_step = max(10, min(40, time_step))
+                time_step = max(20, min(40, time_step))
                 p_w = max(1.0, min(2.5, p_w))
-                t_w = max(2.0, min(5.0, t_w))
+                t_w = max(2.0, min(4.0, t_w))
                 
-                reasoning = data.get('reasoning', 'AI智能分析')
+                reasoning = data.get('reason', data.get('reasoning', 'AI分析'))
                 
-                logger.info(f"AI TTS参数分析: timeStep={time_step}, pWeight={p_w}, tWeight={t_w}, 原因: {reasoning}")
+                # 🔧 简化日志输出
+                logger.info(f"AI TTS: timeStep={time_step}, pWeight={p_w}, tWeight={t_w}")
+                logger.debug(f"分析理由: {reasoning}")
                 
                 return {
                     "timeStep": time_step,
-                    "pWeight": round(p_w, 2),
-                    "tWeight": round(t_w, 2),
+                    "pWeight": round(p_w, 1),
+                    "tWeight": round(t_w, 1),
                     "ai_reasoning": reasoning
                 }
             
             return None
             
         except (json.JSONDecodeError, ValueError, KeyError) as e:
-            logger.error(f"解析AI TTS参数失败: {str(e)}, 响应: {response[:200]}")
+            logger.error(f"解析AI TTS参数失败: {str(e)}")
             return None
     
     def _fallback_tts_params(self, speaker: str, text: str, emotion: str) -> Dict:
-        """降级方案：简化的规则配置（最小化硬编码）"""
+        """降级方案：基于情感的快速配置"""
         
-        # 基础参数
-        time_step = 32
-        p_w = 1.4
-        t_w = 3.0
+        # 基于情感的快速映射
+        emotion_params = {
+            'angry': {"timeStep": 25, "pWeight": 1.8, "tWeight": 3.2},
+            'excited': {"timeStep": 26, "pWeight": 1.7, "tWeight": 3.1},
+            'happy': {"timeStep": 30, "pWeight": 1.5, "tWeight": 2.8},
+            'sad': {"timeStep": 35, "pWeight": 1.2, "tWeight": 3.5},
+            'fear': {"timeStep": 32, "pWeight": 1.6, "tWeight": 3.3},
+            'surprise': {"timeStep": 28, "pWeight": 1.7, "tWeight": 3.0},
+            'calm': {"timeStep": 32, "pWeight": 1.4, "tWeight": 3.0},
+            'neutral': {"timeStep": 30, "pWeight": 1.4, "tWeight": 3.0}
+        }
         
-        # 只保留最核心的区分规则
+        params = emotion_params.get(emotion, emotion_params['neutral'])
+        
+        # 旁白微调
         if '旁白' in speaker:
-            # 旁白：标准清晰
-            p_w = 2.0
-            t_w = 3.0
-        elif emotion in ['angry', 'excited']:
-            # 激烈情感：增强表现力
-            p_w = 1.6
-            t_w = 3.5
-        elif emotion in ['sad', 'gentle']:
-            # 温柔情感：柔和自然
-            p_w = 1.2
-            t_w = 2.8
+            params = dict(params)  # 复制避免修改原字典
+            params["pWeight"] = 2.0
+            params["tWeight"] = 3.0
         
-        # 基于文本长度的简单调整
-        if len(text) > 50:
-            time_step = 35  # 长文本提高质量
-        elif len(text) < 20:
-            time_step = 28  # 短文本快速生成
-            
+        logger.debug(f"情感参数映射: {emotion} -> {params}")
+        
         return {
-            "timeStep": time_step,
-            "pWeight": p_w,
-            "tWeight": t_w,
+            **params,
+            "emotion_based": True,
             "fallback_mode": True
-        } 
+        }
+    
+    def set_enable_ai_analysis(self, enabled: bool):
+        """设置是否启用AI分析（可用于性能调优）"""
+        self.enable_ai_analysis = enabled
+        logger.info(f"AI TTS分析{'启用' if enabled else '禁用'}") 

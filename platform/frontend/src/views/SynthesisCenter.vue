@@ -55,6 +55,7 @@
         @play-segment="handlePlaySegment"
         @refresh-preparation="handleRefreshPreparation"
         @trigger-preparation="handleTriggerPreparation"
+        @trigger-preparation-loading="handleTriggerPreparationLoading"
         @start-chapter-synthesis="handleStartChapterSynthesis"
         @play-chapter="handlePlayChapter"
         @download-chapter="handleDownloadChapter"
@@ -873,7 +874,15 @@ const handleRefreshPreparation = () => {
 }
 
 const handleTriggerPreparation = () => {
-  message.info('触发智能准备')
+  // 这个事件已经由ContentPreview组件自己处理了
+  // 父组件不需要额外处理
+  console.log('📋 智能准备事件由ContentPreview组件处理')
+}
+
+const handleTriggerPreparationLoading = (loading) => {
+  // 可以在这里添加全局loading状态管理
+  console.log('📋 智能准备Loading状态:', loading)
+  contentLoading.value = loading
 }
 
 const handleStartChapterSynthesis = (chapterId) => {
@@ -937,26 +946,84 @@ const getSelectedChapterStatus = () => {
   const chapter = chapters.value.find(ch => ch.id === selectedChapter.value)
   if (!chapter) return 'pending'
   
-  // 优先判断项目状态：如果项目是pending或ready状态，章节也应该是pending
-  if (project.value?.status === 'pending' || project.value?.status === 'ready') {
+  // 🎯 智能状态判断逻辑重构
+  const projectStatus = project.value?.status
+  const chapterAnalysisStatus = chapter.analysis_status
+  const chapterSynthesisStatus = chapter.synthesis_status
+  
+  console.log('🔍 章节状态判断调试:', {
+    章节ID: selectedChapter.value,
+    项目状态: projectStatus,
+    章节分析状态: chapterAnalysisStatus,
+    章节合成状态: chapterSynthesisStatus,
+    章节标题: chapter.chapter_title
+  })
+  
+  // 1. 如果项目正在处理中，章节也是处理中
+  if (projectStatus === 'processing') {
+    return 'processing'
+  }
+  
+  // 2. 如果项目已完成，需要检查该章节是否有音频文件
+  if (projectStatus === 'completed') {
+    // 项目完成意味着有音频输出，章节应该显示为completed
+    console.log('✅ 项目已完成，章节显示为completed状态')
+    return 'completed'
+  }
+  
+  // 3. 如果项目部分完成，需要检查具体的章节状态
+  if (projectStatus === 'partial_completed') {
+    // 这里需要检查该章节是否在已完成的范围内
+    // 暂时返回completed，实际应该查询该章节的音频文件
+    return 'completed'
+  }
+  
+  // 4. 如果项目失败或暂停
+  if (projectStatus === 'failed') {
+    return 'failed'
+  }
+  
+  if (projectStatus === 'paused') {
+    return 'processing'  // 暂停也算处理中
+  }
+  
+  // 5. 项目待开始或准备状态，检查章节的准备情况
+  if (projectStatus === 'pending' || projectStatus === 'ready') {
+    // 如果章节已完成智能准备，显示待合成状态（pending）
+    if (chapterAnalysisStatus === 'completed' && chapterSynthesisStatus === 'ready') {
+      console.log('📋 章节智能准备完成，显示待合成状态')
+      return 'pending'
+    }
+    
+    // 如果章节正在分析
+    if (chapterAnalysisStatus === 'analyzing') {
+      return 'processing'
+    }
+    
+    // 如果章节分析失败
+    if (chapterAnalysisStatus === 'failed') {
+      return 'failed'
+    }
+    
+    // 默认待开始
     return 'pending'
   }
   
-  // 使用章节的analysis_status或synthesis_status
-  const status = chapter.analysis_status || chapter.synthesis_status || 'pending'
-  
-  // 映射状态
+  // 6. 兜底逻辑：根据章节自身状态
+  const status = chapterAnalysisStatus || chapterSynthesisStatus || 'pending'
   const statusMap = {
     'pending': 'pending',
-    'processing': 'processing', 
+    'analyzing': 'processing',
+    'processing': 'processing',
     'completed': 'completed',
     'failed': 'failed',
     'ready': 'pending',
-    'not_started': 'pending',
-    'prepared': 'pending'  // 智能准备完成但未开始合成
+    'not_started': 'pending'
   }
   
-  return statusMap[status] || 'pending'
+  const finalStatus = statusMap[status] || 'pending'
+  console.log('🎯 最终章节状态:', finalStatus)
+  return finalStatus
 }
 
 // 环境音合成相关方法

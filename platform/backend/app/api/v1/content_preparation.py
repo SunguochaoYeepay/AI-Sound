@@ -3,8 +3,9 @@
 提供小说章节语音合成前的智能内容准备功能
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from sqlalchemy.orm import Session
+from pydantic import BaseModel
 from typing import Optional, Dict, Any
 import logging
 
@@ -16,6 +17,12 @@ router = APIRouter(prefix="/content-preparation")
 logger = logging.getLogger(__name__)
 
 # 服务实例将在每个请求中创建
+
+class PreparationRequest(BaseModel):
+    """智能准备请求模型"""
+    auto_add_narrator: bool = True
+    processing_mode: str = "auto"
+    tts_optimization: str = "balanced"  # fast, balanced, quality
 
 
 @router.get("/content-stats/{chapter_id}")
@@ -85,23 +92,26 @@ async def get_synthesis_preview(
 @router.post("/prepare-synthesis/{chapter_id}")
 async def prepare_chapter_for_synthesis(
     chapter_id: int,
-    auto_add_narrator: bool = Query(True, description="是否自动添加旁白角色"),
-    processing_mode: Optional[str] = Query("auto", description="处理模式: auto, fast, detailed"),
+    request: PreparationRequest = Body(default=PreparationRequest()),
     db: Session = Depends(get_db)
 ):
     """
-    智能准备章节用于语音合成
+    智能准备章节用于语音合成（优化版）
     
     核心功能：
     1. 智能文本分块（最大3000 tokens）
     2. 角色对话检测和分离
     3. 自动添加旁白角色
-    4. 生成语音合成配置
+    4. 生成语音合成配置（支持TTS优化模式）
     5. 输出JSON格式数据
     
     参数：
     - auto_add_narrator: 是否自动添加旁白角色
     - processing_mode: 处理模式（auto/fast/detailed）
+    - tts_optimization: TTS优化模式（fast/balanced/quality）
+      * fast: 旁白使用默认参数，只对复杂对话使用AI分析，大幅减少token消耗
+      * balanced: 平衡模式，适度使用AI分析
+      * quality: 质量模式，对所有内容使用AI分析
     """
     try:
         # 获取章节
@@ -111,12 +121,19 @@ async def prepare_chapter_for_synthesis(
         
         # 创建服务实例并执行智能准备
         content_prep_service = ContentPreparationService(db)
+        
+        # 🔧 优化：构建用户偏好配置，包含TTS优化模式
+        user_preferences = {
+            "auto_add_narrator": request.auto_add_narrator,
+            "processing_mode": request.processing_mode,
+            "tts_optimization": request.tts_optimization
+        }
+        
+        logger.info(f"📋 章节{chapter_id}智能准备请求: {user_preferences}")
+        
         result = await content_prep_service.prepare_chapter_for_synthesis(
             chapter_id=chapter_id,
-            user_preferences={
-                "auto_add_narrator": auto_add_narrator,
-                "processing_mode": processing_mode
-            }
+            user_preferences=user_preferences
         )
         
         return {

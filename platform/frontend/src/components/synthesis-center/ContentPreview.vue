@@ -188,7 +188,10 @@
                 🔄 重新加载
               </a-button>
             </a-space>
-            <p class="help-text">智能准备将分析章节内容，识别角色对话并生成合成配置</p>
+            <p class="help-text">
+              智能准备将自动分析章节内容，识别角色对话，生成语音合成配置。<br/>
+              这是使用AI技术的一键式准备功能，通常需要1-3分钟完成。
+            </p>
           </div>
         </div>
       </a-empty>
@@ -197,10 +200,11 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
-import { Empty } from 'ant-design-vue'
+import { ref, computed, h } from 'vue'
+import { Empty, Modal, message } from 'ant-design-vue'
 import { DownOutlined } from '@ant-design/icons-vue'
 import DialogueBubble from './DialogueBubble.vue'
+import apiClient from '@/api/config.js'
 
 const props = defineProps({
   project: Object,
@@ -420,8 +424,196 @@ const handleRefreshPreparation = () => {
   emit('refresh-preparation')
 }
 
-const handleTriggerPreparation = () => {
-  emit('trigger-preparation')
+const handleTriggerPreparation = async () => {
+  if (!props.selectedChapter) {
+    message.warning('请先选择要智能准备的章节')
+    return
+  }
+  
+  console.log('🎭 准备智能准备章节:', {
+    selectedChapter: props.selectedChapter,
+    chapterInfo: getSelectedChapterInfo(),
+    project: props.project?.name
+  })
+  
+  // 显示确认对话框
+  console.log('📋 显示智能准备确认对话框...')
+  Modal.confirm({
+    title: '智能准备章节',
+    content: h('div', [
+      h('p', '即将开始智能准备以下章节：'),
+      h('p', { style: 'font-weight: 600; color: #1890ff; margin: 8px 0;' }, 
+        `第${getSelectedChapterInfo()?.chapter_number}章 ${getSelectedChapterInfo()?.chapter_title || getSelectedChapterInfo()?.title}`
+      ),
+      h('br'),
+      h('p', '智能准备将：'),
+      h('ul', { style: 'margin: 8px 0; padding-left: 20px;' }, [
+        h('li', '🎭 智能识别章节中的角色和对话'),
+        h('li', '📝 自动分段并生成语音合成配置'),
+        h('li', '🎨 为角色自动分配声音'),
+        h('li', '📋 生成完整的合成计划')
+      ]),
+      h('br'),
+      h('p', { style: 'color: #666; font-size: 13px;' }, '此操作可能需要1-3分钟，请耐心等待。'),
+      h('p', { style: 'color: #52c41a; font-size: 12px; margin-top: 8px;' }, '🚀 使用快速模式，大幅减少处理时间')
+    ]),
+    width: 500,
+    okText: '开始智能准备',
+    cancelText: '取消',
+    onOk: async () => {
+      console.log('✅ 用户确认开始智能准备')
+      await executePreparation()
+    },
+    onCancel: () => {
+      console.log('❌ 用户取消智能准备')
+    }
+  })
+}
+
+const executePreparation = async () => {
+  let hideLoading = null
+  let websocket = null
+  
+  try {
+    console.log('🚀 用户确认开始智能准备，开始执行...')
+    
+    // 🔧 修复：确保只在用户确认后才显示loading状态
+    emit('trigger-preparation-loading', true)
+    
+    // 🔧 建立WebSocket连接监听进度
+    try {
+      const wsUrl = `ws://localhost:8000/api/v1/analysis/ws/progress/${props.selectedChapter}`
+      websocket = new WebSocket(wsUrl)
+      
+      websocket.onmessage = (event) => {
+        const data = JSON.parse(event.data)
+        if (data.type === 'progress_update') {
+          console.log('📊 智能准备进度:', data.data)
+          // 可以在这里更新进度显示
+        }
+      }
+      
+      websocket.onerror = (error) => {
+        console.warn('⚠️ WebSocket连接失败:', error)
+      }
+    } catch (wsError) {
+      console.warn('⚠️ WebSocket初始化失败:', wsError)
+    }
+    
+    // 🔧 延迟100ms显示loading消息，确保在确认对话框关闭后
+    await new Promise(resolve => setTimeout(resolve, 100))
+    hideLoading = message.loading('正在进行智能准备，请稍候...', 0)
+    
+    // 构造API调用URL
+    const apiUrl = `/content-preparation/prepare-synthesis/${props.selectedChapter}`
+    console.log('📡 调用API:', apiUrl)
+    
+    // 调用智能准备API - 复用书籍智能准备的API（优化版）
+    const response = await apiClient.post(apiUrl, {
+      auto_add_narrator: true,
+      processing_mode: 'auto',
+      tts_optimization: 'fast'  // 🚀 使用快速模式，减少token消耗
+    })
+    
+    // 🔧 清除loading消息
+    if (hideLoading) {
+      hideLoading()
+    }
+    console.log('✅ 智能准备API响应:', response.data)
+    
+    if (response.data.success) {
+      const result = response.data.data
+      
+      // 显示准备结果对话框
+      Modal.success({
+        title: '🎉 智能准备完成！',
+        content: h('div', { style: 'text-align: left;' }, [
+          h('p', { style: 'font-weight: 600;' }, 
+            `第${getSelectedChapterInfo()?.chapter_number}章 ${getSelectedChapterInfo()?.chapter_title || getSelectedChapterInfo()?.title}`
+          ),
+          h('br'),
+          h('div', { style: 'background: #f6f8fa; padding: 12px; border-radius: 6px; margin: 8px 0;' }, [
+            h('p', { style: 'font-weight: 600; margin-bottom: 8px;' }, '📊 处理结果：'),
+            h('p', { style: 'margin: 4px 0;' }, [
+              '🎭 检测到 ',
+              h('span', { style: 'color: #1890ff; font-weight: bold;' }, 
+                result.processing_info?.characters_found || result.synthesis_json?.characters?.length || 0
+              ),
+              ' 个角色'
+            ]),
+            h('p', { style: 'margin: 4px 0;' }, [
+              '📝 生成 ',
+              h('span', { style: 'color: #52c41a; font-weight: bold;' }, 
+                result.processing_info?.total_segments || result.synthesis_json?.synthesis_plan?.length || 0
+              ),
+              ' 个语音片段'
+            ]),
+            h('p', { style: 'margin: 4px 0;' }, [
+              '🎙️ 自动添加旁白角色：',
+              h('span', { 
+                style: `color: ${result.processing_info?.narrator_added ? '#52c41a' : '#fa8c16'};` 
+              }, result.processing_info?.narrator_added ? '是' : '否')
+            ])
+          ]),
+          h('p', { style: 'color: #52c41a; margin-top: 12px;' }, '✅ 章节已准备就绪，可以开始语音合成！')
+        ]),
+        width: 500,
+        okText: '开始合成',
+        onOk: () => {
+          // 刷新准备结果
+          emit('refresh-preparation')
+          message.info('数据已刷新，您现在可以开始合成了')
+        }
+      })
+      
+      message.success('智能准备完成，章节数据已更新')
+      
+      // 通知父组件刷新数据
+      emit('refresh-preparation')
+    }
+  } catch (error) {
+    console.error('❌ 智能准备失败:', error)
+    console.error('📋 错误详情:', {
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: error.response?.data,
+      message: error.message
+    })
+    
+    const errorDetail = error.response?.data?.detail || error.message || '智能准备失败'
+    
+    Modal.error({
+      title: '智能准备失败',
+      content: h('div', [
+        h('p', '章节智能准备过程中发生错误：'),
+        h('p', { 
+          style: 'color: #ff4d4f; background: #fff2f0; padding: 8px; border-radius: 4px; margin: 8px 0; font-family: monospace;' 
+        }, errorDetail),
+        h('p', '请检查：'),
+        h('ul', { style: 'margin: 8px 0; padding-left: 20px;' }, [
+          h('li', '章节内容是否完整'),
+          h('li', '网络连接是否正常'),
+          h('li', '是否有足够的处理权限'),
+          h('li', '后端服务是否正常运行')
+        ])
+      ]),
+      width: 500
+    })
+    
+    message.error('智能准备失败：' + errorDetail)
+  } finally {
+    // 🔧 确保在错误情况下也清理loading状态
+    if (hideLoading) {
+      hideLoading()
+    }
+    
+    // 🔧 关闭WebSocket连接
+    if (websocket && websocket.readyState === WebSocket.OPEN) {
+      websocket.close()
+    }
+    
+    emit('trigger-preparation-loading', false)
+  }
 }
 
 const handleStartChapterSynthesis = (chapterId) => {

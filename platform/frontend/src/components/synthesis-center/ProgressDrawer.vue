@@ -199,7 +199,7 @@ const progressTitle = computed(() => {
     if (current && current.trim()) {
       // 如果有具体的当前处理段落信息
       const currentText = current.length > 50 ? current.substring(0, 50) + '...' : current
-      return `🎤 正在合成第${completed + 1}段: "${currentText}" - ${chapterInfo} (${completed}/${total})`
+      return `🎤 正在合成第${completed + 1}段: "${currentText}"`
     } else {
       // 没有具体段落信息时的回退显示
       return `🎤 合成进行中 - 第${completed + 1}/${total}段 - ${chapterInfo}`
