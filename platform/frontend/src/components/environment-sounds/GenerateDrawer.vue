@@ -16,13 +16,26 @@
           type="primary" 
           :loading="generating"
           @click="handleConfirm"
+          :disabled="generating"
         >
-          开始生成
+          {{ buttonText }}
         </a-button>
       </a-space>
     </template>
 
     <div class="generate-form">
+      <!-- 生成状态提示 -->
+      <div v-if="generating && currentSoundId" class="generation-status">
+        <a-alert
+          :type="generationStatus === 'failed' ? 'error' : 'info'"
+          :message="generationStatus === 'processing' ? '🎵 环境音正在生成中...' : '🚀 正在启动生成任务...'"
+          :description="generationStatus === 'processing' ? '请耐心等待，生成完成后抽屉会自动关闭。' : '任务已提交，正在初始化生成环境...'"
+          show-icon
+          :closable="false"
+          style="margin-bottom: 16px;"
+        />
+      </div>
+
       <a-form
         ref="formRef"
         :model="formState"
@@ -165,7 +178,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, watch } from 'vue'
+import { ref, reactive, watch, onUnmounted, computed } from 'vue'
 import { message } from 'ant-design-vue'
 import { environmentSoundsAPI } from '@/api'
 
@@ -196,6 +209,10 @@ const emit = defineEmits(['update:visible', 'generated'])
 const formRef = ref()
 const generating = ref(false)
 const selectedPreset = ref(null)
+const currentSoundId = ref(null)
+const generationStatus = ref('')
+const generationProgress = ref(0)
+const statusCheckInterval = ref(null)
 
 const formState = reactive({
   name: '',
@@ -223,6 +240,13 @@ const rules = {
   ]
 }
 
+// 计算属性
+const buttonText = computed(() => {
+  if (!generating.value) return '开始生成'
+  if (generationStatus.value === 'processing') return '生成中...'
+  return '启动生成中...'
+})
+
 // 方法
 const handleCategoryChange = (categoryId) => {
   // 根据分类加载预设
@@ -245,20 +269,91 @@ const handleConfirm = async () => {
     generating.value = true
     
     const response = await environmentSoundsAPI.generateEnvironmentSound(formState)
-    if (response.data.success) {
-      message.success('环境音生成任务已启动')
-      emit('generated', response.data.sound_id)
-      handleCancel()
+    // 修复：检查正确的响应格式，后端返回的是 {sound_id, status, message, estimated_time}
+    if (response.data && response.data.sound_id) {
+      currentSoundId.value = response.data.sound_id
+      generationStatus.value = response.data.status
+      generationProgress.value = 0
+      
+      message.info(response.data.message || '环境音生成任务已启动')
+      
+      // 🔄 开始监听生成状态，不立即关闭抽屉
+      startStatusMonitoring()
+      
+    } else {
+      message.error('生成请求失败：响应格式错误')
+      generating.value = false
     }
   } catch (error) {
     console.error('生成失败:', error)
     message.error(error.response?.data?.detail || '生成失败')
-  } finally {
     generating.value = false
   }
 }
 
+// 🔄 状态监听逻辑
+const startStatusMonitoring = () => {
+  if (statusCheckInterval.value) {
+    clearInterval(statusCheckInterval.value)
+  }
+  
+  statusCheckInterval.value = setInterval(async () => {
+    await checkGenerationStatus()
+  }, 2000) // 每2秒检查一次
+}
+
+const checkGenerationStatus = async () => {
+  if (!currentSoundId.value) return
+  
+  try {
+    const response = await environmentSoundsAPI.getEnvironmentSound(currentSoundId.value)
+    const sound = response.data
+    
+    generationStatus.value = sound.generation_status
+    generationProgress.value = sound.generation_progress || 0
+    
+    if (sound.generation_status === 'completed') {
+      // ✅ 生成成功 - 关闭抽屉并提示成功
+      clearInterval(statusCheckInterval.value)
+      statusCheckInterval.value = null
+      
+      message.success(`环境音"${sound.name}"生成完成！`)
+      emit('generated', currentSoundId.value)
+      
+      // 重置状态并关闭
+      resetState()
+      emit('update:visible', false)
+      
+    } else if (sound.generation_status === 'failed') {
+      // ❌ 生成失败 - 不关闭抽屉，提示失败
+      clearInterval(statusCheckInterval.value)
+      statusCheckInterval.value = null
+      generating.value = false
+      
+      message.error(`环境音生成失败: ${sound.error_message || '未知错误'}`)
+      // 保持抽屉打开，用户可以修改参数重试
+    }
+    
+  } catch (error) {
+    console.error('检查生成状态失败:', error)
+    // 如果检查失败，继续尝试
+  }
+}
+
+const resetState = () => {
+  generating.value = false
+  currentSoundId.value = null
+  generationStatus.value = ''
+  generationProgress.value = 0
+  
+  if (statusCheckInterval.value) {
+    clearInterval(statusCheckInterval.value)
+    statusCheckInterval.value = null
+  }
+}
+
 const handleCancel = () => {
+  resetState()
   formRef.value?.resetFields()
   selectedPreset.value = null
   emit('update:visible', false)
@@ -267,8 +362,13 @@ const handleCancel = () => {
 // 监听visible变化，重置表单
 watch(() => props.visible, (val) => {
   if (!val) {
-    handleCancel()
+    resetState() // 确保清理状态监听
   }
+})
+
+// 组件卸载时清理
+onUnmounted(() => {
+  resetState()
 })
 </script>
 

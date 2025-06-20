@@ -273,6 +273,24 @@ async def generate_environment_sound(
 ):
     """生成环境音"""
     
+    # 如果未指定分类，使用默认分类
+    category_id = request.category_id
+    if category_id is None:
+        # 查找默认分类（通用分类）
+        default_category = db.query(EnvironmentSoundCategory).filter(
+            EnvironmentSoundCategory.name.ilike("%通用%")
+        ).first()
+        if not default_category:
+            # 如果没有通用分类，使用第一个可用分类
+            default_category = db.query(EnvironmentSoundCategory).filter(
+                EnvironmentSoundCategory.is_active == True
+            ).first()
+        
+        if default_category:
+            category_id = default_category.id
+        else:
+            raise HTTPException(status_code=400, detail="未找到可用的环境音分类，请先创建分类")
+    
     # 创建数据库记录
     sound = EnvironmentSound(
         name=request.name,
@@ -281,7 +299,7 @@ async def generate_environment_sound(
         duration=request.duration,
         steps=request.steps,
         cfg_scale=request.cfg_scale,
-        category_id=request.category_id,
+        category_id=category_id,
         generation_status="processing",
         created_by="system"  # TODO: 从认证信息获取用户
     )

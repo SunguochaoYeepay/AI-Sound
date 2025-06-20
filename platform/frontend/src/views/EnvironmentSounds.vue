@@ -181,6 +181,13 @@
               重置
             </a-button>
           </a-form-item>
+
+          <a-form-item>
+            <a-button @click="loadSounds" :loading="loading">
+              <ReloadOutlined />
+              刷新
+            </a-button>
+          </a-form-item>
         </a-form>
       </a-card>
     </div>
@@ -705,7 +712,8 @@ import {
   SoundOutlined, PlusOutlined, SearchOutlined, PlayCircleOutlined,
   DownloadOutlined, HeartOutlined, MoreOutlined, EditOutlined,
   DeleteOutlined, CopyOutlined, RedoOutlined, CheckCircleOutlined,
-  LoadingOutlined, StarFilled, ArrowLeftOutlined, BulbOutlined
+  LoadingOutlined, StarFilled, ArrowLeftOutlined, BulbOutlined,
+  ReloadOutlined
 } from '@ant-design/icons-vue'
 
 import GenerateDrawer from '@/components/environment-sounds/GenerateDrawer.vue'
@@ -1020,25 +1028,32 @@ const checkGenerationStatus = (soundId) => {
       const index = sounds.value.findIndex(s => s.id === soundId)
       if (index !== -1) {
         sounds.value[index] = sound
+      } else {
+        // 如果在当前列表中找不到，重新加载列表
+        await loadSounds()
       }
       
       // 如果生成完成或失败，停止检查
       if (sound.generation_status === 'completed' || sound.generation_status === 'failed') {
         clearInterval(interval)
-        loadStats() // 更新统计数据
+        
+        // 强制刷新统计数据和列表
+        await Promise.all([loadStats(), loadSounds()])
         
         if (sound.generation_status === 'completed') {
           message.success(`环境音"${sound.name}"生成完成`)
         } else {
-          message.error(`环境音"${sound.name}"生成失败`)
+          message.error(`环境音"${sound.name}"生成失败: ${sound.error_message || '未知错误'}`)
         }
       }
       
     } catch (error) {
       clearInterval(interval)
       console.error('检查生成状态失败:', error)
+      // 如果检查失败，也尝试刷新列表
+      await loadSounds()
     }
-  }, 3000) // 每3秒检查一次
+  }, 2000) // 改为每2秒检查一次，更及时
 }
 
 // 智能分析方法
@@ -1203,11 +1218,12 @@ const startBatchGeneration = async () => {
         batchProgress.currentTask.progress = 100
         
         batchProgress.completed++
-        addGenerationLog('success', `✅ ${prompt.title} 生成完成`)
+        addGenerationLog('success', `✅ ${prompt.title} 生成任务已启动 (ID: ${response.data.sound_id})`)
 
         // 开始检查生成状态
-        if (response.data.id) {
-          checkGenerationStatus(response.data.id)
+        if (response.data.sound_id) {
+          addGenerationLog('info', `🔍 开始监控生成状态: ${prompt.title}`)
+          checkGenerationStatus(response.data.sound_id)
         }
 
       } catch (error) {
@@ -1226,6 +1242,15 @@ const startBatchGeneration = async () => {
     // 刷新环境音列表
     await loadSounds()
     await loadStats()
+    
+    // 为所有生成的环境音启动状态检查
+    const generatedIds = selectedPrompts
+      .map((_, index) => sounds.value.length + index + 1)
+      .filter(id => id > 0)
+    
+    generatedIds.forEach(id => {
+      checkGenerationStatus(id)
+    })
 
   } catch (error) {
     batchProgress.status = 'error'

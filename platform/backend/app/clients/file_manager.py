@@ -21,7 +21,9 @@ class FileManager:
     """文件管理器"""
     
     def __init__(self, base_path: str = "./storage"):
-        self.base_path = Path(base_path)
+        from app.utils.path_manager import PathManager
+        path_manager = PathManager()
+        self.base_path = Path(path_manager.get_storage_path('storage'))
         self.base_path.mkdir(exist_ok=True)
         
         # 创建子目录

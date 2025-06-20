@@ -74,7 +74,7 @@ class EnvironmentSoundGenerateRequest(BaseModel):
     duration: float = Field(default=10.0, ge=1.0, le=60.0, description="音频时长(秒)")
     steps: int = Field(default=25, ge=10, le=100, description="生成步数")
     cfg_scale: float = Field(default=4.5, ge=1.0, le=20.0, description="CFG缩放")
-    category_id: int = Field(..., description="分类ID")
+    category_id: Optional[int] = Field(None, description="分类ID")
     tag_ids: Optional[List[int]] = Field(default=[], description="标签ID列表")
     description: Optional[str] = Field(None, description="环境音描述")
 

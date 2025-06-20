@@ -7,6 +7,8 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 from typing import Dict, Any
+import aiohttp
+import os
 
 from fastapi import FastAPI, Request, HTTPException, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,7 +16,6 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 import uvicorn
-import os
 import mimetypes
 
 # 应用组件导入
@@ -37,6 +38,34 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# TangoFlux服务配置
+TANGOFLUX_SERVICE_URL = os.getenv("TANGOFLUX_URL", "http://localhost:7930")
+
+async def check_tangoflux_connection() -> Dict[str, Any]:
+    """检查TangoFlux核心引擎连接状态"""
+    try:
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
+            async with session.get(f"{TANGOFLUX_SERVICE_URL}/health") as response:
+                if response.status == 200:
+                    result = await response.json()
+                    return {
+                        "status": "healthy",
+                        "url": TANGOFLUX_SERVICE_URL,
+                        "data": result
+                    }
+                else:
+                    return {
+                        "status": "unhealthy",
+                        "url": TANGOFLUX_SERVICE_URL,
+                        "error": f"HTTP {response.status}"
+                    }
+    except Exception as e:
+        return {
+            "status": "error",
+            "url": TANGOFLUX_SERVICE_URL,
+            "error": str(e)
+        }
 
 # 确保必要的目录在应用创建前就存在
 os.makedirs("data/audio", exist_ok=True)
@@ -65,6 +94,25 @@ async def lifespan(app: FastAPI):
         # 初始化数据库
         logger.info("📊 初始化数据库...")
         init_database()
+        
+        # 检查TangoFlux核心引擎 - 关键检查！
+        logger.info("🎼 检查TangoFlux环境音核心引擎...")
+        tangoflux_status = await check_tangoflux_connection()
+        
+        if tangoflux_status["status"] == "healthy":
+            logger.info(f"✅ TangoFlux核心引擎连接成功: {tangoflux_status['url']}")
+        else:
+            error_msg = f"❌ TangoFlux核心引擎连接失败: {tangoflux_status['url']} - {tangoflux_status.get('error', 'Unknown error')}"
+            logger.error(error_msg)
+            logger.error("💥 环境音生成功能不可用，请检查TangoFlux服务状态！")
+            
+            # 严格模式：如果核心引擎不可用，启动失败
+            strict_mode = os.getenv("STRICT_ENGINE_CHECK", "true").lower() == "true"
+            if strict_mode:
+                logger.error("🚫 严格模式：核心引擎不可用，启动终止！")
+                raise Exception(f"TangoFlux核心引擎不可用: {tangoflux_status.get('error')}")
+            else:
+                logger.warning("⚠️ 宽松模式：继续启动但环境音功能不可用")
         
         # 初始化TTS客户端
         logger.info("🎵 初始化TTS客户端...")
@@ -258,6 +306,9 @@ async def health_check() -> Dict[str, Any]:
         tts_client = get_tts_client()
         tts_status = await tts_client.health_check()
         
+        # TangoFlux核心引擎健康检查
+        tangoflux_status = await check_tangoflux_connection()
+        
         # WebSocket管理器状态
         ws_status = websocket_manager.get_status()
         
@@ -267,6 +318,7 @@ async def health_check() -> Dict[str, Any]:
         all_healthy = (
             db_status.get("status") == "healthy" and
             tts_status.get("status") == "healthy" and
+            tangoflux_status.get("status") == "healthy" and
             ws_status.get("status") == "running"
         )
         
@@ -276,6 +328,7 @@ async def health_check() -> Dict[str, Any]:
             "services": {
                 "database": db_status,
                 "tts_client": tts_status,
+                "tangoflux_engine": tangoflux_status,
                 "websocket_manager": ws_status,
                 "storage": storage_stats
             }
