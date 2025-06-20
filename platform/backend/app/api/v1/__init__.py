@@ -81,6 +81,9 @@ async def v1_health_check() -> Dict[str, Any]:
             "error": str(e)
         }
 
+# 导入日志监控路由
+from .logs import router as logs_router
+
 # 注册各模块路由
 api.include_router(books_router, tags=["Books"])
 api.include_router(chapters_router, tags=["Chapters"])
@@ -98,4 +101,5 @@ api.include_router(intelligent_analysis_router, tags=["Intelligent Analysis"])
 api.include_router(content_preparation_router, tags=["Content Preparation"]) 
 api.include_router(environment_sounds_router, prefix="/environment-sounds", tags=["Environment Sounds"])
 api.include_router(scene_analysis_router, tags=["Scene Analysis"])
-api.include_router(system_router, tags=["System Settings"]) 
+api.include_router(system_router, tags=["System Settings"])
+api.include_router(logs_router, tags=["Log Monitor"]) 

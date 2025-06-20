@@ -123,6 +123,13 @@
       </a-col>
     </a-row>
 
+    <!-- 日志监控 -->
+    <a-row :gutter="[24, 24]" style="margin-top: 24px;">
+      <a-col :span="24">
+        <LogSummary />
+      </a-col>
+    </a-row>
+
     <!-- 最近活动 -->
     <a-row :gutter="[24, 24]" style="margin-top: 24px;">
       <!-- 最近任务 -->
@@ -241,6 +248,7 @@ import { useBookStore } from '../stores/book.js'
 import { useSynthesisStore } from '../stores/synthesis.js'
 import { useAnalysisStore } from '../stores/analysis.js'
 import SystemStatus from '../components/SystemStatus.vue'
+import LogSummary from '../components/LogSummary.vue'
 import dayjs from 'dayjs'
 import {
   BookOutlined,
