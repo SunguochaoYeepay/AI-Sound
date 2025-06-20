@@ -366,7 +366,6 @@ const navigateTo = (route) => {
 .home-container {
 
   margin: 0 auto;
-  padding: 0 24px;
 }
 
 .welcome-banner {
@@ -549,6 +548,70 @@ const navigateTo = (route) => {
   align-items: center;
 }
 
+/* 暗黑模式适配 */
+[data-theme="dark"] .home-container {
+  background: #141414 !important;
+  min-height: 100vh;
+}
+
+[data-theme="dark"] .welcome-banner {
+  background: linear-gradient(135deg, #2d2d2d 0%, #1f1f1f 100%) !important;
+}
+
+[data-theme="dark"] .welcome-banner::before {
+  background: radial-gradient(circle, rgba(255,255,255,0.05) 0%, transparent 70%) !important;
+}
+
+[data-theme="dark"] .welcome-text h1 {
+  background: linear-gradient(45deg, #ffffff, #e5e5e5) !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  background-clip: text !important;
+}
+
+[data-theme="dark"] .status-card,
+[data-theme="dark"] .activity-card {
+  background: #1f1f1f !important;
+  border-color: #434343 !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3) !important;
+}
+
+[data-theme="dark"] .status-card :deep(.ant-card-head),
+[data-theme="dark"] .activity-card :deep(.ant-card-head) {
+  border-bottom-color: #434343 !important;
+  background: #1f1f1f !important;
+}
+
+[data-theme="dark"] .status-card :deep(.ant-card-head-title),
+[data-theme="dark"] .activity-card :deep(.ant-card-head-title) {
+  color: #fff !important;
+}
+
+[data-theme="dark"] .status-card :deep(.ant-card-body),
+[data-theme="dark"] .activity-card :deep(.ant-card-body) {
+  background: #1f1f1f !important;
+  color: #fff !important;
+}
+
+[data-theme="dark"] .mini-metric {
+  background: rgba(255,255,255,0.05) !important;
+}
+
+[data-theme="dark"] .mini-metric:hover {
+  background: rgba(74, 158, 255, 0.15) !important;
+}
+
+[data-theme="dark"] .mini-metric-label,
+[data-theme="dark"] .detail-label {
+  color: #8c8c8c !important;
+}
+
+[data-theme="dark"] .detail-value {
+  color: #fff !important;
+}
+</style>
+
+<style scoped>
 .notification-time {
   color: #999;
   font-size: 12px;
@@ -577,5 +640,61 @@ const navigateTo = (route) => {
   .floating-card {
     padding: 24px;
   }
+}
+
+/* 暗黑模式适配 */
+[data-theme="dark"] .home-container {
+  background: #141414 !important;
+  min-height: 100vh !important;
+}
+
+[data-theme="dark"] .status-card,
+[data-theme="dark"] .activity-card {
+  background: #1f1f1f !important;
+  border-color: #434343 !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3) !important;
+}
+
+[data-theme="dark"] .status-card :deep(.ant-card-head),
+[data-theme="dark"] .activity-card :deep(.ant-card-head) {
+  border-bottom-color: #434343 !important;
+}
+
+[data-theme="dark"] .status-card :deep(.ant-card-head-title),
+[data-theme="dark"] .activity-card :deep(.ant-card-head-title) {
+  color: #fff !important;
+}
+
+[data-theme="dark"] .status-card :deep(.ant-card-body),
+[data-theme="dark"] .activity-card :deep(.ant-card-body) {
+  color: #d1d5db !important;
+}
+
+[data-theme="dark"] .mini-metric {
+  background: rgba(255, 255, 255, 0.05) !important;
+}
+
+[data-theme="dark"] .mini-metric:hover {
+  background: rgba(74, 158, 255, 0.15) !important;
+}
+
+[data-theme="dark"] .mini-metric-label {
+  color: #8c8c8c !important;
+}
+
+[data-theme="dark"] .mini-metric-value {
+  color: #4a9eff !important;
+}
+
+[data-theme="dark"] .detail-label {
+  color: #8c8c8c !important;
+}
+
+[data-theme="dark"] .detail-value {
+  color: #d1d5db !important;
+}
+
+[data-theme="dark"] .notification-time {
+  color: #666 !important;
 }
 </style> 

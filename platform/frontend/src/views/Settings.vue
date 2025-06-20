@@ -3,707 +3,1433 @@
     <!-- 页面头部 -->
     <div class="page-header">
       <div class="header-content">
-        <h1 style="margin: 0; color: white; font-size: 28px; font-weight: 700;">
-          系统设置
-        </h1>
-        <p style="margin: 8px 0 0 0; color: rgba(255,255,255,0.9); font-size: 16px;">
-          查看引擎状态和系统配置信息
-        </p>
-      </div>
-      <div class="header-actions">
-        <a-button type="primary" size="large" @click="refreshStatus" :loading="refreshing" ghost>
-          <template #icon>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
-            </svg>
-          </template>
-          刷新状态
-        </a-button>
+        <div class="title-section">
+          <h1 class="page-title">
+            <SettingOutlined class="title-icon" />
+            系统设置
+          </h1>
+          <p class="page-description">
+            管理站点基本信息和系统核心配置
+          </p>
+        </div>
+        <div class="action-section">
+          <a-button type="primary" size="large" @click="saveAllSettings" :loading="saving" ghost>
+            <template #icon>
+              <SaveOutlined />
+            </template>
+            保存设置
+          </a-button>
+        </div>
       </div>
     </div>
 
     <!-- 主要内容区域 -->
     <div class="main-content">
-      <!-- 左侧：引擎状态 -->
-      <div class="status-panel">
-        <!-- 引擎状态卡片 -->
-        <a-card title="MegaTTS3 引擎状态" :bordered="false" class="status-card">
-          <template #extra>
-            <a-tag :color="engineStatus.status === 'running' ? 'success' : 'error'" size="large">
-              <template #icon>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                  <circle cx="12" cy="12" r="6"/>
-                </svg>
+      <a-row :gutter="24">
+        <!-- 左侧：站点基本设置 -->
+        <a-col :span="16">
+          <div class="settings-section">
+            <!-- 站点基本信息 -->
+            <a-card title="站点基本信息" :bordered="false" class="setting-card">
+              <template #extra>
+                <a-button type="link" size="small" @click="resetSiteSettings">
+                  <ReloadOutlined />
+                  重置
+                </a-button>
               </template>
-              {{ engineStatus.status === 'running' ? '运行中' : '离线' }}
-            </a-tag>
-          </template>
 
-          <div class="status-info">
-            <div class="info-row">
-              <span class="info-label">服务地址:</span>
-              <span class="info-value">{{ engineStatus.host }}:{{ engineStatus.port }}</span>
-            </div>
-            <div class="info-row">
-              <span class="info-label">引擎版本:</span>
-              <span class="info-value">{{ engineStatus.version }}</span>
-            </div>
-            <div class="info-row">
-              <span class="info-label">启动时间:</span>
-              <span class="info-value">{{ engineStatus.startTime }}</span>
-            </div>
-            <div class="info-row">
-              <span class="info-label">运行时长:</span>
-              <span class="info-value">{{ engineStatus.uptime }}</span>
-            </div>
-          </div>
-        </a-card>
+              <a-form :model="siteSettings" layout="vertical">
+                <a-row :gutter="16">
+                  <a-col :span="12">
+                    <a-form-item label="站点名称" name="siteName">
+                      <a-input 
+                        v-model:value="siteSettings.siteName" 
+                        placeholder="AI-Sound 智能语音平台"
+                        size="large"
+                      />
+                    </a-form-item>
+                  </a-col>
+                  <a-col :span="12">
+                    <a-form-item label="站点副标题" name="siteSubtitle">
+                      <a-input 
+                        v-model:value="siteSettings.siteSubtitle" 
+                        placeholder="专业的AI语音合成解决方案"
+                        size="large"
+                      />
+                    </a-form-item>
+                  </a-col>
+                </a-row>
 
-        <!-- 性能监控 -->
-        <a-card title="性能监控" :bordered="false" class="performance-card">
-          <div class="performance-metrics">
-            <div class="metric-item">
-              <div class="metric-label">CPU 使用率</div>
-              <a-progress 
-                :percent="performanceData.cpu" 
-                :stroke-color="getProgressColor(performanceData.cpu)"
-                :show-info="true"
-              />
-            </div>
-            <div class="metric-item">
-              <div class="metric-label">内存使用率</div>
-              <a-progress 
-                :percent="performanceData.memory" 
-                :stroke-color="getProgressColor(performanceData.memory)"
-                :show-info="true"
-              />
-            </div>
-            <div class="metric-item">
-              <div class="metric-label">GPU 使用率</div>
-              <a-progress 
-                :percent="performanceData.gpu" 
-                :stroke-color="getProgressColor(performanceData.gpu)"
-                :show-info="true"
-              />
-            </div>
-            <div class="metric-item">
-              <div class="metric-label">VRAM 使用</div>
-              <a-progress 
-                :percent="performanceData.vram" 
-                :stroke-color="getProgressColor(performanceData.vram)"
-                :show-info="true"
-              />
-            </div>
-          </div>
-        </a-card>
+                <a-form-item label="站点描述" name="siteDescription">
+                  <a-textarea 
+                    v-model:value="siteSettings.siteDescription" 
+                    placeholder="详细描述您的AI语音平台..."
+                    :rows="3"
+                    size="large"
+                  />
+                </a-form-item>
 
-        <!-- 系统信息 -->
-        <a-card title="系统信息" :bordered="false" class="system-card">
-          <div class="system-info">
-            <div class="info-section">
-              <h4>硬件信息</h4>
-              <div class="info-grid">
-                <div class="info-item">
-                  <span class="item-label">CPU:</span>
-                  <span class="item-value">{{ systemInfo.cpu }}</span>
-                </div>
-                <div class="info-item">
-                  <span class="item-label">内存:</span>
-                  <span class="item-value">{{ systemInfo.memory }}</span>
-                </div>
-                <div class="info-item">
-                  <span class="item-label">GPU:</span>
-                  <span class="item-value">{{ systemInfo.gpu }}</span>
-                </div>
-                <div class="info-item">
-                  <span class="item-label">VRAM:</span>
-                  <span class="item-value">{{ systemInfo.vram }}</span>
-                </div>
-              </div>
-            </div>
+                <a-row :gutter="16">
+                  <a-col :span="12">
+                    <a-form-item label="管理员邮箱" name="adminEmail">
+                      <a-input 
+                        v-model:value="siteSettings.adminEmail" 
+                        placeholder="admin@example.com"
+                        size="large"
+                        type="email"
+                      />
+                    </a-form-item>
+                  </a-col>
+                  <a-col :span="12">
+                    <a-form-item label="技术支持联系方式" name="supportContact">
+                      <a-input 
+                        v-model:value="siteSettings.supportContact" 
+                        placeholder="技术支持联系方式"
+                        size="large"
+                      />
+                    </a-form-item>
+                  </a-col>
+                </a-row>
+              </a-form>
+            </a-card>
 
-            <a-divider />
+            <!-- LOGO设置 -->
+            <a-card title="品牌标识设置" :bordered="false" class="setting-card">
+              <a-form layout="vertical">
+                <a-row :gutter="24">
+                  <a-col :span="12">
+                    <a-form-item label="站点LOGO">
+                      <div class="logo-upload-container">
+                        <div class="logo-preview">
+                          <img 
+                            v-if="siteSettings.logo" 
+                            :src="siteSettings.logo" 
+                            alt="站点LOGO" 
+                            class="logo-image"
+                          />
+                          <div v-else class="logo-placeholder">
+                            <PictureOutlined style="font-size: 32px; color: #bfbfbf;" />
+                            <p style="color: #bfbfbf; margin: 8px 0 0 0;">暂无LOGO</p>
+                          </div>
+                        </div>
+                        <div class="logo-actions">
+                          <a-upload
+                            :show-upload-list="false"
+                            accept="image/*"
+                            :before-upload="handleLogoUpload"
+                            :custom-request="uploadLogo"
+                          >
+                            <a-button type="primary" ghost>
+                              <UploadOutlined />
+                              上传LOGO
+                            </a-button>
+                          </a-upload>
+                          <a-button v-if="siteSettings.logo" @click="removeLogo" danger>
+                            <DeleteOutlined />
+                            移除
+                          </a-button>
+                        </div>
+                      </div>
+                      <div class="upload-tips">
+                        <p>• 建议尺寸：200×200px 或 400×400px</p>
+                        <p>• 支持格式：PNG、JPG、SVG</p>
+                        <p>• 文件大小：不超过2MB</p>
+                      </div>
+                    </a-form-item>
+                  </a-col>
+                  <a-col :span="12">
+                    <a-form-item label="收藏夹图标 (Favicon)">
+                      <div class="favicon-upload-container">
+                        <div class="favicon-preview">
+                          <img 
+                            v-if="siteSettings.favicon" 
+                            :src="siteSettings.favicon" 
+                            alt="Favicon" 
+                            class="favicon-image"
+                          />
+                          <div v-else class="favicon-placeholder">
+                            <GlobalOutlined style="font-size: 24px; color: #bfbfbf;" />
+                          </div>
+                        </div>
+                        <div class="favicon-actions">
+                          <a-upload
+                            :show-upload-list="false"
+                            accept="image/*"
+                            :before-upload="handleFaviconUpload"
+                            :custom-request="uploadFavicon"
+                          >
+                            <a-button type="primary" ghost size="small">
+                              <UploadOutlined />
+                              上传Favicon
+                            </a-button>
+                          </a-upload>
+                        </div>
+                      </div>
+                      <div class="upload-tips">
+                        <p>• 建议尺寸：32×32px 或 64×64px</p>
+                        <p>• 支持格式：PNG、ICO</p>
+                      </div>
+                    </a-form-item>
+                  </a-col>
+                </a-row>
+              </a-form>
+            </a-card>
 
-            <div class="info-section">
-              <h4>软件环境</h4>
-              <div class="info-grid">
-                <div class="info-item">
-                  <span class="item-label">操作系统:</span>
-                  <span class="item-value">{{ systemInfo.os }}</span>
-                </div>
-                <div class="info-item">
-                  <span class="item-label">Python:</span>
-                  <span class="item-value">{{ systemInfo.python }}</span>
-                </div>
-                <div class="info-item">
-                  <span class="item-label">PyTorch:</span>
-                  <span class="item-value">{{ systemInfo.pytorch }}</span>
-                </div>
-                <div class="info-item">
-                  <span class="item-label">CUDA:</span>
-                  <span class="item-value">{{ systemInfo.cuda }}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </a-card>
-      </div>
-
-      <!-- 右侧：模型信息和统计 -->
-      <div class="info-panel">
-        <!-- 模型信息 -->
-        <a-card title="已加载模型" :bordered="false" class="models-card">
-          <div class="models-list">
-            <div 
-              v-for="model in loadedModels" 
-              :key="model.name"
-              class="model-item"
-              :class="{ 'active': model.status === 'loaded' }"
-            >
-              <div class="model-info">
-                <div class="model-name">{{ model.name }}</div>
-                <div class="model-desc">{{ model.description }}</div>
-              </div>
-              <div class="model-status">
-                <a-tag :color="model.status === 'loaded' ? 'success' : 'default'">
-                  {{ model.status === 'loaded' ? '已加载' : '未加载' }}
-                </a-tag>
-                <div class="model-size">{{ model.size }}</div>
-              </div>
-            </div>
-          </div>
-        </a-card>
-
-        <!-- 使用统计 -->
-        <a-card title="使用统计" :bordered="false" class="stats-card">
-          <div class="stats-grid">
-            <div class="stat-item">
-              <div class="stat-icon" style="background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
-                  <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
-                  <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
-                </svg>
-              </div>
-              <div class="stat-content">
-                <div class="stat-value">{{ usageStats.totalRequests }}</div>
-                <div class="stat-label">总请求数</div>
-              </div>
-            </div>
-
-            <div class="stat-item">
-              <div class="stat-icon" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
-                  <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
-                </svg>
-              </div>
-              <div class="stat-content">
-                <div class="stat-value">{{ usageStats.successRate }}%</div>
-                <div class="stat-label">成功率</div>
-              </div>
-            </div>
-
-            <div class="stat-item">
-              <div class="stat-icon" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
-                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
-                </svg>
-              </div>
-              <div class="stat-content">
-                <div class="stat-value">{{ usageStats.avgProcessTime }}s</div>
-                <div class="stat-label">平均处理时间</div>
-              </div>
-            </div>
-
-            <div class="stat-item">
-              <div class="stat-icon" style="background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
-                  <path d="M3,6H21V8H3V6M3,11H21V13H3V11M3,16H21V18H3V16Z"/>
-                </svg>
-              </div>
-              <div class="stat-content">
-                <div class="stat-value">{{ usageStats.totalAudioGenerated }}</div>
-                <div class="stat-label">生成音频总数</div>
-              </div>
-            </div>
-          </div>
-        </a-card>
-
-        <!-- 服务日志 -->
-        <a-card title="服务日志" :bordered="false" class="logs-card">
-          <template #extra>
-            <a-button type="text" size="small" @click="clearLogs">
-              <template #icon>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z"/>
-                </svg>
+            <!-- 主题设置 -->
+            <a-card title="主题设置" :bordered="false" class="setting-card">
+              <template #extra>
+                <a-button type="link" size="small" @click="resetThemeSettings">
+                  <ReloadOutlined />
+                  重置
+                </a-button>
               </template>
-              清空日志
-            </a-button>
-          </template>
 
-          <div class="logs-container">
-            <div 
-              v-for="(log, index) in serviceLogs" 
-              :key="index"
-              class="log-item"
-              :class="log.level"
-            >
-              <span class="log-time">{{ log.time }}</span>
-              <span class="log-level">{{ log.level.toUpperCase() }}</span>
-              <span class="log-message">{{ log.message }}</span>
-            </div>
+              <a-form :model="themeSettings" layout="vertical">
+                <a-row :gutter="16">
+                  <a-col :span="8">
+                    <a-form-item label="主题模式">
+                      <a-radio-group 
+                        v-model:value="themeSettings.mode" 
+                        @change="previewTheme"
+                        button-style="solid"
+                        size="large"
+                      >
+                        <a-radio-button value="system">跟随系统</a-radio-button>
+                        <a-radio-button value="light">浅色模式</a-radio-button>
+                        <a-radio-button value="dark">深色模式</a-radio-button>
+                      </a-radio-group>
+                    </a-form-item>
+                  </a-col>
+                  <a-col :span="8">
+                    <a-form-item label="布局密度">
+                      <a-select 
+                        v-model:value="themeSettings.layout" 
+                        @change="previewTheme"
+                        size="large"
+                      >
+                        <a-select-option value="compact">紧凑</a-select-option>
+                        <a-select-option value="comfortable">舒适</a-select-option>
+                        <a-select-option value="spacious">宽松</a-select-option>
+                      </a-select>
+                    </a-form-item>
+                  </a-col>
+                  <a-col :span="8">
+                    <a-form-item label="侧边栏样式">
+                      <a-select 
+                        v-model:value="themeSettings.sidebarStyle" 
+                        @change="previewTheme"
+                        size="large"
+                      >
+                        <a-select-option value="gradient">渐变</a-select-option>
+                        <a-select-option value="solid">纯色</a-select-option>
+                        <a-select-option value="glass">玻璃</a-select-option>
+                      </a-select>
+                    </a-form-item>
+                  </a-col>
+                </a-row>
+                
+                <a-form-item label="主色调方案">
+                  <div class="color-scheme-selector">
+                    <div 
+                      v-for="(scheme, key) in colorSchemes" 
+                      :key="key"
+                      class="color-scheme-item"
+                      :class="{ active: themeSettings.colorScheme === key }"
+                      @click="selectColorScheme(key)"
+                    >
+                      <div class="color-preview" :style="{ background: scheme.gradient }"></div>
+                      <span class="color-name">{{ getColorSchemeName(key) }}</span>
+                    </div>
+                  </div>
+                </a-form-item>
+                
+                <a-row :gutter="16">
+                  <a-col :span="12">
+                    <a-form-item label="卡片样式">
+                      <a-radio-group 
+                        v-model:value="themeSettings.cardStyle" 
+                        @change="previewTheme"
+                        size="large"
+                      >
+                        <a-radio-button value="rounded">圆角</a-radio-button>
+                        <a-radio-button value="square">直角</a-radio-button>
+                      </a-radio-group>
+                    </a-form-item>
+                  </a-col>
+                  <a-col :span="12">
+                    <a-form-item label="动效设置">
+                      <a-switch 
+                        v-model:checked="themeSettings.enableAnimations"
+                        @change="previewTheme"
+                        checked-children="开启"
+                        un-checked-children="关闭"
+                        size="default"
+                      />
+                      <span style="margin-left: 12px;">动画效果</span>
+                    </a-form-item>
+                  </a-col>
+                </a-row>
+                
+                <a-form-item label="紧凑模式">
+                  <a-switch 
+                    v-model:checked="themeSettings.compactMode"
+                    @change="previewTheme"
+                    checked-children="开启"
+                    un-checked-children="关闭"
+                    size="default"
+                  />
+                  <span style="margin-left: 12px;">启用紧凑界面布局</span>
+                </a-form-item>
+              </a-form>
+            </a-card>
+
+            <!-- AI服务配置 -->
+            <a-card title="AI服务配置" :bordered="false" class="setting-card">
+              <a-form :model="aiSettings" layout="vertical">
+                <a-row :gutter="16">
+                  <a-col :span="12">
+                    <a-form-item label="TTS服务地址" name="ttsServiceUrl">
+                      <a-input 
+                        v-model:value="aiSettings.ttsServiceUrl" 
+                        placeholder="http://localhost:7929"
+                        size="large"
+                      />
+                    </a-form-item>
+                  </a-col>
+                  <a-col :span="12">
+                    <a-form-item label="并发处理限制" name="concurrentLimit">
+                      <a-input-number 
+                        v-model:value="aiSettings.concurrentLimit" 
+                        :min="1" 
+                        :max="10"
+                        size="large"
+                        style="width: 100%"
+                      />
+                    </a-form-item>
+                  </a-col>
+                </a-row>
+
+                <a-row :gutter="16">
+                  <a-col :span="12">
+                    <a-form-item label="Ollama服务地址" name="ollamaServiceUrl">
+                      <a-input 
+                        v-model:value="aiSettings.ollamaServiceUrl" 
+                        placeholder="http://localhost:11434"
+                        size="large"
+                      />
+                    </a-form-item>
+                  </a-col>
+                  <a-col :span="12">
+                    <a-form-item label="默认LLM模型" name="defaultLlmModel">
+                      <a-select 
+                        v-model:value="aiSettings.defaultLlmModel" 
+                        placeholder="选择默认模型"
+                        size="large"
+                      >
+                        <a-select-option value="qwen:latest">Qwen Latest</a-select-option>
+                        <a-select-option value="llama3.2:latest">Llama 3.2</a-select-option>
+                        <a-select-option value="gemma2:latest">Gemma 2</a-select-option>
+                      </a-select>
+                    </a-form-item>
+                  </a-col>
+                </a-row>
+
+                <a-form-item label="HuggingFace Token" name="huggingfaceToken">
+                  <a-input-password 
+                    v-model:value="aiSettings.huggingfaceToken" 
+                    placeholder="输入HuggingFace API Token（用于环境音生成）"
+                    size="large"
+                  />
+                  <div class="form-tip">
+                    <InfoCircleOutlined style="color: #1890ff; margin-right: 4px;" />
+                    用于TangoFlux环境音生成，可选配置
+                  </div>
+                </a-form-item>
+              </a-form>
+            </a-card>
+
+            <!-- 存储与文件设置 -->
+            <a-card title="存储与文件设置" :bordered="false" class="setting-card">
+              <a-form :model="storageSettings" layout="vertical">
+                <a-row :gutter="16">
+                  <a-col :span="8">
+                    <a-form-item label="音频文件保存天数" name="audioRetentionDays">
+                      <a-input-number 
+                        v-model:value="storageSettings.audioRetentionDays" 
+                        :min="1" 
+                        :max="365"
+                        size="large"
+                        style="width: 100%"
+                        addon-after="天"
+                      />
+                    </a-form-item>
+                  </a-col>
+                  <a-col :span="8">
+                    <a-form-item label="最大文件大小" name="maxFileSize">
+                      <a-input-number 
+                        v-model:value="storageSettings.maxFileSize" 
+                        :min="1" 
+                        :max="1000"
+                        size="large"
+                        style="width: 100%"
+                        addon-after="MB"
+                      />
+                    </a-form-item>
+                  </a-col>
+                  <a-col :span="8">
+                    <a-form-item label="自动清理周期" name="cleanupInterval">
+                      <a-select 
+                        v-model:value="storageSettings.cleanupInterval" 
+                        size="large"
+                      >
+                        <a-select-option value="daily">每日</a-select-option>
+                        <a-select-option value="weekly">每周</a-select-option>
+                        <a-select-option value="monthly">每月</a-select-option>
+                      </a-select>
+                    </a-form-item>
+                  </a-col>
+                </a-row>
+
+                <a-form-item>
+                  <a-checkbox v-model:checked="storageSettings.enableAutoBackup">
+                    启用自动备份
+                  </a-checkbox>
+                  <span style="margin-left: 8px; color: #666;">定期备份重要数据和配置</span>
+                </a-form-item>
+              </a-form>
+            </a-card>
           </div>
-        </a-card>
-      </div>
+        </a-col>
+
+        <!-- 右侧：系统状态和快速操作 -->
+        <a-col :span="8">
+          <div class="status-section">
+            <!-- 系统状态概览 -->
+            <a-card title="系统状态" :bordered="false" class="status-card">
+              <template #extra>
+                <a-button type="text" size="small" @click="refreshSystemStatus" :loading="statusLoading">
+                  <ReloadOutlined />
+                  刷新
+                </a-button>
+              </template>
+
+              <div class="status-items">
+                <div class="status-item">
+                  <div class="status-icon" :class="getStatusClass(systemStatus.database)">
+                    <DatabaseOutlined />
+                  </div>
+                  <div class="status-content">
+                    <div class="status-label">数据库</div>
+                    <div class="status-value">{{ getStatusText(systemStatus.database) }}</div>
+                  </div>
+                </div>
+
+                <div class="status-item">
+                  <div class="status-icon" :class="getStatusClass(systemStatus.tts_service)">
+                    <SoundOutlined />
+                  </div>
+                  <div class="status-content">
+                    <div class="status-label">TTS服务</div>
+                    <div class="status-value">{{ getStatusText(systemStatus.tts_service) }}</div>
+                  </div>
+                </div>
+
+                <div class="status-item">
+                  <div class="status-icon" :class="getStatusClass(systemStatus.ollama_service || 'unknown')">
+                    <RobotOutlined />
+                  </div>
+                  <div class="status-content">
+                    <div class="status-label">Ollama服务</div>
+                    <div class="status-value">{{ getStatusText(systemStatus.ollama_service || 'unknown') }}</div>
+                  </div>
+                </div>
+              </div>
+            </a-card>
+
+            <!-- 快速操作 -->
+            <a-card title="快速操作" :bordered="false" class="action-card">
+              <div class="quick-actions">
+                <a-button type="primary" block @click="testTTSService" :loading="testing.tts">
+                  <SoundOutlined />
+                  测试TTS服务
+                </a-button>
+                
+                <a-button block @click="testOllamaService" :loading="testing.ollama">
+                  <RobotOutlined />
+                  测试Ollama服务
+                </a-button>
+                
+                <a-button block @click="clearCache" :loading="clearing">
+                  <ClearOutlined />
+                  清理系统缓存
+                </a-button>
+                
+                <a-button block @click="exportSettings">
+                  <ExportOutlined />
+                  导出设置
+                </a-button>
+                
+                <a-upload
+                  :show-upload-list="false"
+                  accept=".json"
+                  :before-upload="importSettings"
+                  style="width: 100%"
+                >
+                  <a-button block>
+                    <ImportOutlined />
+                    导入设置
+                  </a-button>
+                </a-upload>
+              </div>
+            </a-card>
+
+            <!-- 版本信息 -->
+            <a-card title="版本信息" :bordered="false" class="version-card">
+              <div class="version-info">
+                <div class="version-item">
+                  <span class="version-label">系统版本:</span>
+                  <span class="version-value">{{ appVersion }}</span>
+                </div>
+                <div class="version-item">
+                  <span class="version-label">构建时间:</span>
+                  <span class="version-value">{{ buildTime }}</span>
+                </div>
+                <div class="version-item">
+                  <span class="version-label">运行时长:</span>
+                  <span class="version-value">{{ systemUptime }}</span>
+                </div>
+              </div>
+            </a-card>
+          </div>
+        </a-col>
+      </a-row>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, computed } from 'vue'
 import { message } from 'ant-design-vue'
+import { useAppStore } from '@/stores/app'
+import apiClient from '@/api/config'
+import {
+  SaveOutlined, ReloadOutlined, PictureOutlined, UploadOutlined, 
+  DeleteOutlined, GlobalOutlined, InfoCircleOutlined, DatabaseOutlined,
+  SoundOutlined, RobotOutlined, ClearOutlined, ExportOutlined, ImportOutlined
+} from '@ant-design/icons-vue'
+
+// Store
+const appStore = useAppStore()
 
 // 响应式数据
-const refreshing = ref(false)
+const saving = ref(false)
+const statusLoading = ref(false)
+const clearing = ref(false)
 
-// 引擎状态
-const engineStatus = reactive({
-  status: 'running',
-  host: 'localhost',
-  port: 7929,
-  version: 'v3.2.1',
-  startTime: '2024-01-20 09:30:15',
-  uptime: '3天 14小时 25分钟'
+// 测试状态
+const testing = reactive({
+  tts: false,
+  ollama: false
 })
 
-// 性能数据
-const performanceData = reactive({
-  cpu: 45,
-  memory: 68,
-  gpu: 72,
-  vram: 58
+// 站点设置
+const siteSettings = reactive({
+  siteName: 'AI-Sound 智能语音平台',
+  siteSubtitle: '专业的AI语音合成解决方案',
+  siteDescription: '基于最新AI技术的语音合成平台，支持多种语音模型、情感表达和个性化定制，为您提供专业的语音解决方案。',
+  adminEmail: 'admin@ai-sound.com',
+  supportContact: 'support@ai-sound.com',
+  logo: '',
+  favicon: ''
 })
 
-// 系统信息
-const systemInfo = reactive({
-  cpu: 'Intel Core i7-12700K @ 3.60GHz',
-  memory: '32GB DDR4-3200',
-  gpu: 'NVIDIA RTX 4080 Super',
-  vram: '16GB GDDR6X',
-  os: 'Windows 11 Pro 23H2',
-  python: '3.11.7',
-  pytorch: '2.1.2+cu121',
-  cuda: '12.1'
+// 主题设置
+const themeSettings = reactive({
+  mode: 'system',
+  colorScheme: 'blue',
+  layout: 'comfortable',
+  sidebarStyle: 'gradient',
+  cardStyle: 'rounded',
+  enableAnimations: true,
+  compactMode: false
 })
 
-// 已加载模型
-const loadedModels = ref([
-  {
-    name: 'MegaTTS3-Base',
-    description: '基础语音合成模型',
-    status: 'loaded',
-    size: '2.8GB'
+// 颜色方案配置
+const colorSchemes = {
+  blue: {
+    primary: '#1890ff',
+    secondary: '#06b6d4',
+    gradient: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)',
+    sidebarGradient: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)'
   },
-  {
-    name: 'Voice-Cloning',
-    description: '声音克隆专用模型',
-    status: 'loaded',
-    size: '1.2GB'
+  green: {
+    primary: '#52c41a',
+    secondary: '#10b981',
+    gradient: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+    sidebarGradient: 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
   },
-  {
-    name: 'Multi-Speaker',
-    description: '多角色语音模型',
-    status: 'loaded',
-    size: '3.5GB'
+  purple: {
+    primary: '#722ed1',
+    secondary: '#8b5cf6',
+    gradient: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)',
+    sidebarGradient: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)'
   },
-  {
-    name: 'Emotion-TTS',
-    description: '情感语音合成模型',
-    status: 'unloaded',
-    size: '2.1GB'
+  red: {
+    primary: '#f5222d',
+    secondary: '#ef4444',
+    gradient: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+    sidebarGradient: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)'
+  },
+  orange: {
+    primary: '#fa8c16',
+    secondary: '#f97316',
+    gradient: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
+    sidebarGradient: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)'
   }
-])
+}
 
-// 使用统计
-const usageStats = reactive({
-  totalRequests: 2468,
-  successRate: 98.5,
-  avgProcessTime: 3.2,
-  totalAudioGenerated: 1234
+// AI服务设置
+const aiSettings = reactive({
+  ttsServiceUrl: 'http://localhost:7929',
+  concurrentLimit: 3,
+  ollamaServiceUrl: 'http://localhost:11434',
+  defaultLlmModel: 'qwen:latest',
+  huggingfaceToken: ''
 })
 
-// 服务日志
-const serviceLogs = ref([
-  {
-    time: '2024-01-23 15:30:45',
-    level: 'info',
-    message: 'Voice cloning request completed successfully'
-  },
-  {
-    time: '2024-01-23 15:29:12',
-    level: 'info',
-    message: 'Loading voice model: 温柔女声'
-  },
-  {
-    time: '2024-01-23 15:28:33',
-    level: 'warn',
-    message: 'GPU memory usage is high: 89%'
-  },
-  {
-    time: '2024-01-23 15:27:54',
-    level: 'info',
-    message: 'New audio generation request received'
-  },
-  {
-    time: '2024-01-23 15:26:18',
-    level: 'error',
-    message: 'Failed to process audio file: invalid format'
-  },
-  {
-    time: '2024-01-23 15:25:01',
-    level: 'info',
-    message: 'MegaTTS3 engine initialized successfully'
+// 存储设置
+const storageSettings = reactive({
+  audioRetentionDays: 30,
+  maxFileSize: 100,
+  cleanupInterval: 'weekly',
+  enableAutoBackup: true
+})
+
+// 系统状态
+const systemStatus = computed(() => appStore.systemStatus)
+
+// 版本信息
+const appVersion = ref('2.0.0')
+const buildTime = ref('2024-01-23 15:30:00')
+const systemUptime = ref('3天 14小时 25分钟')
+
+// 颜色方案名称映射
+const getColorSchemeName = (key) => {
+  const names = {
+    blue: '海洋蓝',
+    green: '森林绿', 
+    purple: '优雅紫',
+    red: '活力红',
+    orange: '阳光橙'
   }
-])
+  return names[key] || key
+}
+
+// 主题相关方法
+const previewTheme = () => {
+  // 实时预览主题更改
+  appStore.updateThemeSettings(themeSettings)
+}
+
+const selectColorScheme = (scheme) => {
+  themeSettings.colorScheme = scheme
+  previewTheme()
+}
+
+const resetThemeSettings = () => {
+  Object.assign(themeSettings, {
+    mode: 'system',
+    colorScheme: 'blue',
+    layout: 'comfortable',
+    sidebarStyle: 'gradient',
+    cardStyle: 'rounded',
+    enableAnimations: true,
+    compactMode: false
+  })
+  previewTheme()
+  message.success('主题设置已重置')
+}
+
+const resetSiteSettings = () => {
+  Object.assign(siteSettings, {
+    siteName: 'AI-Sound 智能语音平台',
+    siteSubtitle: '专业的AI语音合成解决方案',
+    siteDescription: '基于最新AI技术的语音合成平台，支持多种语音模型、情感表达和个性化定制，为您提供专业的语音解决方案。',
+    adminEmail: 'admin@ai-sound.com',
+    supportContact: 'support@ai-sound.com',
+    logo: '',
+    favicon: ''
+  })
+  // 更新应用store中的站点设置
+  appStore.updateSiteSettings(siteSettings)
+  message.success('站点设置已重置')
+}
 
 // 方法
-const getProgressColor = (percent) => {
-  if (percent < 50) return '#06b6d4'
-  if (percent < 80) return '#f59e0b'
-  return '#ef4444'
-}
-
-const refreshStatus = async () => {
-  refreshing.value = true
+const saveAllSettings = async () => {
+  saving.value = true
   try {
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 1500))
-    
-    // 更新性能数据
-    performanceData.cpu = Math.floor(Math.random() * 30) + 40
-    performanceData.memory = Math.floor(Math.random() * 20) + 60
-    performanceData.gpu = Math.floor(Math.random() * 25) + 65
-    performanceData.vram = Math.floor(Math.random() * 30) + 50
-    
-    // 添加新日志
-    const now = new Date()
-    const timeStr = now.toLocaleString('zh-CN', { 
-      year: 'numeric', 
-      month: '2-digit', 
-      day: '2-digit', 
-      hour: '2-digit', 
-      minute: '2-digit', 
-      second: '2-digit' 
-    })
-    
-    serviceLogs.value.unshift({
-      time: timeStr,
-      level: 'info',
-      message: 'System status refreshed'
-    })
-    
-    // 保持日志数量不超过20条
-    if (serviceLogs.value.length > 20) {
-      serviceLogs.value = serviceLogs.value.slice(0, 20)
+    const settingsData = {
+      site: siteSettings,
+      theme: themeSettings,
+      ai: aiSettings,
+      storage: storageSettings
     }
+
+    // 调用后端API保存设置
+    await apiClient.put('/system/settings', settingsData)
     
-    message.success('状态刷新成功')
+    // 更新应用store中的设置
+    appStore.updateSiteSettings(siteSettings)
+    appStore.updateThemeSettings(themeSettings)
+    
+    message.success('设置保存成功！')
   } catch (error) {
-    message.error('状态刷新失败')
+    console.error('保存设置失败:', error)
+    message.error('保存设置失败: ' + (error.response?.data?.detail || error.message))
   } finally {
-    refreshing.value = false
+    saving.value = false
   }
 }
 
-const clearLogs = () => {
-  serviceLogs.value = []
-  message.success('日志已清空')
+const refreshSystemStatus = async () => {
+  statusLoading.value = true
+  try {
+    const response = await apiClient.get('/monitor/system-status')
+    appStore.updateSystemStatus(response.data.data)
+    message.success('状态刷新成功')
+  } catch (error) {
+    console.error('刷新状态失败:', error)
+    message.error('刷新状态失败')
+  } finally {
+    statusLoading.value = false
+  }
 }
 
-// 页面加载时初始化
+const getStatusClass = (status) => {
+  switch (status) {
+    case 'healthy': return 'status-healthy'
+    case 'unhealthy': return 'status-unhealthy'
+    case 'degraded': return 'status-degraded'
+    default: return 'status-unknown'
+  }
+}
+
+const getStatusText = (status) => {
+  switch (status) {
+    case 'healthy': return '正常'
+    case 'unhealthy': return '异常'
+    case 'degraded': return '降级'
+    default: return '未知'
+  }
+}
+
+const testTTSService = async () => {
+  testing.tts = true
+  try {
+    // 调用TTS测试接口
+    await apiClient.post('/system/test-tts')
+    message.success('TTS服务测试通过！')
+  } catch (error) {
+    message.error('TTS服务测试失败: ' + (error.response?.data?.detail || error.message))
+  } finally {
+    testing.tts = false
+  }
+}
+
+const testOllamaService = async () => {
+  testing.ollama = true
+  try {
+    // 调用Ollama测试接口
+    await apiClient.post('/system/test-ollama')
+    message.success('Ollama服务测试通过！')
+  } catch (error) {
+    message.error('Ollama服务测试失败: ' + (error.response?.data?.detail || error.message))
+  } finally {
+    testing.ollama = false
+  }
+}
+
+const clearCache = async () => {
+  clearing.value = true
+  try {
+    await apiClient.post('/system/clear-cache')
+    message.success('系统缓存清理完成！')
+  } catch (error) {
+    message.error('清理缓存失败: ' + (error.response?.data?.detail || error.message))
+  } finally {
+    clearing.value = false
+  }
+}
+
+const exportSettings = () => {
+  const settings = {
+    site: siteSettings,
+    ai: aiSettings,
+    storage: storageSettings,
+    exportTime: new Date().toISOString()
+  }
+  
+  const dataStr = JSON.stringify(settings, null, 2)
+  const dataBlob = new Blob([dataStr], { type: 'application/json' })
+  const url = URL.createObjectURL(dataBlob)
+  
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `ai-sound-settings-${new Date().toISOString().split('T')[0]}.json`
+  link.click()
+  
+  URL.revokeObjectURL(url)
+  message.success('设置导出成功！')
+}
+
+const importSettings = (file) => {
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    try {
+      const settings = JSON.parse(e.target.result)
+      
+      if (settings.site) Object.assign(siteSettings, settings.site)
+      if (settings.ai) Object.assign(aiSettings, settings.ai)
+      if (settings.storage) Object.assign(storageSettings, settings.storage)
+      
+      message.success('设置导入成功！请记得保存设置。')
+    } catch (error) {
+      message.error('导入文件格式错误！')
+    }
+  }
+  reader.readAsText(file)
+  return false // 阻止默认上传行为
+}
+
+const handleLogoUpload = (file) => {
+  // 验证文件类型和大小
+  const isImage = file.type.startsWith('image/')
+  const isLt2M = file.size / 1024 / 1024 < 2
+
+  if (!isImage) {
+    message.error('只能上传图片文件！')
+    return false
+  }
+  if (!isLt2M) {
+    message.error('图片大小不能超过2MB！')
+    return false
+  }
+  return true
+}
+
+const uploadLogo = ({ file }) => {
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    siteSettings.logo = e.target.result
+    // 实时更新到store，让LOGO立即生效
+    appStore.updateSiteSettings(siteSettings)
+    message.success('LOGO上传成功！')
+  }
+  reader.readAsDataURL(file)
+}
+
+const removeLogo = () => {
+  siteSettings.logo = ''
+  // 实时更新到store
+  appStore.updateSiteSettings(siteSettings)
+  message.success('LOGO已移除')
+}
+
+const handleFaviconUpload = (file) => {
+  const isImage = file.type.startsWith('image/')
+  const isLt1M = file.size / 1024 / 1024 < 1
+
+  if (!isImage) {
+    message.error('只能上传图片文件！')
+    return false
+  }
+  if (!isLt1M) {
+    message.error('图片大小不能超过1MB！')
+    return false
+  }
+  return true
+}
+
+const uploadFavicon = ({ file }) => {
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    siteSettings.favicon = e.target.result
+    // 实时更新到store，让Favicon立即生效
+    appStore.updateSiteSettings(siteSettings)
+    message.success('Favicon上传成功！')
+  }
+  reader.readAsDataURL(file)
+}
+
+const loadSettings = async () => {
+  try {
+    const response = await apiClient.get('/system/settings')
+    const settings = response.data.data
+    
+    if (settings.site) Object.assign(siteSettings, settings.site)
+    if (settings.theme) Object.assign(themeSettings, settings.theme)
+    if (settings.ai) Object.assign(aiSettings, settings.ai)
+    if (settings.storage) Object.assign(storageSettings, settings.storage)
+    
+    // 同步到store
+    appStore.updateSiteSettings(siteSettings)
+    appStore.updateThemeSettings(themeSettings)
+  } catch (error) {
+    console.error('加载设置失败:', error)
+    // 使用store中的默认设置
+    Object.assign(siteSettings, appStore.siteSettings)
+    Object.assign(themeSettings, appStore.themeSettings)
+  }
+}
+
+// 生命周期
 onMounted(() => {
-  // 这里可以添加初始化逻辑，比如从API获取真实状态
+  // 初始化应用store（这会从localStorage恢复设置）
+  appStore.initApp()
+  
+  // 从store获取恢复的设置
+  Object.assign(siteSettings, appStore.siteSettings)
+  Object.assign(themeSettings, appStore.themeSettings)
+  
+  // 加载后端设置
+  loadSettings()
+  refreshSystemStatus()
 })
 </script>
 
 <style scoped>
 .settings-container {
-  
   margin: 0 auto;
 }
 
 .page-header {
+  margin-bottom: 24px;
+  padding: 32px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(102, 126, 234, 0.3);
+}
+
+.header-content {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 32px;
-  padding: 32px;
-  background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
-  border-radius: 16px;
-  color: white;
 }
 
-.header-actions {
-  display: flex;
-  gap: 12px;
-}
-
-.main-content {
-  display: grid;
-  grid-template-columns: 1fr 400px;
-  gap: 24px;
-}
-
-.status-card, .performance-card, .system-card, .models-card, .stats-card, .logs-card {
-  margin-bottom: 24px;
-  border-radius: 12px !important;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08) !important;
-  border: none !important;
-}
-
-.status-info {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.info-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px 0;
-  border-bottom: 1px solid #f3f4f6;
-}
-
-.info-label {
-  color: #6b7280;
-  font-weight: 500;
-}
-
-.info-value {
-  color: #374151;
-  font-weight: 600;
-}
-
-.performance-metrics {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.metric-item {
+.title-section {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.metric-label {
-  font-weight: 500;
-  color: #374151;
+.page-title {
+  display: flex;
+  align-items: center;
+  margin: 0;
+  font-size: 28px;
+  font-weight: 600;
+  color: white;
+}
+
+.title-icon {
+  margin-right: 12px;
+  color: #ffffff;
+}
+
+.page-description {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.85);
   font-size: 14px;
+  line-height: 1.5;
 }
 
-.system-info h4 {
-  color: #374151;
-  margin: 0 0 12px 0;
-  font-size: 16px;
-  font-weight: 600;
-}
-
-.info-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
-
-.info-item {
+.action-section {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px;
-  background: #f8fafc;
-  border-radius: 6px;
-}
-
-.item-label {
-  color: #6b7280;
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.item-value {
-  color: #374151;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.models-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.model-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  transition: all 0.3s;
-}
-
-.model-item:hover {
-  border-color: #06b6d4;
-  background: #f0f9ff;
-}
-
-.model-item.active {
-  border-color: #10b981;
-  background: #f0fdf4;
-}
-
-.model-info {
-  flex: 1;
-}
-
-.model-name {
-  font-weight: 600;
-  color: #374151;
-  margin-bottom: 4px;
-}
-
-.model-desc {
-  font-size: 12px;
-  color: #6b7280;
-}
-
-.model-status {
-  text-align: right;
-}
-
-.model-size {
-  font-size: 12px;
-  color: #6b7280;
-  margin-top: 4px;
-}
-
-.stats-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
   gap: 16px;
 }
 
-.stat-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 16px;
-  background: #f8fafc;
-  border-radius: 8px;
+.main-content {
+  min-height: calc(100vh - 200px);
 }
 
-.stat-icon {
-  width: 48px;
-  height: 48px;
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.status-section {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.setting-card, .status-card, .action-card, .version-card {
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  border: 1px solid #f0f0f0;
+}
+
+.setting-card :deep(.ant-card-head) {
+  border-bottom: 1px solid #f0f0f0;
+  padding: 16px 24px;
+}
+
+.setting-card :deep(.ant-card-body) {
+  padding: 24px;
+}
+
+/* LOGO上传样式 */
+.logo-upload-container {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.logo-preview {
+  width: 100px;
+  height: 100px;
+  border: 2px dashed #d9d9d9;
   border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
+  background-color: #fafafa;
 }
 
-.stat-content {
-  flex: 1;
+.logo-image {
+  width: 96px;
+  height: 96px;
+  object-fit: contain;
+  border-radius: 6px;
 }
 
-.stat-value {
-  font-size: 24px;
-  font-weight: 700;
-  color: #2c3e50;
-  line-height: 1;
+.logo-placeholder {
+  text-align: center;
 }
 
-.stat-label {
-  font-size: 12px;
-  color: #6b7280;
-  margin-top: 4px;
-}
-
-.logs-container {
-  max-height: 300px;
-  overflow-y: auto;
+.logo-actions {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.log-item {
+/* 主题设置样式 */
+.color-scheme-selector {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin: 16px 0;
+}
+
+.color-scheme-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 12px;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  transition: all 0.3s ease;
+  background: #fafafa;
+}
+
+.color-scheme-item:hover {
+  background: #f0f0f0;
+  transform: translateY(-2px);
+}
+
+.color-scheme-item.active {
+  border-color: var(--primary-color);
+  background: rgba(var(--primary-color-rgb), 0.06);
+  box-shadow: 0 4px 12px rgba(var(--primary-color-rgb), 0.2);
+}
+
+.color-preview {
+  width: 50px;
+  height: 30px;
+  border-radius: 6px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.color-name {
+  font-size: 12px;
+  color: #666;
+  font-weight: 500;
+}
+
+/* Favicon上传样式 */
+.favicon-upload-container {
   display: flex;
   gap: 12px;
-  padding: 8px 12px;
-  border-radius: 6px;
-  font-family: 'Consolas', 'Monaco', monospace;
+  align-items: center;
+}
+
+.favicon-preview {
+  width: 40px;
+  height: 40px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #fafafa;
+}
+
+.favicon-image {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+}
+
+.upload-tips {
+  margin-top: 8px;
   font-size: 12px;
-  line-height: 1.4;
+  color: #666;
 }
 
-.log-item.info {
-  background: #f0f9ff;
-  border-left: 3px solid #06b6d4;
+.upload-tips p {
+  margin: 2px 0;
 }
 
-.log-item.warn {
-  background: #fffbeb;
-  border-left: 3px solid #f59e0b;
+.form-tip {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #666;
+  display: flex;
+  align-items: center;
 }
 
-.log-item.error {
-  background: #fef2f2;
-  border-left: 3px solid #ef4444;
+/* 系统状态样式 */
+.status-items {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
-.log-time {
-  color: #6b7280;
-  min-width: 120px;
+.status-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: #fafafa;
+  border-radius: 8px;
 }
 
-.log-level {
-  color: #374151;
-  font-weight: 600;
-  min-width: 50px;
+.status-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 16px;
 }
 
-.log-message {
-  color: #374151;
+.status-icon.status-healthy {
+  background: linear-gradient(135deg, #52c41a 0%, #389e0d 100%);
+}
+
+.status-icon.status-unhealthy {
+  background: linear-gradient(135deg, #ff4d4f 0%, #cf1322 100%);
+}
+
+.status-icon.status-degraded {
+  background: linear-gradient(135deg, #fa8c16 0%, #d46b08 100%);
+}
+
+.status-icon.status-unknown {
+  background: linear-gradient(135deg, #d9d9d9 0%, #bfbfbf 100%);
+}
+
+.status-content {
   flex: 1;
 }
 
-/* 滚动条样式 */
-.logs-container::-webkit-scrollbar {
-  width: 4px;
+.status-label {
+  font-size: 12px;
+  color: #666;
+  margin-bottom: 2px;
 }
 
-.logs-container::-webkit-scrollbar-track {
-  background: #f5f3f0;
-  border-radius: 2px;
+.status-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
 }
 
-.logs-container::-webkit-scrollbar-thumb {
-  background: #06b6d4;
-  border-radius: 2px;
+/* 快速操作样式 */
+.quick-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.quick-actions .ant-btn {
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+/* 版本信息样式 */
+.version-info {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.version-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.version-item:last-child {
+  border-bottom: none;
+}
+
+.version-label {
+  font-size: 12px;
+  color: #666;
+}
+
+.version-value {
+  font-size: 12px;
+  font-weight: 600;
+  color: #333;
+}
+
+/* 暗黑模式适配 */
+[data-theme="dark"] .page-header {
+  background: linear-gradient(135deg, #1f1f1f 0%, #2d2d2d 100%) !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3) !important;
+}
+
+[data-theme="dark"] .page-title {
+  color: #fff !important;
+}
+
+[data-theme="dark"] .page-description {
+  color: #d1d5db !important;
+}
+
+[data-theme="dark"] .setting-card,
+[data-theme="dark"] .status-card,
+[data-theme="dark"] .action-card,
+[data-theme="dark"] .version-card {
+  background-color: #1f1f1f !important;
+  border-color: #434343 !important;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3) !important;
+}
+
+[data-theme="dark"] .setting-card :deep(.ant-card-head) {
+  background-color: #1f1f1f !important;
+  border-bottom-color: #434343 !important;
+}
+
+[data-theme="dark"] .setting-card :deep(.ant-card-head-title) {
+  color: #fff !important;
+}
+
+[data-theme="dark"] .color-scheme-item {
+  background-color: #2d2d2d !important;
+  border-color: #434343 !important;
+}
+
+[data-theme="dark"] .color-scheme-item:hover {
+  background-color: #3a3a3a !important;
+}
+
+[data-theme="dark"] .color-scheme-item.active {
+  background-color: rgba(var(--primary-color-rgb), 0.15) !important;
+  border-color: var(--primary-color) !important;
+  box-shadow: 0 4px 12px rgba(var(--primary-color-rgb), 0.3) !important;
+}
+
+[data-theme="dark"] .color-name {
+  color: #d1d5db !important;
+}
+
+[data-theme="dark"] .favicon-preview {
+  background-color: #2d2d2d !important;
+  border-color: #434343 !important;
+}
+
+[data-theme="dark"] .upload-tips {
+  color: #d1d5db !important;
+}
+
+[data-theme="dark"] .form-tip {
+  color: #d1d5db !important;
+}
+
+[data-theme="dark"] .status-item {
+  background-color: #2d2d2d !important;
+}
+
+[data-theme="dark"] .status-label {
+  color: #d1d5db !important;
+}
+
+[data-theme="dark"] .status-value {
+  color: #fff !important;
+}
+
+[data-theme="dark"] .version-item {
+  border-bottom-color: #434343 !important;
+}
+
+[data-theme="dark"] .version-label {
+  color: #d1d5db !important;
+}
+
+[data-theme="dark"] .version-value {
+  color: #fff !important;
+}
+
+/* Ant Design 表单组件暗黑模式适配 */
+[data-theme="dark"] :deep(.ant-input) {
+  background-color: #2d2d2d !important;
+  border-color: #434343 !important;
+  color: #fff !important;
+}
+
+[data-theme="dark"] :deep(.ant-input:hover) {
+  border-color: var(--primary-color) !important;
+}
+
+[data-theme="dark"] :deep(.ant-input:focus) {
+  border-color: var(--primary-color) !important;
+  box-shadow: 0 0 0 2px rgba(var(--primary-color-rgb), 0.2) !important;
+}
+
+[data-theme="dark"] :deep(.ant-input::placeholder) {
+  color: #8c8c8c !important;
+}
+
+[data-theme="dark"] :deep(.ant-select) {
+  background-color: #2d2d2d !important;
+}
+
+[data-theme="dark"] :deep(.ant-select-selector) {
+  background-color: #2d2d2d !important;
+  border-color: #434343 !important;
+  color: #fff !important;
+}
+
+[data-theme="dark"] :deep(.ant-select-selection-item) {
+  color: #fff !important;
+}
+
+[data-theme="dark"] :deep(.ant-radio-button-wrapper) {
+  background-color: #2d2d2d !important;
+  border-color: #434343 !important;
+  color: #fff !important;
+}
+
+[data-theme="dark"] :deep(.ant-radio-button-wrapper:hover) {
+  border-color: var(--primary-color) !important;
+  color: var(--primary-color) !important;
+}
+
+[data-theme="dark"] :deep(.ant-radio-button-wrapper-checked) {
+  background-color: var(--primary-color) !important;
+  border-color: var(--primary-color) !important;
+  color: #fff !important;
+}
+
+[data-theme="dark"] :deep(.ant-form-item-label > label) {
+  color: #fff !important;
+}
+
+/* 开关组件暗黑模式适配 */
+[data-theme="dark"] :deep(.ant-switch) {
+  background-color: #434343 !important;
+}
+
+[data-theme="dark"] :deep(.ant-switch-checked) {
+  background-color: var(--primary-color) !important;
+}
+
+/* 滑块组件暗黑模式适配 */
+[data-theme="dark"] :deep(.ant-slider-track) {
+  background-color: var(--primary-color) !important;
+}
+
+[data-theme="dark"] :deep(.ant-slider-handle) {
+  border-color: var(--primary-color) !important;
+}
+
+[data-theme="dark"] :deep(.ant-slider-rail) {
+  background-color: #434343 !important;
+}
+
+/* 按钮组件暗黑模式适配 */
+[data-theme="dark"] :deep(.ant-btn-default) {
+  background-color: #2d2d2d !important;
+  border-color: #434343 !important;
+  color: #fff !important;
+}
+
+[data-theme="dark"] :deep(.ant-btn-default:hover) {
+  background-color: #3a3a3a !important;
+  border-color: var(--primary-color) !important;
+  color: var(--primary-color) !important;
+}
+
+/* 版本信息和所有普通文本适配 */
+[data-theme="dark"] .version-info,
+[data-theme="dark"] .status-items,
+[data-theme="dark"] .quick-actions {
+  color: #fff !important;
+}
+
+[data-theme="dark"] .version-info p,
+[data-theme="dark"] .status-items p,
+[data-theme="dark"] span,
+[data-theme="dark"] .ant-typography {
+  color: #d1d5db !important;
+}
+
+/* 通用文本颜色适配 - 确保所有文本在暗黑模式下可见 */
+[data-theme="dark"] {
+  color: #d1d5db !important;
+}
+
+[data-theme="dark"] h1,
+[data-theme="dark"] h2,
+[data-theme="dark"] h3,
+[data-theme="dark"] h4,
+[data-theme="dark"] h5,
+[data-theme="dark"] h6 {
+  color: #fff !important;
+}
+
+[data-theme="dark"] p {
+  color: #d1d5db !important;
+}
+
+/* 强制所有表单标签为白色 */
+[data-theme="dark"] :deep(.ant-form-item-label),
+[data-theme="dark"] :deep(.ant-form-item-label *) {
+  color: #fff !important;
 }
 
 @media (max-width: 1200px) {
-  .main-content {
-    grid-template-columns: 1fr;
+  .main-content .ant-row {
+    flex-direction: column;
   }
   
-  .info-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .stats-grid {
-    grid-template-columns: 1fr;
+  .main-content .ant-col {
+    width: 100% !important;
+    max-width: 100% !important;
   }
 }
-</style> 
+</style>

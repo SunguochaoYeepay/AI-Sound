@@ -2274,7 +2274,6 @@ const goBack = () => {
 .voice-library-container {
   background: #f8fafc;
   min-height: 100vh;
-  padding: 24px;
 }
 
 .page-header {
@@ -2343,7 +2342,7 @@ const goBack = () => {
 }
 
 .voice-card {
-  border: 2px solid #e5e7eb;
+  border: 2px solid #d1d5db;
   border-radius: 12px;
   padding: 20px;
   cursor: pointer;
@@ -2860,7 +2859,7 @@ const goBack = () => {
   gap: 16px;
   margin-top: 32px;
   padding-top: 24px;
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid #d1d5db;
 }
 
 /* 书籍选择样式 */
@@ -2886,7 +2885,7 @@ const goBack = () => {
 }
 
 .book-card {
-  border: 2px solid #e5e7eb;
+  border: 2px solid #d1d5db;
   border-radius: 12px;
   padding: 20px;
   cursor: pointer;
@@ -2898,18 +2897,18 @@ const goBack = () => {
 }
 
 .book-card:hover {
-  border-color: #06b6d4;
+  border-color: var(--primary-color);
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(6, 182, 212, 0.15);
+  box-shadow: 0 4px 12px rgba(var(--primary-color-rgb), 0.15);
 }
 
 .book-card.selected {
-  border-color: #06b6d4;
-  background: #f0f9ff;
+  border-color: var(--primary-color);
+  background: rgba(var(--primary-color-rgb), 0.06);
 }
 
 .book-icon {
-  color: #06b6d4;
+  color: var(--primary-color);
   flex-shrink: 0;
 }
 
@@ -2986,7 +2985,7 @@ const goBack = () => {
 .chapters-list {
   max-height: 300px;
   overflow-y: auto;
-  border: 1px solid #e5e7eb;
+  border: 1px solid #d1d5db;
   border-radius: 8px;
 }
 
@@ -2995,7 +2994,7 @@ const goBack = () => {
 }
 
 .chapter-item {
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid #d1d5db;
   padding: 12px 16px;
 }
 
@@ -3080,7 +3079,7 @@ const goBack = () => {
   align-items: center;
   gap: 12px;
   padding: 12px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid #d1d5db;
   border-radius: 8px;
   background: white;
 }
@@ -3149,7 +3148,7 @@ const goBack = () => {
 }
 
 .config-card {
-  border: 1px solid #e5e7eb;
+  border: 1px solid #d1d5db;
   border-radius: 8px;
   padding: 16px;
   background: white;
@@ -3176,7 +3175,7 @@ const goBack = () => {
 }
 
 .config-details {
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid #d1d5db;
   padding-top: 16px;
 }
 
@@ -3235,5 +3234,264 @@ const goBack = () => {
   color: white;
   background: rgba(255, 255, 255, 0.1);
   border-color: rgba(255, 255, 255, 0.5);
+}
+
+/* 暗黑模式适配 */
+[data-theme="dark"] .characters-container {
+  background: #141414 !important;
+  min-height: 100vh !important;
+}
+
+[data-theme="dark"] .character-card,
+[data-theme="dark"] .character-preview-item,
+[data-theme="dark"] .created-character-item,
+[data-theme="dark"] .config-card {
+  background: #1f1f1f !important;
+  border-color: #434343 !important;
+  color: #fff !important;
+}
+
+[data-theme="dark"] .character-name {
+  color: #fff !important;
+}
+
+[data-theme="dark"] .character-meta,
+[data-theme="dark"] .character-basic p,
+[data-theme="dark"] .file-info-mini,
+[data-theme="dark"] .file-size-mini {
+  color: #8c8c8c !important;
+}
+
+[data-theme="dark"] .file-name-mini {
+  color: #d1d5db !important;
+}
+
+[data-theme="dark"] .progress-text {
+  color: #8c8c8c !important;
+}
+
+[data-theme="dark"] .results-summary,
+[data-theme="dark"] .config-controls {
+  background: #2d2d2d !important;
+  border-color: #434343 !important;
+}
+
+[data-theme="dark"] .characters-preview h4,
+[data-theme="dark"] .created-characters h4,
+[data-theme="dark"] .character-basic h4 {
+  color: #fff !important;
+}
+
+[data-theme="dark"] .config-details {
+  border-top-color: #434343 !important;
+}
+
+[data-theme="dark"] .voice-card {
+  background: #1f1f1f !important;
+  border-color: #434343 !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3) !important;
+}
+
+[data-theme="dark"] .voice-card:hover {
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4) !important;
+}
+
+[data-theme="dark"] .voice-card.selected {
+  border-color: #4a9eff !important;
+  box-shadow: 0 0 0 2px rgba(74, 158, 255, 0.2) !important;
+}
+
+[data-theme="dark"] .voice-name {
+  color: #fff !important;
+}
+
+[data-theme="dark"] .voice-desc {
+  color: #8c8c8c !important;
+}
+
+[data-theme="dark"] .meta-item span {
+  color: #d1d5db !important;
+}
+
+[data-theme="dark"] .voice-library-content {
+  background: transparent !important;
+}
+
+[data-theme="dark"] .grid-view,
+[data-theme="dark"] .list-view {
+  background: transparent !important;
+}
+
+[data-theme="dark"] .voice-library-container {
+  background: #141414 !important;
+}
+
+[data-theme="dark"] .stats-grid {
+  background: transparent !important;
+}
+
+[data-theme="dark"] .stat-card {
+  background: #1f1f1f !important;
+  border-color: #434343 !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3) !important;
+}
+
+[data-theme="dark"] .stat-card:hover {
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4) !important;
+}
+
+[data-theme="dark"] .stat-value {
+  color: #fff !important;
+}
+
+[data-theme="dark"] .stat-label {
+  color: #8c8c8c !important;
+}
+
+[data-theme="dark"] .filter-section {
+  background: #1f1f1f !important;
+  border-color: #434343 !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3) !important;
+}
+
+[data-theme="dark"] .voice-library-content {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+[data-theme="dark"] .page-header {
+  background: linear-gradient(135deg, #2d2d2d 0%, #1f1f1f 100%) !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5) !important;
+}
+
+[data-theme="dark"] .voice-info {
+  color: #d1d5db !important;
+}
+
+[data-theme="dark"] .voice-avatar {
+  background: transparent !important;
+}
+
+[data-theme="dark"] .voice-status {
+  background: #2d2d2d !important;
+  border: 1px solid #434343 !important;
+}
+
+/* 智能角色发现抽屉暗黑模式适配 */
+[data-theme="dark"] .smart-discovery-container {
+  background: transparent !important;
+  color: #d1d5db !important;
+}
+
+[data-theme="dark"] .step-header h3 {
+  color: #fff !important;
+}
+
+[data-theme="dark"] .step-header p {
+  color: #8c8c8c !important;
+}
+
+[data-theme="dark"] .book-card {
+  background: #2d2d2d !important;
+  border-color: #434343 !important;
+  color: #d1d5db !important;
+}
+
+[data-theme="dark"] .book-card:hover {
+  background: #3a3a3a !important;
+  border-color: var(--primary-color) !important;
+  box-shadow: 0 4px 12px rgba(var(--primary-color-rgb), 0.25) !important;
+}
+
+[data-theme="dark"] .book-card.selected {
+  background: rgba(var(--primary-color-rgb), 0.15) !important;
+  border-color: var(--primary-color) !important;
+}
+
+[data-theme="dark"] .book-info h4 {
+  color: #fff !important;
+}
+
+[data-theme="dark"] .book-info p,
+[data-theme="dark"] .book-stats,
+[data-theme="dark"] .book-id {
+  color: #8c8c8c !important;
+}
+
+[data-theme="dark"] .book-status {
+  background: var(--primary-color) !important;
+  color: #fff !important;
+}
+
+[data-theme="dark"] .chapter-item {
+  background: #2d2d2d !important;
+  border-bottom-color: #434343 !important;
+}
+
+[data-theme="dark"] .chapter-title {
+  color: #fff !important;
+}
+
+[data-theme="dark"] .chapter-meta {
+  color: #8c8c8c !important;
+}
+
+[data-theme="dark"] .selection-controls {
+  background: #2d2d2d !important;
+  border-color: #434343 !important;
+}
+
+[data-theme="dark"] .selection-info {
+  color: #8c8c8c !important;
+}
+
+[data-theme="dark"] .chapters-list {
+  border-color: #434343 !important;
+  background: #1f1f1f !important;
+}
+
+[data-theme="dark"] .progress-text {
+  color: #8c8c8c !important;
+}
+
+[data-theme="dark"] .results-summary {
+  background: #2d2d2d !important;
+  border-color: #434343 !important;
+}
+
+[data-theme="dark"] .characters-preview h4 {
+  color: #fff !important;
+}
+
+[data-theme="dark"] .character-preview-item,
+[data-theme="dark"] .created-character-item {
+  background: #2d2d2d !important;
+  border-color: #434343 !important;
+}
+
+[data-theme="dark"] .character-name {
+  color: #fff !important;
+}
+
+[data-theme="dark"] .character-meta {
+  color: #8c8c8c !important;
+}
+
+[data-theme="dark"] .existing-character-info {
+  background: #2d2d2d !important;
+  border-color: #434343 !important;
+}
+
+[data-theme="dark"] .existing-character .config-card {
+  background: #2d2d2d !important;
+  border-color: #434343 !important;
+}
+
+[data-theme="dark"] .empty-state p {
+  color: #8c8c8c !important;
+}
+
+[data-theme="dark"] .empty-state svg {
+  fill: #434343 !important;
 }
 </style>

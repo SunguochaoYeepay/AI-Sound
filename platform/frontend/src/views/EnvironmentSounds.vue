@@ -1344,9 +1344,7 @@ const goBack = () => {
 </script>
 
 <style scoped>
-.environment-sounds-page {
-  padding: 24px;
-}
+
 
 .page-header {
   margin-bottom: 24px;
@@ -1533,6 +1531,53 @@ const goBack = () => {
   margin-top: 24px;
 }
 
+/* 暗黑模式适配 */
+[data-theme="dark"] .environment-sounds-page {
+  background: #141414 !important;
+  min-height: 100vh;
+}
+
+[data-theme="dark"] .page-header {
+  background: linear-gradient(135deg, #2d2d2d 0%, #1f1f1f 100%) !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5) !important;
+}
+
+[data-theme="dark"] .sound-card {
+  background: #1f1f1f !important;
+  border-color: #434343 !important;
+}
+
+[data-theme="dark"] .sound-card:hover {
+  border-color: #4a9eff !important;
+  box-shadow: 0 4px 12px rgba(74, 158, 255, 0.25) !important;
+}
+
+[data-theme="dark"] .sound-card.featured {
+  border-color: #faad14 !important;
+  background: linear-gradient(135deg, #2d2419 0%, #1f1f1f 100%) !important;
+}
+
+[data-theme="dark"] .sound-name {
+  color: #fff !important;
+}
+
+[data-theme="dark"] .sound-prompt {
+  color: #d1d5db !important;
+}
+
+[data-theme="dark"] .stat-item {
+  color: #8c8c8c !important;
+}
+
+[data-theme="dark"] .param {
+  background: #2d2d2d !important;
+  color: #d1d5db !important;
+}
+
+[data-theme="dark"] .sound-stats {
+  border-top-color: #434343 !important;
+}
+
 /* 智能分析抽屉样式 */
 .smart-analysis-drawer :deep(.ant-drawer-body) {
   padding: 24px;
@@ -1552,6 +1597,122 @@ const goBack = () => {
   background: #fafafa;
   border-radius: 8px;
   flex-shrink: 0;
+}
+
+/* 智能分析抽屉暗黑模式适配 */
+[data-theme="dark"] .smart-analysis-drawer :deep(.ant-drawer-header) {
+  background-color: #1f1f1f !important;
+  border-bottom-color: #434343 !important;
+}
+
+[data-theme="dark"] .smart-analysis-drawer :deep(.ant-drawer-title) {
+  color: #fff !important;
+}
+
+[data-theme="dark"] .smart-analysis-drawer :deep(.ant-drawer-body) {
+  background-color: #1f1f1f !important;
+  color: #d1d5db !important;
+}
+
+[data-theme="dark"] .smart-analysis-drawer :deep(.ant-drawer-close) {
+  color: #8c8c8c !important;
+}
+
+[data-theme="dark"] .smart-analysis-drawer :deep(.ant-drawer-close:hover) {
+  color: #fff !important;
+}
+
+[data-theme="dark"] .steps-container {
+  background: #2d2d2d !important;
+  border: 1px solid #434343 !important;
+}
+
+[data-theme="dark"] .analysis-step h3 {
+  color: #fff !important;
+}
+
+[data-theme="dark"] .analyzing-state h3,
+[data-theme="dark"] .generating-state h3 {
+  color: var(--primary-color) !important;
+}
+
+[data-theme="dark"] .analyzing-state p,
+[data-theme="dark"] .generating-state p {
+  color: #8c8c8c !important;
+}
+
+[data-theme="dark"] .scene-item {
+  background: #2d2d2d !important;
+  border-color: #434343 !important;
+}
+
+[data-theme="dark"] .scene-header h4 {
+  color: var(--primary-color) !important;
+}
+
+[data-theme="dark"] .prompt-item {
+  background: #2d2d2d !important;
+  border-color: #434343 !important;
+}
+
+[data-theme="dark"] .prompt-header h4 {
+  color: #fff !important;
+}
+
+[data-theme="dark"] .prompt-content code {
+  background: #1f1f1f !important;
+  color: #d1d5db !important;
+  border: 1px solid #434343 !important;
+}
+
+[data-theme="dark"] .prompt-features {
+  color: #8c8c8c !important;
+}
+
+[data-theme="dark"] .prompt-settings {
+  color: #8c8c8c !important;
+}
+
+[data-theme="dark"] .logs-container {
+  background: #1f1f1f !important;
+  border: 1px solid #434343 !important;
+  color: #d1d5db !important;
+}
+
+[data-theme="dark"] .log-time {
+  color: #8c8c8c !important;
+}
+
+/* 智能分析抽屉内的卡片适配 */
+[data-theme="dark"] .smart-analysis-drawer :deep(.ant-card) {
+  background: #2d2d2d !important;
+  border-color: #434343 !important;
+}
+
+[data-theme="dark"] .smart-analysis-drawer :deep(.ant-card-head) {
+  background: #2d2d2d !important;
+  border-bottom-color: #434343 !important;
+}
+
+[data-theme="dark"] .smart-analysis-drawer :deep(.ant-card-head-title) {
+  color: #fff !important;
+}
+
+[data-theme="dark"] .smart-analysis-drawer :deep(.ant-card-body) {
+  background: #2d2d2d !important;
+  color: #d1d5db !important;
+}
+
+[data-theme="dark"] .smart-analysis-drawer :deep(.ant-descriptions-item-label) {
+  color: #8c8c8c !important;
+}
+
+[data-theme="dark"] .smart-analysis-drawer :deep(.ant-descriptions-item-content) {
+  color: #d1d5db !important;
+}
+
+[data-theme="dark"] .smart-analysis-drawer .narrative_analysis span {
+  color: #8c8c8c !important;
 }
 
 .analysis-step {

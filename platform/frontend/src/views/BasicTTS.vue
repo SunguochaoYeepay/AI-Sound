@@ -1,26 +1,33 @@
 <template>
   <div class="voice-clone-container">
-    <!-- 页面头部说明 -->
+    <!-- 页面头部 -->
     <div class="page-header">
       <div class="header-content">
-        <h1 style="margin: 0; color: #2c3e50; font-size: 28px; font-weight: 700;">
-          声音克隆测试平台
-        </h1>
-        <p style="margin: 8px 0 0 0; color: #64748b; font-size: 16px;">
-          基于MegaTTS3 WaveVAE decoder-only架构，需要同时提供音频文件和latent特征文件
-        </p>
-        
-      </div>
-      <div class="status-badges">
-        <a-tag color="#10b981" size="large">
-          <template #icon>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+        <div class="title-section">
+          <h1 class="page-title">
+            <svg class="title-icon" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+              <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
             </svg>
-          </template>
-          MegaTTS3 已就绪
-        </a-tag>
-        <a-tag color="#06b6d4" size="large">GPU 加速</a-tag>
+            声音克隆测试平台
+          </h1>
+          <p class="page-description">
+            基于MegaTTS3 WaveVAE decoder-only架构，需要同时提供音频文件和latent特征文件
+          </p>
+        </div>
+        <div class="action-section">
+          <div class="status-badges">
+            <a-tag color="#10b981" size="large">
+              <template #icon>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                </svg>
+              </template>
+              MegaTTS3 已就绪
+            </a-tag>
+            <a-tag color="#06b6d4" size="large">GPU 加速</a-tag>
+          </div>
+        </div>
       </div>
     </div>
     
@@ -684,18 +691,49 @@ const saveToLibrary = () => {
 }
 
 .page-header {
+  margin-bottom: 24px;
+  padding: 32px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(102, 126, 234, 0.3);
+}
+
+.header-content {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 32px;
-  padding: 32px;
-  background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
-  border-radius: 16px;
+}
+
+.title-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.page-title {
+  display: flex;
+  align-items: center;
+  margin: 0;
+  font-size: 28px;
+  font-weight: 600;
   color: white;
 }
 
-.header-content h1 {
-  color: white !important;
+.title-icon {
+  margin-right: 12px;
+  color: #ffffff;
+}
+
+.page-description {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.action-section {
+  display: flex;
+  gap: 16px;
 }
 
 .status-badges {
@@ -724,7 +762,6 @@ const saveToLibrary = () => {
   display: flex;
   align-items: center;
   font-weight: 600;
-  color: #374151;
   margin-bottom: 8px;
   font-size: 15px;
 }
@@ -790,7 +827,6 @@ const saveToLibrary = () => {
 
 .param-label {
   font-weight: 500;
-  color: #374151;
   font-size: 14px;
 }
 
@@ -814,7 +850,7 @@ const saveToLibrary = () => {
 
 .template-item {
   padding: 16px;
-  border: 2px solid #e5e7eb;
+  border: 1px solid #d1d5db;
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.3s;
@@ -822,8 +858,6 @@ const saveToLibrary = () => {
 }
 
 .template-item:hover {
-  border-color: #06b6d4;
-  background: #f0f9ff;
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(6, 182, 212, 0.2);
 }
@@ -850,13 +884,11 @@ const saveToLibrary = () => {
   border-radius: 12px !important;
   font-weight: 600 !important;
   font-size: 16px !important;
-  background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%) !important;
   border: none !important;
   color: white !important;
 }
 
 .generate-btn:hover {
-  background: linear-gradient(135deg, #0891b2 0%, #0e7490 100%) !important;
   transform: translateY(-2px) !important;
   box-shadow: 0 6px 20px rgba(6, 182, 212, 0.3) !important;
 }
@@ -881,6 +913,20 @@ const saveToLibrary = () => {
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+/* 暗黑模式适配 */
+[data-theme="dark"] .page-header {
+  background: linear-gradient(135deg, #1f1f1f 0%, #2d2d2d 100%) !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3) !important;
+}
+
+[data-theme="dark"] .page-title {
+  color: #fff !important;
+}
+
+[data-theme="dark"] .page-description {
+  color: #d1d5db !important;
 }
 
 .audio-info {
