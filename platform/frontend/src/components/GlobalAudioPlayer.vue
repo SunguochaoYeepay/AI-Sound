@@ -1,5 +1,5 @@
 <template>
-  <div v-if="audioStore.currentAudio" class="global-audio-player">
+  <div v-if="audioStore.currentAudio && audioStore.currentAudio.url && !audioStore.error" class="global-audio-player">
     <div class="player-container">
       <!-- 音频信息 -->
       <div class="audio-info">

@@ -37,7 +37,57 @@ else:
 # 确保路径使用正斜杠（用于URL）
 def normalize_path(path):
     """将路径标准化为使用正斜杠的格式"""
-    return path.replace(os.sep, '/') if path else None
+    if not path:
+        return None
+    # 统一使用正斜杠，并清理多余的斜杠
+    normalized = path.replace('\\', '/').replace('//', '/')
+    return normalized
+
+# 检查并修复文件路径
+def fix_voice_file_path(voice_profile):
+    """检查并修复声音文件路径"""
+    if not voice_profile.reference_audio_path:
+        return None, "声音文件路径为空"
+    
+    # 标准化路径
+    original_path = voice_profile.reference_audio_path
+    normalized_path = normalize_path(original_path)
+    
+    # 如果是相对路径，转换为绝对路径
+    if not os.path.isabs(normalized_path):
+        if os.path.exists("/.dockerenv"):
+            # Docker环境
+            full_path = f"/app/{normalized_path}"
+        else:
+            # 本地环境
+            full_path = normalized_path
+    else:
+        full_path = normalized_path
+    
+    # 检查文件是否存在
+    if os.path.exists(full_path):
+        return full_path, None
+    
+    # 如果文件不存在，尝试在voice_profiles目录中查找
+    filename = os.path.basename(full_path)
+    voice_dir = "/app/data/voice_profiles" if os.path.exists("/.dockerenv") else "data/voice_profiles"
+    candidate_path = os.path.join(voice_dir, filename)
+    
+    if os.path.exists(candidate_path):
+        return candidate_path, None
+    
+    # 返回错误信息，包含可用的文件列表
+    available_files = []
+    if os.path.exists(voice_dir):
+        available_files = [f for f in os.listdir(voice_dir) if f.endswith('.wav')]
+    
+    error_msg = f"声音文件不存在: {filename}"
+    if available_files:
+        error_msg += f"\n可用的声音文件: {', '.join(available_files[:5])}"
+        if len(available_files) > 5:
+            error_msg += f"等共{len(available_files)}个文件"
+    
+    return None, error_msg
 
 @router.get("")
 async def get_characters(
@@ -623,9 +673,10 @@ async def test_voice_synthesis(
         if not voice_profile:
             raise HTTPException(status_code=404, detail="声音档案不存在")
         
-        # 检查音频文件是否存在
-        if not voice_profile.reference_audio_path or not os.path.exists(voice_profile.reference_audio_path):
-            raise HTTPException(status_code=400, detail="声音文件不存在，请重新上传")
+        # 检查并修复音频文件路径
+        fixed_audio_path, error_msg = fix_voice_file_path(voice_profile)
+        if not fixed_audio_path:
+            raise HTTPException(status_code=400, detail=error_msg or "声音文件不存在，请重新上传")
         
         # 生成唯一的音频文件名
         audio_id = f"test_{voice_id}_{uuid4().hex[:32]}"
@@ -640,21 +691,34 @@ async def test_voice_synthesis(
         # 获取TTS客户端
         tts_client = get_tts_client()
         
+        # 修复latent文件路径
+        latent_path = None
+        if voice_profile.latent_file_path:
+            latent_normalized = normalize_path(voice_profile.latent_file_path)
+            if not os.path.isabs(latent_normalized):
+                if os.path.exists("/.dockerenv"):
+                    latent_path = f"/app/{latent_normalized}"
+                else:
+                    latent_path = latent_normalized
+            else:
+                latent_path = latent_normalized
+        
         # 调试日志：确认文件路径
         logger.info(f"[TTS Test] 声音档案: {voice_profile.name}")
-        logger.info(f"[TTS Test] 参考音频: {voice_profile.reference_audio_path}")
-        logger.info(f"[TTS Test] Latent文件: {voice_profile.latent_file_path}")
+        logger.info(f"[TTS Test] 原始参考音频: {voice_profile.reference_audio_path}")
+        logger.info(f"[TTS Test] 修复后参考音频: {fixed_audio_path}")
+        logger.info(f"[TTS Test] Latent文件: {latent_path}")
         logger.info(f"[TTS Test] 输出路径: {output_path}")
         
         # 创建TTS请求
         tts_request = TTSRequest(
             text=text,
-            reference_audio_path=voice_profile.reference_audio_path,
+            reference_audio_path=fixed_audio_path,
             output_audio_path=output_path,
             time_step=time_step,
             p_weight=p_weight,
             t_weight=t_weight,
-            latent_file_path=voice_profile.latent_file_path  # 添加latent文件路径
+            latent_file_path=latent_path  # 使用修复后的latent文件路径
         )
         
         # 执行TTS合成

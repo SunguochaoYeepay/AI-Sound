@@ -28,7 +28,7 @@ COPY MegaTTS/TangoFlux/ ./
 
 # 创建模型目录并复制本地模型
 RUN mkdir -p /app/models/tangoflux /app/models/text_encoders
-COPY MegaTTS/TangoFlux/models/ /app/models/
+COPY MegaTTS/TangoFlux/models/tangoflux/ /app/models/tangoflux/
 
 # 安装TangoFlux依赖
 RUN pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/ && \

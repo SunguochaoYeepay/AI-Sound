@@ -36,6 +36,35 @@ export const useAudioPlayerStore = defineStore('audioPlayer', () => {
     try {
       console.log('🎵 [播放请求] 开始播放音频:', audioInfo)
       
+      // 验证音频信息
+      if (!audioInfo) {
+        console.error('🎵 [播放失败] 音频信息为空')
+        error.value = '音频信息为空'
+        message.error('音频信息为空')
+        return
+      }
+
+      const audioUrl = audioInfo.url || audioInfo.audioUrl
+      if (!audioUrl) {
+        console.error('🎵 [播放失败] 音频URL为空:', audioInfo)
+        error.value = '音频URL为空'
+        message.error('音频URL为空')
+        return
+      }
+
+      // 验证URL格式
+      try {
+        new URL(audioUrl)
+      } catch (urlError) {
+        // 如果不是完整URL，检查是否是相对路径
+        if (!audioUrl.startsWith('/') && !audioUrl.startsWith('blob:')) {
+          console.error('🎵 [播放失败] 音频URL格式无效:', audioUrl)
+          error.value = '音频URL格式无效'
+          message.error('音频URL格式无效')
+          return
+        }
+      }
+      
       // 如果是同一个音频，切换播放/暂停
       if (currentAudio.value?.id === audioInfo.id) {
         console.log('🎵 [相同音频] 切换播放/暂停状态')
@@ -64,7 +93,7 @@ export const useAudioPlayerStore = defineStore('audioPlayer', () => {
       currentAudio.value = {
         id: audioInfo.id,
         title: audioInfo.title || audioInfo.name || '未知音频',
-        url: audioInfo.url || audioInfo.audioUrl,
+        url: audioUrl,
         type: audioInfo.type || 'unknown',
         metadata: audioInfo.metadata || {}
       }
