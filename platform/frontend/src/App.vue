@@ -110,7 +110,14 @@
           <span style="font-weight: 500;">音频资源库</span>
         </a-menu-item>
 
-       
+        <a-menu-item key="logs" @click="navigateTo('logs')">
+          <template #icon>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M9 3h6l1.83 2H21v2H3V5h4.17L9 3zm0 2l-.5 2h7l-.5-2H9zm-.5 4h7l-.5 2h-6l-.5-2zm-1 4h8l-.5 2H8.5l-.5-2zm-1 4h10v2H6v-2z"/>
+            </svg>
+          </template>
+          <span style="font-weight: 500;">日志监控</span>
+        </a-menu-item>
 
         <a-menu-divider style="background-color: rgba(255,255,255,0.1); margin: 16px 0;" />
 
@@ -267,6 +274,7 @@ const updateSelectedKeys = () => {
     '/synthesis': 'novel-projects',
     '/audio-library': 'audio-library',
     '/environment-sounds': 'environment-sounds',
+    '/logs': 'logs',
     '/settings': 'settings'
   }
   
@@ -309,6 +317,7 @@ const navigateTo = (view) => {
     'books': '/books',
     'novel-projects': '/novel-reader',
     'audio-library': '/audio-library',
+    'logs': '/logs',
     'environment-sounds': '/environment-sounds',
     'settings': '/settings'
   }
@@ -337,6 +346,7 @@ const getPageTitle = () => {
     '/synthesis': '合成中心',
     '/audio-library': '音频资源库',
     '/environment-sounds': '环境音管理',
+    '/logs': '日志监控',
     '/settings': '系统设置'
   }
   
