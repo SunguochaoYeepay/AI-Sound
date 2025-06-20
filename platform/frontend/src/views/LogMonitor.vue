@@ -507,12 +507,20 @@ async function fetchLogs() {
       params.end_time = filters.timeRange[1].toISOString()
     }
     
+    console.log('fetchLogs params:', params)
     const response = await logApi.getLogs(params)
+    console.log('fetchLogs response:', response)
+    
     if (response.success) {
       logs.value = response.data.logs
       pagination.total = response.data.pagination.total
+      console.log('logs.value:', logs.value)
+      console.log('pagination.total:', pagination.total)
+    } else {
+      console.error('API response not successful:', response)
     }
   } catch (error) {
+    console.error('fetchLogs error:', error)
     message.error('获取日志失败: ' + error.message)
   } finally {
     loading.value = false

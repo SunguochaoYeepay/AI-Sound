@@ -10,8 +10,9 @@ export const logApi = {
    * @param {Object} params - 查询参数
    * @returns {Promise}
    */
-  getLogs(params = {}) {
-    return apiClient.get('/logs/list', { params })
+  async getLogs(params = {}) {
+    const response = await apiClient.get('/logs/list', { params })
+    return response.data
   },
 
   /**
@@ -19,8 +20,9 @@ export const logApi = {
    * @param {Object} params - 查询参数
    * @returns {Promise}
    */
-  getStats(params = {}) {
-    return apiClient.get('/logs/stats', { params })
+  async getStats(params = {}) {
+    const response = await apiClient.get('/logs/stats', { params })
+    return response.data
   },
 
   /**
@@ -28,8 +30,9 @@ export const logApi = {
    * @param {Object} params - 查询参数
    * @returns {Promise}
    */
-  getRecentLogs(params = {}) {
-    return apiClient.get('/logs/recent', { params })
+  async getRecentLogs(params = {}) {
+    const response = await apiClient.get('/logs/recent', { params })
+    return response.data
   },
 
   /**
@@ -37,8 +40,9 @@ export const logApi = {
    * @param {Object} params - 查询参数
    * @returns {Promise}
    */
-  getErrorLogs(params = {}) {
-    return apiClient.get('/logs/errors', { params })
+  async getErrorLogs(params = {}) {
+    const response = await apiClient.get('/logs/errors', { params })
+    return response.data
   },
 
   /**
@@ -46,8 +50,9 @@ export const logApi = {
    * @param {Object} params - 清理参数
    * @returns {Promise}
    */
-  clearLogs(params = {}) {
-    return apiClient.post('/logs/clear', null, { params })
+  async clearLogs(params = {}) {
+    const response = await apiClient.post('/logs/clear', null, { params })
+    return response.data
   },
 
   /**
@@ -82,15 +87,17 @@ export const logApi = {
    * 获取可用的日志级别
    * @returns {Promise}
    */
-  getLevels() {
-    return apiClient.get('/logs/levels')
+  async getLevels() {
+    const response = await apiClient.get('/logs/levels')
+    return response.data
   },
 
   /**
    * 获取可用的日志模块
    * @returns {Promise}
    */
-  getModules() {
-    return apiClient.get('/logs/modules')
+  async getModules() {
+    const response = await apiClient.get('/logs/modules')
+    return response.data
   }
 }
