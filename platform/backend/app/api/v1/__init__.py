@@ -24,6 +24,7 @@ from .environment_sounds import router as environment_sounds_router
 from .scene_analysis import router as scene_analysis_router
 from app.voice_clone import router as voice_clone_router
 from app.monitor import router as monitor_router
+from ..system import router as system_router
 
 # 导入需要的健康检查组件
 from app.database import health_check as db_health_check
@@ -96,4 +97,5 @@ api.include_router(monitor_router, tags=["System Monitor"])
 api.include_router(intelligent_analysis_router, tags=["Intelligent Analysis"])
 api.include_router(content_preparation_router, tags=["Content Preparation"]) 
 api.include_router(environment_sounds_router, prefix="/environment-sounds", tags=["Environment Sounds"])
-api.include_router(scene_analysis_router, tags=["Scene Analysis"]) 
+api.include_router(scene_analysis_router, tags=["Scene Analysis"])
+api.include_router(system_router, tags=["System Settings"]) 

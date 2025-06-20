@@ -245,7 +245,6 @@ defineExpose({
 
 .preset-tag:hover {
   background-color: #1890ff;
-  color: white;
   transform: scale(1.05);
 }
 

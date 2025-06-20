@@ -224,4 +224,66 @@ const getChapterStatusClass = (chapter) => {
 .text-project-hint {
   padding: 24px;
 }
+
+/* 暗黑模式适配 */
+[data-theme="dark"] .chapter-selection-area {
+  background: #1f1f1f !important;
+}
+
+[data-theme="dark"] .chapter-controls {
+  background: #2d2d2d !important;
+  border-bottom-color: #434343 !important;
+}
+
+[data-theme="dark"] .chapter-menu-item {
+  background: #2d2d2d !important;
+  border-color: #434343 !important;
+}
+
+[data-theme="dark"] .chapter-menu-item:hover {
+  background: #3a3a3a !important;
+  border-color: var(--primary-color) !important;
+}
+
+[data-theme="dark"] .chapter-menu-item.active {
+  background: rgba(var(--primary-color-rgb), 0.1) !important;
+  border-color: var(--primary-color) !important;
+}
+
+[data-theme="dark"] .chapter-menu-item.active .chapter-title {
+  color: var(--primary-color) !important;
+}
+
+[data-theme="dark"] .chapter-title {
+  color: #fff !important;
+}
+
+[data-theme="dark"] .word-count {
+  color: #8c8c8c !important;
+}
+
+[data-theme="dark"] .status-pending {
+  background: rgba(250, 140, 22, 0.1) !important;
+  color: #fa8c16 !important;
+}
+
+[data-theme="dark"] .status-processing {
+  background: rgba(24, 144, 255, 0.1) !important;
+  color: #1890ff !important;
+}
+
+[data-theme="dark"] .status-completed {
+  background: rgba(82, 196, 26, 0.1) !important;
+  color: #52c41a !important;
+}
+
+[data-theme="dark"] .status-failed {
+  background: rgba(255, 77, 79, 0.1) !important;
+  color: #ff4d4f !important;
+}
+
+[data-theme="dark"] .status-ready {
+  background: rgba(47, 84, 235, 0.1) !important;
+  color: #2f54eb !important;
+}
 </style> 

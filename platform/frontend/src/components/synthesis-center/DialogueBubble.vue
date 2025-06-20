@@ -222,4 +222,60 @@ const statusColor = computed(() => {
 .character-error .speaker-name {
   color: #f5222d !important;
 }
+
+/* 暗黑模式适配 */
+[data-theme="dark"] .dialogue-bubble {
+  background: #2d2d2d !important;
+  border-color: #434343 !important;
+}
+
+[data-theme="dark"] .dialogue-bubble:hover {
+  background: #3a3a3a !important;
+  border-color: #52c41a !important;
+}
+
+[data-theme="dark"] .dialogue-bubble.narrator {
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.1) 0%, rgba(14, 165, 233, 0.05) 100%) !important;
+  border-color: #0ea5e9 !important;
+}
+
+[data-theme="dark"] .dialogue-bubble.character {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(245, 158, 11, 0.05) 100%) !important;
+  border-color: #f59e0b !important;
+}
+
+[data-theme="dark"] .speaker-name {
+  color: #fff !important;
+}
+
+[data-theme="dark"] .segment-index {
+  background: #434343 !important;
+  color: #8c8c8c !important;
+}
+
+[data-theme="dark"] .bubble-content {
+  color: #434343 !important;
+}
+
+[data-theme="dark"] .play-segment-btn {
+  background: rgba(var(--primary-color-rgb), 0.1) !important;
+  color: var(--primary-color) !important;
+}
+
+[data-theme="dark"] .play-segment-btn:hover {
+  background: rgba(var(--primary-color-rgb), 0.2) !important;
+  color: var(--primary-color) !important;
+}
+
+[data-theme="dark"] .play-segment-btn:active {
+  background: rgba(var(--primary-color-rgb), 0.3) !important;
+}
+
+[data-theme="dark"] .dialogue-bubble.has-audio {
+  border-left-color: #52c41a !important;
+}
+
+[data-theme="dark"] .dialogue-bubble.has-audio:hover {
+  box-shadow: 0 2px 8px rgba(82, 196, 26, 0.2) !important;
+}
 </style> 

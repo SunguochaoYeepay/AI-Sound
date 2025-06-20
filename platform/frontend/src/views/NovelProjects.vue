@@ -668,7 +668,7 @@ onMounted(() => {
 
 /* 页面头部 */
 .page-header {
-  margin-bottom: 32px;
+  margin-bottom: 24px;
   padding: 32px;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   border-radius: 12px;
@@ -681,13 +681,24 @@ onMounted(() => {
   align-items: flex-start;
 }
 
-.title-section .page-title {
+.title-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.page-title {
   display: flex;
   align-items: center;
-  margin: 0 0 8px 0;
+  margin: 0;
   font-size: 28px;
   font-weight: 600;
   color: white;
+}
+
+.action-section {
+  display: flex;
+  gap: 16px;
 }
 
 .title-icon {
@@ -711,7 +722,6 @@ onMounted(() => {
 }
 
 .stat-card {
-  background: white;
   padding: 24px;
   border-radius: 12px;
   box-shadow: 0 4px 16px rgba(0,0,0,0.1);
@@ -747,7 +757,6 @@ onMounted(() => {
 
 /* 筛选部分 */
 .filter-section {
-  background: white;
   padding: 24px;
   border-radius: 12px;
   margin-bottom: 24px;
@@ -771,7 +780,6 @@ onMounted(() => {
 
 /* 项目内容 */
 .projects-content {
-  background: white;
   padding: 24px;
   border-radius: 12px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.05);
@@ -802,8 +810,7 @@ onMounted(() => {
 }
 
 .project-card {
-  background: white;
-  border: 1px solid #e5e7eb;
+  border: 1px solid #d1d5db;
   border-radius: 12px;
   padding: 20px;
   cursor: pointer;
@@ -923,5 +930,93 @@ onMounted(() => {
 
 .danger-item {
   color: #ef4444 !important;
+}
+
+/* 暗黑模式适配 */
+[data-theme="dark"] .stat-card {
+  background: #1f1f1f !important;
+  border-color: #434343 !important;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3) !important;
+}
+
+[data-theme="dark"] .stat-value {
+  color: #fff !important;
+}
+
+[data-theme="dark"] .stat-label {
+  color: #8c8c8c !important;
+}
+
+[data-theme="dark"] .filter-section {
+  background: #1f1f1f !important;
+  border: 1px solid #434343 !important;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3) !important;
+}
+
+[data-theme="dark"] .projects-content {
+  background: #1f1f1f !important;
+  border: 1px solid #434343 !important;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3) !important;
+}
+
+[data-theme="dark"] .empty-content h3 {
+  color: #fff !important;
+}
+
+[data-theme="dark"] .empty-content p {
+  color: #8c8c8c !important;
+}
+
+[data-theme="dark"] .project-card {
+  background: #1f1f1f !important;
+  border-color: #434343 !important;
+}
+
+[data-theme="dark"] .project-card:hover {
+  border-color: #4a9eff !important;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.3) !important;
+}
+
+[data-theme="dark"] .project-title {
+  color: #fff !important;
+}
+
+[data-theme="dark"] .project-description {
+  color: #8c8c8c !important;
+}
+
+[data-theme="dark"] .meta-item {
+  color: #8c8c8c !important;
+}
+
+[data-theme="dark"] .progress-text {
+  color: #d1d5db !important;
+}
+
+[data-theme="dark"] .progress-percent {
+  color: #4a9eff !important;
+}
+
+[data-theme="dark"] .table-avatar {
+  background: linear-gradient(135deg, #4a9eff 0%, #3b82f6 100%) !important;
+}
+
+/* 页面容器暗黑模式适配 */
+[data-theme="dark"] .novel-projects-container {
+  background: #141414 !important;
+  min-height: 100vh !important;
+}
+
+[data-theme="dark"] .page-header {
+  background: linear-gradient(135deg, #1f1f1f 0%, #2d2d2d 100%) !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3) !important;
+}
+
+[data-theme="dark"] .page-title {
+  color: #fff !important;
+}
+
+[data-theme="dark"] .page-description {
+  color: #d1d5db !important;
 }
 </style> 

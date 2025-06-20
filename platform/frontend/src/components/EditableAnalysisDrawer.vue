@@ -975,7 +975,6 @@ onMounted(() => {
 .stat-card {
   text-align: center;
   padding: 12px;
-  background: white;
   border-radius: 6px;
   border: 1px solid #e8e8e8;
 }
@@ -1085,5 +1084,94 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+/* 暗黑模式适配 */
+[data-theme="dark"] .analysis-content {
+  background: transparent !important;
+}
+
+[data-theme="dark"] .loading-wrapper {
+  background: transparent !important;
+}
+
+[data-theme="dark"] .editor-header {
+  border-bottom-color: #434343 !important;
+}
+
+[data-theme="dark"] .editor-header h4 {
+  color: #fff !important;
+}
+
+[data-theme="dark"] .segment-count,
+[data-theme="dark"] .character-stats {
+  color: #8c8c8c !important;
+}
+
+[data-theme="dark"] .character-edit-item,
+[data-theme="dark"] .segment-edit-item {
+  background: #2d2d2d !important;
+  border-color: #434343 !important;
+  color: #434343 !important;
+}
+
+[data-theme="dark"] .character-edit-item:hover {
+  border-color: #4a9eff !important;
+  box-shadow: 0 2px 8px rgba(74, 158, 255, 0.2) !important;
+}
+
+[data-theme="dark"] .character-header {
+  border-bottom-color: #434343 !important;
+}
+
+[data-theme="dark"] .character-name {
+  color: #fff !important;
+}
+
+[data-theme="dark"] .character-type {
+  color: #8c8c8c !important;
+}
+
+[data-theme="dark"] .characters-stats {
+  background: #1a1a1a !important;
+}
+
+[data-theme="dark"] .stat-card {
+  background: #2d2d2d !important;
+  border-color: #434343 !important;
+}
+
+[data-theme="dark"] .stat-value {
+  color: #4a9eff !important;
+}
+
+[data-theme="dark"] .stat-label {
+  color: #8c8c8c !important;
+}
+
+[data-theme="dark"] .segment-index {
+  color: #4a9eff !important;
+}
+
+[data-theme="dark"] .segment-params {
+  color: #8c8c8c !important;
+}
+
+[data-theme="dark"] .json-display {
+  background: #1a1a1a !important;
+  border-color: #434343 !important;
+  color: #434343 !important;
+}
+
+[data-theme="dark"] .voice-label {
+  color: #8c8c8c !important;
+}
+
+[data-theme="dark"] .voice-name {
+  color: #fff !important;
+}
+
+[data-theme="dark"] .voice-id {
+  color: #8c8c8c !important;
 }
 </style> 

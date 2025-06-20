@@ -172,4 +172,10 @@ const getStatusColor = (status) => {
   background: rgba(255, 255, 255, 0.15);
   border: 1px solid rgba(255, 255, 255, 0.2);
 }
+
+/* 暗黑模式适配 */
+[data-theme="dark"] .page-header {
+  background: linear-gradient(135deg, #2d2d2d 0%, #1f1f1f 100%) !important;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3) !important;
+}
 </style> 

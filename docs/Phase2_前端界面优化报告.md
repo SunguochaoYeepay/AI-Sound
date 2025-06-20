@@ -90,10 +90,9 @@ const loadAllChapterPreparationStatus = async () => {
   justify-content: space-between;
   align-items: center;
   padding: 16px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid #434343;
   border-radius: 8px;
   margin-bottom: 12px;
-  background: white;
   transition: all 0.2s ease;
 }
 

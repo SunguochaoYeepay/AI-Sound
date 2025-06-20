@@ -1,21 +1,26 @@
 <template>
   <div class="audio-library">
-    <!-- 页面标题和说明 -->
+    <!-- 页面头部 -->
     <div class="page-header">
-      <a-page-header sub-title="统一管理所有生成的音频文件">
-        <template #title>
-          <div class="title-with-back">
-            
-            <span>音频资源库</span>
-          </div>
-        </template>
-        <template #extra>
-          <a-button type="primary" @click="syncAudioFiles" :loading="syncing">
-            <ReloadOutlined />
+      <div class="header-content">
+        <div class="title-section">
+          <h1 class="page-title">
+            <SoundOutlined class="title-icon" />
+            音频资源库
+          </h1>
+          <p class="page-description">
+            统一管理所有生成的音频文件
+          </p>
+        </div>
+        <div class="action-section">
+          <a-button type="primary" size="large" @click="syncAudioFiles" :loading="syncing" ghost>
+            <template #icon>
+              <ReloadOutlined />
+            </template>
             同步音频文件
           </a-button>
-        </template>
-      </a-page-header>
+        </div>
+      </div>
     </div>
 
     <!-- 统计卡片 -->
@@ -687,8 +692,49 @@ onMounted(() => {
 }
 
 .page-header {
-  background: white;
-  margin-bottom: 16px;
+  margin-bottom: 24px;
+  padding: 32px;
+  background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(6, 182, 212, 0.3);
+}
+
+.header-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.title-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.page-title {
+  display: flex;
+  align-items: center;
+  margin: 0;
+  font-size: 28px;
+  font-weight: 600;
+  color: white;
+}
+
+.title-icon {
+  margin-right: 12px;
+  color: #ffffff;
+}
+
+.page-description {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.action-section {
+  display: flex;
+  gap: 16px;
 }
 
 .stats-cards {
@@ -701,7 +747,6 @@ onMounted(() => {
 
 /* 筛选部分 */
 .filter-section {
-  background: white;
   padding: 24px;
   border-radius: 12px;
   margin-bottom: 24px;
@@ -780,5 +825,108 @@ onMounted(() => {
   padding: 0;
   background: transparent;
   border: none;
+}
+
+/* 暗黑模式适配 */
+[data-theme="dark"] .page-header {
+  background: linear-gradient(135deg, #1f1f1f 0%, #2d2d2d 100%) !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3) !important;
+}
+
+[data-theme="dark"] .page-title {
+  color: #fff !important;
+}
+
+[data-theme="dark"] .page-description {
+  color: #d1d5db !important;
+}
+
+[data-theme="dark"] .filter-section {
+  background: #1f1f1f !important;
+  border: 1px solid #434343 !important;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3) !important;
+}
+
+[data-theme="dark"] .stats-cards :deep(.ant-card) {
+  background: #1f1f1f !important;
+  border-color: #434343 !important;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3) !important;
+}
+
+[data-theme="dark"] .stats-cards :deep(.ant-card-head-title) {
+  color: #fff !important;
+}
+
+[data-theme="dark"] .stats-cards :deep(.ant-card-body) {
+  color: #fff !important;
+}
+
+[data-theme="dark"] :deep(.ant-table) {
+  background: #1f1f1f !important;
+  color: #fff !important;
+}
+
+[data-theme="dark"] :deep(.ant-table-thead > tr > th) {
+  background: #2d2d2d !important;
+  color: #fff !important;
+  border-bottom-color: #434343 !important;
+}
+
+[data-theme="dark"] :deep(.ant-table-tbody > tr > td) {
+  background: #1f1f1f !important;
+  color: #fff !important;
+  border-bottom-color: #434343 !important;
+}
+
+[data-theme="dark"] :deep(.ant-table-tbody > tr:hover > td) {
+  background: #2d2d2d !important;
+}
+
+[data-theme="dark"] :deep(.ant-empty-description) {
+  color: #8c8c8c !important;
+}
+
+[data-theme="dark"] .file-size {
+  color: #8c8c8c !important;
+}
+
+[data-theme="dark"] .segment-info {
+  color: #8c8c8c !important;
+}
+
+[data-theme="dark"] .text-gray {
+  color: #8c8c8c !important;
+}
+
+[data-theme="dark"] :deep(.ant-select) {
+  background-color: #2d2d2d !important;
+}
+
+[data-theme="dark"] :deep(.ant-select-selector) {
+  background-color: #2d2d2d !important;
+  border-color: #434343 !important;
+  color: #fff !important;
+}
+
+[data-theme="dark"] :deep(.ant-input) {
+  background-color: #2d2d2d !important;
+  border-color: #434343 !important;
+  color: #fff !important;
+}
+
+[data-theme="dark"] :deep(.ant-input::placeholder) {
+  color: #8c8c8c !important;
+}
+
+[data-theme="dark"] :deep(.ant-btn-default) {
+  background-color: #2d2d2d !important;
+  border-color: #434343 !important;
+  color: #fff !important;
+}
+
+[data-theme="dark"] :deep(.ant-btn-default:hover) {
+  background-color: #3a3a3a !important;
+  border-color: var(--primary-color) !important;
+  color: var(--primary-color) !important;
 }
 </style> 

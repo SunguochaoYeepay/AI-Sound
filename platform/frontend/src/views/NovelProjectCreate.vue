@@ -664,8 +664,6 @@ onMounted(() => {
 
 <style scoped>
 .novel-project-create-container {
-  padding: 24px;
-  background: #f5f5f5;
   min-height: 100vh;
 }
 
@@ -675,7 +673,6 @@ onMounted(() => {
   align-items: center;
   margin-bottom: 24px;
   padding: 24px;
-  background: white;
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 }
@@ -760,7 +757,6 @@ onMounted(() => {
   padding: 16px;
   cursor: pointer;
   transition: all 0.2s;
-  background: white;
 }
 
 .book-item:hover {
@@ -858,7 +854,6 @@ onMounted(() => {
 }
 
 .chapters-list {
-  background: white;
   border-radius: 6px;
   padding: 12px;
 }
@@ -910,7 +905,6 @@ onMounted(() => {
 
 .stat-grid .stat-item {
   padding: 16px;
-  background: #f8fafc;
   border-radius: 8px;
   text-align: center;
 }
