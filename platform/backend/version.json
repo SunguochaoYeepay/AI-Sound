@@ -1,0 +1,16 @@
+{
+  "version": "2.0.0",
+  "build_time": "2024-01-23 15:30:00",
+  "git_commit": "latest",
+  "environment": "development",
+  "features": [
+    "AI语音合成",
+    "声音克隆",
+    "环境音生成",
+    "智能场景分析",
+    "语音库管理",
+    "小说朗读"
+  ],
+  "author": "AI-Sound Team",
+  "license": "MIT"
+}

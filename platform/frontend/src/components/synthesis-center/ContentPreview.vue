@@ -637,7 +637,6 @@ const handleDownloadChapter = (chapterId) => {
 }
 
 .preparation-preview {
-  background: white;
   border-radius: 12px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 }
@@ -727,5 +726,43 @@ const handleDownloadChapter = (chapterId) => {
   font-size: 12px;
   margin-top: 12px;
   line-height: 1.4;
+}
+
+/* 暗黑模式适配 */
+[data-theme="dark"] .content-preview {
+  background: #1f1f1f !important;
+}
+
+[data-theme="dark"] .preparation-preview {
+  background: #2d2d2d !important;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3) !important;
+}
+
+[data-theme="dark"] .chapter-divider {
+  border-bottom-color: #434343 !important;
+}
+
+[data-theme="dark"] .chapter-title {
+  color: #fff !important;
+}
+
+[data-theme="dark"] .empty-preview {
+  background: #1f1f1f !important;
+}
+
+[data-theme="dark"] .chapter-info {
+  color: var(--primary-color) !important;
+}
+
+[data-theme="dark"] .help-text {
+  color: #8c8c8c !important;
+}
+
+[data-theme="dark"] .no-preparation-content {
+  color: #434343 !important;
+}
+
+[data-theme="dark"] .no-preparation-content p {
+  color: #434343 !important;
 }
 </style> 

@@ -2329,7 +2329,6 @@ const goBack = () => {
 }
 
 .voice-library-content {
-  background: white;
   border-radius: 12px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
   padding: 24px;
@@ -2385,7 +2384,6 @@ const goBack = () => {
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background: white;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2671,7 +2669,6 @@ const goBack = () => {
 
 .audio-sample audio {
   border-radius: 4px;
-  background: white;
 }
 
 .no-audio-message {
@@ -2689,7 +2686,6 @@ const goBack = () => {
 }
 
 .stat-card {
-  background: white;
   border-radius: 16px;
   padding: 24px;
   display: flex;
@@ -2735,7 +2731,6 @@ const goBack = () => {
 
 /* 筛选区域样式 */
 .filter-section {
-  background: white;
   border-radius: 12px;
   padding: 20px;
   margin-bottom: 24px;
@@ -3081,7 +3076,6 @@ const goBack = () => {
   padding: 12px;
   border: 1px solid #d1d5db;
   border-radius: 8px;
-  background: white;
 }
 
 .character-avatar {
@@ -3151,7 +3145,6 @@ const goBack = () => {
   border: 1px solid #d1d5db;
   border-radius: 8px;
   padding: 16px;
-  background: white;
 }
 
 .config-header {

@@ -62,7 +62,6 @@ const iconSvg = computed(() => {
 
 <style scoped>
 .feature-card {
-  background: white;
   border-radius: 12px;
   padding: 24px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
@@ -97,7 +96,6 @@ const iconSvg = computed(() => {
 
 .feature-card:hover .feature-icon {
   background: var(--color);
-  color: white;
   transform: scale(1.1);
 }
 
@@ -137,7 +135,34 @@ const iconSvg = computed(() => {
   position: absolute;
   top: 24px;
   right: 24px;
-  color: #d1d5db;
+  color: #434343;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 暗黑模式适配 */
+[data-theme="dark"] .feature-card {
+  background: #1f1f1f !important;
+  border-color: #434343 !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3) !important;
+}
+
+[data-theme="dark"] .feature-card:hover {
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4) !important;
+}
+
+[data-theme="dark"] .feature-content h3 {
+  color: #fff !important;
+}
+
+[data-theme="dark"] .feature-content p {
+  color: #8c8c8c !important;
+}
+
+[data-theme="dark"] .feature-arrow {
+  color: #666 !important;
+}
+
+[data-theme="dark"] .feature-card:hover .feature-arrow {
+  color: var(--color) !important;
 }
 </style> 

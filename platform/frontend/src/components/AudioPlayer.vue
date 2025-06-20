@@ -407,7 +407,7 @@ defineExpose({
 /* 音量控制 */
 .volume-control {
   padding: 8px;
-  background: white;
+
   border-radius: 6px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }

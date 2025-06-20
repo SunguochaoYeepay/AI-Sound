@@ -231,7 +231,6 @@ const downloadAudio = async () => {
   bottom: 0;
   left: 0;
   right: 0;
-  background: white;
   border-top: 1px solid #f0f0f0;
   box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.1);
   z-index: 9999;
@@ -362,7 +361,6 @@ const downloadAudio = async () => {
 /* 音量控制 */
 .volume-control {
   padding: 8px;
-  background: white;
   border-radius: 6px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }

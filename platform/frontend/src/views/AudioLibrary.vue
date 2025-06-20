@@ -747,7 +747,6 @@ onMounted(() => {
 
 /* 筛选部分 */
 .filter-section {
-  background: white;
   padding: 24px;
   border-radius: 12px;
   margin-bottom: 24px;

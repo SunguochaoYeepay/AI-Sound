@@ -348,4 +348,42 @@ watch(() => props.visible, (val) => {
 :deep(.ant-form-item) {
   margin-bottom: 24px;
 }
+
+/* 暗黑模式适配 */
+[data-theme="dark"] .generate-form {
+  background: transparent !important;
+}
+
+[data-theme="dark"] .form-section h3 {
+  color: #fff !important;
+  border-bottom-color: #434343 !important;
+}
+
+[data-theme="dark"] .param-hint {
+  color: #8c8c8c !important;
+}
+
+[data-theme="dark"] .preset-card {
+  background: #2d2d2d !important;
+  border-color: #434343 !important;
+  color: #434343 !important;
+}
+
+[data-theme="dark"] .preset-card:hover {
+  border-color: #4a9eff !important;
+  box-shadow: 0 2px 8px rgba(74, 158, 255, 0.2) !important;
+}
+
+[data-theme="dark"] .preset-card.active {
+  border-color: #4a9eff !important;
+  background: #1a2332 !important;
+}
+
+[data-theme="dark"] .preset-content h4 {
+  color: #fff !important;
+}
+
+[data-theme="dark"] .preset-content p {
+  color: #8c8c8c !important;
+}
 </style>

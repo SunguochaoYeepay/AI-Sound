@@ -1180,4 +1180,32 @@ const handleEnvironmentSynthesis = async (config) => {
   color: #666;
   white-space: nowrap;
 }
+
+/* 暗黑模式适配 */
+[data-theme="dark"] .synthesis-center {
+  background: #141414 !important;
+}
+
+[data-theme="dark"] .main-content {
+  background: #141414 !important;
+}
+
+[data-theme="dark"] .mini-progress-bar {
+  background: #1f1f1f !important;
+  border-top-color: #434343 !important;
+  box-shadow: 0 -2px 8px rgba(0,0,0,0.3) !important;
+}
+
+[data-theme="dark"] .mini-progress-bar:hover {
+  background: #2d2d2d !important;
+  box-shadow: 0 -4px 12px rgba(0,0,0,0.5) !important;
+}
+
+[data-theme="dark"] .mini-progress-text {
+  color: #fff !important;
+}
+
+[data-theme="dark"] .mini-progress-tip {
+  color: #8c8c8c !important;
+}
 </style> 

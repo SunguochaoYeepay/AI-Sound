@@ -412,4 +412,83 @@ const getCurrentVoiceId = (character) => {
 .config-description {
   margin-bottom: 16px;
 }
+
+/* 暗黑模式适配 */
+[data-theme="dark"] .analysis-result-display {
+  color: #434343 !important;
+}
+
+[data-theme="dark"] .plan-summary {
+  background: #2d2d2d !important;
+  border: 1px solid #434343 !important;
+}
+
+[data-theme="dark"] .synthesis-segments {
+  color: #434343 !important;
+}
+
+[data-theme="dark"] .segments-container {
+  background: #2d2d2d !important;
+  border: 1px solid #434343 !important;
+}
+
+[data-theme="dark"] .synthesis-segment-item {
+  background: #1f1f1f !important;
+  border-color: #434343 !important;
+  border-left-color: var(--primary-color) !important;
+}
+
+[data-theme="dark"] .segment-id {
+  color: #8c8c8c !important;
+}
+
+[data-theme="dark"] .segment-text {
+  color: #434343 !important;
+}
+
+[data-theme="dark"] .segment-params {
+  color: #8c8c8c !important;
+}
+
+[data-theme="dark"] .character-preview-item.enhanced {
+  background: #1f1f1f !important;
+  border-color: #434343 !important;
+  border-left-color: var(--primary-color) !important;
+}
+
+[data-theme="dark"] .character-header h4 {
+  color: var(--primary-color) !important;
+}
+
+[data-theme="dark"] .voice-config-section {
+  background: #2d2d2d !important;
+  border-color: #434343 !important;
+}
+
+[data-theme="dark"] .ai-label {
+  color: var(--primary-color) !important;
+}
+
+[data-theme="dark"] .adjustment-label {
+  color: #8c8c8c !important;
+}
+
+[data-theme="dark"] .voice-name {
+  color: #434343 !important;
+}
+
+[data-theme="dark"] .ai-marker {
+  color: var(--primary-color) !important;
+}
+
+[data-theme="dark"] .json-preview {
+  background: #1f1f1f !important;
+  border: 1px solid #434343 !important;
+}
+
+[data-theme="dark"] .raw-data-display {
+  background: #2d2d2d !important;
+  border-color: #434343 !important;
+  color: #434343 !important;
+}
 </style>

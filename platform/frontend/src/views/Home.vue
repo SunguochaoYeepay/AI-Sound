@@ -48,7 +48,7 @@
       <a-row :gutter="[24, 24]">
         <a-col :xs="24" :sm="12" :lg="6">
           <FeatureCard
-            title="声音克隆测试"
+            title="声音克隆"
             description="快速测试和体验AI声音克隆功能"
             icon="microphone"
             color="#06b6d4"

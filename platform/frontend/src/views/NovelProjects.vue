@@ -722,7 +722,6 @@ onMounted(() => {
 }
 
 .stat-card {
-  background: white;
   padding: 24px;
   border-radius: 12px;
   box-shadow: 0 4px 16px rgba(0,0,0,0.1);
@@ -758,7 +757,6 @@ onMounted(() => {
 
 /* 筛选部分 */
 .filter-section {
-  background: white;
   padding: 24px;
   border-radius: 12px;
   margin-bottom: 24px;
@@ -782,7 +780,6 @@ onMounted(() => {
 
 /* 项目内容 */
 .projects-content {
-  background: white;
   padding: 24px;
   border-radius: 12px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.05);
@@ -813,7 +810,6 @@ onMounted(() => {
 }
 
 .project-card {
-  background: white;
   border: 1px solid #d1d5db;
   border-radius: 12px;
   padding: 20px;

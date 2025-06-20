@@ -212,7 +212,7 @@ onUnmounted(() => {
   right: 20px;
   width: 400px;
   max-height: 600px;
-  background: white;
+
   border: 1px solid #d9d9d9;
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);

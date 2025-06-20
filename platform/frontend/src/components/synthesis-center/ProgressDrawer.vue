@@ -431,4 +431,38 @@ const progressColor = computed(() => {
   color: #6b7280;
   line-height: 1.4;
 }
+
+/* 暗黑模式适配 */
+[data-theme="dark"] .progress-title {
+  color: #fff !important;
+}
+
+[data-theme="dark"] .stat-label {
+  color: #8c8c8c !important;
+}
+
+[data-theme="dark"] .status-text {
+  background: rgba(var(--primary-color-rgb), 0.1) !important;
+  color: var(--primary-color) !important;
+  border-left-color: var(--primary-color) !important;
+}
+
+[data-theme="dark"] .simple-error-notice {
+  background: rgba(255, 77, 79, 0.1) !important;
+  border-left-color: #ff4d4f !important;
+  color: #ff4d4f !important;
+}
+
+[data-theme="dark"] .failure-details {
+  background: rgba(255, 77, 79, 0.05) !important;
+  border-color: rgba(255, 77, 79, 0.2) !important;
+}
+
+[data-theme="dark"] .failure-title {
+  color: #ff4d4f !important;
+}
+
+[data-theme="dark"] .reason-text {
+  color: #8c8c8c !important;
+}
 </style> 

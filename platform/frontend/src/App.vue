@@ -60,7 +60,7 @@
               <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
             </svg>
           </template>
-          <span style="font-weight: 500;">声音克隆测试</span>
+          <span style="font-weight: 500;">声音克隆</span>
         </a-menu-item>
 
         <a-menu-item key="voice-library" @click="navigateTo('voice-library')">
@@ -327,7 +327,7 @@ const navigateTo = (view) => {
 const getPageTitle = () => {
   const titles = {
     '/': 'AI-Sound 智能语音平台',
-    '/basic-tts': '声音克隆测试',
+    '/basic-tts': '声音克隆',
     '/characters': '声音库管理',
     '/books': '书籍管理',
     '/novel-reader': '语音合成',
