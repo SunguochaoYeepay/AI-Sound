@@ -1140,7 +1140,7 @@ const handleEnvironmentSynthesis = async (config) => {
   bottom: 0;
   left: 0;
   right: 0;
-  background: #fff;
+  background: #ffffff;
   border-top: 1px solid #e8e8e8;
   box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.1);
   z-index: 1000;
@@ -1181,6 +1181,21 @@ const handleEnvironmentSynthesis = async (config) => {
   white-space: nowrap;
 }
 
+/* 主题颜色适配 - 使用CSS变量 */
+.mini-progress-content .ant-progress {
+  flex: 1;
+  margin: 0;
+}
+
+.mini-progress-content .ant-progress .ant-progress-bg {
+  background-color: var(--primary-color) !important;
+}
+
+/* 迷你进度条主题颜色悬停效果 */
+.mini-progress-bar:hover .ant-progress .ant-progress-bg {
+  background-color: var(--secondary-color) !important;
+}
+
 /* 暗黑模式适配 */
 [data-theme="dark"] .synthesis-center {
   background: #141414 !important;
@@ -1207,5 +1222,14 @@ const handleEnvironmentSynthesis = async (config) => {
 
 [data-theme="dark"] .mini-progress-tip {
   color: #8c8c8c !important;
+}
+
+/* 迷你进度条在暗黑模式下的主题颜色适配 */
+[data-theme="dark"] .mini-progress-content .ant-progress .ant-progress-bg {
+  background-color: var(--primary-color) !important;
+}
+
+[data-theme="dark"] .mini-progress-bar:hover .ant-progress .ant-progress-bg {
+  background-color: var(--secondary-color) !important;
 }
 </style> 

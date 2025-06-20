@@ -231,6 +231,7 @@ const downloadAudio = async () => {
   bottom: 0;
   left: 0;
   right: 0;
+  background: #ffffff;
   border-top: 1px solid #f0f0f0;
   box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.1);
   z-index: 9999;
@@ -310,14 +311,14 @@ const downloadAudio = async () => {
   width: 44px;
   height: 44px;
   font-size: 20px;
-  color: #1890ff;
-  background: #f6ffed;
-  border: 1px solid #b7eb8f;
+  color: var(--primary-color);
+  background: rgba(var(--primary-color-rgb), 0.1);
+  border: 1px solid rgba(var(--primary-color-rgb), 0.3);
 }
 
 .play-button:hover {
-  background: #d9f7be;
-  border-color: #95de64;
+  background: rgba(var(--primary-color-rgb), 0.2);
+  border-color: rgba(var(--primary-color-rgb), 0.5);
 }
 
 .progress-container {
@@ -449,13 +450,141 @@ const downloadAudio = async () => {
   }
 }
 
+/* 暗黑模式和主题颜色适配 */
+[data-theme="dark"] .global-audio-player {
+  background: #1f1f1f !important;
+  border-top: 1px solid #434343 !important;
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.3) !important;
+}
+
+[data-theme="dark"] .player-container {
+  background: transparent !important;
+}
+
+/* 音频信息暗黑模式适配 */
+[data-theme="dark"] .audio-icon {
+  background: #2d2d2d !important;
+  color: var(--primary-color) !important;
+}
+
+[data-theme="dark"] .audio-title {
+  color: #fff !important;
+}
+
+[data-theme="dark"] .audio-type {
+  color: #8c8c8c !important;
+}
+
+/* 播放控制按钮暗黑模式适配 */
+[data-theme="dark"] .play-button {
+  color: var(--primary-color) !important;
+  background: rgba(var(--primary-color-rgb), 0.1) !important;
+  border: 1px solid rgba(var(--primary-color-rgb), 0.3) !important;
+}
+
+[data-theme="dark"] .play-button:hover {
+  background: rgba(var(--primary-color-rgb), 0.2) !important;
+  border-color: rgba(var(--primary-color-rgb), 0.5) !important;
+}
+
+[data-theme="dark"] .control-button {
+  color: #8c8c8c !important;
+  background: transparent !important;
+}
+
+[data-theme="dark"] .control-button:hover {
+  background: #2d2d2d !important;
+  color: var(--primary-color) !important;
+}
+
+[data-theme="dark"] .close-button {
+  color: #ff4d4f !important;
+}
+
+[data-theme="dark"] .close-button:hover {
+  background: rgba(255, 77, 79, 0.1) !important;
+  color: #ff7875 !important;
+}
+
+/* 进度条和时间文字暗黑模式适配 */
+[data-theme="dark"] .time-text {
+  color: #8c8c8c !important;
+}
+
+[data-theme="dark"] .progress-slider .ant-slider-track {
+  background-color: var(--primary-color) !important;
+}
+
+[data-theme="dark"] .progress-slider .ant-slider-handle {
+  border-color: var(--primary-color) !important;
+}
+
+[data-theme="dark"] .progress-slider .ant-slider-rail {
+  background-color: #434343 !important;
+}
+
+/* 音量控制暗黑模式适配 */
+[data-theme="dark"] .volume-control {
+  background-color: #1f1f1f !important;
+  border: 1px solid #434343 !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+}
+
+[data-theme="dark"] .volume-control .ant-slider-track {
+  background-color: var(--primary-color) !important;
+}
+
+[data-theme="dark"] .volume-control .ant-slider-handle {
+  border-color: var(--primary-color) !important;
+}
+
+[data-theme="dark"] .volume-control .ant-slider-rail {
+  background-color: #434343 !important;
+}
+
+/* 错误提示暗黑模式适配 */
+[data-theme="dark"] .error-banner {
+  background: rgba(255, 77, 79, 0.1) !important;
+  border-top-color: rgba(255, 77, 79, 0.3) !important;
+  color: #ff7875 !important;
+}
+
+/* 主题颜色适配 - 使用CSS变量确保所有主题颜色都能正确显示 */
+.audio-icon {
+  color: var(--primary-color);
+}
+
+.control-button:hover {
+  color: var(--primary-color);
+}
+
+.progress-slider .ant-slider-track {
+  background-color: var(--primary-color) !important;
+}
+
+.progress-slider .ant-slider-handle {
+  border-color: var(--primary-color) !important;
+}
+
+.volume-control .ant-slider-track {
+  background-color: var(--primary-color) !important;
+}
+
+.volume-control .ant-slider-handle {
+  border-color: var(--primary-color) !important;
+}
+
 /* 播放器激活状态 */
 .global-audio-player.playing {
-  border-top-color: #1890ff;
+  border-top-color: var(--primary-color);
+}
+
+[data-theme="dark"] .global-audio-player.playing {
+  border-top-color: var(--primary-color);
 }
 
 /* 加载状态 */
 .control-button :deep(.ant-btn-loading-icon) {
-  color: #1890ff;
+  color: var(--primary-color);
 }
 </style> 
