@@ -260,6 +260,21 @@ export const deleteBackupSchedule = async (scheduleId) => {
 // ======================== 文件管理接口 ========================
 
 /**
+ * 获取备份任务详情
+ * @param {number} taskId - 任务ID
+ * @returns {Promise} API响应
+ */
+export const getBackupDetails = async (taskId) => {
+  try {
+    const response = await apiClient.get(`/backup/${taskId}/details`)
+    return response.data
+  } catch (error) {
+    console.error('获取备份详情失败:', error)
+    throw error
+  }
+}
+
+/**
  * 下载备份文件
  * @param {number} taskId - 备份任务ID
  * @returns {Promise} 文件下载

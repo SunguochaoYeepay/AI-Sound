@@ -326,6 +326,7 @@ import { ref, reactive, computed, onMounted, onUnmounted, h } from 'vue'
 import { message } from 'ant-design-vue'
 import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
+import 'dayjs/locale/zh-cn'
 import {
   ReloadOutlined,
   DownloadOutlined,
@@ -337,8 +338,9 @@ import {
 } from '@ant-design/icons-vue'
 import { logApi } from '../api/logs'
 
-// 扩展dayjs
+// 扩展dayjs并设置中文
 dayjs.extend(relativeTime)
+dayjs.locale('zh-cn')
 
 // 响应式数据
 const loading = ref(false)
@@ -667,7 +669,6 @@ onUnmounted(() => {
 
 <style scoped>
 .log-monitor {
-  padding: 24px;
 }
 
 .page-header {
@@ -732,7 +733,6 @@ onUnmounted(() => {
 /* 响应式设计 */
 @media (max-width: 768px) {
   .log-monitor {
-    padding: 12px;
   }
   
   .stats-row .ant-col {

@@ -119,6 +119,15 @@
           <span style="font-weight: 500;">日志监控</span>
         </a-menu-item>
 
+        <a-menu-item key="backup" @click="navigateTo('backup')">
+          <template #icon>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z"/>
+            </svg>
+          </template>
+          <span style="font-weight: 500;">数据备份</span>
+        </a-menu-item>
+
         <a-menu-divider style="background-color: rgba(255,255,255,0.1); margin: 16px 0;" />
 
         <a-menu-item key="settings" @click="navigateTo('settings')">
@@ -275,6 +284,7 @@ const updateSelectedKeys = () => {
     '/audio-library': 'audio-library',
     '/environment-sounds': 'environment-sounds',
     '/logs': 'logs',
+    '/backup': 'backup',
     '/settings': 'settings'
   }
   
@@ -318,6 +328,7 @@ const navigateTo = (view) => {
     'novel-projects': '/novel-reader',
     'audio-library': '/audio-library',
     'logs': '/logs',
+    'backup': '/backup',
     'environment-sounds': '/environment-sounds',
     'settings': '/settings'
   }
@@ -347,6 +358,7 @@ const getPageTitle = () => {
     '/audio-library': '音频资源库',
     '/environment-sounds': '环境音管理',
     '/logs': '日志监控',
+    '/backup': '数据备份',
     '/settings': '系统设置'
   }
   

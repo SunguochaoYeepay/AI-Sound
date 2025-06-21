@@ -15,6 +15,7 @@ import EnvironmentSounds from '../views/EnvironmentSounds.vue'
 import WebSocketTest from '../views/WebSocketTest.vue'
 import Settings from '../views/Settings.vue'
 import LogMonitor from '../views/LogMonitor.vue'
+import BackupManagement from '../views/BackupManagement.vue'
 
 const routes = [
   {
@@ -111,6 +112,11 @@ const routes = [
     path: '/logs',
     name: 'LogMonitor',
     component: LogMonitor
+  },
+  {
+    path: '/backup',
+    name: 'BackupManagement',
+    component: BackupManagement
   }
 ]
 
