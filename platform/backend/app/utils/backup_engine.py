@@ -17,16 +17,18 @@ from sqlalchemy.orm import Session
 
 from app.models.backup import BackupTask, TaskStatus
 from app.config import settings
-from app.utils import log_system_event
+from app.utils.logger import log_system_event
 
 # 配置常量 - 使用本地开发环境路径
 import os
 from pathlib import Path
 
-# 获取项目根目录
-PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
-BACKUP_DIR = os.path.join(PROJECT_ROOT, "storage", "backups")
-AUDIO_DIR = os.path.join(PROJECT_ROOT, "storage", "audio")
+# 备份存储配置
+BACKUP_DIR = os.getenv("BACKUP_DIR", "/app/data/backups")  # Docker环境使用容器内路径
+AUDIO_DIR = os.getenv("AUDIO_DIR", "/app/data/audio")
+
+# 确保备份目录存在
+os.makedirs(BACKUP_DIR, exist_ok=True)
 MAX_BACKUP_SIZE = 10 * 1024 * 1024 * 1024  # 10GB
 
 
@@ -144,12 +146,44 @@ class BackupEngine:
             import shutil
             pg_dump_path = shutil.which('pg_dump')
             
+            # 如果找不到，尝试使用默认安装路径
             if not pg_dump_path:
-                error_msg = "pg_dump 工具未安装，请先安装 PostgreSQL 客户端工具"
-                log_system_event(error_msg, "error")
+                potential_paths = [
+                    r"C:\Program Files\PostgreSQL\16\bin\pg_dump.exe",
+                    r"C:\Program Files\PostgreSQL\15\bin\pg_dump.exe",
+                    r"C:\Program Files (x86)\PostgreSQL\16\bin\pg_dump.exe",
+                ]
+                
+                for path in potential_paths:
+                    if os.path.exists(path):
+                        pg_dump_path = path
+                        log_system_event(f"✅ 使用完整路径找到 pg_dump: {pg_dump_path}", "info")
+                        break
+            
+            if not pg_dump_path:
+                error_msg = """pg_dump 工具未安装，请先安装 PostgreSQL 客户端工具
+
+📥 安装方法：
+1. 访问 https://www.postgresql.org/download/windows/
+2. 下载 PostgreSQL 安装包（推荐版本 15 或 16）
+3. 安装时确保选择 "Command Line Tools"
+4. 安装完成后重启AI-Sound后端
+
+💡 或者使用 Chocolatey：
+   choco install postgresql
+
+⚠️ 注意：安装后需要将 PostgreSQL/bin 目录添加到系统 PATH 环境变量中
+   典型路径：C:\\Program Files\\PostgreSQL\\15\\bin
+
+🔧 临时解决方案：如果只需要配置备份而不立即执行，可以先创建备份配置"""
+                
+                log_system_event("❌ pg_dump 工具检查失败", "error")
+                log_system_event("📋 提供PostgreSQL客户端工具安装指导", "info")
                 task.error_message = error_msg
                 self.db.commit()
                 return False
+            
+            log_system_event(f"✅ 找到 pg_dump 工具: {pg_dump_path}", "info")
             
             # 从 database_url 解析数据库连接参数
             import re
@@ -157,7 +191,8 @@ class BackupEngine:
             # 解析 database_url
             # 格式: postgresql://username:password@host:port/database
             db_url = self.settings.database_url
-            log_system_event(f"🔧 使用数据库连接: {db_url}", "debug")
+            log_system_event(f"🔧 使用数据库连接: {db_url}", "info")
+            print(f"DATABASE URL: {db_url}")
             match = re.match(r'postgresql://([^:]+):([^@]+)@([^:]+):(\d+)/(.+)', db_url)
             
             if not match:
@@ -165,9 +200,12 @@ class BackupEngine:
             
             username, password, host, port, database = match.groups()
             
+            print(f"HOST: {host}, PORT: {port}, USER: {username}, DB: {database}")
+            log_system_event(f"🔗 连接参数: {host}:{port}/{database} (用户: {username})", "info")
+            
             # 构建 pg_dump 命令
             cmd = [
-                "pg_dump",
+                pg_dump_path,
                 "--host", host,
                 "--port", port,
                 "--username", username,
@@ -187,21 +225,63 @@ class BackupEngine:
             log_system_event(f"🔧 执行 pg_dump 命令: {' '.join(cmd[:-1])} [file]", "info")
             log_system_event(f"🔗 连接数据库: {host}:{port}/{database}", "info")
             
-            # 异步执行命令
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
-                env=env,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
+            # Windows平台使用同步subprocess，避免asyncio问题
+            import subprocess
+            import threading
+            import time
             
-            # 监控进度
-            await self._monitor_backup_progress(task, process)
+            result_container = {"process": None, "stdout": None, "stderr": None, "returncode": None}
             
-            stdout, stderr = await process.communicate()
+            def run_pg_dump():
+                """在线程中运行pg_dump"""
+                try:
+                    log_system_event("🔄 开始执行pg_dump进程...", "info")
+                    process = subprocess.Popen(
+                        cmd,
+                        env=env,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True
+                    )
+                    result_container["process"] = process
+                    
+                    # 等待进程完成
+                    stdout, stderr = process.communicate()
+                    result_container["stdout"] = stdout
+                    result_container["stderr"] = stderr
+                    result_container["returncode"] = process.returncode
+                    
+                    log_system_event(f"✅ pg_dump进程完成，退出码: {process.returncode}", "info")
+                    
+                except Exception as e:
+                    log_system_event(f"❌ pg_dump进程异常: {str(e)}", "error")
+                    result_container["returncode"] = -1
+                    result_container["stderr"] = str(e)
             
-            if process.returncode == 0:
-                log_system_event(f"✅ pg_dump 执行成功，退出码: {process.returncode}", "info")
+            # 启动线程执行pg_dump
+            dump_thread = threading.Thread(target=run_pg_dump)
+            dump_thread.start()
+            
+            # 监控进度，每2秒更新一次
+            progress = 10
+            while dump_thread.is_alive():
+                await asyncio.sleep(2)
+                if progress < 60:
+                    progress += 5
+                    task.progress_percentage = progress
+                    self.db.commit()
+                    log_system_event(f"📊 备份进度: {progress}%", "debug")
+            
+            # 等待线程完成
+            dump_thread.join()
+            
+            # 获取结果
+            stdout = result_container["stdout"] or ""
+            stderr = result_container["stderr"] or ""
+            returncode = result_container["returncode"]
+            
+            if returncode == 0:
+                log_system_event(f"✅ pg_dump 执行成功，退出码: {returncode}", "info")
                 
                 # 检查备份文件是否成功生成
                 if os.path.exists(backup_path):
@@ -213,48 +293,52 @@ class BackupEngine:
                     
                 return True
             else:
-                error_msg = stderr.decode() if stderr else "pg_dump 执行失败"
-                log_system_event(f"❌ pg_dump 执行失败 (退出码: {process.returncode}): {error_msg}", "error")
+                error_msg = stderr if stderr else "pg_dump 执行失败"
+                log_system_event(f"❌ pg_dump 执行失败 (退出码: {returncode}): {error_msg}", "error")
                 task.error_message = error_msg
                 self.db.commit()
                 return False
                 
         except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
             error_msg = f"pg_dump 执行异常: {str(e)}"
-            log_system_event(error_msg, "error")
-            task.error_message = error_msg
+            
+            # 记录详细错误信息
+            log_system_event(f"❌ {error_msg}", "error")
+            log_system_event(f"📋 错误详情: {error_details}", "error")
+            print(f"BACKUP ERROR: {error_msg}")
+            print(f"BACKUP ERROR DETAILS: {error_details}")
+            
+            # 检查具体错误类型
+            error_str = str(e).lower()
+            if "connection" in error_str or "connect" in error_str:
+                log_system_event("🔗 可能是数据库连接问题", "error")
+            elif "permission" in error_str or "access" in error_str:
+                log_system_event("🔐 可能是权限问题", "error")
+            elif "no such file" in error_str or "not found" in error_str:
+                log_system_event("📁 可能是文件路径问题", "error")
+            
+            # 提供具体的修复建议
+            if "No such file or directory" in str(e) or "not found" in str(e).lower():
+                fix_msg = """
+🔧 PostgreSQL工具路径问题修复建议:
+1. 重启AI-Sound后端程序 (让环境变量生效)
+2. 检查PATH环境变量是否包含: C:\\Program Files\\PostgreSQL\\16\\bin
+3. 验证pg_dump.exe是否存在于该路径
+4. 如果问题持续，请重启整个系统
+"""
+                log_system_event(fix_msg, "info")
+                task.error_message = f"{error_msg}\n{fix_msg}"
+            else:
+                task.error_message = error_msg
+            
             self.db.commit()
             return False
     
 
     
-    async def _monitor_backup_progress(self, task: BackupTask, process):
-        """监控备份进度"""
-        try:
-            progress = 10
-            start_time = time.time()
-            
-            log_system_event(f"📈 开始监控备份进度...", "info")
-            
-            while process.returncode is None:
-                await asyncio.sleep(3)  # 增加到3秒，减少日志频率
-                
-                current_time = time.time()
-                elapsed = int(current_time - start_time)
-                
-                # 模拟进度更新
-                if progress < 60:
-                    progress += 5
-                    task.progress_percentage = progress
-                    self.db.commit()
-                    
-                    log_system_event(
-                        f"⏳ 备份进度: {progress}% (已耗时 {elapsed}秒)", 
-                        "info"
-                    )
-                
-        except Exception as e:
-            log_system_event(f"⚠️ 监控备份进度失败: {str(e)}", "warning")
+
     
     async def _compress_backup_file(self, backup_path: str) -> Optional[str]:
         """压缩备份文件"""
@@ -396,3 +480,83 @@ class BackupEngine:
         except Exception as e:
             log_system_event(f"验证备份文件失败: {str(e)}", "warning")
             return False
+
+    def check_backup_environment(self) -> Dict[str, Any]:
+        """检查备份环境状态"""
+        import shutil
+        
+        result = {
+            "pg_dump_available": False,
+            "pg_dump_path": None,
+            "backup_directory": False,
+            "database_connection": False,
+            "environment": "unknown",
+            "recommendations": []
+        }
+        
+        # 检测运行环境
+        is_docker = os.path.exists('/.dockerenv') or os.getenv('DOCKER_CONTAINER', False)
+        result["environment"] = "docker" if is_docker else "host"
+        
+        # 检查 pg_dump
+        pg_dump_path = shutil.which('pg_dump')
+        if pg_dump_path:
+            result["pg_dump_available"] = True
+            result["pg_dump_path"] = pg_dump_path
+            log_system_event(f"✅ pg_dump 工具可用: {pg_dump_path} (环境: {result['environment']})", "info")
+        else:
+            if is_docker:
+                result["recommendations"].append({
+                    "type": "critical",
+                    "message": "Docker容器中缺少 PostgreSQL 客户端工具",
+                    "action": "重新构建Docker镜像，确保安装了 postgresql-client 包"
+                })
+                log_system_event("❌ Docker容器中pg_dump工具不可用", "warning")
+            else:
+                result["recommendations"].append({
+                    "type": "critical",
+                    "message": "需要安装 PostgreSQL 客户端工具",
+                    "action": "访问 https://www.postgresql.org/download/windows/ 下载安装"
+                })
+                log_system_event("❌ 主机环境中pg_dump工具不可用", "warning")
+        
+        # 检查备份目录
+        try:
+            self._ensure_backup_directory()
+            result["backup_directory"] = True
+            log_system_event(f"✅ 备份目录可用: {BACKUP_DIR}", "info")
+        except Exception as e:
+            result["recommendations"].append({
+                "type": "error", 
+                "message": f"备份目录创建失败: {str(e)}",
+                "action": "检查磁盘空间和权限"
+            })
+            log_system_event(f"❌ 备份目录检查失败: {str(e)}", "error")
+        
+        # 检查数据库连接（简单检查）
+        try:
+            # 这里只是检查数据库会话是否有效
+            self.db.execute("SELECT 1")
+            result["database_connection"] = True
+            log_system_event("✅ 数据库连接正常", "info")
+        except Exception as e:
+            result["recommendations"].append({
+                "type": "error",
+                "message": f"数据库连接失败: {str(e)}",
+                "action": "检查数据库服务状态"
+            })
+            log_system_event(f"❌ 数据库连接检查失败: {str(e)}", "error")
+        
+        # 总体状态
+        result["ready"] = all([
+            result["pg_dump_available"],
+            result["backup_directory"], 
+            result["database_connection"]
+        ])
+        
+        if result["ready"]:
+            log_system_event("🎉 备份环境检查通过，可以执行备份操作", "info")
+        else:
+            log_system_event("⚠️ 备份环境检查未通过，请先解决相关问题", "warning")
+        
+        return result

@@ -14,6 +14,7 @@ RUN apt-get update && apt-get install -y \
     curl \
     git \
     build-essential \
+    postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
 # 复制requirements文件并安装Python依赖

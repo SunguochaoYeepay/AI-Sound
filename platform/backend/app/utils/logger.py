@@ -76,18 +76,26 @@ def log_to_database(
         source_line = frame.f_lineno if frame else None
         
         # 创建日志记录 - 适配现有SystemLog模型
+        # 将额外信息合并到details中
+        extended_details = details or {}
+        if source_file:
+            extended_details["source_file"] = source_file
+        if source_line:
+            extended_details["source_line"] = source_line
+        if user_id:
+            extended_details["user_id"] = user_id
+        if session_id:
+            extended_details["session_id"] = session_id
+        if ip_address:
+            extended_details["ip_address"] = ip_address
+        if user_agent:
+            extended_details["user_agent"] = user_agent
+            
         log_entry = SystemLog(
             level=level.value,  # 转换为字符串
             module=module.value,  # 转换为字符串
             message=message,
-            details=json.dumps(details, ensure_ascii=False) if details else None,
-            source_file=source_file,
-            source_line=source_line,
-            user_id=user_id,
-            session_id=session_id,
-            ip_address=ip_address,
-            user_agent=user_agent,
-            created_at=datetime.now()
+            details=json.dumps(extended_details, ensure_ascii=False) if extended_details else None
         )
         
         # 保存到数据库

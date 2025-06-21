@@ -25,6 +25,7 @@ from app.tts_client import get_tts_client
 from app.clients.audio_processor import audio_processor
 from app.clients.file_manager import file_manager
 from app.websocket.manager import websocket_manager
+from app.utils.logger import log_system_event, LogModule
 from app.exceptions import (
     AIServiceException,
     TTSServiceException,
@@ -89,63 +90,91 @@ async def lifespan(app: FastAPI):
     """应用生命周期管理"""
     # 启动时执行
     logger.info("🚀 AI-Sound平台后端启动中...")
+    log_system_event("🚀 AI-Sound平台后端启动中...", "info", LogModule.SYSTEM)
     
     try:
         # 初始化数据库
         logger.info("📊 初始化数据库...")
+        log_system_event("📊 开始初始化数据库", "info", LogModule.DATABASE)
         init_database()
+        log_system_event("✅ 数据库初始化完成", "info", LogModule.DATABASE)
         
         # 检查TangoFlux核心引擎 - 关键检查！
         logger.info("🎼 检查TangoFlux环境音核心引擎...")
+        log_system_event("🎼 检查TangoFlux环境音核心引擎", "info", LogModule.ENVIRONMENT)
         tangoflux_status = await check_tangoflux_connection()
         
         if tangoflux_status["status"] == "healthy":
             logger.info(f"✅ TangoFlux核心引擎连接成功: {tangoflux_status['url']}")
+            log_system_event(
+                f"✅ TangoFlux核心引擎连接成功: {tangoflux_status['url']}", 
+                "info", 
+                LogModule.ENVIRONMENT,
+                details=tangoflux_status
+            )
         else:
             error_msg = f"❌ TangoFlux核心引擎连接失败: {tangoflux_status['url']} - {tangoflux_status.get('error', 'Unknown error')}"
             logger.error(error_msg)
             logger.error("💥 环境音生成功能不可用，请检查TangoFlux服务状态！")
+            log_system_event(
+                error_msg, 
+                "error", 
+                LogModule.ENVIRONMENT,
+                details=tangoflux_status
+            )
             
             # 修改为宽松模式：即使核心引擎不可用也继续启动
             strict_mode = os.getenv("STRICT_ENGINE_CHECK", "false").lower() == "true"
             if strict_mode:
                 logger.error("🚫 严格模式：核心引擎不可用，启动终止！")
+                log_system_event("🚫 严格模式：核心引擎不可用，启动终止", "critical", LogModule.SYSTEM)
                 raise Exception(f"TangoFlux核心引擎不可用: {tangoflux_status.get('error')}")
             else:
                 logger.warning("⚠️ 宽松模式：继续启动但环境音功能不可用")
+                log_system_event("⚠️ 宽松模式：继续启动但环境音功能不可用", "warning", LogModule.SYSTEM)
         
         # 初始化TTS客户端
         logger.info("🎵 初始化TTS客户端...")
+        log_system_event("🎵 初始化TTS客户端", "info", LogModule.TTS)
         # 使用旧版TTS客户端，无需特殊初始化
         
         # 初始化WebSocket管理器
         logger.info("🔌 初始化WebSocket管理器...")
+        log_system_event("🔌 初始化WebSocket管理器", "info", LogModule.WEBSOCKET)
         await websocket_manager.start()
+        log_system_event("✅ WebSocket管理器启动完成", "info", LogModule.WEBSOCKET)
         
         logger.info("✅ AI-Sound平台后端启动完成!")
+        log_system_event("✅ AI-Sound平台后端启动完成", "info", LogModule.SYSTEM)
         
     except Exception as e:
         logger.error(f"❌ 启动失败: {e}")
+        log_system_event(f"❌ 启动失败: {str(e)}", "critical", LogModule.SYSTEM, details={"error": str(e)})
         raise
     
     yield
     
     # 关闭时执行
     logger.info("🛑 AI-Sound平台后端关闭中...")
+    log_system_event("🛑 AI-Sound平台后端关闭中", "info", LogModule.SYSTEM)
     
     try:
         # 旧版TTS客户端无需特殊关闭逻辑
         
         # 关闭音频处理器
         await audio_processor.close()
+        log_system_event("✅ 音频处理器已关闭", "info", LogModule.SYSTEM)
         
         # 关闭WebSocket管理器
         await websocket_manager.stop()
+        log_system_event("✅ WebSocket管理器已关闭", "info", LogModule.WEBSOCKET)
         
         logger.info("✅ AI-Sound平台后端已安全关闭")
+        log_system_event("✅ AI-Sound平台后端已安全关闭", "info", LogModule.SYSTEM)
         
     except Exception as e:
         logger.error(f"❌ 关闭时出错: {e}")
+        log_system_event(f"❌ 关闭时出错: {str(e)}", "error", LogModule.SYSTEM, details={"error": str(e)})
 
 
 # 创建FastAPI应用
@@ -189,11 +218,15 @@ async def websocket_endpoint(websocket: WebSocket):
     
     connection_id = str(uuid.uuid4())
     logger.info(f"🔌 新的WebSocket连接请求: {connection_id}")
+    log_system_event(f"🔌 新的WebSocket连接请求: {connection_id}", "info", LogModule.WEBSOCKET, 
+                    details={"connection_id": connection_id})
     
     try:
         # 建立连接
         await websocket_manager.connect(websocket, connection_id)
         logger.info(f"✅ WebSocket连接建立成功: {connection_id}")
+        log_system_event(f"✅ WebSocket连接建立成功: {connection_id}", "info", LogModule.WEBSOCKET,
+                        details={"connection_id": connection_id})
         
         # 保持连接并处理消息
         while True:
@@ -207,9 +240,13 @@ async def websocket_endpoint(websocket: WebSocket):
     except WebSocketDisconnect:
         # 正常断开连接
         logger.info(f"🔌 WebSocket正常断开: {connection_id}")
+        log_system_event(f"🔌 WebSocket正常断开: {connection_id}", "info", LogModule.WEBSOCKET,
+                        details={"connection_id": connection_id})
         await websocket_manager.disconnect(connection_id)
     except Exception as e:
         logger.error(f"❌ WebSocket连接异常: {connection_id} -> {e}")
+        log_system_event(f"❌ WebSocket连接异常: {connection_id} -> {str(e)}", "error", LogModule.WEBSOCKET,
+                        details={"connection_id": connection_id, "error": str(e)})
         await websocket_manager.disconnect(connection_id)
 
 
@@ -218,6 +255,8 @@ async def websocket_endpoint(websocket: WebSocket):
 async def ai_service_exception_handler(request: Request, exc: AIServiceException):
     """AI服务异常处理"""
     logger.error(f"AI服务异常: {exc.detail}")
+    log_system_event(f"AI服务异常: {exc.detail}", "error", LogModule.API, 
+                    details={"exception_type": "AIServiceException", "details": exc.details})
     return JSONResponse(
         status_code=exc.status_code,
         content={
@@ -232,6 +271,8 @@ async def ai_service_exception_handler(request: Request, exc: AIServiceException
 async def tts_service_exception_handler(request: Request, exc: TTSServiceException):
     """TTS服务异常处理"""
     logger.error(f"TTS服务异常: {exc.detail}")
+    log_system_event(f"TTS服务异常: {exc.detail}", "error", LogModule.TTS,
+                    details={"exception_type": "TTSServiceException", "details": exc.details})
     return JSONResponse(
         status_code=exc.status_code,
         content={
@@ -246,6 +287,8 @@ async def tts_service_exception_handler(request: Request, exc: TTSServiceExcepti
 async def file_processing_exception_handler(request: Request, exc: FileProcessingException):
     """文件处理异常处理"""
     logger.error(f"文件处理异常: {exc.detail}")
+    log_system_event(f"文件处理异常: {exc.detail}", "error", LogModule.FILE,
+                    details={"exception_type": "FileProcessingException", "details": exc.details})
     return JSONResponse(
         status_code=exc.status_code,
         content={
@@ -260,6 +303,8 @@ async def file_processing_exception_handler(request: Request, exc: FileProcessin
 async def validation_exception_handler(request: Request, exc: ValidationException):
     """验证异常处理"""
     logger.error(f"验证异常: {exc.detail}")
+    log_system_event(f"验证异常: {exc.detail}", "error", LogModule.API,
+                    details={"exception_type": "ValidationException", "details": exc.details})
     return JSONResponse(
         status_code=exc.status_code,
         content={
@@ -273,6 +318,8 @@ async def validation_exception_handler(request: Request, exc: ValidationExceptio
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
     """HTTP异常处理"""
+    log_system_event(f"HTTP异常: {exc.detail}", "warning", LogModule.API,
+                    details={"exception_type": "HTTPException", "status_code": exc.status_code})
     return JSONResponse(
         status_code=exc.status_code,
         content={
@@ -286,6 +333,8 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 async def general_exception_handler(request: Request, exc: Exception):
     """通用异常处理"""
     logger.error(f"未处理的异常: {exc}", exc_info=True)
+    log_system_event(f"未处理的异常: {str(exc)}", "critical", LogModule.SYSTEM,
+                    details={"exception_type": type(exc).__name__, "error": str(exc)})
     return JSONResponse(
         status_code=500,
         content={

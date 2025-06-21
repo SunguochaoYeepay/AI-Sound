@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.models.backup import BackupTask, RestoreTask, TaskStatus
 from app.config import Settings
-from app.utils import log_system_event
+from app.utils.logger import log_system_event
 
 
 class RestoreEngine:
@@ -328,9 +328,30 @@ class RestoreEngine:
                 SELECT 'Database cleaned successfully' as result;
             """
             
+            # 检查psql工具可用性
+            import shutil
+            psql_path = shutil.which('psql')
+            
+            if not psql_path:
+                potential_paths = [
+                    r"C:\Program Files\PostgreSQL\16\bin\psql.exe",
+                    r"C:\Program Files\PostgreSQL\15\bin\psql.exe",
+                    r"C:\Program Files (x86)\PostgreSQL\16\bin\psql.exe",
+                ]
+                
+                for path in potential_paths:
+                    if os.path.exists(path):
+                        psql_path = path
+                        log_system_event(f"✅ 使用完整路径找到 psql: {psql_path}", "info")
+                        break
+            
+            if not psql_path:
+                log_system_event("❌ 未找到 psql 工具，跳过数据库清理", "warning")
+                return
+            
             # 执行清理
             cmd = [
-                "psql",
+                psql_path,
                 "--host", default_host,
                 "--port", str(default_port),
                 "--username", default_user,
@@ -433,6 +454,37 @@ class RestoreEngine:
     ) -> tuple[bool, str]:
         """执行 pg_restore 命令"""
         try:
+            # 检查工具可用性
+            import shutil
+            pg_restore_path = shutil.which('pg_restore')
+            psql_path = shutil.which('psql')
+            
+            # 如果找不到，尝试使用默认安装路径
+            if not pg_restore_path:
+                potential_paths = [
+                    r"C:\Program Files\PostgreSQL\16\bin\pg_restore.exe",
+                    r"C:\Program Files\PostgreSQL\15\bin\pg_restore.exe",
+                    r"C:\Program Files (x86)\PostgreSQL\16\bin\pg_restore.exe",
+                ]
+                
+                for path in potential_paths:
+                    if os.path.exists(path):
+                        pg_restore_path = path
+                        log_system_event(f"✅ 使用完整路径找到 pg_restore: {pg_restore_path}", "info")
+                        break
+            
+            if not psql_path:
+                potential_paths = [
+                    r"C:\Program Files\PostgreSQL\16\bin\psql.exe",
+                    r"C:\Program Files\PostgreSQL\15\bin\psql.exe",
+                    r"C:\Program Files (x86)\PostgreSQL\16\bin\psql.exe",
+                ]
+                
+                for path in potential_paths:
+                    if os.path.exists(path):
+                        psql_path = path
+                        log_system_event(f"✅ 使用完整路径找到 psql: {psql_path}", "info")
+                        break
             # 确定目标数据库
             from sqlalchemy.engine.url import make_url
             from app.database import DATABASE_URL
@@ -467,7 +519,7 @@ class RestoreEngine:
                 
                 # 使用pg_restore恢复 - 添加清理参数确保干净恢复
                 cmd = [
-                    "pg_restore",
+                    pg_restore_path,
                     "--host", default_host,
                     "--port", str(default_port),
                     "--username", default_user,
@@ -483,7 +535,7 @@ class RestoreEngine:
             else:
                 # 使用 psql 处理 SQL 文件
                 cmd = [
-                    "psql",
+                    psql_path,
                     "--host", default_host,
                     "--port", str(default_port),
                     "--username", default_user,
@@ -501,7 +553,7 @@ class RestoreEngine:
             
             # 先测试数据库连接
             test_cmd = [
-                "psql",
+                psql_path,
                 "--host", default_host,
                 "--port", str(default_port),
                 "--username", default_user,

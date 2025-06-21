@@ -477,7 +477,7 @@ async def get_restore_details(
         # 获取相关日志
         logs = db.query(SystemLog).filter(
             SystemLog.message.contains(str(restore_id))
-        ).order_by(SystemLog.created_at.desc()).limit(50).all()
+        ).order_by(SystemLog.timestamp.desc()).limit(50).all()
         
         # 计算进度百分比
         progress_percentage = 0
@@ -518,7 +518,7 @@ async def get_restore_details(
                         "id": log.id,
                         "level": log.level,
                         "message": log.message,
-                        "created_at": log.created_at
+                        "created_at": log.timestamp
                     }
                     for log in logs
                 ]
@@ -565,7 +565,7 @@ async def cancel_restore_task(
         log_entry = SystemLog(
             level="info",
             message=f"恢复任务 {restore_id} 已被用户取消",
-            source="restore_engine",
+            module="restore_engine",
             details=f"任务名称: {restore_task.task_name}"
         )
         db.add(log_entry)
@@ -750,7 +750,7 @@ async def get_backup_details(
         # 获取任务相关的日志
         task_logs = db.query(SystemLog).filter(
             SystemLog.message.contains(str(task_id))
-        ).order_by(desc(SystemLog.created_at)).limit(50).all()
+        ).order_by(desc(SystemLog.timestamp)).limit(50).all()
         
         # 获取文件信息
         file_info = None
@@ -816,10 +816,10 @@ async def get_backup_details(
                 "logs": [
                     {
                         "id": log.id,
-                        "level": log.level.value,
-                        "module": log.module.value,
+                        "level": log.level,
+                        "module": log.module,
                         "message": log.message,
-                        "created_at": log.created_at,
+                        "created_at": log.timestamp,
                         "details": log.details
                     }
                     for log in task_logs

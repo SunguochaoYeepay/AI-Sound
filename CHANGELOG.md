@@ -1,5 +1,40 @@
 # 更新日志
 
+## [2025-01-26] 修复备份功能PostgreSQL工具依赖问题
+
+### 🐛 问题修复
+- **备份功能错误**：修复"pg_dump 工具未安装"的500错误
+- **PostgreSQL依赖**：解决Windows平台PostgreSQL客户端工具缺失问题
+- **路径检测优化**：增强pg_dump工具的自动检测和路径查找
+- **错误提示改进**：提供详细的PostgreSQL安装指导信息
+
+### 🔧 技术改进
+- **环境检查功能**：新增`check_backup_environment()`方法
+- **智能路径查找**：支持多个PostgreSQL版本的自动检测
+- **Windows兼容性**：解决asyncio子进程在Windows平台的兼容问题
+- **日志系统完善**：修复SystemLog字段错误和异步调用问题
+
+### 📁 文件变更
+#### 后端
+- `app/utils/backup_engine.py` - 优化备份引擎和错误处理
+- `app/utils/restore_engine.py` - 修复恢复引擎路径检测
+- `app/utils/logger.py` - 修复日志系统异步调用问题
+- `app/api/v1/backup.py` - 修复SystemLog字段错误
+- `app/api/v1/logs.py` - 修复枚举字段访问
+- `main.py` - 完善系统日志记录
+
+#### 文档
+- `docs/tools-dependencies.md` - 新增PostgreSQL工具依赖安装指南
+
+### 🧹 代码清理
+- 删除20+个临时测试文件和调试脚本
+- 清理无用的环境测试代码
+- 移除过期的项目检查文件
+
+### 💾 内存更新
+- 记录PostgreSQL工具依赖问题的完整解决方案
+- 保存Windows平台兼容性修复经验
+
 ## [2024-12-20] 新增日志监控功能
 
 ### ✨ 新功能

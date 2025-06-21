@@ -71,7 +71,7 @@ async def get_logs(
         if level:
             try:
                 log_level = LogLevel(level)
-                conditions.append(SystemLog.level == log_level)
+                conditions.append(SystemLog.level == log_level.value)
             except ValueError:
                 raise HTTPException(status_code=400, detail=f"无效的日志级别: {level}")
         
@@ -79,7 +79,7 @@ async def get_logs(
         if module:
             try:
                 log_module = LogModule(module)
-                conditions.append(SystemLog.module == log_module)
+                conditions.append(SystemLog.module == log_module.value)
             except ValueError:
                 raise HTTPException(status_code=400, detail=f"无效的模块名称: {module}")
         
@@ -87,14 +87,14 @@ async def get_logs(
         if start_time:
             try:
                 start_dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
-                conditions.append(SystemLog.created_at >= start_dt)
+                conditions.append(SystemLog.timestamp >= start_dt)
             except ValueError:
                 raise HTTPException(status_code=400, detail="开始时间格式无效")
         
         if end_time:
             try:
                 end_dt = datetime.fromisoformat(end_time.replace('Z', '+00:00'))
-                conditions.append(SystemLog.created_at <= end_dt)
+                conditions.append(SystemLog.timestamp <= end_dt)
             except ValueError:
                 raise HTTPException(status_code=400, detail="结束时间格式无效")
         
@@ -118,7 +118,7 @@ async def get_logs(
         total = query.count()
         
         # 分页和排序
-        logs = query.order_by(desc(SystemLog.created_at)) \
+        logs = query.order_by(desc(SystemLog.timestamp)) \
                    .offset((page - 1) * page_size) \
                    .limit(page_size) \
                    .all()
@@ -161,7 +161,7 @@ async def get_log_stats(
         
         # 总日志数
         total_logs = db.query(SystemLog).filter(
-            SystemLog.created_at >= start_time
+            SystemLog.timestamp >= start_time
         ).count()
         
         # 按级别统计
@@ -169,27 +169,27 @@ async def get_log_stats(
             SystemLog.level,
             func.count(SystemLog.id).label('count')
         ).filter(
-            SystemLog.created_at >= start_time
+            SystemLog.timestamp >= start_time
         ).group_by(SystemLog.level).all()
         
-        by_level = {level.value: count for level, count in level_stats}
+        by_level = {level: count for level, count in level_stats}
         
         # 按模块统计
         module_stats = db.query(
             SystemLog.module,
             func.count(SystemLog.id).label('count')
         ).filter(
-            SystemLog.created_at >= start_time
+            SystemLog.timestamp >= start_time
         ).group_by(SystemLog.module).all()
         
-        by_module = {module.value: count for module, count in module_stats}
+        by_module = {module: count for module, count in module_stats}
         
         # 最近错误数（最近1小时）
         recent_start = end_time - timedelta(hours=1)
         recent_errors = db.query(SystemLog).filter(
             and_(
-                SystemLog.created_at >= recent_start,
-                SystemLog.level.in_([LogLevel.ERROR, LogLevel.CRITICAL])
+                SystemLog.timestamp >= recent_start,
+                SystemLog.level.in_([LogLevel.ERROR.value, LogLevel.CRITICAL.value])
             )
         ).count()
         
@@ -234,12 +234,12 @@ async def get_recent_logs(
         if level:
             try:
                 log_level = LogLevel(level)
-                query = query.filter(SystemLog.level == log_level)
+                query = query.filter(SystemLog.level == log_level.value)
             except ValueError:
                 raise HTTPException(status_code=400, detail=f"无效的日志级别: {level}")
         
         # 获取最近的日志
-        recent_logs = query.order_by(desc(SystemLog.created_at)) \
+        recent_logs = query.order_by(desc(SystemLog.timestamp)) \
                           .limit(limit) \
                           .all()
         
@@ -272,8 +272,8 @@ async def get_error_logs(
         # 查询错误和严重错误
         query = db.query(SystemLog).filter(
             and_(
-                SystemLog.created_at >= start_time,
-                SystemLog.level.in_([LogLevel.ERROR, LogLevel.CRITICAL])
+                SystemLog.timestamp >= start_time,
+                SystemLog.level.in_([LogLevel.ERROR.value, LogLevel.CRITICAL.value])
             )
         )
         
@@ -281,7 +281,7 @@ async def get_error_logs(
         total = query.count()
         
         # 分页获取
-        error_logs = query.order_by(desc(SystemLog.created_at)) \
+        error_logs = query.order_by(desc(SystemLog.timestamp)) \
                          .offset((page - 1) * page_size) \
                          .limit(page_size) \
                          .all()
@@ -323,20 +323,20 @@ async def clear_old_logs(
         
         # 查询要删除的日志数量
         delete_count = db.query(SystemLog).filter(
-            SystemLog.created_at < cutoff_time
+            SystemLog.timestamp < cutoff_time
         ).count()
         
         # 执行删除
         deleted = db.query(SystemLog).filter(
-            SystemLog.created_at < cutoff_time
+            SystemLog.timestamp < cutoff_time
         ).delete()
         
         db.commit()
         
         # 记录清理操作
-        new_log = SystemLog.create_log(
-            level=LogLevel.INFO,
-            module=LogModule.SYSTEM,
+        new_log = SystemLog(
+            level=LogLevel.INFO.value,
+            module=LogModule.SYSTEM.value,
             message=f"日志清理完成，删除了{deleted}条记录",
             details=json.dumps({
                 "deleted_count": deleted,
@@ -389,28 +389,28 @@ async def export_logs(
         if level:
             try:
                 log_level = LogLevel(level)
-                conditions.append(SystemLog.level == log_level)
+                conditions.append(SystemLog.level == log_level.value)
             except ValueError:
                 raise HTTPException(status_code=400, detail=f"无效的日志级别: {level}")
         
         if module:
             try:
                 log_module = LogModule(module)
-                conditions.append(SystemLog.module == log_module)
+                conditions.append(SystemLog.module == log_module.value)
             except ValueError:
                 raise HTTPException(status_code=400, detail=f"无效的模块名称: {module}")
         
         if start_time:
             try:
                 start_dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
-                conditions.append(SystemLog.created_at >= start_dt)
+                conditions.append(SystemLog.timestamp >= start_dt)
             except ValueError:
                 raise HTTPException(status_code=400, detail="开始时间格式无效")
         
         if end_time:
             try:
                 end_dt = datetime.fromisoformat(end_time.replace('Z', '+00:00'))
-                conditions.append(SystemLog.created_at <= end_dt)
+                conditions.append(SystemLog.timestamp <= end_dt)
             except ValueError:
                 raise HTTPException(status_code=400, detail="结束时间格式无效")
         
@@ -418,7 +418,7 @@ async def export_logs(
             query = query.filter(and_(*conditions))
         
         # 获取日志数据
-        logs = query.order_by(desc(SystemLog.created_at)).limit(limit).all()
+        logs = query.order_by(desc(SystemLog.timestamp)).limit(limit).all()
         log_data = [log.to_dict() for log in logs]
         
         if format.lower() == "csv":
