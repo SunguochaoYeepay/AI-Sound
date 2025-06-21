@@ -84,6 +84,8 @@ async def v1_health_check() -> Dict[str, Any]:
 
 # 导入日志监控路由
 from .logs import router as logs_router
+# 导入备份恢复路由
+from .backup import router as backup_router
 
 # 注册各模块路由
 api.include_router(books_router, tags=["Books"])
@@ -104,4 +106,5 @@ api.include_router(environment_sounds_router, prefix="/environment-sounds", tags
 api.include_router(scene_analysis_router, tags=["Scene Analysis"])
 api.include_router(environment_generation_router, tags=["Environment Generation"])
 api.include_router(system_router, tags=["System Settings"])
-api.include_router(logs_router, tags=["Log Monitor"]) 
+api.include_router(logs_router, tags=["Log Monitor"])
+api.include_router(backup_router, tags=["Database Backup"]) 

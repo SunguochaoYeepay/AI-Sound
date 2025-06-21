@@ -33,8 +33,8 @@ class EnvironmentConfig:
                 "host": os.getenv("DB_HOST", "localhost"),
                 "port": int(os.getenv("DB_PORT", "5432")),
                 "database": os.getenv("DB_NAME", "ai_sound"),
-                "username": os.getenv("DB_USER", "postgres"),
-                "password": os.getenv("DB_PASSWORD", "123456"),
+                "username": os.getenv("DB_USER", "ai_sound_user"),
+                "password": os.getenv("DB_PASSWORD", "ai_sound_password"),
                 "pool_size": 10,
                 "max_overflow": 20
             }

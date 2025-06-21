@@ -80,7 +80,14 @@ def log_to_database(
             level=level.value,  # 转换为字符串
             module=module.value,  # 转换为字符串
             message=message,
-            details=json.dumps(details, ensure_ascii=False) if details else None
+            details=json.dumps(details, ensure_ascii=False) if details else None,
+            source_file=source_file,
+            source_line=source_line,
+            user_id=user_id,
+            session_id=session_id,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            created_at=datetime.now()
         )
         
         # 保存到数据库
@@ -366,4 +373,41 @@ def log_websocket_event(
         module=LogModule.WEBSOCKET,
         message=message,
         details=details
+    )
+
+
+def log_system_event(
+    message: str,
+    level_str: str = "info",
+    module: LogModule = LogModule.SYSTEM,
+    **kwargs
+):
+    """
+    记录系统事件日志（兼容原有接口）
+    
+    Args:
+        message: 日志消息
+        level_str: 日志级别字符串 ('debug', 'info', 'warning', 'error', 'critical')
+        module: 模块名称
+        **kwargs: 其他参数
+    """
+    # 转换字符串级别到LogLevel枚举
+    level_mapping = {
+        "debug": LogLevel.DEBUG,
+        "info": LogLevel.INFO,
+        "warning": LogLevel.WARNING,
+        "error": LogLevel.ERROR,
+        "critical": LogLevel.CRITICAL
+    }
+    
+    level = level_mapping.get(level_str.lower(), LogLevel.INFO)
+    
+    # 同时输出到控制台和数据库
+    print(f"[{level_str.upper()}] {message}")
+    
+    log_to_database(
+        level=level,
+        module=module,
+        message=message,
+        **kwargs
     )
