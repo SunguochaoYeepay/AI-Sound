@@ -18,11 +18,12 @@ from app.models.backup import (
     BackupTask, BackupConfig, RestoreTask, BackupSchedule, BackupStats,
     TaskStatus, BackupType, StorageLocation, RestoreType
 )
-from app.models.system import SystemLog, LogLevel, LogModule
+from app.models.system_log import SystemLog
+from app.utils.logger import LogLevel, LogModule  # 从logger模块导入枚举
 from app.utils.backup_engine import BackupEngine
 from app.utils.restore_engine import RestoreEngine
 from app.utils.backup_stats import BackupStatsManager
-from app.utils import log_system_event
+from app.utils.logger import log_system_event
 
 router = APIRouter(prefix="/backup", tags=["数据库备份恢复"])
 
