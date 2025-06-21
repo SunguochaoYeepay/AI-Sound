@@ -1099,6 +1099,12 @@ async def process_audio_generation_from_synthesis_plan(
         async def process_segment(segment_data, segment_index):
             """处理单个段落 - 序列化版本"""
             try:
+                # 🚨 在段落处理开始时也检查取消状态
+                db.refresh(project)
+                if project.status == 'cancelled':
+                    logger.warning(f"[SYNTHESIS_PLAN] 段落处理中检测到项目已取消，停止处理段落 {segment_index + 1}")
+                    return {"error": "项目已被取消"}
+                
                 segment_id = segment_data.get('segment_id', segment_index + 1)
                 text = segment_data.get('text', '')
                 speaker = segment_data.get('speaker', '未知')
@@ -1232,6 +1238,14 @@ async def process_audio_generation_from_synthesis_plan(
         results = []
         for i, segment in enumerate(synthesis_data):
             logger.info(f"[SYNTHESIS_PLAN] 处理进度: {i+1}/{len(synthesis_data)}")
+            
+            # 🚨 关键修复：每次处理前检查项目是否被取消
+            db.refresh(project)  # 刷新项目状态
+            if project.status == 'cancelled':
+                logger.warning(f"[SYNTHESIS_PLAN] 项目 {project_id} 已被取消，停止处理")
+                project.error_message = f"合成已被用户取消，已处理 {i}/{len(synthesis_data)} 个段落"
+                db.commit()
+                return
             
             # 🔧 实时统计已完成段落数（基于当前project状态）
             current_completed = db.query(AudioFile).filter(

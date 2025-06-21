@@ -326,6 +326,7 @@ async def get_project_detail(
             },
             "character_mapping": project.get_character_mapping(),
             "final_audio_path": project.final_audio_path,
+            "error_message": project.error_message,
             "book_id": project.book_id,
             "book": book_data,
             "created_at": project.created_at.isoformat() if project.created_at else None,
@@ -668,11 +669,16 @@ async def cancel_generation(
         # 更新项目状态为取消
         project.status = 'cancelled'
         
-        # 重置进度相关字段
-        project.processed_segments = 0
-        project.total_segments = None
-        project.current_segment = None
-        project.failed_segments = 0
+        # 设置取消信息
+        current_progress = project.processed_segments or 0
+        total_segments = project.total_segments or 0
+        project.error_message = f"合成已被用户取消，已处理 {current_progress}/{total_segments} 个段落"
+        
+        # 注意：不重置进度字段，保留取消时的进度信息
+        # project.processed_segments = 0  # 保留当前进度
+        # project.total_segments = None   # 保留总数
+        # project.current_segment = None  # 保留当前段落
+        # project.failed_segments = 0     # 保留失败数
         
         db.commit()
         
@@ -708,8 +714,8 @@ async def resume_generation(
         if not project:
             raise HTTPException(status_code=404, detail="项目不存在")
         
-        if project.status != 'paused':
-            raise HTTPException(status_code=400, detail=f"项目状态为 {project.status}，无法恢复。只能恢复暂停状态的项目")
+        if project.status not in ['paused', 'failed']:
+            raise HTTPException(status_code=400, detail=f"项目状态为 {project.status}，无法恢复。只能恢复暂停或失败状态的项目")
         
         # 检查智能准备结果（使用智能准备模式）
         if not project.book_id:
@@ -762,8 +768,19 @@ async def resume_generation(
                 detail="智能准备结果中没有合成段落数据，请重新进行智能准备"
             )
         
-        # 更新项目状态为处理中，但不重置进度（保持从暂停位置继续）
-        project.status = 'processing'
+        # 更新项目状态为处理中
+        # 如果是failed状态，重置进度；如果是paused状态，保持进度
+        if project.status == 'failed':
+            # 失败状态重新开始，重置进度
+            project.status = 'processing'
+            project.processed_segments = 0
+            project.current_segment = 0
+            message_text = "项目重新开始成功"
+        else:
+            # 暂停状态恢复，保持进度
+            project.status = 'processing'
+            message_text = "项目恢复成功"
+        
         db.commit()
         
         # 启动后台任务处理音频生成
@@ -777,7 +794,7 @@ async def resume_generation(
         
         return {
             "success": True,
-            "message": "项目恢复成功",
+            "message": message_text,
             "data": {
                 "project_id": project.id,
                 "status": project.status,
@@ -1640,13 +1657,109 @@ async def download_chapter_audio(
     db: Session = Depends(get_db)
 ):
     """
-    下载单章节音频
-    注意：当前实现暂时返回完整项目音频，后续可以实现章节级别的音频文件
+    下载整个章节的音频文件
     """
     try:
-        # 暂时返回完整项目音频
-        # TODO: 实现章节级别的音频文件生成和下载
-        return await download_final_audio(project_id=project_id, db=db)
+        # 获取该章节的所有音频文件 - 修复：同时支持chapter_id和chapter_number查询
+        audio_files = db.query(AudioFile).filter(
+            AudioFile.project_id == project_id,
+            AudioFile.audio_type == 'segment'
+        ).filter(
+            or_(
+                AudioFile.chapter_id == chapter_id,
+                AudioFile.chapter_number == chapter_id
+            )
+        ).order_by(AudioFile.paragraph_index).all()
+        
+        # 如果没找到，尝试获取该项目的所有音频文件（可能是单章节项目）
+        if not audio_files:
+            all_audio_files = db.query(AudioFile).filter(
+                AudioFile.project_id == project_id,
+                AudioFile.audio_type == 'segment'
+            ).order_by(AudioFile.paragraph_index).all()
+            
+            logger.info(f"章节 {chapter_id} 没有直接匹配，项目共有 {len(all_audio_files)} 个音频文件")
+            
+            # 如果项目只有一个章节的音频文件，直接使用
+            if all_audio_files:
+                audio_files = all_audio_files
+                logger.info(f"使用项目所有音频文件作为章节 {chapter_id} 的音频")
+        
+        if not audio_files:
+            raise HTTPException(status_code=404, detail=f"章节 {chapter_id} 没有音频文件")
+        
+        # 优先查找项目的最终合并音频文件
+        project_output_dir = f"outputs/projects/{project_id}"
+        if os.path.exists(project_output_dir):
+            # 查找最新的final_audio文件
+            import glob
+            final_audio_files = glob.glob(os.path.join(project_output_dir, "final_audio_*.wav"))
+            if final_audio_files:
+                # 选择最新的文件
+                latest_final_audio = max(final_audio_files, key=os.path.getctime)
+                logger.info(f"返回项目最终合并音频: {latest_final_audio}")
+                return FileResponse(
+                    path=latest_final_audio,
+                    filename=f"chapter_{chapter_id}_final.wav",
+                    media_type="audio/wav"
+                )
+        
+        # 如果只有一个文件，直接返回
+        if len(audio_files) == 1:
+            audio_file = audio_files[0]
+            if not os.path.exists(audio_file.file_path):
+                raise HTTPException(status_code=404, detail="音频文件不存在")
+            
+            return FileResponse(
+                path=audio_file.file_path,
+                filename=f"chapter_{chapter_id}_{audio_file.filename}",
+                media_type="audio/wav"
+            )
+        
+        # 多个文件 - 返回第一个文件（临时方案）
+        if audio_files:
+            audio_file = audio_files[0]
+            if os.path.exists(audio_file.file_path):
+                logger.warning(f"多个音频文件，返回第一个: {audio_file.filename}")
+                return FileResponse(
+                    path=audio_file.file_path,
+                    filename=f"chapter_{chapter_id}_segment1.wav",
+                    media_type="audio/wav"
+                )
+        
+        raise HTTPException(status_code=404, detail="音频文件不存在")
+        
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"下载章节音频失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"下载章节音频失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"下载失败: {str(e)}")
+
+@router.post("/projects/{project_id}/reset-status")
+async def reset_project_status(
+    project_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    重置项目状态 - 解决项目状态卡死问题
+    """
+    try:
+        project = db.query(NovelProject).filter(NovelProject.id == project_id).first()
+        if not project:
+            raise HTTPException(status_code=404, detail="项目不存在")
+        
+        # 重置为可用状态
+        project.status = 'pending'
+        db.commit()
+        
+        return {
+            "success": True,
+            "message": "项目状态已重置为可用状态",
+            "data": {
+                "project_id": project.id,
+                "status": project.status
+            }
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"重置失败: {str(e)}")
