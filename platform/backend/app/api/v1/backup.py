@@ -305,10 +305,32 @@ async def delete_backup_task(task_id: int, db: Session = Depends(get_db)):
         if task.status in ["running", "pending"]:
             raise HTTPException(status_code=400, detail="无法删除正在运行的备份任务，请先取消任务")
         
+        # 检查是否有关联的恢复任务
+        restore_tasks = db.query(RestoreTask).filter(RestoreTask.backup_id == task_id).all()
+        if restore_tasks:
+            # 检查是否有正在运行的恢复任务
+            running_restores = [r for r in restore_tasks if r.status in ["running", "pending"]]
+            if running_restores:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"无法删除备份任务，有 {len(running_restores)} 个恢复任务正在运行，请先取消这些恢复任务"
+                )
+            
+            # 删除所有关联的恢复任务
+            for restore_task in restore_tasks:
+                db.delete(restore_task)
+            
+            log_system_event(
+                f"删除了 {len(restore_tasks)} 个关联的恢复任务", 
+                "info", 
+                details={"backup_id": task_id, "restore_count": len(restore_tasks)}
+            )
+        
         # 删除备份文件
         if task.file_path and os.path.exists(task.file_path):
             try:
                 os.remove(task.file_path)
+                log_system_event(f"删除备份文件: {task.file_path}", "info")
             except Exception as e:
                 log_system_event(f"删除备份文件失败: {str(e)}", "warning")
         
@@ -320,17 +342,28 @@ async def delete_backup_task(task_id: int, db: Session = Depends(get_db)):
         
         return {
             "success": True,
-            "message": "备份任务删除成功"
+            "message": f"备份任务删除成功{f'（同时删除了 {len(restore_tasks)} 个关联的恢复任务）' if restore_tasks else ''}"
         }
         
     except HTTPException:
         raise
     except Exception as e:
+        db.rollback()
         log_system_event(f"删除备份任务失败: {str(e)}", "error")
         raise HTTPException(status_code=500, detail=f"删除备份任务失败: {str(e)}")
 
 
 # ======================== 恢复管理接口 ========================
+
+def _get_current_database_name() -> str:
+    """获取当前正在使用的数据库名称"""
+    try:
+        from sqlalchemy.engine.url import make_url
+        from app.database import DATABASE_URL
+        db_url = make_url(DATABASE_URL)
+        return str(db_url.database)
+    except Exception:
+        return "ai_sound"  # 默认值
 
 @router.post("/restore", response_model=Dict[str, Any])
 async def create_restore_task(
@@ -340,6 +373,25 @@ async def create_restore_task(
 ):
     """创建恢复任务"""
     try:
+        # 🔧 处理空的target_database
+        current_db = _get_current_database_name()
+        target_db = restore_data.target_database
+        
+        # 如果target_database为空，提供智能默认值
+        if not target_db or target_db.strip() == '':
+            # 为了安全，默认使用测试数据库而不是当前数据库
+            if current_db == "ai_sound":
+                target_db = "ai_sound_restore_test"
+            else:
+                target_db = f"{current_db}_restore_test"
+            
+            restore_data.target_database = target_db
+            log_system_event(f"🎯 target_database为空，使用安全的测试数据库: {target_db}", "info")
+        
+        # 🎯 恢复到生产数据库的情况：给出友好提示
+        if target_db == current_db:
+            log_system_event(f"📋 恢复到当前生产数据库: {target_db}，这将替换现有数据", "warning")
+        
         # 检查备份任务是否存在
         backup_task = db.query(BackupTask).filter(
             BackupTask.id == restore_data.backup_id
@@ -404,6 +456,127 @@ async def create_restore_task(
     except Exception as e:
         log_system_event(f"创建恢复任务失败: {str(e)}", "error")
         raise HTTPException(status_code=500, detail=f"创建恢复任务失败: {str(e)}")
+
+
+@router.get("/restore/{restore_id}")
+async def get_restore_details(
+    restore_id: int,
+    db: Session = Depends(get_db)
+):
+    """获取恢复任务详情"""
+    try:
+        # 获取恢复任务
+        restore_task = db.query(RestoreTask).filter(
+            RestoreTask.id == restore_id
+        ).first()
+        
+        if not restore_task:
+            raise HTTPException(status_code=404, detail="恢复任务不存在")
+        
+        # 获取相关日志
+        logs = db.query(SystemLog).filter(
+            SystemLog.message.contains(str(restore_id))
+        ).order_by(SystemLog.created_at.desc()).limit(50).all()
+        
+        # 计算进度百分比
+        progress_percentage = 0
+        if restore_task.status == "pending":
+            progress_percentage = 0
+        elif restore_task.status == "running":
+            progress_percentage = 50  # 临时设置为50%
+        elif restore_task.status == "success":
+            progress_percentage = 100
+        elif restore_task.status == "failed":
+            progress_percentage = 0
+        
+        # 计算持续时间
+        duration_seconds = 0
+        if restore_task.start_time:
+            end_time = restore_task.end_time or datetime.now()
+            duration_seconds = int((end_time - restore_task.start_time).total_seconds())
+        
+        return {
+            "success": True,
+            "data": {
+                "task": {
+                    "id": restore_task.id,
+                    "task_name": restore_task.task_name,
+                    "restore_type": restore_task.restore_type,
+                    "status": restore_task.status,
+                    "target_database": restore_task.target_database,
+                    "include_audio": restore_task.include_audio,
+                    "progress_percentage": progress_percentage,
+                    "created_at": restore_task.created_at,
+                    "start_time": restore_task.start_time,
+                    "end_time": restore_task.end_time,
+                    "duration_seconds": duration_seconds,
+                    "error_message": restore_task.error_message
+                },
+                "logs": [
+                    {
+                        "id": log.id,
+                        "level": log.level,
+                        "message": log.message,
+                        "created_at": log.created_at
+                    }
+                    for log in logs
+                ]
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取恢复任务详情失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取恢复任务详情失败: {str(e)}")
+
+
+@router.post("/restore/{restore_id}/cancel")
+async def cancel_restore_task(
+    restore_id: int,
+    db: Session = Depends(get_db)
+):
+    """取消恢复任务"""
+    try:
+        # 获取恢复任务
+        restore_task = db.query(RestoreTask).filter(
+            RestoreTask.id == restore_id
+        ).first()
+        
+        if not restore_task:
+            raise HTTPException(status_code=404, detail="恢复任务不存在")
+        
+        if restore_task.status not in ["pending", "running"]:
+            raise HTTPException(status_code=400, detail="只能取消等待或正在运行的任务")
+        
+        # 更新任务状态
+        restore_task.status = "cancelled"
+        restore_task.end_time = datetime.now()
+        restore_task.error_message = "用户手动取消"
+        
+        # 计算持续时间
+        if restore_task.start_time:
+            restore_task.duration_seconds = int((restore_task.end_time - restore_task.start_time).total_seconds())
+        
+        db.commit()
+        
+        # 记录日志
+        log_entry = SystemLog(
+            level="info",
+            message=f"恢复任务 {restore_id} 已被用户取消",
+            source="restore_engine",
+            details=f"任务名称: {restore_task.task_name}"
+        )
+        db.add(log_entry)
+        db.commit()
+        
+        return {"success": True, "message": "恢复任务已取消"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"取消恢复任务失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"取消恢复任务失败: {str(e)}")
 
 
 # ======================== 统计信息接口 ========================

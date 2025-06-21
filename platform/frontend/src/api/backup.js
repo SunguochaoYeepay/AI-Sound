@@ -102,6 +102,36 @@ export const createRestore = async (restoreData) => {
 }
 
 /**
+ * 获取恢复任务详情
+ * @param {number} restoreId - 恢复任务ID
+ * @returns {Promise} API响应
+ */
+export const getRestoreDetails = async (restoreId) => {
+  try {
+    const response = await apiClient.get(`/backup/restore/${restoreId}`)
+    return response.data
+  } catch (error) {
+    console.error('获取恢复任务详情失败:', error)
+    throw error
+  }
+}
+
+/**
+ * 取消恢复任务
+ * @param {number} restoreId - 恢复任务ID
+ * @returns {Promise} API响应
+ */
+export const cancelRestoreTask = async (restoreId) => {
+  try {
+    const response = await apiClient.post(`/backup/restore/${restoreId}/cancel`)
+    return response.data
+  } catch (error) {
+    console.error('取消恢复任务失败:', error)
+    throw error
+  }
+}
+
+/**
  * 获取恢复任务列表
  * @param {Object} params - 查询参数
  * @returns {Promise} API响应

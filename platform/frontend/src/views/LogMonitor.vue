@@ -12,7 +12,7 @@
             <a-button 
               type="primary" 
               :icon="h(ReloadOutlined)"
-              @click="fetchLogs"
+              @click="refreshAll"
               :loading="loading"
             >
               刷新
@@ -499,9 +499,13 @@ async function fetchLogs() {
   try {
     const params = {
       page: pagination.current,
-      page_size: pagination.pageSize,
-      ...filters
+      page_size: pagination.pageSize
     }
+    
+    // 只添加有值的过滤条件
+    if (filters.level) params.level = filters.level
+    if (filters.module) params.module = filters.module
+    if (filters.keyword) params.keyword = filters.keyword
     
     // 处理时间范围
     if (filters.timeRange && filters.timeRange.length === 2) {
@@ -509,21 +513,27 @@ async function fetchLogs() {
       params.end_time = filters.timeRange[1].toISOString()
     }
     
-    console.log('fetchLogs params:', params)
+    console.log('🔍 获取日志参数:', params)
     const response = await logApi.getLogs(params)
-    console.log('fetchLogs response:', response)
+    console.log('📊 API响应:', response)
     
     if (response.success) {
-      logs.value = response.data.logs
-      pagination.total = response.data.pagination.total
-      console.log('logs.value:', logs.value)
-      console.log('pagination.total:', pagination.total)
+      logs.value = response.data.logs || []
+      pagination.total = response.data.pagination?.total || 0
+      console.log(`✅ 成功加载 ${logs.value.length} 条日志，总计 ${pagination.total} 条`)
+      
+      // 强制刷新统计数据
+      await fetchStats()
     } else {
-      console.error('API response not successful:', response)
+      console.error('❌ API响应失败:', response)
+      message.error('获取日志失败: ' + (response.message || '未知错误'))
     }
   } catch (error) {
-    console.error('fetchLogs error:', error)
+    console.error('❌ 获取日志异常:', error)
     message.error('获取日志失败: ' + error.message)
+    // 重置数据
+    logs.value = []
+    pagination.total = 0
   } finally {
     loading.value = false
   }
@@ -629,16 +639,31 @@ async function exportLogs() {
 
 async function clearLogs() {
   clearLoading.value = true
+  console.log(`🧹 开始清理日志，保留天数: ${clearDays.value}`)
+  
   try {
     const response = await logApi.clearLogs({ days: clearDays.value })
+    console.log('🗑️ 清理响应:', response)
+    
     if (response.success) {
-      message.success(response.message)
+      const deletedCount = response.data?.deleted_count || 0
+      message.success(`${response.message || '清理完成'}，删除了 ${deletedCount} 条记录`)
       showClearModal.value = false
-      fetchLogs()
-      fetchStats()
+      
+      // 强制刷新数据
+      await Promise.all([
+        fetchLogs(),
+        fetchStats()
+      ])
+      
+      console.log(`✅ 清理完成，删除了 ${deletedCount} 条记录`)
+    } else {
+      throw new Error(response.message || '清理失败')
     }
   } catch (error) {
-    message.error('清理失败: ' + error.message)
+    console.error('❌ 清理日志失败:', error)
+    const errorMsg = error.response?.data?.detail || error.message || '清理失败'
+    message.error('清理失败: ' + errorMsg)
   } finally {
     clearLoading.value = false
   }
@@ -653,13 +678,20 @@ function scrollToTop() {
   window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
-// 生命周期
-onMounted(async () => {
+// 强制刷新所有数据
+async function refreshAll() {
+  console.log('🔄 强制刷新所有数据')
   await Promise.all([
     fetchMetadata(),
     fetchLogs(),
     fetchStats()
   ])
+}
+
+// 生命周期
+onMounted(async () => {
+  console.log('📱 日志监控页面初始化')
+  await refreshAll()
 })
 
 onUnmounted(() => {

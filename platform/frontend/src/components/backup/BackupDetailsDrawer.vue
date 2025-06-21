@@ -161,7 +161,7 @@
               刷新
             </a-button>
             <a-button 
-              v-if="backupDetails.task_info.status === 'running'"
+              v-if="backupDetails.task_info.status === 'running' || backupDetails.task_info.status === 'pending'"
               danger
               @click="handleCancel"
               :loading="cancelling"
@@ -187,7 +187,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, h } from 'vue'
+import { ref, onMounted, onBeforeUnmount, h } from 'vue'
 import { message } from 'ant-design-vue'
 import {
   DownloadOutlined,
@@ -201,7 +201,7 @@ import {
   WarningOutlined
 } from '@ant-design/icons-vue'
 
-import { getBackupDetails, downloadBackupFile } from '@/api/backup'
+import { getBackupDetails, downloadBackupFile, cancelRunningTask } from '@/api/backup'
 
 // Props
 interface Props {
@@ -213,6 +213,9 @@ const props = defineProps<Props>()
 // Emits
 const emit = defineEmits<{
   taskCancelled: [taskId: number]
+  taskCompleted: [taskId: number]
+  taskFailed: [taskId: number]
+  drawerClosed: []
 }>()
 
 // 响应式数据
@@ -221,26 +224,77 @@ const downloading = ref(false)
 const cancelling = ref(false)
 const error = ref('')
 const backupDetails = ref<any>(null)
+const previousStatus = ref<string>('')
+let pollingTimer: NodeJS.Timeout | null = null
 
 // 加载详情数据
-const loadDetails = async () => {
+const loadDetails = async (showLoading = true) => {
   try {
-    loading.value = true
+    if (showLoading) loading.value = true
     error.value = ''
     const response = await getBackupDetails(props.backupId)
+    
+    // 检查状态变化并显示提示
+    if (backupDetails.value && previousStatus.value) {
+      const oldStatus = previousStatus.value
+      const newStatus = response.data.task_info.status
+      
+      if (oldStatus !== newStatus) {
+        if (newStatus === 'success') {
+          message.success(`备份任务 "${response.data.task_info.task_name}" 已完成！`)
+          // 停止轮询
+          stopPolling()
+          // 通知父组件刷新列表
+          emit('taskCompleted', props.backupId)
+        } else if (newStatus === 'failed') {
+          message.error(`备份任务 "${response.data.task_info.task_name}" 执行失败`)
+          stopPolling()
+          emit('taskFailed', props.backupId)
+        } else if (newStatus === 'cancelled') {
+          stopPolling()
+        }
+      }
+    }
+    
     backupDetails.value = response.data
+    previousStatus.value = response.data.task_info.status
+    
+    // 如果任务正在运行，启动轮询
+    if (response.data.task_info.status === 'running' || response.data.task_info.status === 'pending') {
+      startPolling()
+    } else {
+      stopPolling()
+    }
+    
   } catch (err: any) {
     console.error('加载备份详情失败:', err)
     error.value = err.response?.data?.detail || '加载失败'
-    message.error('加载备份详情失败')
+    if (showLoading) message.error('加载备份详情失败')
   } finally {
-    loading.value = false
+    if (showLoading) loading.value = false
+  }
+}
+
+// 启动轮询
+const startPolling = () => {
+  if (pollingTimer) return // 避免重复启动
+  
+  pollingTimer = setInterval(() => {
+    loadDetails(false) // 轮询时不显示loading
+  }, 3000) // 每3秒轮询一次
+}
+
+// 停止轮询
+const stopPolling = () => {
+  if (pollingTimer) {
+    clearInterval(pollingTimer)
+    pollingTimer = null
   }
 }
 
 // 刷新详情
 const refreshDetails = () => {
-  loadDetails()
+  loadDetails(true)
 }
 
 // 下载文件
@@ -261,12 +315,19 @@ const handleDownload = async () => {
 const handleCancel = async () => {
   try {
     cancelling.value = true
-    // TODO: 实现取消任务API
-    message.success('任务已取消')
-    emit('taskCancelled', props.backupId)
-  } catch (err) {
+    const response = await cancelRunningTask(props.backupId)
+    if (response.success) {
+      message.success('任务已取消')
+      // 刷新详情数据以显示最新状态
+      await loadDetails()
+      emit('taskCancelled', props.backupId)
+    } else {
+      throw new Error(response.message || '取消失败')
+    }
+  } catch (err: any) {
     console.error('取消任务失败:', err)
-    message.error('取消任务失败')
+    const errorMsg = err.response?.data?.detail || err.message || '取消任务失败'
+    message.error(errorMsg)
   } finally {
     cancelling.value = false
   }
@@ -394,9 +455,19 @@ const getLogLevelColor = (level: string) => {
   return colors[level] || 'blue'
 }
 
-// 组件挂载时加载数据
+// 处理抽屉关闭
+const handleDrawerClose = () => {
+  stopPolling()
+  emit('drawerClosed')
+}
+
+// 组件挂载和销毁
 onMounted(() => {
   loadDetails()
+})
+
+onBeforeUnmount(() => {
+  stopPolling()
 })
 </script>
 

@@ -82,15 +82,51 @@
         </a-select>
       </a-form-item>
 
-      <a-form-item label="目标数据库" name="target_database">
-        <a-input
-          v-model:value="formData.target_database"
-          placeholder="数据库名称（留空使用原数据库）"
-        />
-        <div style="color: #999; font-size: 12px; margin-top: 4px">
-          可指定不同的数据库名称，留空则使用原数据库
-        </div>
-      </a-form-item>
+      <!-- 隐藏的目标数据库字段，默认恢复到生产数据库 -->
+      <input type="hidden" v-model="formData.target_database" />
+      
+             <!-- 显示恢复目标信息 -->
+       <a-alert
+         type="info"
+         show-icon
+         style="margin: 16px 0"
+       >
+         <template #message>
+           <strong>📋 恢复目标</strong>
+         </template>
+         <template #description>
+           <div>
+             数据将恢复到生产数据库 <code>ai_sound</code>，恢复完成后刷新页面即可看到数据
+           </div>
+           <div style="margin-top: 8px">
+             <a-button 
+               type="link" 
+               size="small" 
+               @click="showAdvancedOptions = !showAdvancedOptions"
+               style="padding: 0; height: auto"
+             >
+               {{ showAdvancedOptions ? '收起' : '高级选项' }}
+             </a-button>
+           </div>
+         </template>
+       </a-alert>
+
+       <!-- 高级选项：开发者模式 -->
+       <div v-if="showAdvancedOptions" style="margin: 16px 0">
+         <a-form-item label="目标数据库" name="target_database">
+           <a-select v-model:value="formData.target_database">
+             <a-select-option value="ai_sound">
+               🏠 ai_sound (生产数据库)
+             </a-select-option>
+             <a-select-option value="ai_sound_restore_test">
+               🧪 ai_sound_restore_test (测试数据库)
+             </a-select-option>
+           </a-select>
+           <div style="color: #ff4d4f; font-size: 12px; margin-top: 4px">
+             ⚠️ 开发者选项：只有测试恢复功能时才选择测试数据库
+           </div>
+         </a-form-item>
+       </div>
 
       <!-- 恢复选项 -->
       <a-divider orientation="left">恢复选项</a-divider>
@@ -213,7 +249,7 @@ const formRef = ref<FormInstance>()
 const formData = reactive({
   task_name: '',
   restore_type: 'full',
-  target_database: '',
+  target_database: 'ai_sound', // 默认恢复到生产数据库
   include_audio: true,
   overwrite_existing: false,
   selected_tables: [] as string[]
@@ -230,6 +266,9 @@ const availableTables = ref([
 ])
 
 const loadingTables = ref(false)
+
+// 高级选项控制
+const showAdvancedOptions = ref(false)
 
 // 表单验证规则
 const rules: Record<string, Rule[]> = {

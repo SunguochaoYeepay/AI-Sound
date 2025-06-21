@@ -248,11 +248,15 @@
       width="720"
       :closable="true"
       placement="right"
+      @close="handleDrawerClose"
     >
       <BackupDetailsDrawer
         v-if="detailsVisible && selectedBackup"
         :backup-id="selectedBackup.id"
         @task-cancelled="handleTaskCancelled"
+        @task-completed="handleTaskCompleted"
+        @task-failed="handleTaskFailed"
+        @drawer-closed="handleDrawerClosed"
       />
     </a-drawer>
 
@@ -262,6 +266,22 @@
       @cancel="configVisible = false"
       @ok="handleConfigUpdate"
     />
+
+    <!-- 恢复监控抽屉 -->
+    <a-drawer
+      v-model:open="restoreMonitorVisible"
+      title="恢复任务监控"
+      width="600"
+      :closable="true"
+      placement="right"
+    >
+      <RestoreMonitorPanel
+        v-if="restoreMonitorVisible && currentRestoreId"
+        :restore-id="currentRestoreId"
+        @task-completed="handleRestoreCompleted"
+        @task-failed="handleRestoreFailed"
+      />
+    </a-drawer>
   </div>
 </template>
 
@@ -290,6 +310,7 @@ import CreateBackupModal from '@/components/backup/CreateBackupModal.vue'
 import RestoreBackupModal from '@/components/backup/RestoreBackupModal.vue'
 import BackupDetailsDrawer from '@/components/backup/BackupDetailsDrawer.vue'
 import BackupConfigModal from '@/components/backup/BackupConfigModal.vue'
+import RestoreMonitorPanel from '@/components/backup/RestoreMonitorPanel.vue'
 
 import { getBackupList, getBackupStats, createBackup, deleteBackup as deleteBackupAPI, createRestore } from '@/api/backup'
 
@@ -305,6 +326,8 @@ const createBackupVisible = ref(false)
 const restoreBackupVisible = ref(false)
 const detailsVisible = ref(false)
 const configVisible = ref(false)
+const restoreMonitorVisible = ref(false)
+const currentRestoreId = ref(null)
 
 // 筛选条件
 const filters = reactive({
@@ -530,6 +553,11 @@ const viewBackupDetails = (backup: any) => {
   detailsVisible.value = true
 }
 
+const showRestoreMonitor = (restoreId: number) => {
+  currentRestoreId.value = restoreId
+  restoreMonitorVisible.value = true
+}
+
 // 创建备份
 const handleCreateBackup = async (backupData: any) => {
   try {
@@ -550,12 +578,19 @@ const handleCreateBackup = async (backupData: any) => {
 const handleRestoreBackup = async (restoreData: any) => {
   try {
     restoring.value = true
-    await createRestore(restoreData)
-    message.success('恢复任务创建成功')
-    restoreBackupVisible.value = false
+    const response = await createRestore(restoreData)
+    if (response.success) {
+      message.success(`恢复任务创建成功！任务ID: ${response.data.restore_id}`)
+      restoreBackupVisible.value = false
+      
+      // 打开恢复监控抽屉
+      showRestoreMonitor(response.data.restore_id)
+    } else {
+      throw new Error(response.message || '创建失败')
+    }
   } catch (error) {
     console.error('创建恢复任务失败:', error)
-    message.error('创建恢复任务失败')
+    message.error('创建恢复任务失败: ' + (error.response?.data?.detail || error.message))
   } finally {
     restoring.value = false
   }
@@ -582,7 +617,43 @@ const handleConfigUpdate = () => {
 // 处理任务取消事件
 const handleTaskCancelled = (taskId: number) => {
   console.log('任务已取消:', taskId)
+  refreshBackupList()
+}
+
+// 处理任务完成事件
+const handleTaskCompleted = (taskId: number) => {
+  console.log('任务已完成:', taskId)
+  refreshBackupList()
+}
+
+// 处理任务失败事件
+const handleTaskFailed = (taskId: number) => {
+  console.log('任务执行失败:', taskId)
+  refreshBackupList()
+}
+
+// 处理抽屉关闭事件
+const handleDrawerClosed = () => {
+  refreshBackupList()
+}
+
+// 处理抽屉关闭
+const handleDrawerClose = () => {
   detailsVisible.value = false
+  refreshBackupList()
+}
+
+// 处理恢复任务完成事件
+const handleRestoreCompleted = (restoreId: number) => {
+  console.log('恢复任务已完成:', restoreId)
+  message.success('恢复任务已完成！')
+  refreshBackupList()
+}
+
+// 处理恢复任务失败事件
+const handleRestoreFailed = (restoreId: number) => {
+  console.log('恢复任务执行失败:', restoreId)
+  message.error('恢复任务执行失败')
   refreshBackupList()
 }
 

@@ -109,28 +109,39 @@ class BackupStatsManager:
     async def _get_trend_data(self, start_date: datetime, end_date: datetime) -> List[Dict[str, Any]]:
         """获取趋势数据"""
         try:
-            # 按日统计
-            daily_stats = self.db.query(
-                func.date(BackupTask.created_at).label('date'),
-                func.count(BackupTask.id).label('total'),
-                func.sum(func.case([(BackupTask.status == 'success', 1)], else_=0)).label('success'),
-                func.sum(func.case([(BackupTask.status == 'failed', 1)], else_=0)).label('failed')
-            ).filter(
-                BackupTask.created_at >= start_date,
-                BackupTask.created_at <= end_date
-            ).group_by(func.date(BackupTask.created_at)).all()
+            # 使用原生SQL避免SQLAlchemy版本兼容性问题
+            from sqlalchemy import text
+            
+            daily_stats = self.db.execute(text("""
+                SELECT 
+                    DATE(created_at) as date,
+                    COUNT(*) as total,
+                    SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as success,
+                    SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed
+                FROM backup_tasks 
+                WHERE created_at >= :start_date AND created_at <= :end_date
+                GROUP BY DATE(created_at)
+                ORDER BY DATE(created_at)
+            """), {
+                'start_date': start_date,
+                'end_date': end_date
+            }).fetchall()
             
             trend_data = []
             for stat in daily_stats:
+                total = int(stat.total)
+                success = int(stat.success or 0)
+                failed = int(stat.failed or 0)
+                
                 trend_data.append({
-                    "date": stat.date.strftime("%Y-%m-%d"),
-                    "total": int(stat.total),
-                    "success": int(stat.success or 0),
-                    "failed": int(stat.failed or 0),
-                    "success_rate": round((stat.success or 0) / stat.total * 100, 2) if stat.total > 0 else 0
+                    "date": stat.date.strftime("%Y-%m-%d") if hasattr(stat.date, 'strftime') else str(stat.date),
+                    "total": total,
+                    "success": success,
+                    "failed": failed,
+                    "success_rate": round(success / total * 100, 2) if total > 0 else 0
                 })
             
-            return sorted(trend_data, key=lambda x: x["date"])
+            return trend_data
             
         except Exception as e:
             log_system_event(f"获取趋势数据失败: {str(e)}", "error")
