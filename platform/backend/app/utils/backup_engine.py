@@ -157,6 +157,7 @@ class BackupEngine:
             # 解析 database_url
             # 格式: postgresql://username:password@host:port/database
             db_url = self.settings.database_url
+            log_system_event(f"🔧 使用数据库连接: {db_url}", "debug")
             match = re.match(r'postgresql://([^:]+):([^@]+)@([^:]+):(\d+)/(.+)', db_url)
             
             if not match:
