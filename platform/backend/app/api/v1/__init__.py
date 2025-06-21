@@ -22,6 +22,7 @@ from .content_preparation import router as content_preparation_router
 from .novel_reader import router as novel_reader_router
 from .environment_sounds import router as environment_sounds_router
 from .scene_analysis import router as scene_analysis_router
+from .environment_generation import router as environment_generation_router
 from app.voice_clone import router as voice_clone_router
 from app.monitor import router as monitor_router
 from ..system import router as system_router
@@ -101,5 +102,6 @@ api.include_router(intelligent_analysis_router, tags=["Intelligent Analysis"])
 api.include_router(content_preparation_router, tags=["Content Preparation"]) 
 api.include_router(environment_sounds_router, prefix="/environment-sounds", tags=["Environment Sounds"])
 api.include_router(scene_analysis_router, tags=["Scene Analysis"])
+api.include_router(environment_generation_router, tags=["Environment Generation"])
 api.include_router(system_router, tags=["System Settings"])
 api.include_router(logs_router, tags=["Log Monitor"]) 

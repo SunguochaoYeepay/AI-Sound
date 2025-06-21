@@ -19,7 +19,7 @@ import shutil
 from app.database import get_db
 from app.models import VoiceProfile, SystemLog, UsageStats, AudioFile
 from app.tts_client import MegaTTS3Client, TTSRequest, get_tts_client
-from app.utils import save_upload_file, log_system_event, update_usage_stats
+from app.utils import save_upload_file, update_usage_stats, log_system_event
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/voice-clone", tags=["声音克隆"])
@@ -87,11 +87,11 @@ async def upload_reference_audio(
         
         # 记录系统日志
         await log_system_event(
-            db=db,
-            level="info",
-            message=f"参考音频上传成功: {file.filename}" + (f" (含latent: {latent_file.filename})" if latent_file else ""),
-            module="voice_clone",
-            details={
+            db,
+            "info",
+            f"参考音频上传成功: {file.filename}" + (f" (含latent: {latent_file.filename})" if latent_file else ""),
+            "voice_clone",
+            {
                 "filename": file.filename,
                 "size_mb": round(file_size_mb, 2),
                 "file_path": file_path,
@@ -222,11 +222,11 @@ async def synthesize_speech(
             
             # 记录成功日志
             await log_system_event(
-                db=db,
-                level="info",
-                message=f"语音合成成功: {voice_name}",
-                module="voice_clone",
-                details={
+                db,
+                "info",
+                f"语音合成成功: {voice_name}",
+                "voice_clone",
+                {
                     "text_length": len(text),
                     "processing_time": processing_time,
                     "parameters": {
@@ -255,11 +255,11 @@ async def synthesize_speech(
         else:
             # 记录失败日志
             await log_system_event(
-                db=db,
-                level="error",
-                message=f"语音合成失败: {response.message}",
-                module="voice_clone",
-                details={
+                db,
+                "error",
+                f"语音合成失败: {response.message}",
+                "voice_clone",
+                {
                     "error_code": response.error_code,
                     "processing_time": processing_time,
                     "text_length": len(text)
@@ -279,11 +279,11 @@ async def synthesize_speech(
         
         # 记录异常日志
         await log_system_event(
-            db=db,
-            level="error",
-            message=f"语音合成异常: {str(e)}",
-            module="voice_clone",
-            details={"processing_time": processing_time}
+            db,
+            "error",
+            f"语音合成异常: {str(e)}",
+            "voice_clone",
+            {"processing_time": processing_time}
         )
         
         # 更新使用统计
@@ -413,11 +413,11 @@ async def clone_voice(
         
         # 记录成功日志
         await log_system_event(
-            db=db,
-            level="info",
-            message=f"声音克隆成功: {voice_name}" + (f" (使用用户latent文件)" if user_latent_file_path else ""),
-            module="voice_clone",
-            details={
+            db,
+            "info",
+            f"声音克隆成功: {voice_name}" + (f" (使用用户latent文件)" if user_latent_file_path else ""),
+            "voice_clone",
+            {
                 "voice_id": voice_profile.id,
                 "processing_time": processing_time,
                 "quality_score": quality_score,
@@ -441,11 +441,11 @@ async def clone_voice(
         
         # 记录异常日志
         await log_system_event(
-            db=db,
-            level="error",
-            message=f"声音克隆异常: {str(e)}",
-            module="voice_clone",
-            details={"processing_time": processing_time}
+            db,
+            "error",
+            f"声音克隆异常: {str(e)}",
+            "voice_clone",
+            {"processing_time": processing_time}
         )
         
         raise HTTPException(status_code=500, detail=f"克隆异常: {str(e)}")
@@ -550,11 +550,11 @@ async def optimize_parameters(
         
         # 记录优化结果
         await log_system_event(
-            db=db,
-            level="info",
-            message="参数优化完成",
-            module="voice_clone",
-            details={
+            db,
+            "info",
+            "参数优化完成",
+            "voice_clone",
+            {
                 "best_params": best_params,
                 "best_quality": best_quality,
                 "total_tests": len(optimization_results),
@@ -579,11 +579,11 @@ async def optimize_parameters(
         
         # 记录异常日志
         await log_system_event(
-            db=db,
-            level="error",
-            message=f"参数优化异常: {str(e)}",
-            module="voice_clone",
-            details={"processing_time": processing_time}
+            db,
+            "error",
+            f"参数优化异常: {str(e)}",
+            "voice_clone",
+            {"processing_time": processing_time}
         )
         
         raise HTTPException(status_code=500, detail=f"优化异常: {str(e)}")
@@ -815,11 +815,11 @@ async def synthesize_from_library(
             
             # 记录成功日志
             await log_system_event(
-                db=db,
-                level="info",
-                message=f"声音库合成成功: {voice_profile.name}",
-                module="voice_clone",
-                details={
+                db,
+                "info",
+                f"声音库合成成功: {voice_profile.name}",
+                "voice_clone",
+                {
                     "voice_profile_id": voice_profile_id,
                     "voice_name": voice_profile.name,
                     "text_length": len(text),
@@ -855,11 +855,11 @@ async def synthesize_from_library(
         else:
             # 记录失败日志
             await log_system_event(
-                db=db,
-                level="error",
-                message=f"声音库合成失败: {response.message}",
-                module="voice_clone",
-                details={
+                db,
+                "error",
+                f"声音库合成失败: {response.message}",
+                "voice_clone",
+                {
                     "voice_profile_id": voice_profile_id,
                     "error_code": response.error_code,
                     "processing_time": processing_time,
@@ -880,11 +880,11 @@ async def synthesize_from_library(
         
         # 记录异常日志
         await log_system_event(
-            db=db,
-            level="error",
-            message=f"声音库合成异常: {str(e)}",
-            module="voice_clone",
-            details={
+            db,
+            "error",
+            f"声音库合成异常: {str(e)}",
+            "voice_clone",
+            {
                 "voice_profile_id": voice_profile_id,
                 "processing_time": processing_time
             }

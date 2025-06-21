@@ -20,10 +20,10 @@ if config.config_file_name is not None:
 # target_metadata = mymodel.Base.metadata
 
 # Add app directory to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'app'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from database import Base
-from models import *  # Import all models
+from app.database import Base
+from app.models import *  # Import all models
 
 target_metadata = Base.metadata
 

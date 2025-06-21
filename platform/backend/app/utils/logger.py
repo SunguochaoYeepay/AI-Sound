@@ -12,10 +12,36 @@ from datetime import datetime
 from typing import Optional, Dict, Any
 from sqlalchemy.orm import Session
 
-from ..models.system import SystemLog, LogLevel, LogModule
-from ..database import get_db
+from ..models.system_log import SystemLog
+from enum import Enum
+
+class LogLevel(str, Enum):
+    """日志级别枚举"""
+    DEBUG = "debug"
+    INFO = "info"
+    WARNING = "warning"
+    ERROR = "error"
+    CRITICAL = "critical"
+
+class LogModule(str, Enum):
+    """日志模块枚举"""
+    SYSTEM = "system"
+    API = "api"
+    TTS = "tts"
+    SYNTHESIS = "synthesis"
+    DATABASE = "database"
+    FILE = "file"
+    WEBSOCKET = "websocket"
+    ENVIRONMENT = "environment"
+    ANALYSIS = "analysis"
+# from ..database import get_db  # 避免循环导入
 
 logger = logging.getLogger(__name__)
+
+
+def get_logger(name: str = None) -> logging.Logger:
+    """获取日志记录器"""
+    return logging.getLogger(name or __name__)
 
 
 def log_to_database(
@@ -49,31 +75,29 @@ def log_to_database(
         source_file = frame.f_code.co_filename if frame else None
         source_line = frame.f_lineno if frame else None
         
-        # 创建日志记录
+        # 创建日志记录 - 适配现有SystemLog模型
         log_entry = SystemLog(
-            level=level,
-            module=module,
+            level=level.value,  # 转换为字符串
+            module=module.value,  # 转换为字符串
             message=message,
-            details=json.dumps(details, ensure_ascii=False) if details else None,
-            source_file=source_file,
-            source_line=source_line,
-            user_id=user_id,
-            session_id=session_id,
-            ip_address=ip_address,
-            user_agent=user_agent,
-            created_at=datetime.utcnow()
+            details=json.dumps(details, ensure_ascii=False) if details else None
         )
         
         # 保存到数据库
         if db is None:
             # 如果没有传入数据库会话，创建一个新的
-            from ..database import SessionLocal
-            db = SessionLocal()
             try:
-                db.add(log_entry)
-                db.commit()
-            finally:
-                db.close()
+                from ..database import SessionLocal
+                db = SessionLocal()
+                try:
+                    db.add(log_entry)
+                    db.commit()
+                finally:
+                    db.close()
+            except ImportError:
+                # 如果无法导入SessionLocal，记录到标准日志
+                logger.warning("无法导入数据库会话，跳过数据库日志记录")
+                return
         else:
             db.add(log_entry)
             db.commit()

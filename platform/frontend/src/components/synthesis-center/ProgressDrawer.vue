@@ -1,7 +1,7 @@
 <template>
   <a-drawer
     :open="visible"
-    title="🎵 合成进度监控"
+    :title="drawerTitle"
     placement="bottom"
     :height="220"
     :closable="true"
@@ -175,54 +175,24 @@ const showPauseButton = computed(() => {
   return props.projectStatus === 'processing' || props.progressData.status === 'processing' || props.progressData.status === 'running'
 })
 
+const drawerTitle = computed(() => {
+  const synthesisType = props.progressData?.synthesis_type
+  if (synthesisType === 'environment') {
+    return '🌍 环境音混合合成监控'
+  } else if (synthesisType === 'voice') {
+    return '🎤 角色音合成监控'
+  }
+  return '🎵 合成进度监控'
+})
+
 const progressTitle = computed(() => {
-  const status = props.progressData.status
-  const current = props.progressData.current_processing
-  const completed = props.progressData.completed_segments
-  const total = props.progressData.total_segments
-  
-  // 🔧 获取当前章节信息
-  const getChapterInfo = () => {
-    if (props.selectedChapter && props.chapters.length > 0) {
-      const chapter = props.chapters.find(ch => ch.id === props.selectedChapter)
-      if (chapter) {
-        return `第${chapter.chapter_number || chapter.id}章：${chapter.title || '未命名章节'}`
-      }
-    }
-    return '当前章节'
+  const synthesisType = props.progressData?.synthesis_type
+  if (synthesisType === 'environment') {
+    return '🌍 环境音混合合成进度'
+  } else if (synthesisType === 'voice') {
+    return '🎤 角色音合成进度'
   }
-  
-  const chapterInfo = getChapterInfo()
-  
-  // 🔧 处理正在合成状态 - 显示当前段落详情和章节信息
-  if (status === 'processing' || status === 'running') {
-    if (current && current.trim()) {
-      // 如果有具体的当前处理段落信息
-      const currentText = current.length > 50 ? current.substring(0, 50) + '...' : current
-      return `🎤 正在合成第${completed + 1}段: "${currentText}"`
-    } else {
-      // 没有具体段落信息时的回退显示
-      return `🎤 合成进行中 - 第${completed + 1}/${total}段 - ${chapterInfo}`
-    }
-  }
-  
-  if (status === 'completed') {
-    return `✅ 合成完成 - 共${total}个段落 - ${chapterInfo}`
-  }
-  
-  if (status === 'failed') {
-    return `❌ 合成失败 - 已完成${completed}/${total}段 - ${chapterInfo}`
-  }
-  
-  if (status === 'paused') {
-    return `⏸️ 合成已暂停 - 已完成${completed}/${total}段 - ${chapterInfo}`
-  }
-  
-  if (total > 0) {
-    return `📊 合成监控 - ${completed}/${total}段 - ${chapterInfo}`
-  }
-  
-  return `📊 合成进度监控 - ${chapterInfo}`
+  return '🎵 合成进度'
 })
 
 const displayStatus = computed(() => {

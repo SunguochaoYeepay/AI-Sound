@@ -99,6 +99,27 @@
           </a-menu>
         </template>
       </a-dropdown>
+      
+      <!-- 项目状态卡死时的重置按钮 -->
+      <a-dropdown v-if="isFailed || (projectStatus === 'processing' && !synthesisRunning)">
+        <a-button size="small" type="primary">
+          🔄 重新合成
+          <DownOutlined />
+        </a-button>
+        <template #overlay>
+          <a-menu>
+            <a-menu-item @click="$emit('restartSynthesis')" style="color: #1890ff;">
+              🔄 重新开始合成
+            </a-menu-item>
+            <a-menu-item @click="$emit('resetProjectStatus')" style="color: #ff4d4f;">
+              🔧 重置项目状态（高级）
+            </a-menu-item>
+            <a-menu-item @click="$emit('refresh')" v-if="showRefresh">
+              🔄 刷新数据
+            </a-menu-item>
+          </a-menu>
+        </template>
+      </a-dropdown>
     </a-space>
   </div>
 </template>
@@ -168,7 +189,8 @@ defineEmits([
   'resumeSynthesis',
   'retryFailedSegments',
   'restartSynthesis',
-  'refresh'
+  'refresh',
+  'resetProjectStatus'
 ])
 
 // 计算状态

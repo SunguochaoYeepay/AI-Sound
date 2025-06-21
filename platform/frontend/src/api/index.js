@@ -1,4 +1,4 @@
-import apiClient from './config.js'
+import apiClient, { llmAnalysisClient } from './config.js'
 
 // 系统健康检查API
 export const systemAPI = {
@@ -299,6 +299,22 @@ export const readerAPI = {
     })
   },
 
+  // 章节级别的环境+角色音混合生成
+  startChapterMixedSynthesis: (projectId, chapterId, data = {}) => {
+    const formData = new FormData()
+    formData.append('parallel_tasks', data.parallel_tasks || 1)
+    formData.append('enable_voice', data.enable_voice !== undefined ? data.enable_voice : true)
+    formData.append('enable_environment', data.enable_environment !== undefined ? data.enable_environment : true)
+    formData.append('environment_volume', data.environment_volume || 0.3)
+    formData.append('synthesis_mode', 'mixed') // 标记为混合模式
+    
+    return apiClient.post(`/novel-reader/projects/${projectId}/chapters/${chapterId}/start`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    })
+  },
+
   // 暂停生成
   pauseGeneration: (projectId) => apiClient.post(`/novel-reader/projects/${projectId}/pause`),
   
@@ -391,6 +407,9 @@ export const readerAPI = {
     apiClient.get(`/novel-reader/projects/${projectId}/chapters/${chapterId}/download`, {
       responseType: 'blob'
     }),
+  
+  // 重置项目状态 - 解决项目状态卡死问题
+  resetProjectStatus: (projectId) => apiClient.post(`/novel-reader/projects/${projectId}/reset-status`),
   
   // 兼容旧API - 已废弃，建议使用 readerAPI 中的对应方法
   uploadText: (formData) => apiClient.post('/novel-reader/upload', formData, {
@@ -911,6 +930,48 @@ export const environmentSoundsAPI = {
   })
 }
 
+// 环境音生成API (新方案A)
+export const environmentGenerationAPI = {
+  // 第一步：从synthesis_plan分析环境音需求 - 使用LLM专用客户端，支持2分钟超时
+  analyzeEnvironment: (projectId, synthesisData) => 
+    llmAnalysisClient.post('/environment-generation/analyze', {
+      project_id: projectId,
+      synthesis_plan: synthesisData.synthesis_plan || synthesisData,
+      options: synthesisData.options || {}
+    }),
+
+  // 第二步：准备人工校对
+  prepareValidation: (projectId) => 
+    apiClient.post(`/environment-generation/prepare-validation/${projectId}`),
+
+  // 第三步：应用人工编辑
+  editValidation: (projectId, trackIndex, manualEdits) => 
+    apiClient.post(`/environment-generation/edit-validation/${projectId}`, {
+      track_index: trackIndex,
+      manual_edits: manualEdits
+    }),
+
+  // 第四步：校对审批
+  approveValidation: (projectId, trackIndex, validationResult, notes = null) => 
+    apiClient.post(`/environment-generation/approve-validation/${projectId}`, {
+      track_index: trackIndex,
+      validation_result: validationResult,
+      notes: notes
+    }),
+
+  // 第五步：完成环境音生成流程
+  finalizeGeneration: (projectId) => 
+    apiClient.post(`/environment-generation/finalize/${projectId}`),
+
+  // 获取环境音生成状态
+  getGenerationStatus: (projectId) => 
+    apiClient.get(`/environment-generation/status/${projectId}`),
+
+  // 清除环境音生成会话
+  clearGenerationSession: (projectId) => 
+    apiClient.delete(`/environment-generation/session/${projectId}`)
+}
+
 // 默认导出所有API
 const api = {
   ...systemAPI,
@@ -921,7 +982,8 @@ const api = {
   ...audioAPI,
   ...monitorAPI,
   ...intelligentAnalysisAPI,
-  ...environmentSoundsAPI
+  ...environmentSoundsAPI,
+  ...environmentGenerationAPI
 }
 
 export default api

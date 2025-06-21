@@ -198,16 +198,7 @@
                 {{ getStatusText(project.status) }}
               </a-tag>
               <div class="project-actions">
-                <!-- 已完成项目的操作 -->
-                <template v-if="project.status === 'completed'">
-                  <a-button 
-                    type="text" 
-                    size="small" 
-                    @click.stop="openProject(project)"
-                    title="查看合成结果"
-                  >
-                    查看
-                  </a-button>
+                <!-- 根据项目状态显示不同的操作 -->
                 <a-button 
                   type="text" 
                   size="small" 
@@ -216,35 +207,52 @@
                 >
                   音频
                 </a-button>
+                
+                <!-- 已完成项目：显示重新合成下拉菜单 -->
+                <template v-if="project.status === 'completed'">
+                  <a-dropdown @click.stop>
+                    <a-button 
+                      type="primary" 
+                      size="small"
+                      title="选择重新合成方式"
+                    >
+                      🔄 重新合成 <DownOutlined />
+                    </a-button>
+                    <template #overlay>
+                      <a-menu @click="onRestartSynthesis($event, project)">
+                        <a-menu-item key="voice">
+                          <div style="display: flex; align-items: center; gap: 8px;">
+                            <span>🎤</span>
+                            <div>
+                              <div style="font-weight: 500;">TTS语音合成</div>
+                              <div style="font-size: 11px; color: #666;">仅生成对话语音</div>
+                            </div>
+                          </div>
+                        </a-menu-item>
+                        <a-menu-item key="environment">
+                          <div style="display: flex; align-items: center; gap: 8px;">
+                            <span>🌍</span>
+                            <div>
+                              <div style="font-weight: 500;">环境音混合合成</div>
+                              <div style="font-size: 11px; color: #666;">智能生成环境音效并混合</div>
+                            </div>
+                          </div>
+                        </a-menu-item>
+                      </a-menu>
+                    </template>
+                  </a-dropdown>
+                </template>
+                
+                <!-- 其他状态项目：统一进入合成按钮 -->
+                <template v-else>
                   <a-button 
                     type="primary" 
                     size="small"
-                    @click.stop="restartSynthesis(project)"
-                    title="重新合成"
+                    @click.stop="openProject(project)"
+                    title="进入合成页面"
                   >
-                    重新合成
+                    🎵 进入合成
                   </a-button>
-                </template>
-                
-                <!-- 其他状态项目的操作 -->
-                <template v-else>
-                  <a-button 
-                    type="text" 
-                    size="small" 
-                    @click.stop="viewAudioFiles(project)"
-                    title="查看音频文件"
-                    v-if="project.status === 'processing' || project.status === 'failed'"
-                  >
-                    音频
-                  </a-button>
-                <a-button 
-                  type="primary" 
-                  size="small"
-                  @click.stop="openProject(project)"
-                  :disabled="project.status === 'failed'"
-                >
-                    {{ project.status === 'processing' ? '监控' : '合成' }}
-                </a-button>
                 </template>
               </div>
             </div>
@@ -286,37 +294,60 @@
 
               <template v-if="column.key === 'actions'">
                 <div style="display: flex; gap: 8px;">
-                  <!-- 已完成项目的操作 -->
-                  <template v-if="record.status === 'completed'">
-                    <a-button type="text" size="small" @click.stop="openProject(record)" title="查看合成结果">
-                      查看
-                    </a-button>
-                  <a-button type="text" size="small" @click.stop="viewAudioFiles(record)" title="查看音频文件">
+                  <!-- 统一的操作按钮 -->
+                  <a-button 
+                    type="text" 
+                    size="small" 
+                    @click.stop="viewAudioFiles(record)" 
+                    title="查看音频文件"
+                  >
                     音频
                   </a-button>
-                    <a-button type="primary" size="small" @click.stop="restartSynthesis(record)" title="重新合成">
-                      重新合成
-                  </a-button>
+                  
+                  <!-- 已完成项目：显示重新合成下拉菜单 -->
+                  <template v-if="record.status === 'completed'">
+                    <a-dropdown @click.stop>
+                      <a-button 
+                        type="primary" 
+                        size="small"
+                        title="选择重新合成方式"
+                      >
+                        🔄 重新合成 <DownOutlined />
+                      </a-button>
+                      <template #overlay>
+                        <a-menu @click="onRestartSynthesis($event, record)">
+                          <a-menu-item key="voice">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                              <span>🎤</span>
+                              <div>
+                                <div style="font-weight: 500;">TTS语音合成</div>
+                                <div style="font-size: 11px; color: #666;">仅生成对话语音</div>
+                              </div>
+                            </div>
+                          </a-menu-item>
+                          <a-menu-item key="environment">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                              <span>🌍</span>
+                              <div>
+                                <div style="font-weight: 500;">环境音混合合成</div>
+                                <div style="font-size: 11px; color: #666;">智能生成环境音效并混合</div>
+                              </div>
+                            </div>
+                          </a-menu-item>
+                        </a-menu>
+                      </template>
+                    </a-dropdown>
                   </template>
                   
-                  <!-- 其他状态项目的操作 -->
+                  <!-- 其他状态项目：统一进入合成按钮 -->
                   <template v-else>
-                    <a-button 
-                      type="text" 
-                      size="small" 
-                      @click.stop="viewAudioFiles(record)" 
-                      title="查看音频文件"
-                      v-if="record.status === 'processing' || record.status === 'failed'"
-                    >
-                      音频
-                    </a-button>
                     <a-button 
                       type="primary" 
                       size="small" 
                       @click.stop="openProject(record)"
-                      :disabled="record.status === 'failed'"
+                      title="进入合成页面"
                     >
-                      {{ record.status === 'processing' ? '监控' : '合成' }}
+                      🎵 进入合成
                     </a-button>
                   </template>
                   
@@ -339,7 +370,7 @@
 import { ref, computed, onMounted, h } from 'vue'
 import { useRouter } from 'vue-router'
 import { message, Modal } from 'ant-design-vue'
-import { PlusOutlined, ReloadOutlined, SoundOutlined } from '@ant-design/icons-vue'
+import { PlusOutlined, ReloadOutlined, SoundOutlined, DownOutlined } from '@ant-design/icons-vue'
 import { readerAPI } from '@/api'
 
 const router = useRouter()
@@ -466,28 +497,10 @@ const goToCreatePage = () => {
 }
 
 const openProject = (project) => {
-  console.log('打开项目:', project.name, '状态:', project.status, '项目ID:', project.id)
+  console.log('打开项目:', project.name, '项目ID:', project.id)
   
-  // 根据项目状态决定跳转位置
-  if (project.status === 'completed') {
-    // 已完成项目跳转到合成结果页面
-    console.log('跳转到合成结果页面:', `/synthesis-results/${project.id}`)
-    router.push(`/synthesis-results/${project.id}`)
-  } else if (project.status === 'processing') {
-    // 处理中项目跳转到合成中心监控
-    console.log('跳转到合成监控:', `/synthesis/${project.id}`)
-    router.push(`/synthesis/${project.id}`)
-  } else {
-    // 其他状态跳转到合成中心
-    console.log('跳转到合成中心:', `/synthesis/${project.id}`)
-    router.push(`/synthesis/${project.id}`)
-  }
-}
-
-const restartSynthesis = (project) => {
-  console.log('重新合成项目:', project.name, '项目ID:', project.id)
-  
-  // 重新合成直接跳转到合成中心
+  // 统一跳转到合成中心，不管项目状态如何
+  console.log('跳转到合成中心:', `/synthesis/${project.id}`)
   router.push(`/synthesis/${project.id}`)
 }
 
@@ -513,6 +526,25 @@ const onProjectAction = async ({ key }, project) => {
     case 'delete':
       confirmDeleteProject(project)
       break
+  }
+}
+
+const onRestartSynthesis = async ({ key }, project) => {
+  try {
+    console.log(`${key === 'voice' ? '🎤' : '🌍'} 重新合成:`, project.name, '类型:', key)
+    
+    // 跳转到合成页面，并传递合成类型参数
+    router.push({
+      path: `/synthesis/${project.id}`,
+      query: { 
+        restart: key  // 'voice' 或 'environment'
+      }
+    })
+    
+    message.success(`准备${key === 'voice' ? 'TTS语音' : '环境音混合'}合成`)
+  } catch (error) {
+    console.error('跳转失败:', error)
+    message.error('跳转失败')
   }
 }
 

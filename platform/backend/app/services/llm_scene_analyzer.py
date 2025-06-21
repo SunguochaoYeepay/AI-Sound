@@ -40,80 +40,30 @@ class OllamaLLMSceneAnalyzer:
     def __init__(self):
         # Ollama配置
         self.ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-        self.model_name = os.getenv("OLLAMA_MODEL", "qwen:latest")  # 千问模型
+        self.model_name = os.getenv("OLLAMA_MODEL", "qwen3:30b")  # 千问模型 - 修复为实际安装的模型
         
-        # 分析提示词模板
-        self.system_prompt = """你是一个专业的场景和情感分析专家，专门分析文本中的环境、氛围和音景需求。
+        # 🎯 简化版提示词 - 专注核心环境分析
+        self.system_prompt = """你是环境音效分析专家，分析文本中的场景环境。
 
-重要提醒：你必须只返回一个有效的JSON对象，不要包含任何解释文字、标记或多个JSON对象。
-
-你的任务是：
-1. 深度分析文本中的场景信息（地点、时间、天气、氛围等）
-2. 识别情感变化和叙事节奏
-3. 为每个场景推荐合适的环境音效
-4. 分析场景之间的转换关系
-
-你必须严格按照以下JSON格式返回分析结果：
+只返回JSON，不要任何解释。格式：
 {
   "scenes": [
     {
-      "location": "具体地点（如forest, city, indoor等）",
-      "atmosphere": "氛围情感（如calm, tense, romantic等）", 
-      "weather": "天气状况（如sunny, rainy, stormy等）",
-      "time_of_day": "时间段（如morning, night, evening等）",
-      "keywords": ["关键词列表"],
-      "confidence": 0.8,
-      "text_segment": "对应的文本片段",
-      "emotional_tone": "情感基调",
-      "narrative_function": "叙事功能"
-    }
-  ],
-  "narrative_analysis": {
-    "genre": "文体类型",
-    "pace": "节奏（slow/medium/fast）",
-    "emotional_arc": "情感弧线描述",
-    "key_moments": ["关键情节点"]
-  },
-  "emotional_progression": [
-    {
-      "segment": "文本片段",
-      "emotion": "主要情感",
-      "intensity": 0.8,
-      "transition": "与前一段的转换方式"
-    }
-  ],
-  "scene_transitions": [
-    {
-      "from_scene_index": 0,
-      "to_scene_index": 1,
-      "transition_type": "转换类型（fade/cut/crossfade等）",
-      "transition_duration": 2.0
+      "location": "地点(如forest/indoor/city)",
+      "atmosphere": "氛围(如calm/tense/quiet)",
+      "weather": "天气(如sunny/rainy/clear)",
+      "time_of_day": "时间(如day/night/morning)",
+      "keywords": ["环境关键词"],
+      "confidence": 0.8
     }
   ],
   "recommended_soundscape": {
-    "primary_elements": ["主要音效元素"],
-    "secondary_elements": ["次要音效元素"],
-    "ambient_layers": ["环境层次"],
-    "dynamic_changes": ["动态变化建议"],
-    "overall_duration": 15.0,
-    "sync_points": ["与文本的同步点"]
+    "primary_elements": ["主要环境音"],
+    "secondary_elements": ["次要环境音"]
   }
 }
 
-JSON格式要求：
-- 所有的字符串值必须用双引号包围
-- 数字值不要用引号
-- 不要使用非英文字符作为键名
-- 确保所有括号正确配对
-- 不要在JSON前后添加任何文字说明
-- 只返回一个完整的JSON对象
-
-分析要求：
-- 识别细微的情感变化和氛围转换
-- 考虑文本的体裁和风格特点
-- 为每个场景推荐具体的环境音元素
-- 分析场景间的逻辑关系和转换需求
-- 提供专业的音频制作建议"""
+要求：双引号包围字符串，数字不用引号。"""
 
         self.user_prompt_template = """分析以下文本的场景和音景需求：
 
@@ -268,36 +218,65 @@ JSON格式要求：
     def _clean_json_content(self, json_str: str) -> str:
         """清理JSON内容，处理常见的格式问题"""
         try:
-            # 移除前后空白字符
-            cleaned = json_str.strip()
-            
-            # 处理键名不规范的问题（如包含非英文字符的键）
             import re
             
-            # 查找并修复不规范的键名（如 "time流动" -> "time_flow"）
-            key_pattern = r'"([^"]*[^\w\s_][^"]*)"(\s*:)'
-            def fix_key(match):
-                key = match.group(1)
-                # 移除非英文字符，保留下划线
-                clean_key = re.sub(r'[^\w_]', '_', key)
-                return f'"{clean_key}"{match.group(2)}'
+            # 移除前后空白字符和多余的标记
+            cleaned = json_str.strip()
             
-            cleaned = re.sub(key_pattern, fix_key, cleaned)
+            # 移除可能的markdown标记或其他前缀
+            if '```' in cleaned:
+                cleaned = re.sub(r'```[a-zA-Z]*\n?', '', cleaned)
+                cleaned = re.sub(r'```', '', cleaned)
             
-            # 移除可能的重复逗号
+            # 💡 最简单有效的方法：直接替换所有不带引号的键名
+            # 匹配独立的单词后跟冒号的模式（确保不在字符串内）
+            # 使用负前瞻确保不匹配已经在引号内的内容
+            
+            # 步骤1: 修复属性名缺少引号的问题
+            # 匹配这种模式: 空白 + 单词 + 空白 + 冒号
+            unquoted_key_pattern = r'(\s+)([a-zA-Z_][a-zA-Z0-9_]*)\s*:'
+            
+            def quote_key_replacement(match):
+                indent = match.group(1)
+                key = match.group(2)
+                return f'{indent}"{key}":'
+            
+            cleaned = re.sub(unquoted_key_pattern, quote_key_replacement, cleaned)
+            
+            # 步骤2: 修复缺少逗号的问题
+            # 在换行符前添加逗号，如果行尾不是 { [ , } ]
+            lines = cleaned.split('\n')
+            for i in range(len(lines) - 1):
+                current_line = lines[i].strip()
+                next_line = lines[i + 1].strip()
+                
+                # 如果当前行不为空，不以逗号、大括号、方括号结尾
+                # 且下一行不以大括号、方括号开头，则添加逗号
+                if (current_line and 
+                    not current_line.endswith((',', '{', '}', '[', ']')) and
+                    next_line and
+                    not next_line.startswith(('}', ']'))):
+                    lines[i] = lines[i].rstrip() + ','
+            
+            cleaned = '\n'.join(lines)
+            
+            # 步骤3: 清理多余的逗号
+            # 移除 } 和 ] 前面的逗号
+            cleaned = re.sub(r',(\s*[}\]])', r'\1', cleaned)
+            
+            # 移除重复的逗号
             cleaned = re.sub(r',\s*,', ',', cleaned)
             
-            # 移除结尾的多余逗号
-            cleaned = re.sub(r',\s*}', '}', cleaned)
-            cleaned = re.sub(r',\s*]', ']', cleaned)
+            # 步骤4: 确保括号匹配
+            open_braces = cleaned.count('{')
+            close_braces = cleaned.count('}')
+            if open_braces > close_braces:
+                cleaned += '}' * (open_braces - close_braces)
             
-            # 确保JSON对象完整性
-            if cleaned.count('{') != cleaned.count('}'):
-                logger.warning("JSON对象括号不匹配，尝试修复")
-                # 简单修复：如果缺少结尾括号，补充
-                diff = cleaned.count('{') - cleaned.count('}')
-                if diff > 0:
-                    cleaned += '}' * diff
+            open_brackets = cleaned.count('[')
+            close_brackets = cleaned.count(']')
+            if open_brackets > close_brackets:
+                cleaned += ']' * (open_brackets - close_brackets)
             
             return cleaned
             

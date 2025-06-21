@@ -33,40 +33,36 @@
                 
                 <!-- 合成控制按钮 -->
                 <a-space size="small">
-                  <!-- 待处理状态：显示开始合成按钮 -->
+                  <!-- 待处理状态：显示三个独立的合成按钮 -->
                   <template v-if="selectedChapterStatus === 'pending'">
-                    <a-dropdown>
-                      <a-button
-                        type="primary"
-                        size="small"
-                        :disabled="!canStart || synthesisStarting"
-                        :loading="synthesisStarting"
-                      >
-                        🎯 开始合成 <DownOutlined />
-                      </a-button>
-                      <template #overlay>
-                        <a-menu>
-                          <a-menu-item key="normal" @click="$emit('start-synthesis')">
-                            <div style="display: flex; align-items: center; gap: 8px;">
-                              <span>🎤</span>
-                              <div>
-                                <div style="font-weight: 500;">TTS语音合成</div>
-                                <div style="font-size: 11px; color: #666;">仅生成对话语音</div>
-                              </div>
-                            </div>
-                          </a-menu-item>
-                          <a-menu-item key="environment" @click="$emit('start-environment-synthesis')">
-                            <div style="display: flex; align-items: center; gap: 8px;">
-                              <span>🌍</span>
-                              <div>
-                                <div style="font-weight: 500;">环境音混合合成</div>
-                                <div style="font-size: 11px; color: #666;">智能生成环境音效并混合</div>
-                              </div>
-                            </div>
-                          </a-menu-item>
-                        </a-menu>
-                      </template>
-                    </a-dropdown>
+                    <!-- 1. 对话语音生成 -->
+                    <a-button
+                      type="primary"
+                      size="small"
+                      :disabled="!canStart || synthesisStarting"
+                      :loading="synthesisStarting"
+                      @click="$emit('start-synthesis')"
+                    >
+                      🎤 对话语音生成
+                    </a-button>
+                    
+                    <!-- 2. 环境音识别 -->
+                    <a-button
+                      size="small"
+                      :disabled="!canStart"
+                      @click="$emit('start-environment-synthesis')"
+                    >
+                      🌍 环境音识别
+                    </a-button>
+                    
+                    <!-- 3. 环境+角色音生成 -->
+                    <a-button
+                      size="small"
+                      :disabled="!canStart || synthesisStarting"
+                      @click="$emit('start-mixed-synthesis')"
+                    >
+                      🎵 环境+角色音生成
+                    </a-button>
                   </template>
 
                   <!-- 已完成状态：显示播放和下载按钮 -->
@@ -103,14 +99,51 @@
                     </a-button>
                   </template>
 
-                  <!-- 失败状态：显示重试按钮 -->
+                  <!-- 失败状态：显示重新开始选项 -->
                   <template v-if="selectedChapterStatus === 'failed'">
+                    <a-dropdown>
+                      <a-button type="primary" size="small">
+                        🔄 重新合成
+                        <DownOutlined />
+                      </a-button>
+                      <template #overlay>
+                        <a-menu>
+                          <a-menu-item key="restart-normal" @click="$emit('restart-synthesis')">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                              <span>🎤</span>
+                              <div>
+                                <div style="font-weight: 500;">TTS语音合成</div>
+                                <div style="font-size: 11px; color: #666;">重新开始对话语音合成</div>
+                              </div>
+                            </div>
+                          </a-menu-item>
+                          <a-menu-item key="restart-environment" @click="$emit('start-environment-synthesis')">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                              <span>🌍</span>
+                              <div>
+                                <div style="font-weight: 500;">环境音识别</div>
+                                <div style="font-size: 11px; color: #666;">重新识别环境音需求</div>
+                              </div>
+                            </div>
+                          </a-menu-item>
+                          <a-menu-item key="restart-mixed" @click="$emit('start-mixed-synthesis')">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                              <span>🎵</span>
+                              <div>
+                                <div style="font-weight: 500;">环境+角色音生成</div>
+                                <div style="font-size: 11px; color: #666;">重新生成混合音频</div>
+                              </div>
+                            </div>
+                          </a-menu-item>
+                        </a-menu>
+                      </template>
+                    </a-dropdown>
                     <a-button
-                      type="primary"
                       size="small"
                       @click="$emit('retry-synthesis')"
+                      title="仅重试失败的段落"
                     >
-                      重试
+                      🔧 重试失败段落
                     </a-button>
                   </template>
                   
@@ -135,8 +168,17 @@
                           <div style="display: flex; align-items: center; gap: 8px;">
                             <span>🌍</span>
                             <div>
-                              <div style="font-weight: 500;">环境音混合合成</div>
-                              <div style="font-size: 11px; color: #666;">智能生成环境音效并混合</div>
+                              <div style="font-weight: 500;">环境音识别</div>
+                              <div style="font-size: 11px; color: #666;">智能识别环境音需求并配置</div>
+                            </div>
+                          </div>
+                        </a-menu-item>
+                        <a-menu-item key="restart-mixed" @click="$emit('start-mixed-synthesis')">
+                          <div style="display: flex; align-items: center; gap: 8px;">
+                            <span>🎵</span>
+                            <div>
+                              <div style="font-weight: 500;">环境+角色音生成</div>
+                              <div style="font-size: 11px; color: #666;">重新生成混合音频</div>
                             </div>
                           </div>
                         </a-menu-item>
@@ -238,12 +280,14 @@ const emit = defineEmits([
   'download-chapter',
   'start-synthesis',
   'start-environment-synthesis',
+  'start-mixed-synthesis',
   'pause-synthesis',
   'cancel-synthesis',
   'retry-synthesis',
   'play-audio',
   'download-audio',
-  'restart-synthesis'
+  'restart-synthesis',
+  'reset-project-status'
 ])
 
 const showAllSegments = ref(false)

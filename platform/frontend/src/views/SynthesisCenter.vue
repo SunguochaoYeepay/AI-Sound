@@ -61,12 +61,14 @@
         @download-chapter="handleDownloadChapter"
         @start-synthesis="handleStartSynthesis"
         @start-environment-synthesis="handleShowEnvironmentConfig"
+        @start-mixed-synthesis="handleStartMixedSynthesis"
         @pause-synthesis="handlePauseSynthesis"
         @cancel-synthesis="handleCancelSynthesis"
         @retry-synthesis="handleRetrySynthesis"
         @play-audio="handlePlayAudio"
         @download-audio="handleDownloadAudio"
         @restart-synthesis="handleRestartSynthesis"
+        @reset-project-status="handleResetProjectStatus"
       />
     </div>
 
@@ -85,13 +87,13 @@
       @cancelSynthesis="handleCancelSynthesis"
     />
 
-    <!-- 环境音配置弹窗 -->
-    <EnvironmentConfigModal
+    <!-- 环境音生成抽屉 -->
+    <EnvironmentGenerationDrawer
       :visible="environmentConfigVisible"
-      :loading="synthesisStarting"
-      :initial-volume="environmentVolume"
-      @confirm="handleEnvironmentSynthesis"
-      @cancel="handleCancelEnvironmentConfig"
+      :project-id="project?.id"
+      :synthesis-data="preparationResults"
+      @complete="handleEnvironmentGenerationComplete"
+      @start-audio-mixing="handleStartAudioMixing"
       @update:visible="environmentConfigVisible = $event"
     />
 
@@ -121,7 +123,7 @@ import ProjectHeader from '@/components/synthesis-center/ProjectHeader.vue'
 import ChapterSelector from '@/components/synthesis-center/ChapterSelector.vue'
 import ContentPreview from '@/components/synthesis-center/ContentPreview.vue'
 import ProgressDrawer from '@/components/synthesis-center/ProgressDrawer.vue'
-import EnvironmentConfigModal from '@/components/synthesis-center/EnvironmentConfigModal.vue'
+import EnvironmentGenerationDrawer from '@/components/synthesis-center/EnvironmentGenerationDrawer.vue'
 // 暂时注释掉失败详情模态框的导入
 // import FailureDetailsModal from '@/components/synthesis-center/FailureDetailsModal.vue'
 
@@ -148,6 +150,10 @@ const synthesisRunning = ref(false)
 const progressDrawerVisible = ref(false)
 const progressData = ref({})
 const websocketStatus = ref('disconnected')
+
+// 合成类型状态管理
+const synthesisType = ref(null) // 'voice' | 'environment' | null
+const synthesisStatus = ref('idle') // 'running' | 'completed' | 'failed' | 'idle'
 
 // 失败详情相关状态
 const failureDetailsVisible = ref(false)
@@ -206,6 +212,26 @@ onMounted(async () => {
     console.log('📊 页面初始化时发现项目正在合成，自动显示进度抽屉')
   }
   
+  // 🎯 处理重新合成参数
+  const restartType = route.query.restart
+  if (restartType && selectedChapter.value) {
+    console.log('🔄 检测到重新合成参数:', restartType)
+    
+    // 延迟执行，确保页面完全加载
+    setTimeout(() => {
+      if (restartType === 'voice') {
+        console.log('🎤 自动触发TTS语音合成')
+        handleStartSynthesis()
+      } else if (restartType === 'environment') {
+        console.log('🌍 自动触发环境音混合合成')
+        handleShowEnvironmentConfig()
+      }
+      
+      // 清除查询参数，避免重复触发
+      router.replace({ path: route.path })
+    }, 1000)
+  }
+  
   initWebSocket()
 })
 
@@ -254,7 +280,11 @@ const loadSynthesisProgress = async () => {
         status: progressInfo.status || project.value?.status || 'pending',
         completed_segments: segments.completed || 0,
         total_segments: segments.total || 0,
-        failed_segments: segments.failed || 0
+        failed_segments: segments.failed || 0,
+        current_processing: progressData.value?.synthesis_type === 'environment_mix' 
+          ? '🌍 正在进行环境音混合合成...' 
+          : (progressInfo.current_processing || ''),
+        synthesis_type: progressData.value?.synthesis_type // 保持合成类型标识
       }
       
       // 🔧 根据项目状态同步前端合成状态
@@ -282,7 +312,10 @@ const loadSynthesisProgress = async () => {
           completed_segments: stats.completedSegments || 0,
           total_segments: stats.totalSegments || 0,
           failed_segments: stats.failedSegments || 0,
-          current_processing: ''
+          current_processing: progressData.value?.synthesis_type === 'environment_mix' 
+            ? '🌍 正在进行环境音混合合成...' 
+            : '',
+          synthesis_type: progressData.value?.synthesis_type // 保持合成类型标识
         }
         console.log('📊 从项目统计推导进度:', progressData.value)
       } else {
@@ -293,7 +326,10 @@ const loadSynthesisProgress = async () => {
           completed_segments: 0,
           total_segments: 0,
           failed_segments: 0,
-          current_processing: ''
+          current_processing: progressData.value?.synthesis_type === 'environment_mix' 
+            ? '🌍 正在进行环境音混合合成...' 
+            : '',
+          synthesis_type: progressData.value?.synthesis_type // 保持合成类型标识
         }
         console.log('📊 设置默认进度数据:', progressData.value)
       }
@@ -309,7 +345,10 @@ const loadSynthesisProgress = async () => {
         completed_segments: stats.completedSegments || 0,
         total_segments: stats.totalSegments || 0,
         failed_segments: stats.failedSegments || 0,
-        current_processing: ''
+        current_processing: progressData.value?.synthesis_type === 'environment_mix' 
+          ? '🌍 正在进行环境音混合合成...' 
+          : '',
+        synthesis_type: progressData.value?.synthesis_type // 保持合成类型标识
       }
     } else {
       // 设置安全的默认值
@@ -319,7 +358,10 @@ const loadSynthesisProgress = async () => {
         completed_segments: 0,
         total_segments: 0,
         failed_segments: 0,
-        current_processing: ''
+        current_processing: progressData.value?.synthesis_type === 'environment_mix' 
+          ? '🌍 正在进行环境音混合合成...' 
+          : '',
+        synthesis_type: progressData.value?.synthesis_type // 保持合成类型标识
       }
     }
     console.log('📊 异常情况设置进度数据:', progressData.value)
@@ -546,12 +588,17 @@ const handleStartSynthesis = async () => {
     }
     
     synthesisStarting.value = true
+    
+    // 🎯 设置合成类型
+    synthesisType.value = 'voice'
+    synthesisStatus.value = 'running'
+    
     const response = await api.startGeneration(project.value.id, {
       chapter_ids: selectedChapter.value ? [selectedChapter.value] : undefined
     })
     
     if (response.data.success) {
-      message.success('开始合成音频')
+      message.success('🎤 开始角色音合成')
       synthesisRunning.value = true
       progressDrawerVisible.value = true
       
@@ -562,7 +609,8 @@ const handleStartSynthesis = async () => {
         completed_segments: 0,
         total_segments: 0,
         failed_segments: 0,
-        current_processing: '正在准备合成...'
+        current_processing: '🎤 正在进行角色音合成...',
+        synthesis_type: 'voice' // 标记合成类型
       }
       
       // 🔧 立即获取当前项目状态
@@ -583,6 +631,8 @@ const handleStartSynthesis = async () => {
   } catch (error) {
     console.error('Failed to start synthesis:', error)
     message.error('启动合成失败')
+    synthesisType.value = null
+    synthesisStatus.value = 'failed'
   } finally {
     synthesisStarting.value = false
   }
@@ -640,6 +690,34 @@ const handleRetrySynthesis = async () => {
   } catch (error) {
     console.error('Failed to retry synthesis:', error)
     message.error('重试合成失败')
+  }
+}
+
+// 重置项目状态 - 解决项目状态卡死问题
+const handleResetProjectStatus = async () => {
+  try {
+    console.log('🔧 重置项目状态，项目ID:', project.value.id)
+    const response = await api.resetProjectStatus(project.value.id)
+    
+    if (response.data.success) {
+      message.success('✅ 项目状态已重置')
+      
+      // 重新加载项目信息
+      await loadProject()
+      
+      // 重置本地状态
+      synthesisRunning.value = false
+      progressDrawerVisible.value = false
+      
+      // 停止定期刷新
+      if (progressRefreshInterval) {
+        clearInterval(progressRefreshInterval)
+        progressRefreshInterval = null
+      }
+    }
+  } catch (error) {
+    console.error('Failed to reset project status:', error)
+    message.error('重置项目状态失败: ' + (error.response?.data?.detail || error.message))
   }
 }
 
@@ -1026,62 +1104,91 @@ const getSelectedChapterStatus = () => {
   return finalStatus
 }
 
-// 环境音合成相关方法
-const handleShowEnvironmentConfig = () => {
-  environmentConfigVisible.value = true
-}
-
-const handleCancelEnvironmentConfig = () => {
-  environmentConfigVisible.value = false
-}
-
-const handleEnvironmentSynthesis = async (config) => {
+// 环境音识别相关方法
+const handleShowEnvironmentConfig = async () => {
   try {
-    environmentConfigVisible.value = false
-    
-    // 🔧 防重复合成检查
-    if (!canStartSynthesis.value) {
-      message.warning('当前无法开始环境音合成，请检查项目状态')
-      return
-    }
-    
-    // 检查是否选择了章节
     if (!selectedChapter.value) {
-      message.error('请先选择要合成的章节')
+      message.warning('请先选择章节')
       return
     }
     
-    // 🔧 重新获取最新项目状态进行二次确认
-    await loadProject()
-    if (project.value.status === 'processing' || project.value.status === 'paused') {
-      message.warning(`项目正在${project.value.status === 'processing' ? '合成中' : '暂停状态'}，无法进行环境音合成`)
+    // 检查是否有智能准备结果
+    let chapterSynthesisData = null
+    if (preparationResults.value && preparationResults.value.data) {
+      const chapterData = preparationResults.value.data.find(
+        result => result.chapter_id === selectedChapter.value
+      )
+      
+      if (chapterData && chapterData.synthesis_json && chapterData.synthesis_json.synthesis_plan) {
+        chapterSynthesisData = chapterData.synthesis_json.synthesis_plan
+        console.log('📋 获取到章节合成计划:', chapterSynthesisData.length, '个段落')
+      }
+    }
+    
+    if (!chapterSynthesisData) {
+      message.error('未找到章节的智能准备结果，请先完成智能准备')
       return
     }
     
-    synthesisStarting.value = true
+    // 🎯 弹出环境音识别抽屉，而不是直接执行合成
+    console.log('🌍 打开环境音识别抽屉')
+    environmentConfigVisible.value = true
     
-    // 更新环境音音量配置
-    environmentVolume.value = config.environmentVolume
+  } catch (error) {
+    console.error('Environment config failed:', error)
+    message.error('环境音识别配置失败')
+  }
+}
+
+const handleEnvironmentGenerationComplete = (finalResult) => {
+  console.log('🎉 环境音生成完成:', finalResult)
+  message.success('环境音配置生成完成！')
+  
+  // 刷新项目数据
+  loadProject()
+  loadPreparationResults()
+}
+
+const handleStartAudioMixing = async (finalResult) => {
+  console.log('🎵 开始音频混合:', finalResult)
+  
+  try {
+    // 🎯 设置合成类型
+    synthesisType.value = 'environment'
+    synthesisStatus.value = 'running'
     
-    console.log('开始环境音混合合成，章节:', selectedChapter.value, '音量:', config.environmentVolume)
+    message.loading('🌍 正在启动环境音混合合成...', 0)
     
-    // 调用章节级别的环境音混合API
-    const response = await api.startChapterEnvironmentSynthesis(
+    // 调用环境音混合合成API
+    const synthesisResponse = await api.startChapterEnvironmentSynthesis(
       project.value.id, 
-      selectedChapter.value, 
+      selectedChapter.value,
       {
         enable_environment: true,
-        environment_volume: config.environmentVolume,
-        parallel_tasks: 1
+        environment_volume: environmentVolume.value || 0.3,
+        environment_config: finalResult.persistence_data // 使用用户确认的配置
       }
     )
     
-    if (response.data.success) {
-      message.success('环境音混合合成已开始！')
+    message.destroy()
+    
+    if (synthesisResponse.data.success) {
+      message.success('🌍 环境音混合合成已启动！')
       synthesisRunning.value = true
       progressDrawerVisible.value = true
       
-      // 启动进度监控
+      // 🔧 初始化进度数据
+      progressData.value = {
+        progress: 0,
+        status: 'processing',
+        completed_segments: 0,
+        total_segments: 0,
+        failed_segments: 0,
+        current_processing: '🌍 正在进行环境音混合合成...',
+        synthesis_type: 'environment' // 标记合成类型
+      }
+      
+      // 🔧 启动定期刷新进度
       if (progressRefreshInterval) {
         clearInterval(progressRefreshInterval)
       }
@@ -1091,13 +1198,97 @@ const handleEnvironmentSynthesis = async (config) => {
         }
       }, 3000)
     } else {
-      message.error(response.data.message || '环境音合成失败')
+      message.error('环境音混合合成启动失败')
+      synthesisType.value = null
+      synthesisStatus.value = 'failed'
     }
+    
   } catch (error) {
-    console.error('环境音合成失败:', error)
-    message.error('环境音合成失败: ' + (error.response?.data?.detail || error.message))
-  } finally {
+    message.destroy()
+    console.error('Environment audio mixing failed:', error)
+    message.error('环境音混合合成失败: ' + (error.response?.data?.detail || error.message))
+    synthesisType.value = null
+    synthesisStatus.value = 'failed'
+  }
+}
+
+// 新增：环境+角色音生成处理函数
+const handleStartMixedSynthesis = async () => {
+  try {
+    if (!selectedChapter.value) {
+      message.warning('请先选择章节')
+      return
+    }
+    
+    // 检查是否有智能准备结果
+    if (!preparationResults.value) {
+      message.error('未找到智能准备结果，请先完成智能准备')
+      return
+    }
+    
+    // 检查是否有环境音配置
+    // 这里可以检查项目是否已经完成环境音识别
+    // 如果没有，可以提示用户先进行环境音识别
+    
+    // 🎯 设置合成类型
+    synthesisType.value = 'mixed'
+    synthesisStatus.value = 'running'
+    synthesisStarting.value = true
+    
+    message.loading('🎵 正在启动环境+角色音混合生成...', 0)
+    
+    // 调用混合合成API（需要后端实现）
+    const synthesisResponse = await api.startChapterMixedSynthesis(
+      project.value.id, 
+      selectedChapter.value,
+      {
+        enable_voice: true,
+        enable_environment: true,
+        environment_volume: environmentVolume.value || 0.3
+      }
+    )
+    
+    message.destroy()
     synthesisStarting.value = false
+    
+    if (synthesisResponse.data.success) {
+      message.success('🎵 环境+角色音混合生成已启动！')
+      synthesisRunning.value = true
+      progressDrawerVisible.value = true
+      
+      // 🔧 初始化进度数据
+      progressData.value = {
+        progress: 0,
+        status: 'processing',
+        completed_segments: 0,
+        total_segments: 0,
+        failed_segments: 0,
+        current_processing: '🎵 正在进行环境+角色音混合生成...',
+        synthesis_type: 'mixed' // 标记合成类型
+      }
+      
+      // 🔧 启动定期刷新进度
+      if (progressRefreshInterval) {
+        clearInterval(progressRefreshInterval)
+      }
+      progressRefreshInterval = setInterval(() => {
+        if (synthesisRunning.value) {
+          loadSynthesisProgress()
+        }
+      }, 3000)
+    } else {
+      message.error('环境+角色音混合生成启动失败')
+      synthesisType.value = null
+      synthesisStatus.value = 'failed'
+    }
+    
+  } catch (error) {
+    message.destroy()
+    synthesisStarting.value = false
+    console.error('Mixed synthesis failed:', error)
+    message.error('环境+角色音混合生成失败: ' + (error.response?.data?.detail || error.message))
+    synthesisType.value = null
+    synthesisStatus.value = 'failed'
   }
 }
 </script>

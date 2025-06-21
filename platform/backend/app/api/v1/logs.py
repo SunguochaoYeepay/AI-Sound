@@ -16,7 +16,8 @@ from sqlalchemy import desc, and_, func, text
 from pydantic import BaseModel
 
 from ...database import get_db
-from ...models.system import SystemLog, LogLevel, LogModule
+from ...models.system_log import SystemLog
+from ...utils.logger import LogLevel, LogModule
 
 router = APIRouter(prefix="/logs", tags=["日志监控"])
 
