@@ -1,0 +1,37 @@
+# 核心框架（使用默认版本）
+torch
+torchaudio
+fastapi
+uvicorn
+pydantic
+
+# 音频处理
+librosa
+soundfile
+pydub
+
+# 工具包
+numpy
+requests
+pathlib
+
+# 加速和模型
+accelerate
+transformers
+lightning
+
+# 其他必需依赖
+psutil
+einops
+flashy
+fairseq
+audiocraft
+demucs
+encodec
+hydra-core
+hydra-colorlog
+omegaconf
+
+# 可选的额外包（如果需要）
+# gradio
+# datasets 

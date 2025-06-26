@@ -1,0 +1,10 @@
+espnet
+espnet_model_zoo
+sentencepiece==0.1.99
+flask
+soundfile
+torch
+typeguard==2.13.3
+gradio
+scipy==1.8.0
+httpx

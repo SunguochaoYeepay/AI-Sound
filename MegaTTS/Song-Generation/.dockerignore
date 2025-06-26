@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+venv_*/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# 临时文件
+temp/
+output/
+*.log
+
+# 不需要的大文件目录
+# 模型文件通过volume挂载，不需要复制到镜像
+ckpt/ 

@@ -1,0 +1,15 @@
+FROM juhayna/song-generation-levo:hf0613
+
+WORKDIR /app
+
+# 复制项目文件
+COPY . /app/
+
+# 安装额外依赖
+RUN pip install fastapi uvicorn python-multipart
+
+# 暴露端口
+EXPOSE 7862
+
+# 使用新的API服务器
+CMD ["python", "api_server_gradio.py", "ckpt/songgeneration_base", "7862"] 
