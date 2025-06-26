@@ -1,0 +1,32 @@
+{
+  "site": {
+    "siteName": "AI-Sound",
+    "siteSubtitle": "语音合成解决方案",
+    "siteDescription": "基于最新AI技术的语音合成平台，支持多种语音模型、情感表达和个性化定制，为您提供专业的语音解决方案。",
+    "adminEmail": "admin@ai-sound.com",
+    "supportContact": "support@ai-sound.com",
+    "logo": "",
+    "favicon": ""
+  },
+  "theme": {
+    "mode": "dark",
+    "colorScheme": "purple",
+    "layout": "comfortable",
+    "sidebarStyle": "gradient",
+    "cardStyle": "rounded",
+    "enableAnimations": true,
+    "compactMode": false
+  },
+  "ai": {
+    "ttsServiceUrl": "http://localhost:7929",
+    "concurrentLimit": 3,
+    "ollamaServiceUrl": "http://localhost:11434",
+    "defaultLlmModel": "qwen:latest"
+  },
+  "storage": {
+    "audioRetentionDays": 30,
+    "maxFileSize": 100,
+    "cleanupInterval": "weekly",
+    "enableAutoBackup": true
+  }
+}

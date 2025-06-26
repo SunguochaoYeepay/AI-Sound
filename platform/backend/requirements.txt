@@ -1,0 +1,75 @@
+# AI-Sound Platform Backend Dependencies
+
+# FastAPI与Web服务器
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+websockets==12.0
+
+# 数据库相关
+sqlalchemy==2.0.23
+alembic==1.12.1
+psycopg2-binary==2.9.9
+
+# 数据验证与序列化
+pydantic==2.5.0
+pydantic[email]==2.5.0
+
+# HTTP客户端
+aiohttp==3.9.1
+httpx==0.25.2
+requests==2.31.0
+
+# 重试机制
+tenacity==8.2.3
+
+# 文件处理
+aiofiles==23.2.0
+python-magic==0.4.27
+
+# 音频处理
+pydub==0.25.1
+wave==0.0.2
+torchaudio>=2.0.0
+SpeechRecognition==3.10.0
+
+# 音视频编辑处理 - MoviePy集成
+moviepy==1.0.3
+ffmpeg-python==0.2.0
+imageio-ffmpeg==0.4.9
+
+# TangoFlux环境音生成
+torch>=2.0.0
+transformers>=4.30.0
+diffusers>=0.20.0
+accelerate>=0.20.0
+
+# JSON与数据处理
+orjson==3.9.10
+
+# 异步任务
+celery==5.3.4
+redis==5.0.1
+
+# 日志
+structlog==23.2.0
+
+# 开发工具
+pytest==7.4.3
+pytest-asyncio==0.21.1
+black==23.11.0
+isort==5.12.0
+flake8==6.1.0
+
+# 类型检查
+mypy==1.7.1
+
+# 环境变量
+python-dotenv==1.0.0
+
+# Additional Dependencies
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+numpy==1.24.3
+scipy==1.11.4 
+psutil==5.9.6 

@@ -1,0 +1,41 @@
+# Docker ignore file to reduce build context size
+
+# Exclude redundant directories
+**/ckpt/ckpt/
+**/vae_dir/
+**/.git/
+**/.gitignore
+**/.gitattributes
+
+# Exclude large unnecessary files
+**/*.log
+**/*.tmp
+**/temp/
+**/cache/
+
+# Exclude development files
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/.pytest_cache/
+**/node_modules/
+
+# Exclude documentation and images
+**/README.md
+**/img/
+**/docs/
+
+# Exclude redundant model directories (keep only needed ones)
+**/SongGeneration-Official-Demo/
+**/SongGeneration-HF-Official/
+
+# Keep only essential files
+!**/ckpt/vae/autoencoder_music_1320k.ckpt
+!**/ckpt/vae/stable_audio_1920_vae.json
+!**/ckpt/model_1rvq/model_2_fixed.safetensors
+!**/ckpt/model_septoken/model_2.safetensors
+!**/ckpt/models--lengyue233--content-vec-best/**
+!**/ckpt/prompt.pt
+!**/ckpt/encode-s12k.pt
+!**/ckpt/config.yaml
+!**/ckpt/songgeneration_base/config.yaml 

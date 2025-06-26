@@ -1,0 +1,217 @@
+version: '3.8'
+
+services:
+  # 后端服务
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+    container_name: ai-sound-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://ai_sound_user:ai_sound_password@database:5432/ai_sound
+      - MEGATTS3_URL=http://megatts3:7929
+      - TANGOFLUX_URL=http://tangoflux:7930
+      - SONGGENERATION_URL=http://songgeneration:8081
+      - OLLAMA_URL=http://host.docker.internal:11434  # Windows宿主机Ollama服务
+      - AUDIO_DIR=/app/data/audio
+      - UPLOADS_DIR=/app/data/uploads
+      - VOICE_PROFILES_DIR=/app/data/voice_profiles
+      - BACKUP_DIR=/app/data/backups
+      - DEBUG=false
+    volumes:
+      - ./data:/app/data
+      - ./data/backups:/app/data/backups  # 备份文件持久化
+      # 生产模式：使用构建的镜像代码，不启用热重载
+      # - ./platform/backend/app:/app/app  # 开发模式：代码热重载
+    depends_on:
+      - database
+      - redis
+      - megatts3
+      - tangoflux
+      - songgeneration
+    networks:
+      - ai-sound-network
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # 数据库服务
+  database:
+    image: postgres:15-alpine
+    container_name: ai-sound-db
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=ai_sound
+      - POSTGRES_USER=ai_sound_user
+      - POSTGRES_PASSWORD=ai_sound_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - ai-sound-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ai_sound_user -d ai_sound"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis缓存
+  redis:
+    image: redis:7-alpine
+    container_name: ai-sound-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - ./data/cache:/data
+    networks:
+      - ai-sound-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # MegaTTS3语音合成服务
+  megatts3:
+    image: megatts3:latest
+    container_name: ai-sound-megatts3
+    command: python api_server.py
+    ports:
+      - "7929:7929"
+    volumes:
+      - ./data/tts:/app/data
+    networks:
+      - ai-sound-network
+    restart: unless-stopped
+    environment:
+      - CUDA_VISIBLE_DEVICES=0
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7929/health"]
+      interval: 60s
+      timeout: 30s
+      retries: 3
+
+  # TangoFlux环境音生成服务
+  tangoflux:
+    build:
+      context: .
+      dockerfile: docker/tangoflux/Dockerfile
+    container_name: ai-sound-tangoflux
+    command: python tangoflux_api_server.py
+    ports:
+      - "7930:7930"
+    volumes:
+      - ./data/environment_sounds:/app/data/environment_sounds
+    networks:
+      - ai-sound-network
+    restart: unless-stopped
+    environment:
+      - CUDA_VISIBLE_DEVICES=0
+      - TANGOFLUX_MODEL_NAME=declare-lab/TangoFlux
+      - TANGOFLUX_DEVICE=cuda
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7930/health"]
+      interval: 60s
+      timeout: 30s
+      retries: 3
+
+  # SongGeneration背景音乐生成服务
+  songgeneration:
+    build:
+      context: .
+      dockerfile: docker/songgeneration/Dockerfile
+    container_name: ai-sound-songgeneration
+    ports:
+      - "8081:7863"  # 映射容器内7863端口到主机8081端口
+      - "7862:7862"  # Gradio Web界面
+    volumes:
+      - ./data/audio:/app/data/audio
+      # 分别挂载源代码子目录，避免覆盖容器内的启动脚本
+      - ./MegaTTS/SongGeneration/codeclm:/workspace/SongGeneration/codeclm
+      - ./MegaTTS/SongGeneration/tools:/workspace/SongGeneration/tools
+      - ./MegaTTS/SongGeneration/libs:/workspace/SongGeneration/libs
+      - ./MegaTTS/SongGeneration/models_gpt:/workspace/SongGeneration/models_gpt
+      - ./MegaTTS/SongGeneration/third_party:/workspace/SongGeneration/third_party
+      - ./MegaTTS/SongGeneration/our_MERT_BESTRQ:/workspace/SongGeneration/our_MERT_BESTRQ
+      - ./MegaTTS/SongGeneration/conf:/workspace/SongGeneration/conf
+      - ./MegaTTS/SongGeneration/vae:/workspace/SongGeneration/vae
+      - ./MegaTTS/SongGeneration/output:/workspace/SongGeneration/output
+      - ./MegaTTS/SongGeneration/temp:/workspace/SongGeneration/temp
+      # 挂载模型目录
+      - ./SongGeneration-Official-Demo/SongGeneration/ckpt:/workspace/SongGeneration/ckpt
+    networks:
+      - ai-sound-network
+    restart: unless-stopped
+    environment:
+      - CUDA_VISIBLE_DEVICES=0
+      - SERVER_HOST=0.0.0.0
+      - SERVER_PORT=7863
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7863/health"]
+      interval: 60s
+      timeout: 30s
+      retries: 3
+
+  # Nginx网关
+  nginx:
+    image: nginx:alpine
+    container_name: ai-sound-nginx
+    ports:
+      - "3001:80"
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/nginx/ssl:/etc/nginx/ssl:ro
+      - ./nginx-dist:/usr/share/nginx/html:ro  # 前端构建产物
+      - ./data/audio:/usr/share/nginx/audio:ro
+      - ./data/voice_profiles:/usr/share/nginx/voice_profiles:ro
+      - ./data/environment_sounds:/usr/share/nginx/environment_sounds:ro
+      - ./data/logs/nginx:/var/log/nginx
+    depends_on:
+      - backend
+    networks:
+      - ai-sound-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  ai-sound-network:
+    driver: bridge
+    name: ai-sound-network
+
+volumes:
+  postgres_data:
+  redis_data:
