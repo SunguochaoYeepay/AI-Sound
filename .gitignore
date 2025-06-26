@@ -2,6 +2,13 @@
 # AI-Sound Project .gitignore
 # ========================================
 
+# ========================================
+# MegaTTS Submodules (exclude completely)
+# ========================================
+MegaTTS/MegaTTS3/
+MegaTTS/Style-Bert-VITS2/
+MegaTTS/TangoFlux/
+
 # Song-Generation complete model directory
 MegaTTS/Song-Generation/ckpt/
 MegaTTS/Song-Generation/ckpt/**
@@ -196,15 +203,6 @@ MegaTTS/*/*.zip
 platform/backend/data/audio/*.wav
 platform/backend/data/audio/*.mp3
 platform/backend/data/audio/*.flac
-
-# Style-Bert-VITS2 model files
-MegaTTS/Style-Bert-VITS2/bert/*/
-MegaTTS/Style-Bert-VITS2/slm/*/
-MegaTTS/Style-Bert-VITS2/Data/
-MegaTTS/Style-Bert-VITS2/model_assets/
-MegaTTS/Style-Bert-VITS2/inputs/
-!MegaTTS/Style-Bert-VITS2/bert/*/.gitkeep
-!MegaTTS/Style-Bert-VITS2/slm/*/.gitkeep
 
 # ========================================
 # Docker Related
