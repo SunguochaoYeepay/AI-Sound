@@ -15,11 +15,13 @@ import torch
 import torchaudio
 from datetime import datetime
 from typing import Optional, Dict, Any
-from fastapi import FastAPI, HTTPException, UploadFile, File, BackgroundTasks
+from fastapi import FastAPI, HTTPException, UploadFile, File, BackgroundTasks, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import uvicorn
+import asyncio
+from pathlib import Path
 
 # 添加项目路径
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -226,7 +228,9 @@ def format_lyrics(lyric: str) -> tuple[str, Optional[str]]:
         struct_tag = lines[0].strip().lower()
         
         if struct_tag not in STRUCTS:
-            return None, f"段落必须以结构标签开始，支持的标签: {list(STRUCTS.keys())}"
+            # 修复STRUCTS.keys()错误：STRUCTS是列表而不是字典
+            structs_list = STRUCTS if isinstance(STRUCTS, list) else list(STRUCTS.keys()) if hasattr(STRUCTS, 'keys') else list(STRUCTS)
+            return None, f"段落必须以结构标签开始，支持的标签: {structs_list}"
         
         if struct_tag in vocal_structs:
             vocal_flag = True
@@ -471,6 +475,164 @@ async def generate_song(request: SongRequest, background_tasks: BackgroundTasks)
         print(f"❌ 生成歌曲时出错: {str(e)}")
         raise HTTPException(status_code=500, detail=f"生成失败: {str(e)}")
 
+@app.websocket("/ws/progress/{task_id}")
+async def websocket_progress(websocket: WebSocket, task_id: str):
+    """WebSocket进度监控端点"""
+    await manager.connect(websocket, task_id)
+    try:
+        while True:
+            # 保持连接活跃
+            await asyncio.sleep(1)
+    except WebSocketDisconnect:
+        manager.disconnect(task_id)
+
+async def generate_song_with_progress(request: SongRequest, task_id: str) -> SongResponse:
+    """带进度报告的异步音乐生成"""
+    if MODEL is None:
+        raise HTTPException(status_code=503, detail="模型未初始化")
+    
+    try:
+        start_time = time.time()
+        
+        # 步骤1: 验证输入 (10%)
+        await manager.send_progress(task_id, 0.1, "验证输入参数...")
+        
+        if not request.lyrics.strip():
+            raise HTTPException(status_code=400, detail="歌词不能为空")
+        
+        if request.genre and request.genre not in SUPPORTED_GENRES:
+            raise HTTPException(status_code=400, detail=f"不支持的音乐风格: {request.genre}")
+        
+        # 步骤2: 格式化歌词 (20%)
+        await manager.send_progress(task_id, 0.2, "格式化歌词...")
+        lyric_norm, error_msg = format_lyrics(request.lyrics)
+        if error_msg:
+            raise HTTPException(status_code=400, detail=error_msg)
+        
+        # 步骤3: 准备生成 (30%)
+        await manager.send_progress(task_id, 0.3, "准备音乐生成...")
+        file_id = str(uuid.uuid4())
+        output_dir = "output/api_generated"
+        os.makedirs(output_dir, exist_ok=True)
+        target_wav_path = f"{output_dir}/{file_id}.flac"
+        
+        params = {
+            'cfg_coef': request.cfg_coef,
+            'temperature': request.temperature,
+            'top_k': request.top_k
+        }
+        params = {k: v for k, v in params.items() if v is not None}
+        
+        print(f"🎵 开始生成歌曲 (ID: {file_id})...")
+        print(f"📝 歌词: {lyric_norm[:100]}...")
+        
+        # 步骤4: 音乐生成 (30% -> 90%)
+        await manager.send_progress(task_id, 0.4, "正在生成音乐...")
+        
+        # 由于MODEL()调用是同步的，我们在生成过程中模拟进度
+        # 在实际实现中，可以修改MODEL内部来报告真实进度
+        async def simulate_progress():
+            for i in range(6):  # 6个阶段
+                await asyncio.sleep(1)  # 每秒更新一次
+                progress = 0.4 + (i + 1) * 0.08  # 从40%到88%
+                await manager.send_progress(task_id, progress, f"生成中... 阶段 {i+1}/6")
+        
+        # 启动进度模拟任务
+        progress_task = asyncio.create_task(simulate_progress())
+        
+        # 在另一个线程中运行MODEL生成（避免阻塞）
+        def run_model():
+            return MODEL(
+                lyric=lyric_norm,
+                description=request.description,
+                prompt_audio_path=None,
+                genre=request.genre,
+                auto_prompt_path='ckpt/ckpt/prompt.pt',
+                params=params
+            )
+        
+        # 使用线程池执行器运行模型生成
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future = executor.submit(run_model)
+            
+            # 等待生成完成或进度任务完成
+            while not future.done():
+                await asyncio.sleep(0.5)
+            
+            # 取消进度任务
+            progress_task.cancel()
+            
+            # 获取生成结果
+            audio_data = future.result()
+        
+        # 步骤5: 保存音频 (95%)
+        await manager.send_progress(task_id, 0.95, "保存音频文件...")
+        
+        sample_rate = MODEL.cfg.sample_rate
+        audio_tensor = audio_data.cpu()
+        print(f"🔍 原始音频shape: {audio_tensor.shape}")
+        
+        # 处理音频格式
+        if audio_tensor.dim() == 1:
+            audio_tensor = audio_tensor.unsqueeze(0)
+        elif audio_tensor.dim() == 3:
+            audio_tensor = audio_tensor.squeeze(0)
+        elif audio_tensor.dim() > 3:
+            audio_tensor = audio_tensor[0]
+            if audio_tensor.dim() > 2:
+                audio_tensor = audio_tensor.view(audio_tensor.shape[0], -1)
+        
+        if audio_tensor.dim() != 2:
+            audio_tensor = audio_tensor.flatten().unsqueeze(0)
+        
+        torchaudio.save(target_wav_path, audio_tensor, sample_rate)
+        
+        generation_time = time.time() - start_time
+        print(f"✅ 歌曲生成完成 (ID: {file_id}), 耗时: {generation_time:.2f}秒")
+        
+        # 步骤6: 完成 (100%)
+        await manager.send_progress(task_id, 1.0, f"生成完成！耗时 {generation_time:.1f}秒")
+        
+        input_config = {
+            "lyric": lyric_norm,
+            "genre": request.genre,
+            "description": request.description,
+            "params": params,
+            "inference_duration": generation_time,
+            "timestamp": datetime.now().isoformat(),
+        }
+        
+        return SongResponse(
+            success=True,
+            message="歌曲生成成功",
+            file_id=file_id,
+            file_path=target_wav_path,
+            generation_time=generation_time,
+            sample_rate=sample_rate,
+            input_config=input_config
+        )
+        
+    except Exception as e:
+        await manager.send_progress(task_id, -1, f"生成失败: {str(e)}")
+        print(f"❌ 生成歌曲时出错: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"生成失败: {str(e)}")
+
+@app.post("/generate_async")
+async def generate_song_async(request: SongRequest):
+    """异步音乐生成（支持进度监控）"""
+    task_id = str(uuid.uuid4())
+    
+    # 启动后台生成任务
+    asyncio.create_task(generate_song_with_progress(request, task_id))
+    
+    return {
+        "task_id": task_id,
+        "message": "音乐生成任务已启动",
+        "websocket_url": f"ws://localhost:7862/ws/progress/{task_id}",
+        "instructions": "请连接到WebSocket URL获取实时进度"
+    }
+
 @app.get("/download/{file_id}")
 async def download_song(file_id: str):
     """下载生成的歌曲文件"""
@@ -484,6 +646,36 @@ async def download_song(file_id: str):
         media_type="audio/flac",
         filename=f"song_{file_id}.flac"
     )
+
+# 添加WebSocket连接管理器
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: Dict[str, WebSocket] = {}
+
+    async def connect(self, websocket: WebSocket, task_id: str):
+        await websocket.accept()
+        self.active_connections[task_id] = websocket
+
+    def disconnect(self, task_id: str):
+        if task_id in self.active_connections:
+            del self.active_connections[task_id]
+
+    async def send_progress(self, task_id: str, progress: float, message: str):
+        if task_id in self.active_connections:
+            try:
+                await self.active_connections[task_id].send_text(
+                    json.dumps({
+                        "progress": progress,
+                        "message": message,
+                        "timestamp": time.time()
+                    })
+                )
+            except:
+                # 连接已断开，清理
+                self.disconnect(task_id)
+
+# 全局连接管理器
+manager = ConnectionManager()
 
 if __name__ == "__main__":
     print("🎵 SongGeneration API Server (Gradio版本) 启动中...")

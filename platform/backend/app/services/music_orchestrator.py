@@ -92,10 +92,10 @@ class MusicOrchestrator:
                 logger.info(f"直接模式：跳过场景分析，风格: {final_style}")
             else:
                 # 完整模式：进行场景分析
-                scene_analysis = self.scene_analyzer.analyze_content(content)
-                logger.info(f"场景分析完成: {scene_analysis.scene_type} -> {scene_analysis.recommended_style}")
-                final_style = custom_style or scene_analysis.recommended_style
-                music_description = self._create_music_description(content, scene_analysis)
+            scene_analysis = self.scene_analyzer.analyze_content(content)
+            logger.info(f"场景分析完成: {scene_analysis.scene_type} -> {scene_analysis.recommended_style}")
+            final_style = custom_style or scene_analysis.recommended_style
+            music_description = self._create_music_description(content, scene_analysis)
             
             # 步骤2：调用引擎生成音乐（使用完整的SongGeneration参数）
             logger.info(f"调用引擎生成音乐: {final_style}")
