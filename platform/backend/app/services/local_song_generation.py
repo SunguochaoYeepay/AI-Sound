@@ -53,7 +53,7 @@ class LocalMusicGenerator:
         else:
             # 默认路径相对于平台根目录
             platform_root = Path(__file__).parent.parent.parent.parent.parent
-            self.song_generation_dir = platform_root / "MegaTTS" / "SongGeneration"
+            self.song_generation_dir = platform_root / "MegaTTS" / "Song-Generation"
         
         # 设置输出目录
         self.output_dir = self.song_generation_dir / "output"
