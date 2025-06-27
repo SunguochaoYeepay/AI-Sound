@@ -36,11 +36,71 @@ class SongGenerationEngineClient:
     简洁设计：只负责与引擎通信，不包含业务逻辑
     """
     
-    def __init__(self, base_url: str = "http://localhost:7862", timeout: int = 600):
+    def __init__(self, base_url: str = None, timeout: int = 600):
+        # 自动检测运行环境
+        if base_url is None:
+            base_url = self._detect_environment_url()
+        
         self.base_url = base_url.rstrip('/')
         self.timeout = timeout  # 增加到10分钟，音乐生成需要很长时间
         
         logger.info(f"SongGeneration引擎客户端初始化: {self.base_url}")
+    
+    def _detect_environment_url(self) -> str:
+        """
+        自动检测运行环境并返回合适的URL
+        """
+        import os
+        import socket
+        
+        # 1. 优先使用环境变量
+        env_url = os.getenv("SONGGENERATION_URL")
+        if env_url:
+            logger.info(f"使用环境变量SONGGENERATION_URL: {env_url}")
+            return env_url
+        
+        # 2. 检测是否在Docker容器内
+        if self._is_running_in_docker():
+            url = "http://host.docker.internal:7862"
+            logger.info(f"检测到Docker环境，使用: {url}")
+            return url
+        
+        # 3. 本地开发环境
+        url = "http://localhost:7862"
+        logger.info(f"检测到本地环境，使用: {url}")
+        return url
+    
+    def _is_running_in_docker(self) -> bool:
+        """
+        检测是否在Docker容器内运行
+        """
+        import os
+        import pathlib
+        
+        # 方法1: 检查.dockerenv文件
+        if pathlib.Path("/.dockerenv").exists():
+            return True
+        
+        # 方法2: 检查环境变量
+        if os.getenv("DOCKER_ENV") == "true":
+            return True
+            
+        # 方法3: 检查cgroup信息（Linux特定）
+        try:
+            with open("/proc/1/cgroup", "r") as f:
+                content = f.read()
+                if "docker" in content or "containerd" in content:
+                    return True
+        except (FileNotFoundError, PermissionError):
+            pass
+        
+        # 方法4: 检查容器特有的环境变量
+        container_env_vars = ["HOSTNAME", "CONTAINER_ID"]
+        for var in container_env_vars:
+            if os.getenv(var) and len(os.getenv(var, "")) > 10:  # 容器ID通常很长
+                return True
+        
+        return False
     
     async def health_check(self) -> bool:
         """检查引擎健康状态"""
@@ -220,6 +280,17 @@ class SongGenerationEngineClient:
             logger.info(f"请求数据: {request_data}")
             logger.info(f"数据类型检查: lyrics={type(lyrics)}, genre={type(genre)}, cfg_coef={type(cfg_coef)}")
             
+            # 验证请求数据格式
+            if not isinstance(request_data, dict):
+                logger.error(f"请求数据必须是字典格式，当前类型: {type(request_data)}")
+                return None
+                
+            # 确保所有值都是JSON可序列化的
+            for key, value in request_data.items():
+                if not isinstance(value, (str, int, float, bool, type(None))):
+                    logger.error(f"请求参数 {key} 的值类型不正确: {type(value)}")
+                    return None
+            
             # 配置HTTP客户端，添加明确的请求头和连接设置
             headers = {
                 "Content-Type": "application/json",
@@ -241,12 +312,23 @@ class SongGenerationEngineClient:
                 limits=httpx.Limits(max_connections=1, max_keepalive_connections=1)
             ) as client:
                 logger.info(f"发送HTTP请求，请求头: {headers}")
+                logger.info(f"发送到端点: {self.base_url}/generate")
+                
                 response = await client.post(
                     f"{self.base_url}/generate",  # 使用正确的端点
                     json=request_data,
                     headers=headers
                 )
-                logger.info(f"收到响应: 状态码={response.status_code}, 头部={dict(response.headers)}")
+                
+                logger.info(f"收到响应: 状态码={response.status_code}")
+                logger.info(f"响应头部: {dict(response.headers)}")
+                
+                # 记录响应内容（前500字符）
+                try:
+                    response_text = response.text
+                    logger.info(f"响应内容预览: {response_text[:500]}...")
+                except Exception as e:
+                    logger.warning(f"无法读取响应文本: {e}")
                 
                 # 特殊处理502错误：服务正在生成音乐，我们需要异步等待
                 if response.status_code == 502:
@@ -272,8 +354,20 @@ class SongGenerationEngineClient:
                         )
                 
                 elif response.status_code == 500:
-                    error_text = response.text
-                    logger.error(f"SongGeneration服务内部错误 (500): {error_text}")
+                    try:
+                        error_text = response.text
+                        logger.error(f"SongGeneration服务内部错误 (500): {error_text}")
+                        
+                        # 尝试解析JSON错误响应
+                        try:
+                            error_json = response.json()
+                            logger.error(f"错误详情 (JSON): {error_json}")
+                        except:
+                            logger.error(f"错误详情 (纯文本): {error_text}")
+                            
+                    except Exception as e:
+                        logger.error(f"无法读取500错误响应: {e}")
+                    
                     return None
                 
                 response.raise_for_status()
@@ -381,15 +475,13 @@ class SongGenerationEngineClient:
             logger.warning(f"获取引擎信息失败: {e}")
             return None
 
-# 全局客户端实例
+# 全局客户端实例 - 强制重新创建以清除缓存
 _engine_client = None
 
 def get_songgeneration_engine() -> SongGenerationEngineClient:
-    """获取SongGeneration引擎客户端实例（单例模式）"""
+    """获取SongGeneration引擎客户端实例（自动检测环境）"""
     global _engine_client
     if _engine_client is None:
-        # 从环境变量或配置获取引擎URL
-        import os
-        engine_url = os.getenv("SONGGENERATION_URL", "http://localhost:7862")
-        _engine_client = SongGenerationEngineClient(engine_url)
+        logger.info("🔄 创建SongGeneration引擎客户端（自动检测环境）")
+        _engine_client = SongGenerationEngineClient()  # 使用自动检测
     return _engine_client 

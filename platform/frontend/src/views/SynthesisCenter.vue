@@ -170,6 +170,7 @@
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
+import { getWebSocketUrl } from '@/config/services'
 import { SoundOutlined } from '@ant-design/icons-vue'
 import api from '@/api'
 import apiClient from '@/api/config.js'
@@ -600,7 +601,7 @@ const loadPreparationResults = async () => {
 // WebSocket 初始化
 const initWebSocket = () => {
   const projectId = route.params.projectId
-  const wsUrl = `ws://localhost:8000/ws`
+  const wsUrl = getWebSocketUrl('MAIN')
   
   try {
     websocket = new WebSocket(wsUrl)

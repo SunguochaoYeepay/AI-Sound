@@ -5,6 +5,7 @@
 
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import { getBackendUrl } from '@/config/services'
 import { useAppStore } from './app'
 
 export const useWebSocketStore = defineStore('websocket', () => {
@@ -48,7 +49,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
     
     // 生产环境使用配置的URL
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
+          const baseUrl = import.meta.env.VITE_API_BASE_URL || getBackendUrl()
     // 移除协议前缀（如果存在）
     const cleanHost = baseUrl.replace(/^https?:\/\//, '')
     return `${protocol}//${cleanHost}/ws`

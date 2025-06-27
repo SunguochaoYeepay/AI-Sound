@@ -63,7 +63,7 @@
           <!-- 生成耗时警告 -->
           <a-alert 
             message="⏰ 重要提示" 
-            description="音乐生成需要消耗大量计算资源，单次生成可能需要5-15分钟，请耐心等待。为避免系统过载，暂时不支持批量生成功能。"
+            description="音乐生成需要消耗大量计算资源，单次生成可能需要5-15分钟，请耐心等待。现已集成WebSocket实时进度监控。"
             type="warning" 
             show-icon 
             style="margin-bottom: 16px;"
@@ -94,6 +94,18 @@
                 style="width: 120px;"
               />
             </div>
+
+            <div class="option-group">
+              <label>音乐风格</label>
+              <a-select v-model:value="quickOptions.genre" style="width: 200px;">
+                <a-select-option value="Auto">自动选择</a-select-option>
+                <a-select-option value="Pop">流行</a-select-option>
+                <a-select-option value="R&B">R&B</a-select-option>
+                <a-select-option value="Dance">舞曲</a-select-option>
+                <a-select-option value="Rock">摇滚</a-select-option>
+                <a-select-option value="Jazz">爵士</a-select-option>
+              </a-select>
+            </div>
           </div>
 
           <a-button
@@ -110,9 +122,33 @@
             {{ generating ? '正在生成音乐...' : '生成背景音乐' }}
           </a-button>
         </div>
+      </div>
 
-        <!-- 高级选项已简化 - 移除复杂的智能分析功能 -->
-        <!-- 只保留基本的音乐生成功能，不进行场景分析和风格推荐 -->
+      <!-- 实时进度显示 -->
+      <div v-if="generating" class="progress-section">
+        <a-divider />
+        <div class="progress-info">
+          <div class="progress-header">
+            <span class="progress-title">🎵 音乐生成进度</span>
+            <span class="progress-percent">{{ Math.round(generationProgress) }}%</span>
+          </div>
+          <a-progress
+            :percent="generationProgress"
+            :status="progressStatus"
+            :stroke-color="progressColor"
+            size="small"
+          />
+          <div class="progress-details">
+            <div class="current-stage">{{ currentStage }}</div>
+            <div class="task-info" v-if="currentTaskId">
+              <a-tag color="blue">任务ID: {{ currentTaskId.slice(0, 8) }}...</a-tag>
+              <a-tag v-if="elapsedTime" color="green">已用时: {{ formatTime(elapsedTime) }}</a-tag>
+              <a-tag :color="connectionStatus === 'connected' ? 'green' : 'red'">
+                {{ getConnectionStatusText() }}
+              </a-tag>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- 生成结果 -->
@@ -123,9 +159,9 @@
             <div class="result-info">
               <h5>{{ generationResult.music_info?.title || '背景音乐' }}</h5>
               <div class="result-meta">
-                <span>时长: {{ generationResult.music_info?.duration }}秒</span>
-                <span>风格: {{ generationResult.scene_analysis?.scene_type }}</span>
-                <span>音量: {{ generationResult.music_config?.volume_level }}dB</span>
+                <span>时长: {{ generationResult.music_info?.duration || quickOptions.targetDuration }}秒</span>
+                <span>风格: {{ generationResult.final_style || quickOptions.genre }}</span>
+                <span>音量: {{ quickOptions.volumeLevel }}dB</span>
               </div>
             </div>
             <div class="result-actions">
@@ -147,11 +183,11 @@
             </div>
           </div>
 
-          <!-- 音频波形显示 -->
-          <div class="audio-waveform" v-if="generationResult.music_info?.audio_url">
+          <!-- 音频播放器 -->
+          <div class="audio-waveform" v-if="audioUrl">
             <audio
               ref="audioPlayer"
-              :src="generationResult.music_info.audio_url"
+              :src="audioUrl"
               @loadedmetadata="onAudioLoaded"
               @timeupdate="onTimeUpdate"
               @ended="onAudioEnded"
@@ -160,24 +196,19 @@
             />
           </div>
 
-          <!-- 场景分析信息 -->
-          <div class="scene-analysis" v-if="generationResult.scene_analysis">
-            <h6>场景分析</h6>
-            <div class="analysis-tags">
-              <a-tag color="purple">{{ generationResult.scene_analysis.scene_type }}</a-tag>
-              <a-tag color="blue">{{ generationResult.scene_analysis.emotion_tone }}</a-tag>
-              <a-tag color="green">强度: {{ (generationResult.scene_analysis.intensity * 100).toFixed(0) }}%</a-tag>
-            </div>
-            <div class="keywords" v-if="generationResult.scene_analysis.keywords?.length">
-              <span class="keywords-label">关键词:</span>
-              <a-tag
-                v-for="keyword in generationResult.scene_analysis.keywords"
-                :key="keyword"
-                size="small"
-              >
-                {{ keyword }}
-              </a-tag>
-            </div>
+          <!-- 生成信息 -->
+          <div v-if="generationResult.music_description" class="generation-info">
+            <a-descriptions title="生成信息" bordered size="small">
+              <a-descriptions-item label="音乐描述">
+                {{ generationResult.music_description }}
+              </a-descriptions-item>
+              <a-descriptions-item label="使用风格">
+                {{ generationResult.final_style || quickOptions.genre }}
+              </a-descriptions-item>
+              <a-descriptions-item label="生成耗时">
+                {{ formatTime(generationResult.generation_time || 0) }}
+              </a-descriptions-item>
+            </a-descriptions>
           </div>
         </div>
       </div>
@@ -194,62 +225,21 @@
         </a-button>
       </div>
     </div>
-
-    <!-- 生成进度模态框 -->
-    <a-modal
-      v-model:open="progressModalVisible"
-      title="音乐生成进度"
-      :closable="false"
-      :maskClosable="false"
-      :footer="null"
-      width="500px"
-    >
-      <div class="generation-progress">
-        <div class="progress-info">
-          <h4>正在生成背景音乐...</h4>
-          <p>{{ progressMessage }}</p>
-        </div>
-        
-        <a-progress
-          :percent="generationProgress"
-          :status="progressStatus"
-          :stroke-color="progressColor"
-        />
-        
-        <div class="progress-details">
-          <div class="detail-item">
-            <span class="label">当前阶段:</span>
-            <span class="value">{{ currentStage }}</span>
-          </div>
-          <div class="detail-item">
-            <span class="label">预计剩余:</span>
-            <span class="value">{{ estimatedTimeLeft }}</span>
-          </div>
-        </div>
-
-        <div class="progress-actions">
-          <a-button @click="cancelGeneration" :loading="cancelling">
-            取消生成
-          </a-button>
-        </div>
-      </div>
-    </a-modal>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { message } from 'ant-design-vue'
 import {
   ReloadOutlined,
   SoundOutlined,
-  EyeOutlined,
-  SettingOutlined,
   PlayCircleOutlined,
   PauseCircleOutlined,
   DownloadOutlined
 } from '@ant-design/icons-vue'
 import { musicGenerationAPI } from '@/api'
+import { useWebSocket } from '@/composables/useWebSocketSimple'
 
 // Props
 const props = defineProps({
@@ -278,8 +268,6 @@ const emit = defineEmits(['musicGenerated', 'generationStarted', 'generationComp
 const serviceStatus = ref('unknown') // healthy, degraded, unhealthy, unknown
 const serviceInfo = ref(null)
 const statusLoading = ref(false)
-// const supportedStyles = ref([])  // 移除智能风格推荐
-// const stylesLoading = ref(false)
 
 // 生成相关状态
 const generating = ref(false)
@@ -290,33 +278,23 @@ const currentTaskId = ref(null)
 const playing = ref(false)
 const audioPlayer = ref(null)
 
-// 预览相关已移除 - 智能功能简化
-// const previewing = ref(false)
-// const stylePreview = ref(null)
-
 // 进度相关
-const progressModalVisible = ref(false)
 const generationProgress = ref(0)
-const progressMessage = ref('')
 const currentStage = ref('')
-const estimatedTimeLeft = ref('')
-const cancelling = ref(false)
+const elapsedTime = ref(0)
 
-// 面板状态已简化
-// const advancedPanelActive = ref([])  // 移除高级选项面板
+// WebSocket连接
+const { connect, disconnect, isConnected } = useWebSocket()
+const connectionStatus = ref('disconnected')
 
-// 生成选项 - 只保留基本设置
+// 生成选项
 const quickOptions = ref({
   volumeLevel: -12,
-  targetDuration: 30
+  targetDuration: 30,
+  genre: 'Auto'
 })
 
-// 高级选项已移除 - 简化功能
-// const advancedOptions = ref({
-//   customStyle: null,
-//   fadeIn: 2.0,
-//   fadeOut: 2.0
-// })
+let startTime = 0
 
 // 计算属性
 const serviceStatusClass = computed(() => {
@@ -348,13 +326,12 @@ const canGenerate = computed(() => {
 
 const estimatedDuration = computed(() => {
   if (!props.chapterContent) return 0
-  // 估算：每分钟约300字
   return Math.ceil(props.chapterContent.length / 300)
 })
 
 const progressStatus = computed(() => {
-  if (generationProgress.value === 100) return 'success'
-  if (cancelling.value) return 'exception'
+  if (generationProgress.value >= 100) return 'success'
+  if (generationProgress.value < 0) return 'exception'
   return 'active'
 })
 
@@ -362,6 +339,12 @@ const progressColor = computed(() => {
   if (progressStatus.value === 'success') return '#52c41a'
   if (progressStatus.value === 'exception') return '#ff4d4f'
   return '#1890ff'
+})
+
+const audioUrl = computed(() => {
+  if (!generationResult.value?.result?.audio_url) return null
+  const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
+  return `${baseUrl}${generationResult.value.result.audio_url}`
 })
 
 // 方法
@@ -372,8 +355,24 @@ const formatNumber = (num) => {
   return num.toString()
 }
 
+const formatTime = (seconds) => {
+  const mins = Math.floor(seconds / 60)
+  const secs = Math.floor(seconds % 60)
+  return `${mins}:${secs.toString().padStart(2, '0')}`
+}
+
 const getSelectedChapterInfo = () => {
   return props.chapters.find(c => c.id === props.selectedChapter)
+}
+
+const getConnectionStatusText = () => {
+  const statusMap = {
+    'connected': 'WebSocket已连接',
+    'connecting': '正在连接...',
+    'disconnected': '未连接',
+    'error': '连接异常'
+  }
+  return statusMap[connectionStatus.value] || '未知状态'
 }
 
 const refreshServiceStatus = async () => {
@@ -382,201 +381,206 @@ const refreshServiceStatus = async () => {
     const response = await musicGenerationAPI.healthCheck()
     if (response.data.status === 'healthy') {
       serviceStatus.value = 'healthy'
-      serviceInfo.value = response.data.service_info || {}
-    } else if (response.data.status === 'degraded') {
-      serviceStatus.value = 'degraded'
-      serviceInfo.value = response.data.service_info || {}
+      serviceInfo.value = response.data.info || {}
     } else {
       serviceStatus.value = 'unhealthy'
+      serviceInfo.value = null
     }
   } catch (error) {
-    console.error('服务状态检查失败:', error)
+    console.error('检查服务状态失败:', error)
     serviceStatus.value = 'unhealthy'
-    message.error('无法连接到音乐生成服务')
+    serviceInfo.value = null
   } finally {
     statusLoading.value = false
   }
 }
 
-// 智能风格相关方法已移除 - 功能简化
-// const loadSupportedStyles = async () => {
-//   // 风格推荐功能已移除
-// }
-//
-// const handleStylePreview = async () => {
-//   // 风格预览功能已移除
-// }
-//
-// const selectCustomStyle = (style) => {
-//   // 自定义风格选择功能已移除
-// }
-
+// 生成音乐主函数
 const handleQuickGenerate = async () => {
-  await generateMusic({
-    lyrics: props.chapterContent,  // content -> lyrics (后端期望参数)
-    genre: "Auto",  // 默认音乐风格
-    description: "基于章节内容生成的背景音乐",  // 音乐描述
-    cfg_coef: 1.5,  // 默认CFG系数
-    temperature: 0.9,  // 默认温度
-    top_k: 50,  // 默认Top-K
-    chapter_id: props.selectedChapter,
-    volume_level: quickOptions.value.volumeLevel
-  })
+  if (!canGenerate.value) {
+    message.warning('请先选择章节并确保服务正常')
+    return
+  }
+
+  try {
+    generating.value = true
+    generationProgress.value = 0
+    currentStage.value = '正在启动音乐生成...'
+    generationResult.value = null
+    startTime = Date.now() / 1000
+    
+    // 连接WebSocket
+    if (!isConnected.value) {
+      connectionStatus.value = 'connecting'
+      await connect()
+      connectionStatus.value = isConnected.value ? 'connected' : 'error'
+    }
+
+    // 准备歌词（简化处理）
+    const lyrics = generateLyricsFromContent(props.chapterContent)
+
+    // 启动异步音乐生成任务
+    const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
+    const response = await fetch(`${baseUrl}/api/v1/music-generation-async/generate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        lyrics: lyrics,
+        genre: quickOptions.value.genre,
+        description: `为章节"${getSelectedChapterInfo()?.chapter_title || getSelectedChapterInfo()?.title}"生成的背景音乐`,
+        cfg_coef: 1.5,
+        temperature: 0.9,
+        top_k: 50,
+        volume_level: quickOptions.value.volumeLevel,
+        target_duration: quickOptions.value.targetDuration
+      })
+    })
+
+    if (!response.ok) {
+      throw new Error(`启动任务失败: ${response.status}`)
+    }
+
+    const result = await response.json()
+    currentTaskId.value = result.task_id
+    
+    console.log('🎵 异步音乐生成任务已启动:', result.task_id)
+    message.info('音乐生成任务已启动，正在监控进度...')
+    
+    // 🔧 关键修复：任务启动后立即进入WebSocket监控模式，不再等待HTTP响应
+    currentStage.value = '等待WebSocket进度更新...'
+    generationProgress.value = 5
+    
+    emit('generationStarted', {
+      taskId: result.task_id,
+      chapter: getSelectedChapterInfo()
+    })
+
+  } catch (error) {
+    console.error('启动音乐生成失败:', error)
+    message.error(`启动失败: ${error.message}`)
+    generating.value = false
+  }
 }
 
-// 高级生成已移除 - 只保留基本生成功能
-// const handleAdvancedGenerate = async () => {
-//   // 高级生成功能已移除，只保留基本生成
-// }
+// 🔧 修复：符合SongGeneration格式要求的歌词生成
+const generateLyricsFromContent = (content) => {
+  // 简单提取内容的前几句作为歌词基础
+  const sentences = content.split(/[。！？]/).filter(s => s.trim().length > 0)
+  const selectedSentences = sentences.slice(0, 3) // 取前3句，避免过长
+  
+  // 🎵 修复歌词格式：必须使用小写标签且符合SongGeneration规范
+  return `[verse]
+${selectedSentences.join('\n')}
 
-const generateMusic = async (requestData) => {
-  generating.value = true
-  progressModalVisible.value = true
-  generationProgress.value = 0
-  progressMessage.value = '正在初始化音乐生成...'
-  currentStage.value = '准备阶段'
-  estimatedTimeLeft.value = '约5-15分钟'  // 音乐生成耗时很长，增加预期时间
-  
-  emit('generationStarted')
-  
+[chorus]
+这是一段美妙的旋律
+承载着故事的情感
+
+[outro-short]`
+}
+
+// WebSocket消息处理
+const handleWebSocketMessage = (message) => {
   try {
-    // 模拟进度更新
-    const progressInterval = setInterval(() => {
-      if (generationProgress.value < 90) {
-        generationProgress.value += Math.random() * 10
-        updateProgressMessage()
+    const data = JSON.parse(message)
+    
+    if (data.type === 'music_generation_progress' && data.data.task_id === currentTaskId.value) {
+      const progressData = data.data
+      
+      generationProgress.value = Math.round(progressData.progress * 100)
+      currentStage.value = progressData.message || '处理中...'
+      elapsedTime.value = Date.now() / 1000 - startTime
+      
+      console.log(`📊 进度更新: ${generationProgress.value}% - ${currentStage.value}`)
+      
+      if (progressData.status === 'completed' && progressData.result) {
+        // 生成成功
+        generationResult.value = progressData
+        
+        emit('musicGenerated', progressData)
+        emit('generationCompleted', progressData)
+        
+        message.success('🎵 背景音乐生成完成！')
+        generating.value = false
+        
+      } else if (progressData.status === 'failed') {
+        // 生成失败
+        console.error('音乐生成失败:', progressData.error)
+        message.error(`生成失败: ${progressData.error || '未知错误'}`)
+        generating.value = false
       }
-    }, 2000)
-    
-    const response = await musicGenerationAPI.generateChapterMusic(requestData)
-    
-    clearInterval(progressInterval)
-    generationProgress.value = 100
-    progressMessage.value = '音乐生成完成！'
-    currentStage.value = '完成'
-    estimatedTimeLeft.value = '0秒'
-    
-    setTimeout(() => {
-      progressModalVisible.value = false
-      generationResult.value = response.data
-      emit('musicGenerated', response.data)
-      emit('generationCompleted', response.data)
-      message.success('背景音乐生成完成！')
-    }, 1000)
-    
-  } catch (error) {
-    console.error('音乐生成失败:', error)
-    progressModalVisible.value = false
-    message.error('音乐生成失败: ' + (error.response?.data?.detail || error.message))
-  } finally {
-    generating.value = false
-  }
-}
-
-const updateProgressMessage = () => {
-  const messages = [
-    '正在分析章节内容...',
-    '正在识别情感基调...',
-    '正在选择音乐风格...',
-    '正在生成音乐片段... (这个过程需要较长时间，请耐心等待)',
-    '正在进行音频后处理...',
-    '正在优化音质... (即将完成)',
-    '正在保存文件...'
-  ]
-  
-  const stages = [
-    '内容分析',
-    '情感识别', 
-    '风格选择',
-    '音乐生成中',
-    '音频处理',
-    '质量优化',
-    '文件保存'
-  ]
-  
-  const index = Math.floor(generationProgress.value / 12)  // 调整进度划分，给生成阶段更多时间
-  if (index < messages.length) {
-    progressMessage.value = messages[index]
-    currentStage.value = stages[index]
-    
-    // 在音乐生成阶段更新预期时间
-    if (index === 3) {
-      estimatedTimeLeft.value = '约10-15分钟'
-    } else if (index >= 4) {
-      estimatedTimeLeft.value = '约1-3分钟'
     }
-  }
-}
-
-const cancelGeneration = async () => {
-  cancelling.value = true
-  try {
-    if (currentTaskId.value) {
-      // 这里可以调用取消API
-      // await musicGenerationAPI.cancelTask(currentTaskId.value)
-    }
-    progressModalVisible.value = false
-    generating.value = false
-    message.info('已取消音乐生成')
   } catch (error) {
-    console.error('取消生成失败:', error)
-    message.error('取消失败')
-  } finally {
-    cancelling.value = false
+    console.error('处理WebSocket消息失败:', error)
   }
 }
 
+// 音频控制
 const playGeneratedMusic = () => {
-  if (!audioPlayer.value) return
-  
-  if (playing.value) {
-    audioPlayer.value.pause()
-    playing.value = false
-  } else {
-    audioPlayer.value.play()
-    playing.value = true
+  if (audioPlayer.value) {
+    if (playing.value) {
+      audioPlayer.value.pause()
+    } else {
+      audioPlayer.value.play()
+    }
   }
 }
 
 const downloadGeneratedMusic = () => {
-  if (generationResult.value?.music_info?.audio_url) {
+  if (audioUrl.value) {
     const link = document.createElement('a')
-    link.href = generationResult.value.music_info.audio_url
-    link.download = `background_music_chapter_${props.selectedChapter}.wav`
+    link.href = audioUrl.value
+    link.download = `generated_music_${Date.now()}.wav`
     link.click()
   }
 }
 
 const onAudioLoaded = () => {
-  // 音频加载完成
+  console.log('音频加载完成')
 }
 
 const onTimeUpdate = () => {
-  // 音频播放时间更新
+  // 时间更新处理
 }
 
 const onAudioEnded = () => {
   playing.value = false
 }
 
-// 监听器 - 简化
-watch(() => props.selectedChapter, () => {
-  // 章节切换时清除之前的结果
-  generationResult.value = null
-  // stylePreview.value = null  // 风格预览功能已移除
+// 生命周期
+onMounted(async () => {
+  try {
+    // 检查服务状态
+    await refreshServiceStatus()
+    
+    // 连接WebSocket
+    connectionStatus.value = 'connecting'
+    await connect()
+    connectionStatus.value = isConnected.value ? 'connected' : 'error'
+    
+    // 监听WebSocket消息
+    window.addEventListener('websocket_message', (event) => {
+      handleWebSocketMessage(event.detail)
+    })
+    
+  } catch (error) {
+    console.error('初始化失败:', error)
+    connectionStatus.value = 'error'
+  }
 })
 
-// 生命周期
-onMounted(() => {
-  refreshServiceStatus()
+onUnmounted(() => {
+  disconnect()
+  window.removeEventListener('websocket_message', handleWebSocketMessage)
 })
 </script>
 
 <style scoped>
 .music-generation-panel {
-  background: #ffffff;
+  background: white;
   border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   overflow: hidden;
 }
 
@@ -585,21 +589,28 @@ onMounted(() => {
   justify-content: space-between;
   align-items: flex-start;
   padding: 20px 24px 16px;
-  border-bottom: 1px solid #f0f0f0;
-  background: linear-gradient(135deg, #f6f8fa 0%, #e8f4f8 100%);
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
 }
 
-.header-left h3.panel-title {
+.header-left {
+  flex: 1;
+}
+
+.panel-title {
   margin: 0 0 4px 0;
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 600;
-  color: #1f2937;
 }
 
 .panel-description {
   margin: 0;
   font-size: 14px;
-  color: #6b7280;
+  opacity: 0.9;
+}
+
+.header-right {
+  margin-left: 16px;
 }
 
 .service-status {
@@ -620,30 +631,31 @@ onMounted(() => {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  display: inline-block;
+  background: #d1d5db;
 }
 
 .status-dot.status-healthy {
-  background: #52c41a;
+  background: #10b981;
 }
 
 .status-dot.status-degraded {
-  background: #faad14;
+  background: #f59e0b;
 }
 
 .status-dot.status-unhealthy {
-  background: #ff4d4f;
+  background: #ef4444;
 }
 
-.status-dot.status-unknown {
-  background: #d9d9d9;
+.status-text {
+  font-size: 14px;
+  font-weight: 500;
 }
 
 .status-details {
   display: flex;
   gap: 16px;
   font-size: 12px;
-  color: #8c8c8c;
+  color: #6b7280;
 }
 
 .panel-content {
@@ -655,20 +667,20 @@ onMounted(() => {
   padding: 16px;
   background: #f8fafc;
   border-radius: 6px;
-  border-left: 4px solid #1890ff;
+  border-left: 4px solid #667eea;
 }
 
 .chapter-info h4 {
-  margin: 0 0 8px 0;
-  font-size: 14px;
+  margin: 0 0 12px 0;
+  font-size: 16px;
   font-weight: 600;
-  color: #374151;
+  color: #1f2937;
 }
 
 .chapter-title {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 500;
-  color: #1f2937;
+  color: #374151;
   margin-bottom: 8px;
 }
 
@@ -683,12 +695,8 @@ onMounted(() => {
   margin-bottom: 24px;
 }
 
-.quick-generation {
-  margin-bottom: 16px;
-}
-
 .quick-generation h4 {
-  margin: 0 0 4px 0;
+  margin: 0 0 8px 0;
   font-size: 16px;
   font-weight: 600;
   color: #1f2937;
@@ -701,9 +709,12 @@ onMounted(() => {
 }
 
 .quick-options {
-  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 20px;
   padding: 16px;
-  background: #fafafa;
+  background: #f9fafb;
   border-radius: 6px;
 }
 
@@ -711,112 +722,61 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 12px;
-}
-
-.option-group:last-child {
-  margin-bottom: 0;
 }
 
 .option-group label {
-  width: 80px;
   font-size: 14px;
   font-weight: 500;
   color: #374151;
+  min-width: 80px;
 }
 
 .value-display {
-  min-width: 50px;
   font-size: 13px;
   color: #6b7280;
+  min-width: 50px;
 }
 
-.style-preview-section,
-.custom-style-section,
-.audio-params-section {
-  margin-bottom: 16px;
+.progress-section {
+  margin-top: 16px;
 }
 
-.style-preview-section h5,
-.custom-style-section h5,
-.audio-params-section h5 {
-  margin: 0 0 8px 0;
-  font-size: 14px;
-  font-weight: 600;
-  color: #374151;
+.progress-info {
+  padding: 16px;
+  background: #f8f9fa;
+  border-radius: 6px;
 }
 
-.preview-result {
-  margin-top: 12px;
-}
-
-.preview-card {
+.progress-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px;
-  background: #f0f9ff;
-  border-radius: 6px;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 
-.style-info h6 {
-  margin: 0 0 4px 0;
-  font-size: 15px;
-  font-weight: 600;
-  color: #1f2937;
-}
-
-.style-details {
-  display: flex;
-  gap: 8px;
-}
-
-.confidence-score {
-  text-align: center;
-}
-
-.confidence-score .score {
-  display: block;
-  font-size: 20px;
-  font-weight: bold;
+.progress-title {
+  font-weight: 500;
   color: #1890ff;
 }
 
-.confidence-score .label {
-  font-size: 12px;
-  color: #6b7280;
+.progress-percent {
+  font-weight: bold;
+  font-size: 16px;
 }
 
-.style-recommendations h6 {
-  margin: 0 0 8px 0;
-  font-size: 13px;
-  font-weight: 600;
-  color: #374151;
+.progress-details {
+  margin-top: 8px;
 }
 
-.recommendation-tags {
+.current-stage {
+  color: #666;
+  margin-bottom: 8px;
+}
+
+.task-info {
   display: flex;
+  gap: 8px;
   flex-wrap: wrap;
-  gap: 4px;
-}
-
-.param-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-}
-
-.param-item {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.param-item label {
-  font-size: 13px;
-  font-weight: 500;
-  color: #374151;
 }
 
 .generation-result {
@@ -864,33 +824,8 @@ onMounted(() => {
   padding: 16px;
 }
 
-.scene-analysis {
-  padding: 16px;
-  border-top: 1px solid #e5e7eb;
-  background: #fafafa;
-}
-
-.scene-analysis h6 {
-  margin: 0 0 8px 0;
-  font-size: 14px;
-  font-weight: 600;
-  color: #374151;
-}
-
-.analysis-tags {
-  margin-bottom: 12px;
-}
-
-.keywords {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.keywords-label {
-  font-size: 13px;
-  color: #6b7280;
+.generation-info {
+  margin-top: 16px;
 }
 
 .service-unavailable {
@@ -918,101 +853,4 @@ onMounted(() => {
   margin: 0 0 16px 0;
   color: #6b7280;
 }
-
-.generation-progress {
-  padding: 8px 0;
-}
-
-.progress-info {
-  text-align: center;
-  margin-bottom: 24px;
-}
-
-.progress-info h4 {
-  margin: 0 0 8px 0;
-  font-size: 16px;
-  color: #1f2937;
-}
-
-.progress-info p {
-  margin: 0;
-  color: #6b7280;
-}
-
-.progress-details {
-  margin: 16px 0 24px 0;
-  padding: 12px;
-  background: #f8fafc;
-  border-radius: 6px;
-}
-
-.detail-item {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 8px;
-}
-
-.detail-item:last-child {
-  margin-bottom: 0;
-}
-
-.detail-item .label {
-  font-size: 13px;
-  color: #6b7280;
-}
-
-.detail-item .value {
-  font-size: 13px;
-  font-weight: 500;
-  color: #1f2937;
-}
-
-.progress-actions {
-  text-align: center;
-}
-
-/* 暗黑模式适配 */
-[data-theme="dark"] .music-generation-panel {
-  background: #1f1f1f;
-}
-
-[data-theme="dark"] .panel-header {
-  background: linear-gradient(135deg, #2a2a2a 0%, #1a1a2e 100%);
-  border-bottom-color: #434343;
-}
-
-[data-theme="dark"] .panel-title {
-  color: #ffffff !important;
-}
-
-[data-theme="dark"] .panel-description {
-  color: #8c8c8c !important;
-}
-
-[data-theme="dark"] .service-status {
-  border-bottom-color: #434343;
-}
-
-[data-theme="dark"] .chapter-info {
-  background: #2a2a2a;
-  border-left-color: #1890ff;
-}
-
-[data-theme="dark"] .quick-options {
-  background: #2a2a2a;
-}
-
-[data-theme="dark"] .result-card {
-  border-color: #434343;
-}
-
-[data-theme="dark"] .result-header {
-  background: #2a2a2a;
-  border-bottom-color: #434343;
-}
-
-[data-theme="dark"] .scene-analysis {
-  background: #2a2a2a;
-  border-top-color: #434343;
-}
-</style> 
+</style>

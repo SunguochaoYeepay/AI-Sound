@@ -237,7 +237,7 @@ app.mount("/audio", StaticFiles(directory="data/audio"), name="audio")
 app.mount("/uploads", StaticFiles(directory="data/uploads"), name="uploads")
 app.mount("/voice_profiles", StaticFiles(directory="data/voice_profiles"), name="voice_profiles")
 app.mount("/environment_sounds", StaticFiles(directory="data/environment_sounds"), name="environment_sounds")
-app.mount("/outputs", StaticFiles(directory="outputs"), name="outputs")
+app.mount("/outputs", StaticFiles(directory="data/outputs"), name="outputs")
 
 # 注册API路由
 app.include_router(api_router, prefix="/api")

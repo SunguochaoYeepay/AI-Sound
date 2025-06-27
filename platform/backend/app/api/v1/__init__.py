@@ -31,6 +31,7 @@ from .audio_editor import router as audio_editor_router
 from .background_music import router as background_music_router
 # 🎵 Import music generation router
 from .music_generation import router as music_generation_router
+from .music_generation_async import router as music_generation_async_router
 # Temporarily commented out due to missing model dependencies
 # from .smart_editing import router as smart_editing_router
 # from .collaboration import router as collaboration_router
@@ -131,6 +132,7 @@ api.include_router(audio_editor_router, prefix="/audio-editor", tags=["Audio Edi
 api.include_router(background_music_router, prefix="/background-music", tags=["Background Music"])
 # 🎵 Register music generation router
 api.include_router(music_generation_router, tags=["Music Generation"])
+api.include_router(music_generation_async_router, tags=["Async Music Generation"])
 # Temporarily commented out due to missing model dependencies
 # api.include_router(smart_editing_router, prefix="/smart-editing", tags=["Smart Editing"])
 # api.include_router(collaboration_router, prefix="/collaboration", tags=["Collaboration"])

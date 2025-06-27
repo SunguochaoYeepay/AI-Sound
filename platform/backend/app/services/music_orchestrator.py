@@ -8,7 +8,7 @@ import asyncio
 import logging
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Union, Callable
 from dataclasses import dataclass
 
 from app.clients.songgeneration_engine import get_songgeneration_engine, SynthesizeResponse
@@ -56,6 +56,143 @@ class MusicOrchestrator:
         
         logger.info("音乐编排服务初始化完成")
     
+    async def generate_music_for_content_with_progress(self, 
+                                       content: str,
+                                       chapter_id: Optional[str] = None,
+                                       custom_style: Optional[str] = None,
+                                       volume_level: float = -12.0,
+                                       direct_mode: bool = False,
+                                       advanced_params: Optional[Dict] = None,
+                                       progress_callback: Optional[Callable[[float, str], None]] = None) -> Optional[Dict]:
+        """
+        为内容生成背景音乐（完整业务流程，带进度回调）
+        
+        Args:
+            content: 文本内容
+            chapter_id: 章节ID（可选）
+            custom_style: 自定义风格（可选）
+            volume_level: 音量级别
+            direct_mode: 直接模式（跳过复杂场景分析）
+            advanced_params: 高级参数字典（cfg_coef, temperature, top_k, description等）
+            progress_callback: 进度回调函数 (progress: float, message: str) -> None
+            
+        Returns:
+            生成结果字典
+        """
+        start_time = time.time()
+        advanced_params = advanced_params or {}
+        
+        try:
+            logger.info(f"开始音乐生成流程，内容长度: {len(content)} 字符，直接模式: {direct_mode}")
+            
+            if progress_callback:
+                progress_callback(0.05, "开始音乐生成流程...")
+            
+            # 步骤1：场景分析（直接模式可跳过）
+            if direct_mode:
+                # 直接模式：跳过复杂场景分析，使用默认值
+                scene_analysis = None
+                final_style = custom_style or "Auto"
+                music_description = content  # 直接使用用户输入的歌词
+                logger.info(f"直接模式：跳过场景分析，风格: {final_style}")
+                if progress_callback:
+                    progress_callback(0.15, f"直接模式，使用风格: {final_style}")
+            else:
+            # 完整模式：进行场景分析
+                if progress_callback:
+                    progress_callback(0.1, "正在分析内容场景...")
+                scene_analysis = self.scene_analyzer.analyze_content(content)
+                logger.info(f"场景分析完成: {scene_analysis.scene_type} -> {scene_analysis.recommended_style}")
+                final_style = custom_style or scene_analysis.recommended_style
+                music_description = self._create_music_description(content, scene_analysis)
+                if progress_callback:
+                    progress_callback(0.15, f"场景分析完成，风格: {final_style}")
+            
+            # 步骤2：调用引擎生成音乐（使用异步带进度的方法）
+            logger.info(f"调用引擎异步生成音乐: {final_style}")
+            
+            # 定义进度回调函数
+            def engine_progress_callback(progress: float, message: str):
+                # 将引擎进度映射到总体进度的15%-85%区间
+                total_progress = 0.15 + (progress * 0.7)
+                if progress_callback:
+                    progress_callback(total_progress, f"🎵 {message}")
+                logger.info(f"🎵 音乐生成进度: {progress:.1%} - {message}")
+            
+            synthesis_result = await self.engine.synthesize_with_progress(
+                lyrics=music_description,
+                genre=final_style,  # 使用正确的参数名
+                description=advanced_params.get("description", ""),
+                cfg_coef=advanced_params.get("cfg_coef", 1.5),
+                temperature=advanced_params.get("temperature", 0.9),
+                top_k=advanced_params.get("top_k", 50),
+                progress_callback=engine_progress_callback
+            )
+            
+            if not synthesis_result:
+                logger.error("引擎音乐合成失败")
+                if progress_callback:
+                    progress_callback(-1, "音乐合成失败")
+                return None
+            
+            if progress_callback:
+                progress_callback(0.85, "音乐生成完成，开始后处理...")
+            
+            # 步骤5：文件管理（下载和存储）
+            filename = f"music_{chapter_id or 'generated'}_{int(time.time())}.wav"
+            local_path = await self._download_and_store_music(
+                synthesis_result.audio_url, 
+                filename
+            )
+            
+            if not local_path:
+                logger.error("音乐文件下载失败")
+                if progress_callback:
+                    progress_callback(-1, "音乐文件下载失败")
+                return None
+            
+            if progress_callback:
+                progress_callback(0.95, "正在进行音频后处理...")
+            
+            # 步骤6：音频后处理（音量调整等）
+            processed_path = await self._post_process_audio(
+                local_path, 
+                volume_level
+            )
+            
+            generation_time = time.time() - start_time
+            
+            # 步骤7：构建结果
+            result = {
+                "audio_path": processed_path or local_path,
+                "audio_url": f"/api/v1/audio/generated/{filename}",
+                "scene_analysis": {
+                    "scene_type": scene_analysis.scene_type if scene_analysis else "direct",
+                    "emotion_tone": scene_analysis.emotion_tone if scene_analysis else "neutral",
+                    "intensity": scene_analysis.intensity if scene_analysis else 0.5,
+                    "recommended_style": scene_analysis.recommended_style if scene_analysis else final_style,
+                    "confidence": scene_analysis.style_confidence if scene_analysis else 1.0
+                } if scene_analysis else None,
+                "music_description": music_description,
+                "final_style": final_style,
+                "duration": synthesis_result.duration,
+                "generation_time": generation_time,
+                "volume_level": volume_level,
+                "chapter_id": chapter_id
+            }
+            
+            if progress_callback:
+                progress_callback(1.0, "音乐生成流程完成！")
+            
+            logger.info(f"音乐生成流程完成，耗时: {generation_time:.2f}s")
+            return result
+            
+        except Exception as e:
+            logger.error(f"音乐生成流程失败: {e}")
+            if progress_callback:
+                progress_callback(-1, f"生成失败: {str(e)}")
+            return None
+
     async def generate_music_for_content(self, 
                                        content: str,
                                        chapter_id: Optional[str] = None,
@@ -91,14 +228,15 @@ class MusicOrchestrator:
                 music_description = content  # 直接使用用户输入的歌词
                 logger.info(f"直接模式：跳过场景分析，风格: {final_style}")
             else:
-                # 完整模式：进行场景分析
-            scene_analysis = self.scene_analyzer.analyze_content(content)
-            logger.info(f"场景分析完成: {scene_analysis.scene_type} -> {scene_analysis.recommended_style}")
-            final_style = custom_style or scene_analysis.recommended_style
-            music_description = self._create_music_description(content, scene_analysis)
+            # 完整模式：进行场景分析
+                scene_analysis = self.scene_analyzer.analyze_content(content)
+                logger.info(f"场景分析完成: {scene_analysis.scene_type} -> {scene_analysis.recommended_style}")
+                final_style = custom_style or scene_analysis.recommended_style
+                music_description = self._create_music_description(content, scene_analysis)
             
-            # 步骤2：调用引擎生成音乐（使用完整的SongGeneration参数）
+            # 步骤2：调用引擎生成音乐（使用同步方法）
             logger.info(f"调用引擎生成音乐: {final_style}")
+            
             synthesis_result = await self.engine.synthesize(
                 lyrics=music_description,
                 genre=final_style,  # 使用正确的参数名

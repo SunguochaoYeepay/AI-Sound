@@ -168,6 +168,7 @@
 <script setup>
 import { ref, computed, h } from 'vue'
 import { Empty, Modal, message } from 'ant-design-vue'
+import { getWebSocketUrl } from '@/config/services'
 import DialogueBubble from './DialogueBubble.vue'
 import apiClient from '@/api/config.js'
 
@@ -436,7 +437,7 @@ const executePreparation = async () => {
     
     // 🔧 建立WebSocket连接监听进度
     try {
-      const wsUrl = `ws://localhost:8000/api/v1/analysis/ws/progress/${props.selectedChapter}`
+              const wsUrl = getWebSocketUrl('ANALYSIS_PROGRESS', props.selectedChapter)
       websocket = new WebSocket(wsUrl)
       
       websocket.onmessage = (event) => {

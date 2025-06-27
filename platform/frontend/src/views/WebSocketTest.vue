@@ -135,6 +135,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useWebSocketStore } from '../stores/websocket.js'
 import { message } from 'ant-design-vue'
+import { getBackendUrl } from '@/config/services'
 import dayjs from 'dayjs'
 import {
   WifiOutlined,
@@ -165,7 +166,7 @@ const wsUrl = computed(() => {
   }
   
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
+      const baseUrl = import.meta.env.VITE_API_BASE_URL || getBackendUrl()
   const cleanHost = baseUrl.replace(/^https?:\/\//, '')
   return `${protocol}//${cleanHost}/ws`
 })
