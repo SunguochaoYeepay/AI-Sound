@@ -139,7 +139,7 @@
         </div>
       </div>
     </div>
-    
+
     <!-- 时间轴标尺 -->
     <TimelineViewer
       :tracks="tracks"
@@ -762,7 +762,7 @@ export default {
           let dropTime = percentToTime(percentPosition)
           
           // 边界处理
-          dropTime = Math.max(0, Math.round(dropTime * 100) / 100)
+            dropTime = Math.max(0, Math.round(dropTime * 100) / 100)
           
           // 检查是否拖拽到现有轨道上
           const trackContentRows = Array.from(event.currentTarget.children)
