@@ -13,7 +13,7 @@ services:
       - DATABASE_URL=postgresql://ai_sound_user:ai_sound_password@database:5432/ai_sound
       - MEGATTS3_URL=http://megatts3:7929
       - TANGOFLUX_URL=http://tangoflux:7930
-      - SONGGENERATION_URL=http://songgeneration:8081
+      # - SONGGENERATION_URL=http://songgeneration:8081  # 已移除，使用独立的songgeneration-service
       - OLLAMA_URL=http://host.docker.internal:11434  # Windows宿主机Ollama服务
       - AUDIO_DIR=/app/data/audio
       - UPLOADS_DIR=/app/data/uploads
@@ -30,7 +30,7 @@ services:
       - redis
       - megatts3
       - tangoflux
-      - songgeneration
+      # - songgeneration  # 已移除，使用独立的songgeneration-service
     networks:
       - ai-sound-network
     restart: unless-stopped
@@ -138,49 +138,49 @@ services:
       timeout: 30s
       retries: 3
 
-  # SongGeneration背景音乐生成服务
-  songgeneration:
-    build:
-      context: .
-      dockerfile: docker/songgeneration/Dockerfile
-    container_name: ai-sound-songgeneration
-    ports:
-      - "8081:7863"  # 映射容器内7863端口到主机8081端口
-      - "7862:7862"  # Gradio Web界面
-    volumes:
-      - ./data/audio:/app/data/audio
-      # 分别挂载源代码子目录，避免覆盖容器内的启动脚本
-      - ./MegaTTS/SongGeneration/codeclm:/workspace/SongGeneration/codeclm
-      - ./MegaTTS/SongGeneration/tools:/workspace/SongGeneration/tools
-      - ./MegaTTS/SongGeneration/libs:/workspace/SongGeneration/libs
-      - ./MegaTTS/SongGeneration/models_gpt:/workspace/SongGeneration/models_gpt
-      - ./MegaTTS/SongGeneration/third_party:/workspace/SongGeneration/third_party
-      - ./MegaTTS/SongGeneration/our_MERT_BESTRQ:/workspace/SongGeneration/our_MERT_BESTRQ
-      - ./MegaTTS/SongGeneration/conf:/workspace/SongGeneration/conf
-      - ./MegaTTS/SongGeneration/vae:/workspace/SongGeneration/vae
-      - ./MegaTTS/SongGeneration/output:/workspace/SongGeneration/output
-      - ./MegaTTS/SongGeneration/temp:/workspace/SongGeneration/temp
-      # 挂载模型目录
-      - ./SongGeneration-Official-Demo/SongGeneration/ckpt:/workspace/SongGeneration/ckpt
-    networks:
-      - ai-sound-network
-    restart: unless-stopped
-    environment:
-      - CUDA_VISIBLE_DEVICES=0
-      - SERVER_HOST=0.0.0.0
-      - SERVER_PORT=7863
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:7863/health"]
-      interval: 60s
-      timeout: 30s
-      retries: 3
+  # SongGeneration背景音乐生成服务 (已移除，使用独立的songgeneration-service容器)
+  # songgeneration:
+  #   build:
+  #     context: .
+  #     dockerfile: docker/songgeneration/Dockerfile
+  #   container_name: ai-sound-songgeneration
+  #   ports:
+  #     - "8081:7863"  # 映射容器内7863端口到主机8081端口
+  #     - "7862:7862"  # Gradio Web界面
+  #   volumes:
+  #     - ./data/audio:/app/data/audio
+  #     # 分别挂载源代码子目录，避免覆盖容器内的启动脚本
+  #     - ./MegaTTS/SongGeneration/codeclm:/workspace/SongGeneration/codeclm
+  #     - ./MegaTTS/SongGeneration/tools:/workspace/SongGeneration/tools
+  #     - ./MegaTTS/SongGeneration/libs:/workspace/SongGeneration/libs
+  #     - ./MegaTTS/SongGeneration/models_gpt:/workspace/SongGeneration/models_gpt
+  #     - ./MegaTTS/SongGeneration/third_party:/workspace/SongGeneration/third_party
+  #     - ./MegaTTS/SongGeneration/our_MERT_BESTRQ:/workspace/SongGeneration/our_MERT_BESTRQ
+  #     - ./MegaTTS/SongGeneration/conf:/workspace/SongGeneration/conf
+  #     - ./MegaTTS/SongGeneration/vae:/workspace/SongGeneration/vae
+  #     - ./MegaTTS/SongGeneration/output:/workspace/SongGeneration/output
+  #     - ./MegaTTS/SongGeneration/temp:/workspace/SongGeneration/temp
+  #     # 挂载模型目录
+  #     - ./SongGeneration-Official-Demo/SongGeneration/ckpt:/workspace/SongGeneration/ckpt
+  #   networks:
+  #     - ai-sound-network
+  #   restart: unless-stopped
+  #   environment:
+  #     - CUDA_VISIBLE_DEVICES=0
+  #     - SERVER_HOST=0.0.0.0
+  #     - SERVER_PORT=7863
+  #   deploy:
+  #     resources:
+  #       reservations:
+  #         devices:
+  #           - driver: nvidia
+  #             count: 1
+  #             capabilities: [gpu]
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:7863/health"]
+  #     interval: 60s
+  #     timeout: 30s
+  #     retries: 3
 
   # Nginx网关
   nginx:

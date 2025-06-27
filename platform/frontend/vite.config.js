@@ -3,8 +3,12 @@ import vue from '@vitejs/plugin-vue'
 import { resolve } from 'path'
 
 export default defineConfig(({ mode }) => {
-  // 根据环境选择API目标 - 使用8000端口（后端实际端口）
-  const API_TARGET = 'http://localhost:8000'
+  // 根据环境选择API目标
+  // 开发模式：代理到本地开发服务器 8001 端口
+  // 生产模式：代理到 Docker 服务 8000 端口
+  const API_TARGET = mode === 'development' 
+    ? 'http://localhost:8001'  // 本地开发端口
+    : 'http://localhost:8000'  // Docker 生产端口
   
   console.log(`[Vite配置] 模式: ${mode}, API代理目标: ${API_TARGET}`)
 

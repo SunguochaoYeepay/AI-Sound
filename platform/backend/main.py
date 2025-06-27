@@ -412,11 +412,18 @@ async def root():
 
 
 if __name__ == "__main__":
-    # 开发环境运行配置
+    # 开发环境运行配置 - 使用8001端口避免与Docker服务冲突
+    import os
+    dev_port = int(os.getenv("DEV_PORT", "8001"))  # 本地开发默认8001端口
+    
+    print(f"🚀 启动本地开发服务器: http://localhost:{dev_port}")
+    print(f"📖 API文档: http://localhost:{dev_port}/docs")
+    print(f"🔍 健康检查: http://localhost:{dev_port}/health")
+    
     uvicorn.run(
         "main:app",
         host="0.0.0.0",
-        port=8000,
+        port=dev_port,
         reload=True,
         log_level="info"
     ) 
