@@ -228,9 +228,8 @@ def format_lyrics(lyric: str) -> tuple[str, Optional[str]]:
         struct_tag = lines[0].strip().lower()
         
         if struct_tag not in STRUCTS:
-            # 修复STRUCTS.keys()错误：STRUCTS是列表而不是字典
-            structs_list = STRUCTS if isinstance(STRUCTS, list) else list(STRUCTS.keys()) if hasattr(STRUCTS, 'keys') else list(STRUCTS)
-            return None, f"段落必须以结构标签开始，支持的标签: {structs_list}"
+            # 🔧 修复STRUCTS.keys()错误：STRUCTS是列表而不是字典
+            return None, f"段落必须以结构标签开始，支持的标签: {STRUCTS}"
         
         if struct_tag in vocal_structs:
             vocal_flag = True
