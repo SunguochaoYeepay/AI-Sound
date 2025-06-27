@@ -56,9 +56,23 @@ class SongGenerationService:
         # 从环境变量获取SongGeneration服务URL，默认使用本地Docker端口
         import os
         self.base_url = os.getenv("SONGGENERATION_URL", "http://localhost:7862")
-        self.timeout = 300  # 5分钟超时
-        self.session = httpx.AsyncClient(timeout=self.timeout)
-        logger.info(f"SongGenerationService初始化，使用服务: {self.base_url}")
+        # 大幅增加超时时间 - 音乐生成耗时很长，防止超时失败
+        self.timeout = 900  # 15分钟超时 (原来5分钟太短)
+        # 配置更宽松的httpx客户端
+        self.session = httpx.AsyncClient(
+            timeout=httpx.Timeout(
+                connect=30.0,     # 连接超时30秒
+                read=900.0,       # 读取超时15分钟
+                write=30.0,       # 写入超时30秒
+                pool=10.0         # 连接池超时10秒
+            ),
+            limits=httpx.Limits(
+                max_keepalive_connections=1,  # 减少连接数避免资源占用
+                max_connections=2,            # 最大连接数限制
+                keepalive_expiry=30.0         # 保持连接30秒
+            )
+        )
+        logger.info(f"SongGenerationService初始化，使用服务: {self.base_url}, 超时: {self.timeout}秒")
         
         # 确保音频输出目录存在
         self.output_dir = Path("data/audio/generated_music")
@@ -129,10 +143,11 @@ class SongGenerationService:
             # 适配引擎的实际API格式
             engine_request = {
                 "lyrics": request.content,  # content -> lyrics
-                "descriptions": request.custom_style or "background music",
-                "cfg_coef": 1.5,
-                "temperature": 0.9,
-                "top_k": 50
+                "genre": getattr(request, 'genre', 'Auto'),
+                "descriptions": getattr(request, 'description', '') or request.custom_style or "background music",
+                "cfg_coef": getattr(request, 'cfg_coef', 1.5),
+                "temperature": getattr(request, 'temperature', 0.9),
+                "top_k": getattr(request, 'top_k', 50)
             }
             
             logger.info(f"发送音乐生成请求到引擎: {self.base_url}/generate")
@@ -187,7 +202,7 @@ class SongGenerationService:
             logger.error(f"构造任务状态失败: {str(e)}")
             return None
     
-    async def wait_for_completion(self, task_id: str, max_wait_time: int = 300) -> Optional[MusicGenerationResult]:
+    async def wait_for_completion(self, task_id: str, max_wait_time: int = 900) -> Optional[MusicGenerationResult]:
         """
         等待任务完成（适配引擎同步模式，直接返回结果）
         
@@ -355,8 +370,8 @@ class SongGenerationService:
             if not task_id:
                 raise Exception("音乐生成任务创建失败")
             
-            # 等待完成
-            result = await self.wait_for_completion(task_id, max_wait_time=300)
+            # 等待完成 - 使用更长的超时时间避免生成失败
+            result = await self.wait_for_completion(task_id, max_wait_time=900)
             if not result:
                 raise Exception("音乐生成超时或失败")
             
@@ -388,56 +403,16 @@ class SongGenerationService:
             logger.error(f"直接音乐生成失败: {str(e)}")
             raise Exception(f"音乐生成失败: {str(e)}")
 
-    async def batch_generate_music(self, 
-                                 chapters: List[Dict],
-                                 default_duration: int = 30,
-                                 max_concurrent: int = 3) -> Dict[str, Dict]:
-        """
-        批量生成音乐
-        
-        Args:
-            chapters: 章节列表，每个元素包含 {id, content, duration?, style?, volume_level?}
-            default_duration: 默认时长
-            max_concurrent: 最大并发数
-            
-        Returns:
-            生成结果字典 {chapter_id: result}
-        """
-        logger.info(f"开始批量生成音乐，章节数量: {len(chapters)}")
-        
-        # 创建信号量限制并发数
-        semaphore = asyncio.Semaphore(max_concurrent)
-        
-        async def generate_single_chapter(chapter: Dict) -> tuple:
-            async with semaphore:
-                chapter_id = chapter["id"]
-                result = await self.generate_music_for_chapter(
-                    chapter_content=chapter["content"],
-                    chapter_id=chapter_id,
-                    duration=chapter.get("duration", default_duration),
-                    style=chapter.get("style"),
-                    volume_level=chapter.get("volume_level", -12.0)
-                )
-                return chapter_id, result
-        
-        # 并发执行
-        tasks = [generate_single_chapter(chapter) for chapter in chapters]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        
-        # 整理结果
-        final_results = {}
-        for result in results:
-            if isinstance(result, Exception):
-                logger.error(f"批量生成中出现异常: {str(result)}")
-                continue
-            
-            chapter_id, chapter_result = result
-            final_results[str(chapter_id)] = chapter_result
-        
-        success_count = sum(1 for r in final_results.values() if r is not None)
-        logger.info(f"批量音乐生成完成，成功: {success_count}/{len(chapters)}")
-        
-        return final_results
+    # 批量生成音乐方法已移除 - 资源消耗过大，容易导致系统卡死
+    # async def batch_generate_music(self, 
+    #                              chapters: List[Dict],
+    #                              default_duration: int = 30,
+    #                              max_concurrent: int = 3) -> Dict[str, Dict]:
+    #     """
+    #     批量生成音乐 (已禁用)
+    #     单个音乐生成就需要很长时间，批量生成会导致系统资源耗尽
+    #     """
+    #     raise Exception("批量音乐生成功能已禁用，请使用单个生成功能避免系统过载")
     
     async def get_style_recommendations(self, content: str) -> List[Dict]:
         """

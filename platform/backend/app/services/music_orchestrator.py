@@ -59,44 +59,53 @@ class MusicOrchestrator:
     async def generate_music_for_content(self, 
                                        content: str,
                                        chapter_id: Optional[str] = None,
-                                       duration: int = 30,
                                        custom_style: Optional[str] = None,
-                                       volume_level: float = -12.0) -> Optional[Dict]:
+                                       volume_level: float = -12.0,
+                                       direct_mode: bool = False,
+                                       advanced_params: Optional[Dict] = None) -> Optional[Dict]:
         """
         为内容生成背景音乐（完整业务流程）
         
         Args:
             content: 文本内容
             chapter_id: 章节ID（可选）
-            duration: 目标时长
             custom_style: 自定义风格（可选）
             volume_level: 音量级别
+            direct_mode: 直接模式（跳过复杂场景分析）
+            advanced_params: 高级参数字典（cfg_coef, temperature, top_k, description等）
             
         Returns:
             生成结果字典
         """
         start_time = time.time()
+        advanced_params = advanced_params or {}
         
         try:
-            logger.info(f"开始音乐生成流程，内容长度: {len(content)} 字符")
+            logger.info(f"开始音乐生成流程，内容长度: {len(content)} 字符，直接模式: {direct_mode}")
             
-            # 步骤1：场景分析
-            scene_analysis = self.scene_analyzer.analyze_content(content)
-            logger.info(f"场景分析完成: {scene_analysis.scene_type} -> {scene_analysis.recommended_style}")
+            # 步骤1：场景分析（直接模式可跳过）
+            if direct_mode:
+                # 直接模式：跳过复杂场景分析，使用默认值
+                scene_analysis = None
+                final_style = custom_style or "Auto"
+                music_description = content  # 直接使用用户输入的歌词
+                logger.info(f"直接模式：跳过场景分析，风格: {final_style}")
+            else:
+                # 完整模式：进行场景分析
+                scene_analysis = self.scene_analyzer.analyze_content(content)
+                logger.info(f"场景分析完成: {scene_analysis.scene_type} -> {scene_analysis.recommended_style}")
+                final_style = custom_style or scene_analysis.recommended_style
+                music_description = self._create_music_description(content, scene_analysis)
             
-            # 步骤2：确定最终参数
-            final_style = custom_style or scene_analysis.recommended_style
-            final_duration = min(duration, scene_analysis.recommended_duration)
-            
-            # 步骤3：生成歌词/音乐描述
-            music_description = self._create_music_description(content, scene_analysis)
-            
-            # 步骤4：调用引擎生成音乐
-            logger.info(f"调用引擎生成音乐: {final_style}, {final_duration}s")
+            # 步骤2：调用引擎生成音乐（使用完整的SongGeneration参数）
+            logger.info(f"调用引擎生成音乐: {final_style}")
             synthesis_result = await self.engine.synthesize(
                 lyrics=music_description,
-                style=final_style,
-                duration=final_duration
+                genre=final_style,  # 使用正确的参数名
+                description=advanced_params.get("description", ""),
+                cfg_coef=advanced_params.get("cfg_coef", 1.5),
+                temperature=advanced_params.get("temperature", 0.9),
+                top_k=advanced_params.get("top_k", 50)
             )
             
             if not synthesis_result:
@@ -127,12 +136,12 @@ class MusicOrchestrator:
                 "audio_path": processed_path or local_path,
                 "audio_url": f"/api/v1/audio/generated/{filename}",
                 "scene_analysis": {
-                    "scene_type": scene_analysis.scene_type,
-                    "emotion_tone": scene_analysis.emotion_tone,
-                    "intensity": scene_analysis.intensity,
-                    "recommended_style": scene_analysis.recommended_style,
-                    "confidence": scene_analysis.style_confidence
-                },
+                    "scene_type": scene_analysis.scene_type if scene_analysis else "direct",
+                    "emotion_tone": scene_analysis.emotion_tone if scene_analysis else "neutral",
+                    "intensity": scene_analysis.intensity if scene_analysis else 0.5,
+                    "recommended_style": scene_analysis.recommended_style if scene_analysis else final_style,
+                    "confidence": scene_analysis.style_confidence if scene_analysis else 1.0
+                } if scene_analysis else None,
                 "music_description": music_description,
                 "final_style": final_style,
                 "duration": synthesis_result.duration,
@@ -173,7 +182,6 @@ class MusicOrchestrator:
                 result = await self.generate_music_for_content(
                     content=chapter["content"],
                     chapter_id=chapter_id,
-                    duration=chapter.get("duration", 30),
                     custom_style=chapter.get("style"),
                     volume_level=chapter.get("volume_level", -12.0)
                 )

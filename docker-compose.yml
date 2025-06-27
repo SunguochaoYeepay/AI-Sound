@@ -13,7 +13,7 @@ services:
       - DATABASE_URL=postgresql://ai_sound_user:ai_sound_password@database:5432/ai_sound
       - MEGATTS3_URL=http://megatts3:7929
       - TANGOFLUX_URL=http://tangoflux:7930
-      # - SONGGENERATION_URL=http://songgeneration:8081  # 已移除，使用独立的songgeneration-service
+      - SONGGENERATION_URL=http://host.docker.internal:7862  # 独立的songgeneration-service容器
       - OLLAMA_URL=http://host.docker.internal:11434  # Windows宿主机Ollama服务
       - AUDIO_DIR=/app/data/audio
       - UPLOADS_DIR=/app/data/uploads
@@ -24,7 +24,8 @@ services:
       - ./data:/app/data
       - ./data/backups:/app/data/backups  # 备份文件持久化
       # 生产模式：使用构建的镜像代码，不启用热重载
-      # - ./platform/backend/app:/app/app  # 开发模式：代码热重载
+      - ./platform/backend/app:/app/app  # 开发模式：代码热重载（为修复音乐生成功能启用）
+      - ./platform/backend/main.py:/app/main.py  # 挂载main.py
     depends_on:
       - database
       - redis

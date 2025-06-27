@@ -43,50 +43,70 @@ class SongGenerationEngineClient:
         """检查引擎健康状态"""
         try:
             async with httpx.AsyncClient(timeout=10) as client:
-                response = await client.get(f"{self.base_url}/health")
+                # 改用/ping端点，因为/health可能有问题
+                response = await client.get(f"{self.base_url}/ping")
                 if response.status_code == 200:
                     data = response.json()
-                    return data.get("status") == "healthy"
+                    return data.get("status") == "pong"
                 return False
         except Exception as e:
             logger.warning(f"SongGeneration引擎健康检查失败: {e}")
             return False
     
-    async def synthesize(self, lyrics: str, style: str = "pop", duration: int = 30) -> Optional[SynthesizeResponse]:
+    async def synthesize(self, 
+                        lyrics: str, 
+                        genre: str = "Auto", 
+                        description: str = "",
+                        cfg_coef: float = 1.5,
+                        temperature: float = 0.9,
+                        top_k: int = 50) -> Optional[SynthesizeResponse]:
         """
         合成音乐
-        纯粹的生成功能：歌词输入 → 音频输出
+        纯粹的生成功能：歌词输入 → 音频输出（完全匹配SongGeneration Demo参数）
         
         Args:
-            lyrics: 歌词内容
-            style: 音乐风格
-            duration: 目标时长
+            lyrics: 歌词内容（必填）
+            genre: 音乐风格（Auto/Pop/R&B/Dance等）
+            description: 音乐描述（可选）
+            cfg_coef: CFG系数（0.1-3.0）
+            temperature: 温度（0.1-2.0）
+            top_k: Top-K（1-100）
             
         Returns:
             合成响应或None（如果失败）
         """
         try:
-            logger.info(f"开始音乐合成: {lyrics[:50]}... (风格: {style}, 时长: {duration}s)")
+            logger.info(f"开始音乐合成: {lyrics[:50]}... (风格: {genre}, CFG: {cfg_coef})")
             
+            # 使用与SongGeneration Demo完全一致的参数格式
             request_data = {
                 "lyrics": lyrics,
-                "style": style,
-                "duration": duration
+                "genre": genre,
+                "descriptions": description,  # 注意：SongGeneration API使用复数形式
+                "cfg_coef": cfg_coef,
+                "temperature": temperature,
+                "top_k": top_k
             }
             
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(
-                    f"{self.base_url}/synthesize",
+                    f"{self.base_url}/generate",  # 使用正确的端点
                     json=request_data
                 )
                 response.raise_for_status()
                 
                 data = response.json()
-                return SynthesizeResponse(
-                    audio_url=data["audio_url"],
-                    duration=data["duration"],
-                    generation_time=data["generation_time"]
-                )
+                
+                # 适配SongGeneration的响应格式
+                if data.get("success") and data.get("file_id"):
+                    return SynthesizeResponse(
+                        audio_url=f"/download/{data['file_id']}",
+                        duration=30.0,  # SongGeneration默认30秒
+                        generation_time=0.0  # 暂时使用默认值
+                    )
+                else:
+                    logger.error(f"SongGeneration返回失败: {data.get('message', '未知错误')}")
+                    return None
                 
         except Exception as e:
             logger.error(f"音乐合成失败: {e}")

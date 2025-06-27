@@ -6,31 +6,17 @@
         <div class="title-section">
           <h1 class="page-title">
             <SoundOutlined style="margin-right: 12px" />
-            背景音乐库
+            背景音乐
           </h1>
           <p class="page-description">管理项目中使用的背景音乐，支持上传、分类、预览和智能推荐</p>
         </div>
         
         <div class="action-section">
-          <a-dropdown>
-            <template #overlay>
-              <a-menu>
-                <a-menu-item key="smart" @click="showSmartGenerationModal = true">
-                  <BookOutlined />
-                  基于章节内容生成
-                </a-menu-item>
-                <a-menu-item key="direct" @click="showDirectGenerationModal = true">
-                  <EditOutlined />
-                  基于描述直接生成
-                </a-menu-item>
-              </a-menu>
-            </template>
-            <a-button type="primary">
-              <SoundOutlined />
-              AI智能生成
-              <DownOutlined />
-            </a-button>
-          </a-dropdown>
+          <!-- 简化为单一直接生成按钮 -->
+          <a-button type="primary" @click="showDirectGenerationModal = true">
+            <SoundOutlined />
+            合成音乐
+          </a-button>
           <a-button @click="showUploadModal = true">
             <PlusOutlined />
             上传音乐
@@ -159,123 +145,67 @@
       </a-table>
     </a-card>
 
-    <!-- 基于章节内容的智能生成模态框 -->
-    <a-modal
-      v-model:open="showSmartGenerationModal"
-      title="📖 基于章节内容智能生成背景音乐"
-      width="900px"
-      @ok="handleSmartGeneration"
-      @cancel="() => { showSmartGenerationModal = false; resetSmartForm() }"
-      :confirm-loading="generating"
-      :ok-button-props="{ disabled: !smartForm.selectedBook || !smartForm.selectedChapter || !isServiceHealthy }"
-      ok-text="开始智能生成"
-      cancel-text="取消"
-    >
-      <div class="smart-generation-form">
-        <a-form :model="smartForm" layout="vertical">
-          <a-form-item label="选择书籍" required>
-            <a-select
-              v-model:value="smartForm.selectedBook"
-              placeholder="请选择要生成背景音乐的书籍"
-              @change="onBookChange"
-              :loading="booksLoading"
-            >
-              <a-select-option v-for="book in books" :key="book.id" :value="book.id">
-                {{ book.title }}
-              </a-select-option>
-            </a-select>
-          </a-form-item>
-          
-                     <a-form-item label="选择章节" required v-if="smartForm.selectedBook">
-             <a-select
-               v-model:value="smartForm.selectedChapter"
-               placeholder="请选择章节"
-               :loading="chaptersLoading"
-               @change="onChapterChange"
-             >
-               <a-select-option v-for="chapter in chapters" :key="chapter.id" :value="chapter.id">
-                 第{{ chapter.chapter_number }}章 {{ chapter.title }}
-               </a-select-option>
-             </a-select>
-           </a-form-item>
-          
-          <a-form-item label="章节内容预览" v-if="smartForm.selectedChapter">
-            <a-textarea 
-              :value="chapterPreview" 
-              :rows="4" 
-              readonly 
-              placeholder="加载章节内容中..."
-            />
-          </a-form-item>
-          
-          <a-row :gutter="16">
-            <a-col :span="8">
-              <a-form-item label="目标时长">
-                <a-input-number
-                  v-model:value="smartForm.duration"
-                  :min="10"
-                  :max="300"
-                  :step="5"
-                  addon-after="秒"
-                  style="width: 100%;"
-                />
-              </a-form-item>
-            </a-col>
-            <a-col :span="8">
-              <a-form-item label="音量等级">
-                <a-slider
-                  v-model:value="smartForm.volumeLevel"
-                  :min="-30"
-                  :max="0"
-                  :step="1"
-                  :tooltip-formatter="(val) => `${val}dB`"
-                />
-                <div style="text-align: center; font-size: 12px; color: #666;">
-                  {{ smartForm.volumeLevel }}dB
-                </div>
-              </a-form-item>
-            </a-col>
-            <a-col :span="8">
-              <a-form-item label="生成名称">
-                <a-input
-                  v-model:value="smartForm.name"
-                  placeholder="自动生成"
-                  :maxLength="50"
-                />
-              </a-form-item>
-            </a-col>
-          </a-row>
-        </a-form>
-      </div>
-    </a-modal>
+    <!-- 智能生成模态框已移除 - 功能复杂，后期优化 -->
 
     <!-- 基于描述的直接生成模态框 -->
     <a-modal
       v-model:open="showDirectGenerationModal"
-      title="✏️ 基于描述直接生成背景音乐"
+      title="🎵 合成背景音乐"
       width="700px"
       @ok="handleDirectGeneration"
       @cancel="() => { showDirectGenerationModal = false; resetDirectForm() }"
       :confirm-loading="generating"
-      :ok-button-props="{ disabled: !directForm.description.trim() || !isServiceHealthy }"
-      ok-text="开始生成"
+      :ok-button-props="{ disabled: !directForm.lyrics.trim() || !isServiceHealthy }"
+      ok-text="开始合成"
       cancel-text="取消"
     >
       <div class="direct-generation-form">
         <a-form :model="directForm" layout="vertical">
-          <a-form-item label="音乐描述" required>
+          <a-form-item label="歌词内容" required>
+            <a-textarea
+              v-model:value="directForm.lyrics"
+              placeholder="请输入歌词，格式如下：
+
+[intro-short]
+
+[verse]
+夜晚的街灯闪烁
+我漫步在熟悉的角落
+回忆像潮水般涌来
+
+[chorus]
+音乐的节奏奏响
+我的心却在流浪
+没有你的日子很难过
+
+[outro-short]"
+              :rows="8"
+              :maxLength="2000"
+              show-count
+            />
+          </a-form-item>
+          
+          <a-form-item label="音乐描述 (可选)">
             <a-textarea
               v-model:value="directForm.description"
-              placeholder="请输入音乐描述，例如：轻松愉悦的背景音乐，适合阅读时播放，温暖舒缓的氛围..."
-              :rows="4"
+              placeholder="描述音乐的特征，如：female, warm, pop, sad, piano, the bpm is 120"
+              :rows="3"
               :maxLength="500"
               show-count
             />
             <div class="description-tips">
               <a-alert 
-                message="💡 生成提示" 
-                description="你可以描述音乐的风格、情绪、场景、乐器等，AI会根据描述生成匹配的背景音乐。支持自由文本描述，如歌词、情境描述等。"
+                message="💡 合成提示" 
+                description="歌词是必填项，描述是可选的。参考SongGeneration Demo页面的格式输入。"
                 type="info" 
+                show-icon 
+                style="margin-top: 8px;"
+              />
+              
+              <a-alert 
+                message="⏰ 重要提示" 
+                description="音乐合成需要消耗大量计算资源，单次合成可能需要5-15分钟，请耐心等待。合成期间请不要关闭页面或进行其他高负载操作。"
+                type="warning" 
                 show-icon 
                 style="margin-top: 8px;"
               />
@@ -283,37 +213,29 @@
           </a-form-item>
           
           <a-row :gutter="16">
-            <a-col :span="8">
+            <a-col :span="12">
               <a-form-item label="音乐风格">
                 <a-select
-                  v-model:value="directForm.style"
+                  v-model:value="directForm.genre"
                   placeholder="选择风格"
-                  allowClear
                 >
-                  <a-select-option value="peaceful">轻松平静</a-select-option>
-                  <a-select-option value="romance">浪漫温馨</a-select-option>
-                  <a-select-option value="battle">紧张激烈</a-select-option>
-                  <a-select-option value="mystery">神秘悬疑</a-select-option>
-                  <a-select-option value="sad">忧伤沉重</a-select-option>
-                  <a-select-option value="epic">史诗宏大</a-select-option>
-                  <a-select-option value="classical">古典优雅</a-select-option>
-                  <a-select-option value="modern">现代流行</a-select-option>
+                  <a-select-option value="Auto">自动选择</a-select-option>
+                  <a-select-option value="Pop">流行 (Pop)</a-select-option>
+                  <a-select-option value="R&B">R&B</a-select-option>
+                  <a-select-option value="Dance">舞曲 (Dance)</a-select-option>
+                  <a-select-option value="Jazz">爵士 (Jazz)</a-select-option>
+                  <a-select-option value="Folk">民谣 (Folk)</a-select-option>
+                  <a-select-option value="Rock">摇滚 (Rock)</a-select-option>
+                  <a-select-option value="Chinese Style">中国风</a-select-option>
+                  <a-select-option value="Chinese Tradition">中国传统</a-select-option>
+                  <a-select-option value="Metal">金属 (Metal)</a-select-option>
+                  <a-select-option value="Reggae">雷鬼 (Reggae)</a-select-option>
+                  <a-select-option value="Chinese Opera">中国戏曲</a-select-option>
                 </a-select>
               </a-form-item>
             </a-col>
-            <a-col :span="8">
-              <a-form-item label="目标时长">
-                <a-input-number
-                  v-model:value="directForm.duration"
-                  :min="10"
-                  :max="300"
-                  :step="5"
-                  addon-after="秒"
-                  style="width: 100%;"
-                />
-              </a-form-item>
-            </a-col>
-            <a-col :span="8">
+            
+            <a-col :span="12">
               <a-form-item label="音量等级">
                 <a-slider
                   v-model:value="directForm.volumeLevel"
@@ -329,13 +251,47 @@
             </a-col>
           </a-row>
           
-          <a-form-item label="音乐名称">
-            <a-input
-              v-model:value="directForm.name"
-              placeholder="为生成的音乐起个名字（可选）"
-              :maxLength="50"
-            />
-          </a-form-item>
+          <!-- 高级参数 -->
+          <a-divider>高级参数</a-divider>
+          <a-row :gutter="16">
+            <a-col :span="8">
+              <a-form-item label="CFG系数 (0.1-3.0)">
+                <a-input-number
+                  v-model:value="directForm.cfg_coef"
+                  :min="0.1"
+                  :max="3.0"
+                  :step="0.1"
+                  style="width: 100%;"
+                />
+              </a-form-item>
+            </a-col>
+            
+            <a-col :span="8">
+              <a-form-item label="温度 (0.1-2.0)">
+                <a-input-number
+                  v-model:value="directForm.temperature"
+                  :min="0.1"
+                  :max="2.0"
+                  :step="0.1"
+                  style="width: 100%;"
+                />
+              </a-form-item>
+            </a-col>
+            
+            <a-col :span="8">
+              <a-form-item label="Top-K (1-100)">
+                <a-input-number
+                  v-model:value="directForm.top_k"
+                  :min="1"
+                  :max="100"
+                  :step="1"
+                  style="width: 100%;"
+                />
+              </a-form-item>
+            </a-col>
+          </a-row>
+          
+          <!-- 音乐名称字段已移除 - 后端API不需要此参数 -->
         </a-form>
         
         <!-- 服务状态 -->
@@ -349,8 +305,8 @@
           />
           <a-alert 
             v-else
-            message="✅ 音乐生成服务正常" 
-            description="SongGeneration v1.0 运行中，可以开始生成音乐。支持基于文本描述的直接生成。"
+            message="✅ 音乐合成服务正常" 
+            description="SongGeneration v1.0 运行中，可以开始合成音乐。支持基于文本描述的直接合成。"
             type="success" 
             show-icon 
           />
@@ -413,14 +369,15 @@ import {
 } from '@ant-design/icons-vue'
 import { getAudioService } from '@/utils/audioService'
 import { useAudioPlayerStore } from '@/stores/audioPlayer'
-import { backgroundMusicAPI, musicGenerationAPI, booksAPI, chaptersAPI } from '@/api'
+import { backgroundMusicAPI, musicGenerationAPI } from '@/api'
+// import { booksAPI, chaptersAPI } from '@/api'  // 移除 - 智能生成功能已移除
 
 // 页面状态
 const loading = ref(false)
 const refreshing = ref(false)
 const showUploadModal = ref(false)
 const uploading = ref(false)
-const showSmartGenerationModal = ref(false)
+// const showSmartGenerationModal = ref(false)  // 智能生成已移除
 const showDirectGenerationModal = ref(false)
 const generating = ref(false)
 const isServiceHealthy = ref(true)
@@ -454,30 +411,32 @@ const uploadData = reactive({
   fileList: []
 })
 
-// 智能生成表单（基于章节）
-const smartForm = reactive({
-  selectedBook: null,
-  selectedChapter: null,
-  duration: 120,
-  volumeLevel: -12,
-  name: ''
-})
+// 智能生成表单已移除 - 功能复杂，后期优化
+// const smartForm = reactive({
+//   selectedBook: null,
+//   selectedChapter: null,
+//   duration: 120,
+//   volumeLevel: -12,
+//   name: ''
+// })
 
-// 直接生成表单（基于描述）
+// 直接生成表单（与SongGeneration Demo完全一致）
 const directForm = reactive({
-  description: '',
-  style: '',
-  duration: 120,
-  volumeLevel: -12,
-  name: ''
+  lyrics: '',  // 歌词 - 必填
+  genre: 'Auto',  // 音乐风格
+  description: '',  // 音乐描述 - 可选
+  cfg_coef: 1.5,  // CFG系数
+  temperature: 0.9,  // 温度
+  top_k: 50,  // Top-K
+  volumeLevel: -12  // AI-Sound特有的音量级别
 })
 
-// 书籍和章节数据
-const books = ref([])
-const chapters = ref([])
-const chapterPreview = ref('')
-const booksLoading = ref(false)
-const chaptersLoading = ref(false)
+// 书籍和章节数据已移除 - 智能生成功能移除
+// const books = ref([])
+// const chapters = ref([])
+// const chapterPreview = ref('')
+// const booksLoading = ref(false)
+// const chaptersLoading = ref(false)
 
 // 表格列定义
 const tableColumns = [
@@ -730,54 +689,19 @@ const handleUpload = async () => {
   }
 }
 
-// 智能生成处理（基于章节内容）
-const handleSmartGeneration = async () => {
-  try {
-    generating.value = true
-    
-    console.log('🎵 开始智能生成背景音乐:', smartForm)
-    
-    // 获取章节内容
-    const chapterResponse = await chaptersAPI.getChapter(smartForm.selectedChapter)
-    const chapterContent = chapterResponse.data.content
-    
-    // 调用音乐生成API（基于章节内容）
-    const response = await musicGenerationAPI.generateChapterMusic({
-      chapter_id: smartForm.selectedChapter,
-      content: chapterContent,
-      target_duration: smartForm.duration,
-      volume_level: smartForm.volumeLevel,
-      fade_mode: 'standard'
-    })
-    
-    if (response && response.data) {
-      message.success('智能背景音乐生成成功！正在添加到音乐库...')
-      
-      // 生成成功后刷新音乐列表
-      await refreshData()
-      
-      // 关闭生成对话框并重置表单
-      showSmartGenerationModal.value = false
-      resetSmartForm()
-      
-      console.log('✅ 智能背景音乐生成完成:', response.data)
-    } else {
-      throw new Error('生成响应无效')
-    }
-  } catch (error) {
-    console.error('❌ 智能背景音乐生成失败:', error)
-    message.error(`智能生成失败: ${error.response?.data?.detail || error.message}`)
-  } finally {
-    generating.value = false
-  }
-}
+// 智能生成处理已移除 - 功能复杂，后期优化
+// const handleSmartGeneration = async () => {
+//   // 基于章节内容的智能音乐生成功能已移除
+//   // 后续优化：分析小说内容 → 生成音乐歌词 → 配置音效等
+//   // 暂时只保留直接生成功能
+// }
 
 // 直接生成处理（基于描述）
 const handleDirectGeneration = async () => {
   try {
     // 验证表单
-    if (!directForm.description.trim()) {
-      message.error('请输入音乐描述')
+    if (!directForm.lyrics.trim()) {
+      message.error('请输入歌词内容')
       return
     }
     
@@ -785,15 +709,15 @@ const handleDirectGeneration = async () => {
     
     console.log('🎵 开始直接生成背景音乐:', directForm)
     
-    // 需要调用一个新的API，直接基于描述生成音乐，不进行场景分析
-    // 这里我们需要一个专门的直接生成接口
+    // 调用直接音乐生成API，参数完全匹配SongGeneration Demo
     const response = await musicGenerationAPI.generateDirectMusic({
+      lyrics: directForm.lyrics,
+      genre: directForm.genre,
       description: directForm.description,
-      style: directForm.style,
-      target_duration: directForm.duration,
-      volume_level: directForm.volumeLevel,
-      name: directForm.name,
-      mode: 'direct' // 直接生成模式，跳过场景分析
+      cfg_coef: directForm.cfg_coef,
+      temperature: directForm.temperature,
+      top_k: directForm.top_k,
+      volume_level: directForm.volumeLevel
     })
     
     if (response && response.data) {
@@ -824,81 +748,35 @@ const handleDirectGeneration = async () => {
   }
 }
 
-// 重置表单
-const resetSmartForm = () => {
-  Object.assign(smartForm, {
-    selectedBook: null,
-    selectedChapter: null,
-    duration: 120,
-    volumeLevel: -12,
-    name: ''
-  })
-  chapters.value = []
-  chapterPreview.value = ''
-}
+// 智能生成重置表单已移除
+// const resetSmartForm = () => {
+//   // 智能生成表单重置功能已移除
+// }
 
 const resetDirectForm = () => {
   Object.assign(directForm, {
+    lyrics: '',
+    genre: 'Auto',
     description: '',
-    style: '',
-    duration: 120,
-    volumeLevel: -12,
-    name: ''
+    cfg_coef: 1.5,
+    temperature: 0.9,
+    top_k: 50,
+    volumeLevel: -12
   })
 }
 
-// 加载书籍列表
-const loadBooks = async () => {
-  try {
-    booksLoading.value = true
-    const response = await booksAPI.getBooks()
-    books.value = response.data || []
-  } catch (error) {
-    console.error('加载书籍列表失败:', error)
-    message.error('加载书籍列表失败')
-  } finally {
-    booksLoading.value = false
-  }
-}
-
-// 书籍选择变化
-const onBookChange = async (bookId) => {
-  if (!bookId) {
-    chapters.value = []
-    smartForm.selectedChapter = null
-    chapterPreview.value = ''
-    return
-  }
-  
-  try {
-    chaptersLoading.value = true
-    const response = await chaptersAPI.getChapters(bookId)
-    chapters.value = response.data || []
-  } catch (error) {
-    console.error('加载章节列表失败:', error)
-    message.error('加载章节列表失败')
-  } finally {
-    chaptersLoading.value = false
-  }
-}
-
-// 章节选择变化 - 加载章节内容预览
-const onChapterChange = async (chapterId) => {
-  if (!chapterId) {
-    chapterPreview.value = ''
-    return
-  }
-  
-  try {
-    const response = await chaptersAPI.getChapter(chapterId)
-    const content = response.data.content || ''
-    // 显示前200字符作为预览
-    chapterPreview.value = content.length > 200 ? content.substring(0, 200) + '...' : content
-  } catch (error) {
-    console.error('加载章节内容失败:', error)
-    chapterPreview.value = '章节内容加载失败'
-  }
-}
+// 书籍和章节相关方法已移除 - 智能生成功能移除
+// const loadBooks = async () => {
+//   // 加载书籍列表功能已移除
+// }
+// 
+// const onBookChange = async (bookId) => {
+//   // 书籍选择变化处理已移除
+// }
+// 
+// const onChapterChange = async (chapterId) => {
+//   // 章节选择变化处理已移除
+// }
 
 // 检查服务状态
 const checkServiceHealth = async () => {
@@ -932,7 +810,7 @@ const formatFileSize = (bytes) => {
 onMounted(() => {
   refreshData()
   checkServiceHealth()
-  loadBooks()
+  // loadBooks()  // 移除 - 智能生成功能已移除
 })
 </script>
 

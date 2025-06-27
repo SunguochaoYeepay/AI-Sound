@@ -7,7 +7,7 @@
           🎵 背景音乐生成
         </h3>
         <p class="panel-description">
-          为当前章节智能生成匹配的背景音乐
+          为当前章节生成背景音乐 (基于简单设置)
         </p>
       </div>
       <div class="header-right">
@@ -55,10 +55,19 @@
 
       <!-- 音乐生成控制 -->
       <div class="generation-controls">
-        <!-- 快速生成 -->
+        <!-- 简单生成 -->
         <div class="quick-generation">
-          <h4>快速生成</h4>
-          <p class="section-desc">系统将自动分析章节内容，选择最适合的音乐风格</p>
+          <h4>生成背景音乐</h4>
+          <p class="section-desc">根据基本设置生成背景音乐（不进行复杂分析）</p>
+          
+          <!-- 生成耗时警告 -->
+          <a-alert 
+            message="⏰ 重要提示" 
+            description="音乐生成需要消耗大量计算资源，单次生成可能需要5-15分钟，请耐心等待。为避免系统过载，暂时不支持批量生成功能。"
+            type="warning" 
+            show-icon 
+            style="margin-bottom: 16px;"
+          />
           
           <div class="quick-options">
             <div class="option-group">
@@ -98,117 +107,12 @@
             <template #icon>
               <SoundOutlined />
             </template>
-            {{ generating ? '正在生成音乐...' : '智能生成背景音乐' }}
+            {{ generating ? '正在生成音乐...' : '生成背景音乐' }}
           </a-button>
         </div>
 
-        <!-- 高级选项 -->
-        <a-collapse v-model:activeKey="advancedPanelActive" ghost>
-          <a-collapse-panel key="advanced" header="🎛️ 高级选项">
-            <!-- 风格预览 -->
-            <div class="style-preview-section">
-              <h5>风格预览</h5>
-              <a-button
-                @click="handleStylePreview"
-                :loading="previewing"
-                :disabled="!chapterContent"
-                size="small"
-              >
-                <template #icon>
-                  <EyeOutlined />
-                </template>
-                预览推荐风格
-              </a-button>
-              
-              <!-- 预览结果 -->
-              <div v-if="stylePreview" class="preview-result">
-                <div class="preview-card">
-                  <div class="style-info">
-                    <h6>{{ stylePreview.primary_style }}</h6>
-                    <div class="style-details">
-                      <a-tag color="blue">{{ stylePreview.mood }}</a-tag>
-                      <a-tag color="green">强度: {{ (stylePreview.intensity * 100).toFixed(0) }}%</a-tag>
-                      <a-tag color="orange">{{ stylePreview.tempo_range }}</a-tag>
-                    </div>
-                  </div>
-                  <div class="confidence-score">
-                    <span class="score">{{ (stylePreview.confidence * 100).toFixed(0) }}%</span>
-                    <span class="label">匹配度</span>
-                  </div>
-                </div>
-                
-                <div class="style-recommendations" v-if="stylePreview.style_recommendations?.length">
-                  <h6>其他推荐风格</h6>
-                  <div class="recommendation-tags">
-                    <a-tag
-                      v-for="rec in stylePreview.style_recommendations"
-                      :key="rec.style"
-                      :color="rec.confidence > 0.7 ? 'green' : rec.confidence > 0.5 ? 'blue' : 'default'"
-                      @click="selectCustomStyle(rec.style)"
-                      style="cursor: pointer;"
-                    >
-                      {{ rec.style }} ({{ (rec.confidence * 100).toFixed(0) }}%)
-                    </a-tag>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- 自定义风格 -->
-            <div class="custom-style-section">
-              <h5>自定义风格</h5>
-              <a-select
-                v-model:value="advancedOptions.customStyle"
-                placeholder="选择音乐风格"
-                style="width: 200px;"
-                :options="supportedStyles"
-                :loading="stylesLoading"
-                @focus="loadSupportedStyles"
-              />
-            </div>
-
-            <!-- 音频参数 -->
-            <div class="audio-params-section">
-              <h5>音频参数</h5>
-              <div class="param-grid">
-                <div class="param-item">
-                  <label>淡入时长</label>
-                  <a-input-number
-                    v-model:value="advancedOptions.fadeIn"
-                    :min="0"
-                    :max="10"
-                    :step="0.5"
-                    addon-after="秒"
-                  />
-                </div>
-                <div class="param-item">
-                  <label>淡出时长</label>
-                  <a-input-number
-                    v-model:value="advancedOptions.fadeOut"
-                    :min="0"
-                    :max="10"
-                    :step="0.5"
-                    addon-after="秒"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <!-- 高级生成按钮 -->
-            <a-button
-              type="primary"
-              :loading="generating"
-              :disabled="!canGenerate"
-              @click="handleAdvancedGenerate"
-              style="margin-top: 16px;"
-            >
-              <template #icon>
-                <SettingOutlined />
-              </template>
-              使用高级设置生成
-            </a-button>
-          </a-collapse-panel>
-        </a-collapse>
+        <!-- 高级选项已简化 - 移除复杂的智能分析功能 -->
+        <!-- 只保留基本的音乐生成功能，不进行场景分析和风格推荐 -->
       </div>
 
       <!-- 生成结果 -->
@@ -374,8 +278,8 @@ const emit = defineEmits(['musicGenerated', 'generationStarted', 'generationComp
 const serviceStatus = ref('unknown') // healthy, degraded, unhealthy, unknown
 const serviceInfo = ref(null)
 const statusLoading = ref(false)
-const supportedStyles = ref([])
-const stylesLoading = ref(false)
+// const supportedStyles = ref([])  // 移除智能风格推荐
+// const stylesLoading = ref(false)
 
 // 生成相关状态
 const generating = ref(false)
@@ -386,9 +290,9 @@ const currentTaskId = ref(null)
 const playing = ref(false)
 const audioPlayer = ref(null)
 
-// 预览相关
-const previewing = ref(false)
-const stylePreview = ref(null)
+// 预览相关已移除 - 智能功能简化
+// const previewing = ref(false)
+// const stylePreview = ref(null)
 
 // 进度相关
 const progressModalVisible = ref(false)
@@ -398,20 +302,21 @@ const currentStage = ref('')
 const estimatedTimeLeft = ref('')
 const cancelling = ref(false)
 
-// 面板状态
-const advancedPanelActive = ref([])
+// 面板状态已简化
+// const advancedPanelActive = ref([])  // 移除高级选项面板
 
-// 生成选项
+// 生成选项 - 只保留基本设置
 const quickOptions = ref({
   volumeLevel: -12,
   targetDuration: 30
 })
 
-const advancedOptions = ref({
-  customStyle: null,
-  fadeIn: 2.0,
-  fadeOut: 2.0
-})
+// 高级选项已移除 - 简化功能
+// const advancedOptions = ref({
+//   customStyle: null,
+//   fadeIn: 2.0,
+//   fadeOut: 2.0
+// })
 
 // 计算属性
 const serviceStatusClass = computed(() => {
@@ -493,67 +398,32 @@ const refreshServiceStatus = async () => {
   }
 }
 
-const loadSupportedStyles = async () => {
-  if (supportedStyles.value.length > 0) return
-  
-  stylesLoading.value = true
-  try {
-    const response = await musicGenerationAPI.getSupportedStyles()
-    supportedStyles.value = response.data.styles.map(style => ({
-      label: style.display_name || style.name,
-      value: style.name,
-      description: style.description
-    }))
-  } catch (error) {
-    console.error('加载支持的风格失败:', error)
-    message.error('加载音乐风格列表失败')
-  } finally {
-    stylesLoading.value = false
-  }
-}
-
-const handleStylePreview = async () => {
-  previewing.value = true
-  try {
-    const response = await musicGenerationAPI.previewMusicStyle({
-      content_sample: props.chapterContent.substring(0, 1000) // 取前1000字作为样本
-    })
-    stylePreview.value = response.data
-    message.success('风格预览生成完成')
-  } catch (error) {
-    console.error('风格预览失败:', error)
-    message.error('风格预览失败: ' + (error.response?.data?.detail || error.message))
-  } finally {
-    previewing.value = false
-  }
-}
-
-const selectCustomStyle = (style) => {
-  advancedOptions.value.customStyle = style
-  message.info(`已选择风格: ${style}`)
-}
+// 智能风格相关方法已移除 - 功能简化
+// const loadSupportedStyles = async () => {
+//   // 风格推荐功能已移除
+// }
+//
+// const handleStylePreview = async () => {
+//   // 风格预览功能已移除
+// }
+//
+// const selectCustomStyle = (style) => {
+//   // 自定义风格选择功能已移除
+// }
 
 const handleQuickGenerate = async () => {
   await generateMusic({
     chapter_id: props.selectedChapter,
     content: props.chapterContent,
-    target_duration: quickOptions.value.targetDuration,
+    duration: quickOptions.value.targetDuration,  // target_duration -> duration
     volume_level: quickOptions.value.volumeLevel
   })
 }
 
-const handleAdvancedGenerate = async () => {
-  await generateMusic({
-    chapter_id: props.selectedChapter,
-    content: props.chapterContent,
-    target_duration: quickOptions.value.targetDuration,
-    volume_level: quickOptions.value.volumeLevel,
-    custom_style: advancedOptions.value.customStyle,
-    fade_mode: 'custom',
-    fade_in: advancedOptions.value.fadeIn,
-    fade_out: advancedOptions.value.fadeOut
-  })
-}
+// 高级生成已移除 - 只保留基本生成功能
+// const handleAdvancedGenerate = async () => {
+//   // 高级生成功能已移除，只保留基本生成
+// }
 
 const generateMusic = async (requestData) => {
   generating.value = true
@@ -561,7 +431,7 @@ const generateMusic = async (requestData) => {
   generationProgress.value = 0
   progressMessage.value = '正在初始化音乐生成...'
   currentStage.value = '准备阶段'
-  estimatedTimeLeft.value = '约30-60秒'
+  estimatedTimeLeft.value = '约5-15分钟'  // 音乐生成耗时很长，增加预期时间
   
   emit('generationStarted')
   
@@ -604,24 +474,33 @@ const updateProgressMessage = () => {
     '正在分析章节内容...',
     '正在识别情感基调...',
     '正在选择音乐风格...',
-    '正在生成音乐片段...',
+    '正在生成音乐片段... (这个过程需要较长时间，请耐心等待)',
     '正在进行音频后处理...',
-    '正在优化音质...'
+    '正在优化音质... (即将完成)',
+    '正在保存文件...'
   ]
   
   const stages = [
     '内容分析',
     '情感识别', 
     '风格选择',
-    '音乐生成',
+    '音乐生成中',
     '音频处理',
-    '质量优化'
+    '质量优化',
+    '文件保存'
   ]
   
-  const index = Math.floor(generationProgress.value / 15)
+  const index = Math.floor(generationProgress.value / 12)  // 调整进度划分，给生成阶段更多时间
   if (index < messages.length) {
     progressMessage.value = messages[index]
     currentStage.value = stages[index]
+    
+    // 在音乐生成阶段更新预期时间
+    if (index === 3) {
+      estimatedTimeLeft.value = '约10-15分钟'
+    } else if (index >= 4) {
+      estimatedTimeLeft.value = '约1-3分钟'
+    }
   }
 }
 
@@ -676,11 +555,11 @@ const onAudioEnded = () => {
   playing.value = false
 }
 
-// 监听器
+// 监听器 - 简化
 watch(() => props.selectedChapter, () => {
   // 章节切换时清除之前的结果
   generationResult.value = null
-  stylePreview.value = null
+  // stylePreview.value = null  // 风格预览功能已移除
 })
 
 // 生命周期

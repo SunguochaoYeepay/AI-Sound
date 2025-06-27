@@ -33,8 +33,7 @@ from app.exceptions import (
     ValidationException
 )
 
-# 本地化SongGeneration服务
-from app.services.local_song_generation import get_local_song_generation_service
+# 移除本地化SongGeneration服务，改用HTTP引擎客户端
 
 # 配置日志
 logging.basicConfig(
@@ -72,29 +71,23 @@ async def check_tangoflux_connection() -> Dict[str, Any]:
         }
 
 async def check_songgeneration_service():
-    """检查本地化SongGeneration服务状态"""
+    """检查SongGeneration HTTP引擎服务状态"""
     try:
-        # 获取本地化服务实例
-        local_song_service = get_local_song_generation_service()
+        # 使用新的HTTP引擎客户端检查
+        from app.clients.songgeneration_engine import get_songgeneration_engine
         
-        # 检查服务状态
-        health_info = local_song_service.generator.get_health_info()
+        engine = get_songgeneration_engine()
+        is_healthy = await engine.health_check()
         
-        if health_info["status"] == "healthy":
-            logger.info(f"✅ 本地SongGeneration服务正常")
-            logger.info(f"📁 工作目录: {health_info['working_directory']}")
-            logger.info(f"📊 模型文件: {'可用' if health_info['dependencies']['model_files'] else '不可用'}")
+        if is_healthy:
+            logger.info(f"✅ SongGeneration HTTP引擎服务正常: {engine.base_url}")
         else:
-            logger.warning(f"⚠️ 本地SongGeneration服务状态: {health_info['status']}")
-            logger.warning(f"📁 工作目录: {health_info['working_directory']}")
-            logger.warning(f"📊 依赖项状态: {health_info['dependencies']}")
-            
-            # 即使模型不可用也继续启动（降级模式）
-            logger.info("🎵 将使用简化音频生成模式")
+            logger.warning(f"⚠️ SongGeneration HTTP引擎服务不可用: {engine.base_url}")
+            logger.warning("🎵 音乐生成功能将不可用")
                 
     except Exception as e:
-        logger.error(f"❌ SongGeneration服务检查异常: {str(e)}")
-        logger.warning("⚠️ 将使用简化音频生成模式")
+        logger.error(f"❌ SongGeneration引擎检查异常: {str(e)}")
+        logger.warning("⚠️ 音乐生成功能将不可用")
 
 
 async def check_ollama_service():
@@ -248,10 +241,6 @@ app.mount("/outputs", StaticFiles(directory="outputs"), name="outputs")
 
 # 注册API路由
 app.include_router(api_router, prefix="/api")
-
-# 添加本地化SongGeneration服务路由
-local_song_service = get_local_song_generation_service()
-app.include_router(local_song_service.get_router(), prefix="/api")
 
 
 # WebSocket端点

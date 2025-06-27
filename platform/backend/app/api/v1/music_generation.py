@@ -19,17 +19,22 @@ router = APIRouter(prefix="/music-generation", tags=["音乐生成"])
 
 # 请求模型
 class MusicGenerationRequest(BaseModel):
-    """音乐生成请求"""
-    content: str = Field(..., description="文本内容")
+    """音乐生成请求 - 完全匹配SongGeneration Demo参数"""
+    lyrics: str = Field(..., description="歌词内容（必填）")
+    genre: Optional[str] = Field("Auto", description="音乐风格")
+    description: Optional[str] = Field("", description="音乐描述（可选）")
+    cfg_coef: float = Field(1.5, ge=0.1, le=3.0, description="CFG系数")
+    temperature: float = Field(0.9, ge=0.1, le=2.0, description="温度")
+    top_k: int = Field(50, ge=1, le=100, description="Top-K")
+    # AI-Sound特有参数
     chapter_id: Optional[str] = Field(None, description="章节ID")
-    duration: int = Field(30, ge=10, le=180, description="目标时长（秒）")
-    style: Optional[str] = Field(None, description="音乐风格（留空自动分析）")
     volume_level: float = Field(-12.0, ge=-30.0, le=0.0, description="音量级别（dB）")
 
-class BatchMusicGenerationRequest(BaseModel):
-    """批量音乐生成请求"""
-    chapters: List[Dict] = Field(..., description="章节列表")
-    max_concurrent: int = Field(3, ge=1, le=10, description="最大并发数")
+# 批量音乐生成请求已移除 - 资源消耗过大，容易导致系统卡死
+# class BatchMusicGenerationRequest(BaseModel):
+#     """批量音乐生成请求"""
+#     chapters: List[Dict] = Field(..., description="章节列表")
+#     max_concurrent: int = Field(3, ge=1, le=10, description="最大并发数")
 
 class SceneAnalysisRequest(BaseModel):
     """场景分析请求"""
@@ -80,17 +85,22 @@ async def generate_music(request: MusicGenerationRequest):
     新架构：场景分析 → 引擎生成 → 文件管理
     """
     try:
-        logger.info(f"收到音乐生成请求，章节: {request.chapter_id}, 时长: {request.duration}s")
+        logger.info(f"收到音乐生成请求，章节: {request.chapter_id}，风格: {request.genre}")
         
         orchestrator = get_music_orchestrator()
         
-        # 使用新的编排器进行完整的音乐生成流程
+        # 直接使用SongGeneration Demo参数
         result = await orchestrator.generate_music_for_content(
-            content=request.content,
+            content=request.lyrics,
             chapter_id=request.chapter_id,
-            duration=request.duration,
-            custom_style=request.style,
-            volume_level=request.volume_level
+            custom_style=request.genre,
+            volume_level=request.volume_level,
+            advanced_params={
+                "description": request.description,
+                "cfg_coef": request.cfg_coef,
+                "temperature": request.temperature,
+                "top_k": request.top_k
+            }
         )
         
         if result:
@@ -110,6 +120,54 @@ async def generate_music(request: MusicGenerationRequest):
             
     except Exception as e:
         logger.error(f"音乐生成API异常: {e}")
+        return MusicGenerationResponse(
+            success=False,
+            error=str(e)
+        )
+
+@router.post("/generate-direct", response_model=MusicGenerationResponse)
+async def generate_direct_music(request: MusicGenerationRequest):
+    """
+    直接生成音乐（无场景分析）
+    适用于基于描述的直接生成，跳过复杂的场景分析流程
+    """
+    try:
+        logger.info(f"收到直接音乐生成请求，风格: {request.genre}，CFG: {request.cfg_coef}")
+        
+        orchestrator = get_music_orchestrator()
+        
+        # 直接使用SongGeneration Demo参数
+        result = await orchestrator.generate_music_for_content(
+            content=request.lyrics,
+            chapter_id=request.chapter_id or f"direct_{int(__import__('time').time())}",
+            custom_style=request.genre,
+            volume_level=request.volume_level,
+            direct_mode=True,  # 启用直接模式
+            advanced_params={
+                "description": request.description,
+                "cfg_coef": request.cfg_coef,
+                "temperature": request.temperature,
+                "top_k": request.top_k
+            }
+        )
+        
+        if result:
+            return MusicGenerationResponse(
+                success=True,
+                audio_path=result["audio_path"],
+                audio_url=result["audio_url"],
+                scene_analysis=result.get("scene_analysis"),
+                music_description=result.get("music_description", "基于描述直接生成的音乐"),
+                generation_time=result["generation_time"]
+            )
+        else:
+            return MusicGenerationResponse(
+                success=False,
+                error="直接音乐生成失败，请检查引擎状态"
+            )
+            
+    except Exception as e:
+        logger.error(f"直接音乐生成API异常: {e}")
         return MusicGenerationResponse(
             success=False,
             error=str(e)
@@ -142,35 +200,17 @@ async def analyze_scene(request: SceneAnalysisRequest):
         logger.error(f"场景分析API异常: {e}")
         raise HTTPException(status_code=500, detail=f"场景分析失败: {str(e)}")
 
-@router.post("/batch-generate")
-async def batch_generate_music(request: BatchMusicGenerationRequest, background_tasks: BackgroundTasks):
-    """
-    批量生成音乐
-    使用新的编排器进行批量处理
-    """
-    try:
-        logger.info(f"收到批量音乐生成请求，章节数: {len(request.chapters)}")
-        
-        orchestrator = get_music_orchestrator()
-        
-        # 使用新的批量生成方法
-        batch_result = await orchestrator.generate_music_batch(
-            chapters=request.chapters,
-            max_concurrent=request.max_concurrent
-        )
-        
-        return {
-            "success": True,
-            "total_tasks": batch_result.total_tasks,
-            "completed_tasks": batch_result.completed_tasks,
-            "failed_tasks": batch_result.failed_tasks,
-            "processing_time": batch_result.processing_time,
-            "results": batch_result.results
-        }
-        
-    except Exception as e:
-        logger.error(f"批量音乐生成API异常: {e}")
-        raise HTTPException(status_code=500, detail=f"批量生成失败: {str(e)}")
+# 批量生成音乐接口已移除 - 资源消耗过大，容易导致系统卡死
+# @router.post("/batch-generate")
+# async def batch_generate_music(request: BatchMusicGenerationRequest, background_tasks: BackgroundTasks):
+#     """
+#     批量生成音乐 (已禁用)
+#     单个音乐生成就需要很长时间，批量生成会导致系统资源耗尽
+#     """
+#     raise HTTPException(
+#         status_code=501, 
+#         detail="批量音乐生成功能已禁用，请使用单个生成功能避免系统过载"
+#     )
 
 @router.get("/styles")
 async def get_supported_styles():
