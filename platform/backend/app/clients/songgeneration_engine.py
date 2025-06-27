@@ -33,7 +33,7 @@ class SongGenerationEngineClient:
     简洁设计：只负责与引擎通信，不包含业务逻辑
     """
     
-    def __init__(self, base_url: str = "http://localhost:8081", timeout: int = 300):
+    def __init__(self, base_url: str = "http://localhost:7862", timeout: int = 300):
         self.base_url = base_url.rstrip('/')
         self.timeout = timeout
         
@@ -113,6 +113,6 @@ def get_songgeneration_engine() -> SongGenerationEngineClient:
     if _engine_client is None:
         # 从环境变量或配置获取引擎URL
         import os
-        engine_url = os.getenv("SONGGENERATION_URL", "http://localhost:8081")
+        engine_url = os.getenv("SONGGENERATION_URL", "http://localhost:7862")
         _engine_client = SongGenerationEngineClient(engine_url)
     return _engine_client 

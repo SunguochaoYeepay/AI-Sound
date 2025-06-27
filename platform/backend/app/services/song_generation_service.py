@@ -53,9 +53,9 @@ class SongGenerationService:
     """SongGeneration核心服务"""
     
     def __init__(self):
-        # 从环境变量获取SongGeneration服务URL，默认使用Docker服务名
+        # 从环境变量获取SongGeneration服务URL，默认使用本地Docker端口
         import os
-        self.base_url = os.getenv("SONGGENERATION_URL", "http://songgeneration:8081")
+        self.base_url = os.getenv("SONGGENERATION_URL", "http://localhost:7862")
         self.timeout = 300  # 5分钟超时
         self.session = httpx.AsyncClient(timeout=self.timeout)
         logger.info(f"SongGenerationService初始化，使用服务: {self.base_url}")
@@ -91,7 +91,7 @@ class SongGenerationService:
     
     async def analyze_scene(self, content: str) -> Optional[SceneAnalysisResult]:
         """
-        分析文本内容的场景和情绪
+        分析文本内容的场景和情绪（简化版本，引擎不支持独立分析）
         
         Args:
             content: 文本内容
@@ -100,20 +100,15 @@ class SongGenerationService:
             场景分析结果
         """
         try:
-            response = await self.session.post(
-                f"{self.base_url}/analyze-scene",
-                json=content
-            )
-            response.raise_for_status()
-            
-            data = response.json()
+            # 引擎不支持独立场景分析，返回通用分析结果
+            logger.info("使用简化场景分析（引擎不支持独立场景分析）")
             return SceneAnalysisResult(
-                scene_type=data["scene_type"],
-                emotion_tone=data["emotion_tone"],
-                intensity=data["intensity"],
-                keywords=data["keywords"],
-                duration_hint=data["duration_hint"],
-                style_recommendations=data["style_recommendations"]
+                scene_type="general",
+                emotion_tone="neutral",
+                intensity=0.5,
+                keywords=["background", "music"],
+                duration_hint=30,
+                style_recommendations=[{"style": "background", "confidence": 0.8}]
             )
             
         except Exception as e:
@@ -122,71 +117,79 @@ class SongGenerationService:
     
     async def generate_music_async(self, request: MusicGenerationRequest) -> Optional[str]:
         """
-        异步生成音乐
+        异步生成音乐（适配引擎同步接口）
         
         Args:
             request: 音乐生成请求
             
         Returns:
-            任务ID
+            任务ID（实际为file_id）
         """
         try:
+            # 适配引擎的实际API格式
+            engine_request = {
+                "lyrics": request.content,  # content -> lyrics
+                "descriptions": request.custom_style or "background music",
+                "cfg_coef": 1.5,
+                "temperature": 0.9,
+                "top_k": 50
+            }
+            
+            logger.info(f"发送音乐生成请求到引擎: {self.base_url}/generate")
             response = await self.session.post(
                 f"{self.base_url}/generate",
-                json={
-                    "content": request.content,
-                    "target_duration": request.target_duration,
-                    "custom_style": request.custom_style,
-                    "volume_level": request.volume_level,
-                    "fade_in": request.fade_in,
-                    "fade_out": request.fade_out
-                }
+                json=engine_request
             )
             response.raise_for_status()
             
             data = response.json()
-            task_id = data["task_id"]
             
-            logger.info(f"音乐生成任务已提交: {task_id}")
-            return task_id
+            # 引擎返回格式: {"success": true, "file_id": "...", "file_path": "..."}
+            if data.get("success") and data.get("file_id"):
+                file_id = data["file_id"]
+                logger.info(f"音乐生成完成，文件ID: {file_id}")
+                return file_id
+            else:
+                logger.error(f"引擎生成失败: {data.get('message', '未知错误')}")
+                return None
             
         except Exception as e:
-            logger.error(f"提交音乐生成任务失败: {str(e)}")
+            logger.error(f"音乐生成请求失败: {str(e)}")
             return None
     
     async def get_task_status(self, task_id: str) -> Optional[MusicGenerationResult]:
         """
-        获取任务状态
+        获取任务状态（适配引擎同步模式）
         
         Args:
-            task_id: 任务ID
+            task_id: 任务ID（实际为file_id）
             
         Returns:
             音乐生成结果
         """
         try:
-            response = await self.session.get(f"{self.base_url}/tasks/{task_id}")
-            response.raise_for_status()
+            # 引擎是同步生成，如果有file_id说明已完成
+            # 构造下载URL
+            audio_url = f"/download/{task_id}"
             
-            data = response.json()
             return MusicGenerationResult(
-                task_id=data["task_id"],
-                status=data["status"],
-                progress=data.get("progress", 0.0),
-                audio_url=data.get("audio_url"),
-                scene_analysis=data.get("scene_analysis"),
-                music_prompt=data.get("music_prompt"),
-                error_message=data.get("error_message"),
-                generation_time=data.get("generation_time")
+                task_id=task_id,
+                status="completed",  # 引擎同步完成
+                progress=1.0,
+                audio_url=audio_url,
+                scene_analysis=None,
+                music_prompt=None,
+                error_message=None,
+                generation_time=None
             )
             
         except Exception as e:
-            logger.error(f"获取任务状态失败: {str(e)}")
+            logger.error(f"构造任务状态失败: {str(e)}")
             return None
     
     async def wait_for_completion(self, task_id: str, max_wait_time: int = 300) -> Optional[MusicGenerationResult]:
         """
-        等待任务完成
+        等待任务完成（适配引擎同步模式，直接返回结果）
         
         Args:
             task_id: 任务ID
@@ -195,31 +198,9 @@ class SongGenerationService:
         Returns:
             音乐生成结果
         """
-        start_time = time.time()
-        poll_interval = 5  # 5秒轮询一次
-        
-        logger.info(f"开始等待音乐生成任务完成: {task_id}")
-        
-        while time.time() - start_time < max_wait_time:
-            result = await self.get_task_status(task_id)
-            
-            if not result:
-                logger.error(f"无法获取任务状态: {task_id}")
-                return None
-            
-            logger.info(f"任务 {task_id} 状态: {result.status}, 进度: {result.progress:.2f}")
-            
-            if result.status == "completed":
-                logger.info(f"音乐生成完成: {task_id}")
-                return result
-            elif result.status == "failed":
-                logger.error(f"音乐生成失败: {task_id}, 错误: {result.error_message}")
-                return result
-            
-            await asyncio.sleep(poll_interval)
-        
-        logger.warning(f"音乐生成任务超时: {task_id}")
-        return None
+        # 引擎是同步生成，直接返回完成状态
+        logger.info(f"音乐生成任务已同步完成: {task_id}")
+        return await self.get_task_status(task_id)
     
     async def download_generated_music(self, audio_url: str, output_filename: str) -> Optional[str]:
         """

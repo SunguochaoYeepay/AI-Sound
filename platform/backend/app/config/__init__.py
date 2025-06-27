@@ -25,7 +25,7 @@ class Settings:
     @property
     def SONGGENERATION_URL(self):
         """SongGeneration服务URL"""
-        return os.getenv("SONGGENERATION_URL", "http://localhost:8081")
+        return os.getenv("SONGGENERATION_URL", "http://localhost:7862")
 
 # 创建全局settings实例
 settings = Settings()
