@@ -14,9 +14,9 @@
         <div class="action-section">
           <!-- 简化为单一直接生成按钮 -->
           <a-button type="primary" @click="showDirectGenerationModal = true">
-            <SoundOutlined />
+              <SoundOutlined />
             合成音乐
-          </a-button>
+            </a-button>
           <a-button @click="showUploadModal = true">
             <PlusOutlined />
             上传音乐
@@ -262,8 +262,8 @@
                   :max="3.0"
                   :step="0.1"
                   style="width: 100%;"
-                />
-              </a-form-item>
+            />
+          </a-form-item>
             </a-col>
             
             <a-col :span="8">

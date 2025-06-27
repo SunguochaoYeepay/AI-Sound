@@ -130,7 +130,7 @@ api.include_router(audio_editor_router, prefix="/audio-editor", tags=["Audio Edi
 # Register background music router
 api.include_router(background_music_router, prefix="/background-music", tags=["Background Music"])
 # 🎵 Register music generation router
-api.include_router(music_generation_router, prefix="/music-generation", tags=["Music Generation"])
+api.include_router(music_generation_router, tags=["Music Generation"])
 # Temporarily commented out due to missing model dependencies
 # api.include_router(smart_editing_router, prefix="/smart-editing", tags=["Smart Editing"])
 # api.include_router(collaboration_router, prefix="/collaboration", tags=["Collaboration"])

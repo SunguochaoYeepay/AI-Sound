@@ -413,9 +413,13 @@ const refreshServiceStatus = async () => {
 
 const handleQuickGenerate = async () => {
   await generateMusic({
+    lyrics: props.chapterContent,  // content -> lyrics (后端期望参数)
+    genre: "Auto",  // 默认音乐风格
+    description: "基于章节内容生成的背景音乐",  // 音乐描述
+    cfg_coef: 1.5,  // 默认CFG系数
+    temperature: 0.9,  // 默认温度
+    top_k: 50,  // 默认Top-K
     chapter_id: props.selectedChapter,
-    content: props.chapterContent,
-    duration: quickOptions.value.targetDuration,  // target_duration -> duration
     volume_level: quickOptions.value.volumeLevel
   })
 }
