@@ -19,7 +19,7 @@
             </template>
             智能发现
           </a-button>
-          <a-button type="primary" size="large" @click="$router.push('/characters/create')">
+          <a-button type="primary" size="large" @click="addNewVoice">
             <template #icon>
               <PlusOutlined />
             </template>

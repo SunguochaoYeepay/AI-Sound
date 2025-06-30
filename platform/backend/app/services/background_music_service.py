@@ -37,7 +37,7 @@ class BackgroundMusicService:
         
     def _get_music_directory(self) -> str:
         """获取音乐存储目录"""
-        music_dir = os.path.join(self.path_manager.get_path('uploads'), 'background_music')
+        music_dir = os.path.join(self.path_manager.get_storage_path('uploads'), 'background_music')
         os.makedirs(music_dir, exist_ok=True)
         return music_dir
     

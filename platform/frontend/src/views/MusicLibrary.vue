@@ -104,7 +104,7 @@
           </template>
           
           <template v-else-if="column.key === 'category'">
-            <a-tag color="blue">{{ record.category_name || '未分类' }}</a-tag>
+            <a-tag color="blue">{{ record.category?.name || record.category_name || '未分类' }}</a-tag>
           </template>
           
           <template v-else-if="column.key === 'duration'">
@@ -319,19 +319,36 @@
       v-model:open="showUploadModal"
       title="上传音乐"
       @ok="handleUpload"
-      @cancel="showUploadModal = false"
+      @cancel="() => { 
+        showUploadModal = false
+        // 重置表单
+        Object.assign(uploadData, {
+          name: '',
+          description: '',
+          category_id: categories.value.length > 0 ? categories.value[0].id : 1,
+          fileList: []
+        })
+      }"
       :confirm-loading="uploading"
     >
       <a-form :model="uploadData" layout="vertical">
-        <a-form-item label="音乐名称">
+        <a-form-item label="音乐名称" required>
           <a-input v-model:value="uploadData.name" placeholder="请输入音乐名称" />
+        </a-form-item>
+        
+        <a-form-item label="音乐分类">
+          <a-select v-model:value="uploadData.category_id" placeholder="请选择音乐分类">
+            <a-select-option v-for="category in categories" :key="category.id" :value="category.id">
+              {{ category.name }}
+            </a-select-option>
+          </a-select>
         </a-form-item>
         
         <a-form-item label="描述">
           <a-textarea v-model:value="uploadData.description" placeholder="请输入音乐描述" :rows="3" />
         </a-form-item>
         
-        <a-form-item label="音乐文件">
+        <a-form-item label="音乐文件" required>
           <a-upload
             v-model:file-list="uploadData.fileList"
             :before-upload="beforeUpload"
@@ -408,8 +425,12 @@ const pagination = reactive({
 const uploadData = reactive({
   name: '',
   description: '',
+  category_id: 1,
   fileList: []
 })
+
+// 音乐分类数据
+const categories = ref([])
 
 // 智能生成表单已移除 - 功能复杂，后期优化
 // const smartForm = reactive({
@@ -489,42 +510,47 @@ const refreshData = async () => {
 const loadMusicList = async () => {
   loading.value = true
   try {
+    console.log('🔍 开始加载音乐列表...')
     const response = await backgroundMusicAPI.getMusic({
       page: pagination.current,
       page_size: pagination.pageSize,
       active_only: true
     })
     
+    console.log('✅ API响应:', response)
+    
     if (response.data) {
-      musicList.value = response.data.items || []
+      const items = response.data.items || []
+      console.log('🔍 原始数据项:', items.length > 0 ? items[0] : '无数据')
+      
+      // 🔧 处理数据格式，确保字段正确映射
+      musicList.value = items.map(item => ({
+        ...item,
+        // 确保category_name字段存在，用于向后兼容
+        category_name: item.category?.name || item.category_name || '未分类'
+      }))
+      
       pagination.total = response.data.total || 0
+      console.log(`📋 加载了 ${musicList.value.length} 条音乐记录`)
+      console.log('🔍 处理后的数据:', musicList.value.length > 0 ? musicList.value[0] : '无数据')
     }
   } catch (error) {
-    console.error('加载音乐列表失败:', error)
-    message.error('加载音乐列表失败')
+    console.error('❌ 加载音乐列表失败:', error)
     
-    // 如果API失败，使用模拟数据作为后备
-    const mockData = [
-      {
-        id: 1,
-        name: '轻松愉悦背景音乐',
-        description: '适合用于日常场景的轻松音乐',
-        category_name: '背景音乐',
-        duration: 180,
-        file_size: 5242880
-      },
-      {
-        id: 2,
-        name: '史诗级配乐',
-        description: '适合用于紧张激烈场景',
-        category_name: '配乐',
-        duration: 240,
-        file_size: 7340032
-      }
-    ]
+    // 🔧 显示详细错误信息，不再默认使用模拟数据
+    if (error.code === 'ECONNREFUSED' || error.code === 'ERR_NETWORK') {
+      message.error('无法连接到后端服务，请确保服务正在运行在8001端口')
+    } else if (error.response?.status === 404) {
+      message.error('API端点不存在，请检查后端路由配置')
+    } else {
+      message.error(`加载音乐列表失败: ${error.response?.data?.detail || error.message}`)
+    }
     
-    musicList.value = mockData
-    pagination.total = mockData.length
+    // 清空列表，让用户知道没有数据
+    musicList.value = []
+    pagination.total = 0
+    
+    console.log('💡 提示：如果后端服务未启动，请运行 cd platform/backend && python main.py')
   } finally {
     loading.value = false
   }
@@ -532,21 +558,45 @@ const loadMusicList = async () => {
 
 const loadStats = async () => {
   try {
+    console.log('📊 开始加载统计信息...')
     const response = await backgroundMusicAPI.getStats()
     
     if (response.data) {
       Object.assign(stats, response.data)
+      console.log('✅ 统计信息加载成功:', response.data)
     }
   } catch (error) {
-    console.error('加载统计信息失败:', error)
+    console.error('❌ 加载统计信息失败:', error)
     
-    // 如果API失败，使用模拟数据作为后备
+    // 🔧 显示统计信息为0，而不是模拟数据
     Object.assign(stats, {
-      total_music: 18,
-      total_categories: 3,
-      total_duration: 3600,
-      total_size: 104857600
+      total_music: 0,
+      total_categories: 0,
+      total_duration: 0,
+      total_size: 0
     })
+    
+    console.log('💡 统计信息无法加载，显示为0')
+  }
+}
+
+const loadCategories = async () => {
+  try {
+    console.log('🔍 开始加载音乐分类...')
+    const response = await backgroundMusicAPI.getCategories(true)
+    console.log('✅ 分类API响应:', response)
+    
+    if (response.data) {
+      categories.value = response.data
+      // 设置默认分类ID
+      if (categories.value.length > 0 && !uploadData.category_id) {
+        uploadData.category_id = categories.value[0].id
+      }
+      console.log(`📋 加载了 ${categories.value.length} 个音乐分类`)
+    }
+  } catch (error) {
+    console.error('❌ 加载音乐分类失败:', error)
+    message.error('加载音乐分类失败')
   }
 }
 
@@ -580,7 +630,7 @@ const playMusic = async (music) => {
       type: 'background_music',
       metadata: {
         musicId: music.id,
-        category: music.category_name,
+        category: music.category?.name || music.category_name || '未分类',
         duration: music.duration,
         fileSize: music.file_size,
         description: music.description,
@@ -667,9 +717,24 @@ const handleUpload = async () => {
       return
     }
     
-    // 模拟上传
-    await new Promise(resolve => setTimeout(resolve, 2000))
+    if (!uploadData.name.trim()) {
+      message.error('请输入音乐名称')
+      return
+    }
     
+    const file = uploadData.fileList[0].originFileObj || uploadData.fileList[0]
+    
+    // 调用实际的上传API
+    const musicData = {
+      name: uploadData.name,
+      description: uploadData.description || '',
+      category_id: uploadData.category_id
+    }
+    
+    console.log('🔄 开始上传音乐:', musicData)
+    const response = await backgroundMusicAPI.uploadMusic(musicData, file)
+    
+    console.log('✅ 上传成功:', response)
     message.success('上传成功')
     showUploadModal.value = false
     
@@ -677,13 +742,15 @@ const handleUpload = async () => {
     Object.assign(uploadData, {
       name: '',
       description: '',
+      category_id: categories.value.length > 0 ? categories.value[0].id : 1,
       fileList: []
     })
     
-    loadMusicList()
+    // 重新加载音乐列表
+    await loadMusicList()
   } catch (error) {
-    console.error('上传失败:', error)
-    message.error('上传失败')
+    console.error('❌ 上传失败:', error)
+    message.error('上传失败: ' + (error.response?.data?.detail || error.message))
   } finally {
     uploading.value = false
   }
@@ -709,40 +776,49 @@ const handleDirectGeneration = async () => {
     
     console.log('🎵 开始直接生成背景音乐:', directForm)
     
-    // 调用直接音乐生成API，参数完全匹配SongGeneration Demo
-    const response = await musicGenerationAPI.generateDirectMusic({
-      lyrics: directForm.lyrics,
-      genre: directForm.genre,
-      description: directForm.description,
-      cfg_coef: directForm.cfg_coef,
-      temperature: directForm.temperature,
-      top_k: directForm.top_k,
-      volume_level: directForm.volumeLevel
+    // 🔧 修复：使用异步音乐生成API，避免60秒HTTP超时
+    // 使用相对路径，让Vite代理处理（开发时代理到8001，生产时代理到8000）
+    const response = await fetch('/api/v1/music-generation-async/generate', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        lyrics: directForm.lyrics,
+        genre: directForm.genre,
+        description: directForm.description,
+        cfg_coef: directForm.cfg_coef,
+        temperature: directForm.temperature,
+        top_k: directForm.top_k,
+        volume_level: directForm.volumeLevel,
+        target_duration: 30  // 默认30秒音乐
+      })
     })
-    
-    if (response && response.data) {
-      // 检查是否为模拟结果
-      const isMock = response.data.music_info?.is_mock
-      if (isMock) {
-        message.success('背景音乐生成完成（模拟模式）！SongGeneration服务当前不可用，已生成模拟音频文件。')
-      } else {
-        message.success('背景音乐生成成功！正在添加到音乐库...')
-      }
-      
-      // 生成成功后刷新音乐列表
-      await refreshData()
-      
-      // 关闭生成对话框并重置表单
-      showDirectGenerationModal.value = false
-      resetDirectForm()
-      
-      console.log('✅ 直接背景音乐生成完成:', response.data)
-    } else {
-      throw new Error('生成响应无效')
+
+    if (!response.ok) {
+      throw new Error(`启动任务失败: ${response.status}`)
     }
+
+    const result = await response.json()
+    console.log('🎵 异步音乐生成任务已启动:', result.task_id)
+    
+    // 🔧 关键修复：启动任务后立即成功，不再等待HTTP响应
+    message.success('音乐生成任务已启动，将在后台完成生成！')
+    
+    // 生成启动成功后刷新音乐列表（稍后会显示新音乐）
+    setTimeout(async () => {
+      await refreshData()
+    }, 2000)
+    
+    // 关闭生成对话框并重置表单
+    showDirectGenerationModal.value = false
+    resetDirectForm()
+    
+    console.log('✅ 直接背景音乐生成任务启动完成:', result)
+    
   } catch (error) {
     console.error('❌ 直接背景音乐生成失败:', error)
-    message.error(`生成失败: ${error.response?.data?.detail || error.message}`)
+    message.error(`生成失败: ${error.message}`)
   } finally {
     generating.value = false
   }
@@ -809,6 +885,7 @@ const formatFileSize = (bytes) => {
 // 生命周期
 onMounted(() => {
   refreshData()
+  loadCategories()
   checkServiceHealth()
   // loadBooks()  // 移除 - 智能生成功能已移除
 })
