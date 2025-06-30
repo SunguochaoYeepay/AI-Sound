@@ -117,23 +117,34 @@
           
           <template v-else-if="column.key === 'actions'">
             <a-space>
-              <a-tooltip :title="audioStore.isCurrentlyPlaying(`background_music_${record.id}`) ? '暂停' : '播放'">
+              <!-- 播放按钮 - 根据音乐类型和状态显示 -->
+              <a-tooltip :title="getPlayButtonTooltip(record)">
                 <a-button 
                   size="small" 
                   type="text" 
                   @click="playMusic(record)"
-                  :loading="audioStore.loading && audioStore.currentAudio?.id === `background_music_${record.id}`"
-                  :type="audioStore.isCurrentlyPlaying(`background_music_${record.id}`) ? 'primary' : 'default'"
+                  :disabled="!canPlayMusic(record)"
+                  :loading="audioStore.loading && audioStore.currentAudio?.id === getMusicId(record)"
+                  :type="audioStore.isCurrentlyPlaying(getMusicId(record)) ? 'primary' : 'default'"
                 >
-                  <PlayCircleOutlined v-if="!audioStore.isCurrentlyPlaying(`background_music_${record.id}`)" />
+                  <PlayCircleOutlined v-if="!audioStore.isCurrentlyPlaying(getMusicId(record))" />
                   <PauseCircleOutlined v-else />
                 </a-button>
               </a-tooltip>
-              <a-tooltip title="下载">
-                <a-button size="small" type="text" @click="downloadMusic(record)">
+              
+              <!-- 下载按钮 - 只有已完成的音乐才能下载 -->
+              <a-tooltip :title="getDownloadButtonTooltip(record)">
+                <a-button 
+                  size="small" 
+                  type="text" 
+                  @click="downloadMusic(record)"
+                  :disabled="!canDownloadMusic(record)"
+                >
                   <DownloadOutlined />
                 </a-button>
               </a-tooltip>
+              
+              <!-- 删除按钮 -->
               <a-tooltip title="删除">
                 <a-button size="small" type="text" danger @click="deleteMusic(record)">
                   <DeleteOutlined />
@@ -155,12 +166,22 @@
       @ok="handleDirectGeneration"
       @cancel="() => { showDirectGenerationModal = false; resetDirectForm() }"
       :confirm-loading="generating"
-      :ok-button-props="{ disabled: !directForm.lyrics.trim() || !isServiceHealthy }"
+      :ok-button-props="{ disabled: !directForm.musicName.trim() || !directForm.lyrics.trim() || !isServiceHealthy }"
       ok-text="开始合成"
       cancel-text="取消"
     >
       <div class="direct-generation-form">
         <a-form :model="directForm" layout="vertical">
+          <a-form-item label="音乐名称" required>
+            <a-input
+              v-model:value="directForm.musicName"
+              placeholder="请输入音乐名称（必填）"
+              :maxlength="100"
+              show-count
+              :status="!directForm.musicName.trim() ? 'error' : ''"
+            />
+          </a-form-item>
+          
           <a-form-item label="歌词内容" required>
             <a-textarea
               v-model:value="directForm.lyrics"
@@ -194,13 +215,7 @@
               show-count
             />
             <div class="description-tips">
-              <a-alert 
-                message="💡 合成提示" 
-                description="歌词是必填项，描述是可选的。参考SongGeneration Demo页面的格式输入。"
-                type="info" 
-                show-icon 
-                style="margin-top: 8px;"
-              />
+        
               
               <a-alert 
                 message="⏰ 重要提示" 
@@ -219,7 +234,6 @@
                   v-model:value="directForm.genre"
                   placeholder="选择风格"
                 >
-                  <a-select-option value="Auto">自动选择</a-select-option>
                   <a-select-option value="Pop">流行 (Pop)</a-select-option>
                   <a-select-option value="R&B">R&B</a-select-option>
                   <a-select-option value="Dance">舞曲 (Dance)</a-select-option>
@@ -443,8 +457,9 @@ const categories = ref([])
 
 // 直接生成表单（与SongGeneration Demo完全一致）
 const directForm = reactive({
+  musicName: '',  // 音乐名称 - 必填
   lyrics: '',  // 歌词 - 必填
-  genre: 'Auto',  // 音乐风格
+  genre: 'Pop',  // 音乐风格 - 默认流行音乐
   description: '',  // 音乐描述 - 可选
   cfg_coef: 1.5,  // CFG系数
   temperature: 0.9,  // 温度
@@ -510,30 +525,72 @@ const refreshData = async () => {
 const loadMusicList = async () => {
   loading.value = true
   try {
-    console.log('🔍 开始加载音乐列表...')
-    const response = await backgroundMusicAPI.getMusic({
-      page: pagination.current,
-      page_size: pagination.pageSize,
-      active_only: true
+    console.log('🔍 开始加载音乐列表（背景音乐 + 生成任务）...')
+    
+    // 🎯 同时获取背景音乐和音乐生成任务
+    const [backgroundResponse, generationResponse] = await Promise.allSettled([
+      backgroundMusicAPI.getMusic({
+        page: pagination.current,
+        page_size: pagination.pageSize,
+        active_only: true
+      }),
+      fetch(`/api/v1/music-generation-async/music-tasks?page=${pagination.current}&page_size=${pagination.pageSize}`)
+        .then(res => res.json())
+    ])
+    
+    let allItems = []
+    let totalCount = 0
+    
+    // 处理背景音乐数据
+    if (backgroundResponse.status === 'fulfilled' && backgroundResponse.value.data) {
+      const bgItems = backgroundResponse.value.data.items || []
+      allItems = allItems.concat(bgItems.map(item => ({
+        ...item,
+        type: 'background_music',
+        category_name: item.category?.name || item.category_name || '背景音乐',
+        status: 'completed'
+      })))
+      totalCount += backgroundResponse.value.data.total || 0
+    } else {
+      console.warn('❌ 背景音乐加载失败:', backgroundResponse.reason)
+    }
+    
+    // 处理音乐生成任务数据
+    if (generationResponse.status === 'fulfilled' && generationResponse.value.success) {
+      const genItems = generationResponse.value.data.items || []
+      allItems = allItems.concat(genItems.map(item => ({
+        ...item,
+        type: 'generation_task',
+        // 根据状态显示不同名称前缀
+        name: item.status === 'pending' ? `🎵 合成准备中... (${item.custom_style})` :
+              item.status === 'processing' ? `🎵 正在合成... ${Math.round((item.progress || 0) * 100)}% (${item.custom_style})` :
+              item.status === 'completed' ? `✅ ${item.custom_style}音乐` :
+              item.status === 'failed' ? `❌ 合成失败 (${item.custom_style})` :
+              `📝 ${item.custom_style}音乐`,
+        duration: item.duration || 0,
+        file_size: item.file_size || 0
+      })))
+      totalCount += generationResponse.value.data.total || 0
+    } else {
+      console.warn('❌ 音乐生成任务加载失败:', generationResponse.reason)
+    }
+    
+    // 按创建时间排序（最新的在前）
+    allItems.sort((a, b) => {
+      const aTime = new Date(a.created_at || 0).getTime()
+      const bTime = new Date(b.created_at || 0).getTime()
+      return bTime - aTime
     })
     
-    console.log('✅ API响应:', response)
+    // 🔧 处理数据格式，确保字段正确映射
+    musicList.value = allItems.map(item => ({
+      ...item,
+      category_name: item.category_name || '未分类'
+    }))
     
-    if (response.data) {
-      const items = response.data.items || []
-      console.log('🔍 原始数据项:', items.length > 0 ? items[0] : '无数据')
-      
-      // 🔧 处理数据格式，确保字段正确映射
-      musicList.value = items.map(item => ({
-        ...item,
-        // 确保category_name字段存在，用于向后兼容
-        category_name: item.category?.name || item.category_name || '未分类'
-      }))
-      
-      pagination.total = response.data.total || 0
-      console.log(`📋 加载了 ${musicList.value.length} 条音乐记录`)
-      console.log('🔍 处理后的数据:', musicList.value.length > 0 ? musicList.value[0] : '无数据')
-    }
+    pagination.total = totalCount
+    console.log(`📋 加载了 ${musicList.value.length} 条音乐记录 (背景音乐+生成任务)`)
+    console.log('🔍 处理后的数据:', musicList.value.length > 0 ? musicList.value[0] : '无数据')
   } catch (error) {
     console.error('❌ 加载音乐列表失败:', error)
     
@@ -606,9 +663,76 @@ const handleTableChange = (pag) => {
   loadMusicList()
 }
 
+// 🎯 辅助函数：获取音乐唯一ID
+const getMusicId = (music) => {
+  if (music.type === 'generation_task') {
+    return `generation_task_${music.id}`
+  } else {
+    return `background_music_${music.id}`
+  }
+}
+
+// 🎯 辅助函数：判断是否可以播放
+const canPlayMusic = (music) => {
+  if (music.type === 'generation_task') {
+    // 生成任务必须是已完成状态且有音频URL
+    return music.status === 'completed' && music.audio_url
+  } else {
+    // 背景音乐默认可以播放
+    return true
+  }
+}
+
+// 🎯 辅助函数：判断是否可以下载
+const canDownloadMusic = (music) => {
+  if (music.type === 'generation_task') {
+    // 生成任务必须是已完成状态且有音频URL
+    return music.status === 'completed' && music.audio_url
+  } else {
+    // 背景音乐默认可以下载
+    return true
+  }
+}
+
+// 🎯 辅助函数：获取播放按钮提示
+const getPlayButtonTooltip = (music) => {
+  if (!canPlayMusic(music)) {
+    if (music.type === 'generation_task') {
+      if (music.status === 'pending') return '合成准备中，暂时无法播放'
+      if (music.status === 'processing') return `正在合成中 ${Math.round((music.progress || 0) * 100)}%，请等待`
+      if (music.status === 'failed') return '合成失败，无法播放'
+      return '音频文件不可用'
+    }
+    return '无法播放'
+  }
+  
+  const audioId = getMusicId(music)
+  return audioStore.isCurrentlyPlaying(audioId) ? '暂停' : '播放'
+}
+
+// 🎯 辅助函数：获取下载按钮提示
+const getDownloadButtonTooltip = (music) => {
+  if (!canDownloadMusic(music)) {
+    if (music.type === 'generation_task') {
+      if (music.status === 'pending') return '合成准备中，暂时无法下载'
+      if (music.status === 'processing') return `正在合成中 ${Math.round((music.progress || 0) * 100)}%，请等待`
+      if (music.status === 'failed') return '合成失败，无法下载'
+      return '音频文件不可用'
+    }
+    return '无法下载'
+  }
+  return '下载'
+}
+
 const playMusic = async (music) => {
   try {
-    const audioId = `background_music_${music.id}`
+    // 检查是否可以播放
+    if (!canPlayMusic(music)) {
+      message.warning(getPlayButtonTooltip(music))
+      return
+    }
+    
+    const audioId = getMusicId(music)
     
     // 如果当前正在播放这首音乐，则暂停
     if (audioStore.isCurrentlyPlaying(audioId)) {
@@ -622,26 +746,49 @@ const playMusic = async (music) => {
       return
     }
     
-    // 播放新音乐
-    const audioInfo = {
-      id: audioId,
-      title: music.name,
-      url: `/api/v1/background-music/music/${music.id}/download`,
-      type: 'background_music',
-      metadata: {
-        musicId: music.id,
-        category: music.category?.name || music.category_name || '未分类',
-        duration: music.duration,
-        fileSize: music.file_size,
-        description: music.description,
-        onEnded: () => {
-          console.log(`背景音乐 ${music.name} 播放完成`)
+    // 根据音乐类型构建播放信息
+    let audioInfo
+    if (music.type === 'generation_task') {
+      // 音乐生成任务
+      audioInfo = {
+        id: audioId,
+        title: music.name,
+        url: music.audio_url, // 直接使用任务的音频URL
+        type: 'generation_task',
+        metadata: {
+          taskId: music.task_id,
+          musicId: music.id,
+          category: music.category_name || 'AI生成',
+          duration: music.duration,
+          fileSize: music.file_size,
+          description: music.content,
+          onEnded: () => {
+            console.log(`AI生成音乐 ${music.name} 播放完成`)
+          }
+        }
+      }
+    } else {
+      // 背景音乐
+      audioInfo = {
+        id: audioId,
+        title: music.name,
+        url: `/api/v1/background-music/music/${music.id}/download`,
+        type: 'background_music',
+        metadata: {
+          musicId: music.id,
+          category: music.category?.name || music.category_name || '背景音乐',
+          duration: music.duration,
+          fileSize: music.file_size,
+          description: music.description,
+          onEnded: () => {
+            console.log(`背景音乐 ${music.name} 播放完成`)
+          }
         }
       }
     }
     
     await audioStore.playAudio(audioInfo)
-    console.log('🎵 开始播放背景音乐:', music.name)
+    console.log('🎵 开始播放音乐:', music.name)
   } catch (error) {
     console.error('播放音乐失败:', error)
     message.error(`播放音乐失败: ${error.message}`)
@@ -650,11 +797,30 @@ const playMusic = async (music) => {
 
 const downloadMusic = async (music) => {
   try {
+    // 检查是否可以下载
+    if (!canDownloadMusic(music)) {
+      message.warning(getDownloadButtonTooltip(music))
+      return
+    }
+    
+    // 根据音乐类型构建下载URL
+    let downloadUrl
+    let filename
+    
+    if (music.type === 'generation_task') {
+      // 音乐生成任务
+      downloadUrl = music.audio_url
+      filename = `AI生成_${music.custom_style}_${music.id}.wav`
+    } else {
+      // 背景音乐
+      downloadUrl = `/api/v1/background-music/music/${music.id}/download`
+      filename = `${music.name}.mp3`
+    }
+    
     // 创建下载链接
-    const downloadUrl = `/api/v1/background-music/music/${music.id}/download`
     const link = document.createElement('a')
     link.href = downloadUrl
-    link.download = `${music.name}.mp3`
+    link.download = filename
     link.target = '_blank'
     
     // 触发下载
@@ -670,12 +836,23 @@ const downloadMusic = async (music) => {
 }
 
 const deleteMusic = (music) => {
+  const musicType = music.type === 'generation_task' ? 'AI生成音乐' : '背景音乐'
+  
   Modal.confirm({
     title: '确认删除',
-    content: `确定要删除音乐 "${music.name}" 吗？此操作不可恢复。`,
+    content: `确定要删除${musicType} "${music.name}" 吗？此操作不可恢复。`,
     onOk: async () => {
       try {
-        await backgroundMusicAPI.deleteMusic(music.id)
+        if (music.type === 'generation_task') {
+          // 删除音乐生成任务
+          await fetch(`/api/v1/music-generation-async/task/${music.task_id}`, {
+            method: 'DELETE'
+          })
+        } else {
+          // 删除背景音乐
+          await backgroundMusicAPI.deleteMusic(music.id)
+        }
+        
         message.success('删除成功')
         await loadMusicList()
         await loadStats()
@@ -778,12 +955,13 @@ const handleDirectGeneration = async () => {
     
     // 🔧 修复：使用异步音乐生成API，避免60秒HTTP超时
     // 使用相对路径，让Vite代理处理（开发时代理到8001，生产时代理到8000）
-    const response = await fetch('/api/v1/music-generation-async/generate', {
+            const response = await fetch('/api/v1/music-generation-async/generate', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
+        name: directForm.musicName.trim(),
         lyrics: directForm.lyrics,
         genre: directForm.genre,
         description: directForm.description,
@@ -796,29 +974,66 @@ const handleDirectGeneration = async () => {
     })
 
     if (!response.ok) {
-      throw new Error(`启动任务失败: ${response.status}`)
+      const errorText = await response.text().catch(() => '')
+      let errorDetail = `HTTP ${response.status}`
+      
+      try {
+        const errorJson = JSON.parse(errorText)
+        errorDetail = errorJson.detail || errorJson.message || errorDetail
+      } catch {
+        errorDetail = errorText || errorDetail
+      }
+      
+      throw new Error(`启动任务失败: ${errorDetail}`)
     }
 
     const result = await response.json()
     console.log('🎵 异步音乐生成任务已启动:', result.task_id)
     
-    // 🔧 关键修复：启动任务后立即成功，不再等待HTTP响应
-    message.success('音乐生成任务已启动，将在后台完成生成！')
-    
-    // 生成启动成功后刷新音乐列表（稍后会显示新音乐）
-    setTimeout(async () => {
+    // 🔧 只有真正成功才关闭窗口
+    if (result.task_id) {
+      message.success('🎵 音乐生成任务已启动，正在合成中...')
+      
+      // 🎯 立即刷新音乐列表（显示"合成中"状态）
       await refreshData()
-    }, 2000)
-    
-    // 关闭生成对话框并重置表单
-    showDirectGenerationModal.value = false
-    resetDirectForm()
-    
-    console.log('✅ 直接背景音乐生成任务启动完成:', result)
+      
+      // 关闭生成对话框并重置表单
+      showDirectGenerationModal.value = false
+      resetDirectForm()
+      
+      console.log('✅ 直接背景音乐生成任务启动完成:', result)
+    } else {
+      throw new Error('任务启动失败：服务器未返回task_id')
+    }
     
   } catch (error) {
     console.error('❌ 直接背景音乐生成失败:', error)
-    message.error(`生成失败: ${error.message}`)
+    
+    // 🔧 核心修复：错误时不关闭窗口！！！
+    let errorMessage = error.message
+    
+    // 根据错误类型提供更友好的提示
+    if (error.message.includes('NetworkError') || error.message.includes('fetch')) {
+      errorMessage = '❌ 网络连接失败，请检查后端服务是否正常运行（端口8001）'
+    } else if (error.message.includes('502')) {
+      errorMessage = '🔄 SongGeneration服务忙碌，请稍后重试'
+    } else if (error.message.includes('500')) {
+      errorMessage = '⚠️ 服务器内部错误，请检查歌词格式或联系管理员'
+    } else if (error.message.includes('404')) {
+      errorMessage = '❌ API接口不存在，请检查后端路由配置'
+    }
+    
+    message.error(`生成失败: ${errorMessage}`, 10) // 错误信息显示10秒
+    
+    console.error('🔍 详细错误信息:', {
+      error: error.message,
+      stack: error.stack,
+      formData: directForm
+    })
+    
+    // ✅ 不关闭窗口，让用户能看到错误并重试
+    // showDirectGenerationModal.value = false // 这行被注释掉了！
+    
   } finally {
     generating.value = false
   }
@@ -831,8 +1046,9 @@ const handleDirectGeneration = async () => {
 
 const resetDirectForm = () => {
   Object.assign(directForm, {
+    musicName: '',
     lyrics: '',
-    genre: 'Auto',
+    genre: 'Pop',
     description: '',
     cfg_coef: 1.5,
     temperature: 0.9,

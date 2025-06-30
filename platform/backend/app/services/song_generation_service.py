@@ -150,9 +150,9 @@ class SongGenerationService:
                 "top_k": getattr(request, 'top_k', 50)
             }
             
-            logger.info(f"发送音乐生成请求到引擎: {self.base_url}/generate")
+            logger.info(f"发送音乐生成请求到引擎: {self.base_url}/generate_async")
             response = await self.session.post(
-                f"{self.base_url}/generate",
+                f"{self.base_url}/generate_async",
                 json=engine_request
             )
             response.raise_for_status()
@@ -307,7 +307,7 @@ class SongGenerationService:
             
             # 5. 下载音乐文件
             if result.audio_url:
-                filename = f"chapter_{chapter_id}_music_{int(time.time())}.wav"
+                filename = f"chapter_{chapter_id}_music_{int(time.time())}.flac"
                 local_path = await self.download_generated_music(result.audio_url, filename)
                 
                 if local_path:
@@ -380,7 +380,7 @@ class SongGenerationService:
             
             # 下载音乐文件
             if result.audio_url:
-                output_filename = f"{name or 'generated_music'}_{int(time.time())}.wav"
+                output_filename = f"{name or 'generated_music'}_{int(time.time())}.flac"
                 downloaded_path = await self.download_generated_music(
                     result.audio_url, 
                     output_filename
@@ -448,7 +448,7 @@ class SongGenerationService:
             current_time = time.time()
             deleted_count = 0
             
-            for file_path in self.output_dir.glob("*.wav"):
+            for file_path in list(self.output_dir.glob("*.wav")) + list(self.output_dir.glob("*.flac")):
                 if file_path.is_file():
                     file_age = current_time - file_path.stat().st_mtime
                     if file_age > max_age_hours * 3600:

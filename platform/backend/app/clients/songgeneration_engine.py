@@ -44,7 +44,7 @@ class SongGenerationEngineClient:
         self.base_url = base_url.rstrip('/')
         self.timeout = timeout  # 增加到10分钟，音乐生成需要很长时间
         
-        logger.info(f"SongGeneration引擎客户端初始化: {self.base_url}")
+        logger.info(f"🚀 SongGeneration引擎客户端初始化: {self.base_url} (超时: {timeout}s)")
     
     def _detect_environment_url(self) -> str:
         """
@@ -105,12 +105,28 @@ class SongGenerationEngineClient:
     async def health_check(self) -> bool:
         """检查引擎健康状态"""
         try:
-            async with httpx.AsyncClient(timeout=5) as client:  # 缩短超时，避免在生成时阻塞
-                response = await client.get(f"{self.base_url}/ping")
-                if response.status_code == 200:
-                    data = response.json()
-                    return data.get("status") == "pong"
-                return False
+            # 🔧 修复：使用requests替代httpx
+            import requests
+            import concurrent.futures
+            
+            def sync_health_check():
+                """同步健康检查"""
+                try:
+                    response = requests.get(f"{self.base_url}/ping", timeout=5)
+                    if response.status_code == 200:
+                        data = response.json()
+                        return data.get("status") == "pong"
+                    return False
+                except Exception as e:
+                    logger.debug(f"同步健康检查失败: {e}")
+                    return False
+            
+            # 在线程池中执行同步检查
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(sync_health_check)
+                result = future.result(timeout=6)  # 6秒超时
+                return result
+                
         except Exception as e:
             # 在音乐生成过程中，健康检查可能会失败，这是正常的
             logger.debug(f"SongGeneration引擎健康检查失败（可能正在生成中）: {e}")
@@ -142,8 +158,11 @@ class SongGenerationEngineClient:
         try:
             logger.info(f"开始异步音乐合成: {lyrics[:50]}... (风格: {genre})")
             
+            # 🔧 修复歌词格式：确保结构标签为小写
+            formatted_lyrics = self._format_lyrics_for_songgeneration(lyrics)
+            
             request_data = {
-                "lyrics": lyrics,
+                "lyrics": formatted_lyrics,
                 "description": description or "",
                 "genre": genre,
                 "cfg_coef": float(cfg_coef),
@@ -151,18 +170,65 @@ class SongGenerationEngineClient:
                 "top_k": int(top_k)
             }
             
+            # 步骤0: 检查服务状态
+            if not await self._check_service_ready():
+                logger.error("SongGeneration服务不可用")
+                if progress_callback:
+                    await progress_callback(-1, "音乐生成服务不可用")
+                return None
+            
             # 步骤1: 启动异步生成任务
             if progress_callback:
-                progress_callback(0.05, "启动异步音乐生成...")
+                await progress_callback(0.05, "启动异步音乐生成...")
             
-            async with httpx.AsyncClient(timeout=30) as client:
-                response = await client.post(
-                    f"{self.base_url}/generate_async",
-                    json=request_data,
-                    headers={"Content-Type": "application/json"}
-                )
+            # 🔧 修复：使用requests替代httpx解决中文编码问题
+            import requests
+            
+            def sync_post_request():
+                """同步请求函数，用于在异步环境中调用"""
+                try:
+                    response = requests.post(
+                        f"{self.base_url}/generate_async",
+                        json=request_data,
+                        headers={"Content-Type": "application/json"},
+                        timeout=60  # 60秒超时
+                    )
+                    return response
+                except Exception as e:
+                    logger.error(f"请求异常: {e}")
+                    return None
+            
+            # 在线程池中执行同步请求
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(sync_post_request)
+                response = future.result(timeout=70)  # 给线程池额外的超时时间
                 
-                if response.status_code != 200:
+                if not response:
+                    logger.error("请求执行失败")
+                    if progress_callback:
+                        await progress_callback(-1, "网络请求失败")
+                    return None
+                
+                if response.status_code == 502:
+                    logger.warning(f"SongGeneration服务忙碌 (502)，尝试重试...")
+                    # 等待一段时间后重试
+                    await asyncio.sleep(5)
+                    
+                    # 重试一次
+                    future_retry = executor.submit(sync_post_request)
+                    retry_response = future_retry.result(timeout=70)
+                    
+                    if retry_response and retry_response.status_code == 200:
+                        response = retry_response
+                        logger.info("🔄 重试成功！")
+                    else:
+                        error_msg = retry_response.text if retry_response else "网络异常"
+                        logger.error(f"重试后仍失败: {retry_response.status_code if retry_response else 'None'} - {error_msg}")
+                        if progress_callback:
+                            await progress_callback(-1, "音乐生成服务忙碌，请稍后重试")
+                        return None
+                elif response.status_code != 200:
                     logger.error(f"启动异步生成失败: {response.status_code} - {response.text}")
                     return None
                 
@@ -195,7 +261,7 @@ class SongGenerationEngineClient:
                                 logger.info(f"进度更新: {progress:.1%} - {msg}")
                                 
                                 if progress_callback:
-                                    progress_callback(progress, msg)
+                                    await progress_callback(progress, msg)
                                 
                                 # 检查是否完成
                                 if progress >= 1.0:
@@ -237,158 +303,108 @@ class SongGenerationEngineClient:
             logger.error(f"异步音乐合成失败: {e}")
             return None
 
-    async def synthesize(self, 
-                        lyrics: str, 
-                        genre: str = "Auto", 
-                        description: str = "",
-                        cfg_coef: float = 1.5,
-                        temperature: float = 0.9,
-                        top_k: int = 50) -> Optional[SynthesizeResponse]:
+    # ❌ 已废弃：阻塞式合成方法
+    # 此方法调用 /generate 端点，会导致整个引擎阻塞
+    # 请使用 synthesize_with_progress() 方法，它使用 /generate_async 端点
+    async def synthesize(self, *args, **kwargs) -> Optional[SynthesizeResponse]:
         """
-        合成音乐
-        纯粹的生成功能：歌词输入 → 音频输出（完全匹配SongGeneration Demo参数）
+        ❌ 已废弃的阻塞式音乐合成方法
         
-        Args:
-            lyrics: 歌词内容（必填）
-            genre: 音乐风格（Auto/Pop/R&B/Dance等）
-            description: 音乐描述（可选）
-            cfg_coef: CFG系数（0.1-3.0）
-            temperature: 温度（0.1-2.0）
-            top_k: Top-K（1-100）
-            
-        Returns:
-            合成响应或None（如果失败）
+        此方法使用 /generate 端点，会导致SongGeneration引擎完全阻塞，
+        无法响应其他请求（包括health检查）。
+        
+        请使用 synthesize_with_progress() 方法替代。
         """
-        try:
-            logger.info(f"开始音乐合成: {lyrics[:50]}... (风格: {genre}, CFG: {cfg_coef})")
-            
-            # 使用与SongGeneration DEMO完全一致的参数格式
-            # 完全模拟DEMO页面的请求格式，包括所有字段
-            
-            # 使用Gradio版本的正确参数格式
-            request_data = {
-                "lyrics": lyrics,                    # 必填参数
-                "description": description or "",    # Gradio版本使用单数description
-                "genre": genre,                     # Gradio版本使用genre而不是auto_prompt_audio_type
-                "cfg_coef": float(cfg_coef),        # 总是包含
-                "temperature": float(temperature),  # 总是包含
-                "top_k": int(top_k)                # 总是包含
-            }
-            
-            # 详细日志：记录发送的确切请求
-            logger.info(f"发送请求到 {self.base_url}/generate")
-            logger.info(f"请求数据: {request_data}")
-            logger.info(f"数据类型检查: lyrics={type(lyrics)}, genre={type(genre)}, cfg_coef={type(cfg_coef)}")
-            
-            # 验证请求数据格式
-            if not isinstance(request_data, dict):
-                logger.error(f"请求数据必须是字典格式，当前类型: {type(request_data)}")
-                return None
-                
-            # 确保所有值都是JSON可序列化的
-            for key, value in request_data.items():
-                if not isinstance(value, (str, int, float, bool, type(None))):
-                    logger.error(f"请求参数 {key} 的值类型不正确: {type(value)}")
-                    return None
-            
-            # 配置HTTP客户端，添加明确的请求头和连接设置
-            headers = {
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-                "User-Agent": "AI-Sound/1.0",
-                "Connection": "keep-alive"  # 保持连接
-            }
-            
-            # 配置更宽松的HTTP客户端
-            client_config = httpx.Timeout(
-                connect=30.0,     # 连接超时30秒
-                read=self.timeout, # 读取超时使用设置值
-                write=30.0,       # 写入超时30秒
-                pool=self.timeout  # 连接池超时
-            )
-            
-            async with httpx.AsyncClient(
-                timeout=client_config,
-                limits=httpx.Limits(max_connections=1, max_keepalive_connections=1)
-            ) as client:
-                logger.info(f"发送HTTP请求，请求头: {headers}")
-                logger.info(f"发送到端点: {self.base_url}/generate")
-                
-                response = await client.post(
-                    f"{self.base_url}/generate",  # 使用正确的端点
-                    json=request_data,
-                    headers=headers
-                )
-                
-                logger.info(f"收到响应: 状态码={response.status_code}")
-                logger.info(f"响应头部: {dict(response.headers)}")
-                
-                # 记录响应内容（前500字符）
-                try:
-                    response_text = response.text
-                    logger.info(f"响应内容预览: {response_text[:500]}...")
-                except Exception as e:
-                    logger.warning(f"无法读取响应文本: {e}")
-                
-                # 特殊处理502错误：服务正在生成音乐，我们需要异步等待
-                if response.status_code == 502:
-                    logger.info("🎵 SongGeneration开始生成音乐，异步等待完成...")
-                    
-                    # 生成临时任务ID，用于轮询
-                    import uuid
-                    temp_task_id = str(uuid.uuid4())
-                    logger.info(f"创建临时任务ID: {temp_task_id}")
-                    
-                    # 轮询等待生成完成
-                    return await self._poll_for_completion(temp_task_id, lyrics)
-                    
-                # 如果直接成功（不太可能，但处理这种情况）
-                elif response.status_code == 200:
-                    data = response.json()
-                    if data.get("success") and data.get("file_id"):
-                        logger.info(f"音乐生成立即完成: {data['file_id']}")
-                        return SynthesizeResponse(
-                            audio_url=f"/download/{data['file_id']}",
-                            duration=30.0,
-                            generation_time=data.get('generation_time', 0.0)
-                        )
-                
-                elif response.status_code == 500:
-                    try:
-                        error_text = response.text
-                        logger.error(f"SongGeneration服务内部错误 (500): {error_text}")
-                        
-                        # 尝试解析JSON错误响应
-                        try:
-                            error_json = response.json()
-                            logger.error(f"错误详情 (JSON): {error_json}")
-                        except:
-                            logger.error(f"错误详情 (纯文本): {error_text}")
-                            
-                    except Exception as e:
-                        logger.error(f"无法读取500错误响应: {e}")
-                    
-                    return None
-                
-                response.raise_for_status()
-                
-                data = response.json()
-                
-                # 适配SongGeneration的响应格式
-                if data.get("success") and data.get("file_id"):
-                    return SynthesizeResponse(
-                        audio_url=f"/download/{data['file_id']}",
-                        duration=30.0,  # SongGeneration默认30秒
-                        generation_time=0.0  # 暂时使用默认值
-                    )
-                else:
-                    logger.error(f"SongGeneration返回失败: {data.get('message', '未知错误')}")
-                    return None
-                
-        except Exception as e:
-            logger.error(f"音乐合成失败: {e}")
-            return None
+        logger.error("❌ 禁止使用阻塞式synthesize()方法！请使用synthesize_with_progress()")
+        raise RuntimeError(
+            "阻塞式synthesize()方法已被禁用。"
+            "请使用synthesize_with_progress()方法，它使用异步/generate_async端点，"
+            "不会阻塞引擎服务。"
+        )
     
+    def _format_lyrics_for_songgeneration(self, lyrics: str) -> str:
+        """
+        格式化歌词以符合SongGeneration的要求
+        
+        SongGeneration要求：
+        - 结构标签必须是小写：[verse]、[chorus]、[bridge]等
+        - 每个段落必须以结构标签开始
+        - 人声段落([verse]、[chorus]、[bridge])必须包含歌词内容
+        """
+        import re
+        
+        # 支持的结构标签（从vocab.yaml获得）
+        valid_structs = [
+            '[verse]', '[chorus]', '[bridge]',
+            '[intro-short]', '[intro-medium]', '[intro-long]',
+            '[outro-short]', '[outro-medium]', '[outro-long]',
+            '[inst-short]', '[inst-medium]', '[inst-long]',
+            '[silence]'
+        ]
+        
+        # 标签映射：常见大小写变体 -> 标准小写
+        tag_mapping = {
+            '[verse]': '[verse]',
+            '[Verse]': '[verse]',
+            '[VERSE]': '[verse]',
+            '[chorus]': '[chorus]',
+            '[Chorus]': '[chorus]',
+            '[CHORUS]': '[chorus]',
+            '[bridge]': '[bridge]',
+            '[Bridge]': '[bridge]',
+            '[BRIDGE]': '[bridge]',
+            '[intro]': '[intro-medium]',  # 默认为medium
+            '[Intro]': '[intro-medium]',
+            '[outro]': '[outro-medium]',  # 默认为medium
+            '[Outro]': '[outro-medium]',
+            '[instrumental]': '[inst-medium]',  # 默认为medium
+            '[Instrumental]': '[inst-medium]',
+            '[inst]': '[inst-medium]',
+        }
+        
+        # 按行处理歌词
+        lines = lyrics.strip().split('\n')
+        formatted_lines = []
+        
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+                
+            # 检查是否是结构标签行
+            tag_match = re.match(r'^(\[[\w-]+\])', line)
+            if tag_match:
+                original_tag = tag_match.group(1).lower()
+                
+                # 查找映射的标准标签
+                standard_tag = tag_mapping.get(original_tag)
+                if standard_tag:
+                    formatted_lines.append(standard_tag)
+                elif original_tag in valid_structs:
+                    formatted_lines.append(original_tag)
+                else:
+                    # 未知标签，使用默认的[verse]
+                    logger.warning(f"未知结构标签 {original_tag}，使用默认的 [verse]")
+                    formatted_lines.append('[verse]')
+            else:
+                # 普通歌词行
+                if line:
+                    formatted_lines.append(line)
+        
+        # 确保第一行是结构标签
+        if formatted_lines and not formatted_lines[0].startswith('['):
+            formatted_lines.insert(0, '[verse]')
+        
+        # 如果没有内容，添加默认结构
+        if not formatted_lines:
+            formatted_lines = ['[verse]', '暂无歌词内容']
+        
+        result = '\n'.join(formatted_lines)
+        logger.info(f"歌词格式化完成: {len(lines)} 行 -> {len(formatted_lines)} 行")
+        logger.debug(f"格式化后的歌词:\n{result}")
+        
+        return result
+
     async def _poll_for_completion(self, task_id: str, lyrics_hint: str) -> Optional[SynthesizeResponse]:
         """
         轮询等待音乐生成完成
@@ -399,8 +415,8 @@ class SongGenerationEngineClient:
         3. 根据时间戳匹配最新生成的文件
         """
         start_time = time.time()
-        max_wait_time = 600  # 最大等待10分钟
-        check_interval = 15  # 每15秒检查一次
+        max_wait_time = 1200  # 最大等待20分钟 (适应复杂音乐生成)
+        check_interval = 10   # 每10秒检查一次 (更频繁检查)
         
         logger.info(f"开始轮询等待音乐生成完成 (任务ID: {task_id})")
         
@@ -463,14 +479,81 @@ class SongGenerationEngineClient:
             logger.error(f"查找生成文件失败: {e}")
             return None
 
+    async def _check_service_ready(self) -> bool:
+        """检查SongGeneration服务是否就绪"""
+        try:
+            # 🔧 修复：使用requests替代httpx
+            import requests
+            import concurrent.futures
+            
+            def sync_check_service():
+                """同步检查服务状态"""
+                try:
+                    logger.info(f"🔍 检查SongGeneration服务状态: {self.base_url}")
+                    
+                    # 优先使用轻量级的ping端点
+                    ping_response = requests.get(f"{self.base_url}/ping", timeout=5)
+                    if ping_response.status_code == 200:
+                        ping_data = ping_response.json()
+                        if ping_data.get("status") == "pong":
+                            logger.info("✅ SongGeneration服务Ping正常")
+                            return True
+                    
+                    # 如果ping失败，尝试health检查（可能在生成时会返回502）
+                    health_response = requests.get(f"{self.base_url}/health", timeout=5)
+                    if health_response.status_code == 200:
+                        health_data = health_response.json()
+                        if health_data.get("status") == "healthy":
+                            logger.info("✅ SongGeneration服务Health正常")
+                            return True
+                    elif health_response.status_code == 502:
+                        # 502通常表示服务正在处理其他请求（生成中）
+                        logger.info("🔄 SongGeneration服务忙碌中，但服务可用")
+                        return True
+                    
+                    logger.warning(f"服务检查失败: ping={ping_response.status_code}, health={health_response.status_code}")
+                    return False
+                    
+                except Exception as e:
+                    logger.warning(f"同步服务检查失败: {e}")
+                    return False
+            
+            # 在线程池中执行同步检查
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(sync_check_service)
+                result = future.result(timeout=10)  # 10秒超时
+                return result
+                
+        except Exception as e:
+            logger.warning(f"服务状态检查失败: {e}")
+            # 🔧 修复：服务检查失败时不要完全拒绝，因为可能是暂时的网络问题
+            logger.info("⚠️ 服务检查异常，但继续尝试生成任务")
+            return True  # 允许继续尝试
+
     async def get_engine_info(self) -> Optional[Dict[str, Any]]:
         """获取引擎信息"""
         try:
-            async with httpx.AsyncClient(timeout=10) as client:
-                response = await client.get(f"{self.base_url}/")
-                if response.status_code == 200:
-                    return response.json()
-                return None
+            # 🔧 修复：使用requests替代httpx
+            import requests
+            import concurrent.futures
+            
+            def sync_get_info():
+                """同步获取引擎信息"""
+                try:
+                    response = requests.get(f"{self.base_url}/", timeout=10)
+                    if response.status_code == 200:
+                        return response.json()
+                    return None
+                except Exception as e:
+                    logger.warning(f"同步获取引擎信息失败: {e}")
+                    return None
+            
+            # 在线程池中执行同步请求
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(sync_get_info)
+                result = future.result(timeout=15)  # 15秒超时
+                return result
+                
         except Exception as e:
             logger.warning(f"获取引擎信息失败: {e}")
             return None

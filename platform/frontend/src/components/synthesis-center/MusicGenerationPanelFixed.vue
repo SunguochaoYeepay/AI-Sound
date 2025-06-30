@@ -262,7 +262,7 @@ const handleGenerate = async () => {
 
     // 启动异步音乐生成任务
     const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
-    const response = await fetch(`${baseUrl}/api/v1/music-generation-async/generate`, {
+            const response = await fetch(`${baseUrl}/api/v1/music-generation-async/generate`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'

@@ -22,6 +22,7 @@ active_music_tasks: Dict[str, Dict] = {}
 
 class AsyncMusicGenerationRequest(BaseModel):
     """异步音乐生成请求"""
+    name: str = Field(..., description="音乐名称（必填）", min_length=1, max_length=200)
     lyrics: str = Field(..., description="歌词内容（必填）")
     genre: Optional[str] = Field("Auto", description="音乐风格")
     description: Optional[str] = Field("", description="音乐描述（可选）")
@@ -102,9 +103,22 @@ async def generate_music_async(request: AsyncMusicGenerationRequest, background_
         # 生成任务ID
         task_id = str(uuid.uuid4())
         
+        # 🎯 预创建音乐生成任务记录（让用户立即看到"合成中"状态）
+        orchestrator = get_music_orchestrator()
+        db_task = await orchestrator.create_pending_music_task(
+            task_id=task_id,
+            name=request.name,
+            content=request.lyrics,
+            genre=request.genre,
+            chapter_id=request.chapter_id,
+            volume_level=request.volume_level,
+            target_duration=30  # 默认30秒
+        )
+        
         # 记录任务信息
         task_info = {
             "task_id": task_id,
+            "db_task_id": db_task.id,  # 数据库记录ID
             "status": "starting",
             "progress": 0.0,
             "message": "任务启动中...",
@@ -119,12 +133,13 @@ async def generate_music_async(request: AsyncMusicGenerationRequest, background_
         # 启动后台任务
         background_tasks.add_task(process_music_generation, task_id, request)
         
-        logger.info(f"🎵 异步音乐生成任务已启动: {task_id}")
+        logger.info(f"🎵 异步音乐生成任务已启动: {task_id}, DB ID: {db_task.id}")
         
         return {
             "success": True,
             "task_id": task_id,
-            "message": "音乐生成任务已启动，请通过WebSocket监控进度"
+            "db_task_id": db_task.id,
+            "message": "音乐生成任务已启动，已在列表中显示合成状态"
         }
         
     except Exception as e:
@@ -195,6 +210,28 @@ async def update_task_progress(task_id: str, progress: float, message: str, resu
             "updated_at": time.time()
         })
         
+        # 🎯 同时更新数据库记录
+        orchestrator = get_music_orchestrator()
+        from app.models.music_generation import MusicGenerationStatus
+        
+        # 确定状态
+        if progress >= 1.0:
+            db_status = MusicGenerationStatus.COMPLETED
+        elif progress < 0:
+            db_status = MusicGenerationStatus.FAILED
+        else:
+            db_status = MusicGenerationStatus.PROCESSING
+        
+        # 更新数据库
+        await orchestrator.update_music_task_progress(
+            task_id=task_id,
+            progress=max(0.0, progress),  # 避免负进度
+            status=db_status,
+            audio_path=result.get("audio_path") if result else None,
+            audio_url=result.get("audio_url") if result else None,
+            error_message=error
+        )
+        
         # 通过WebSocket推送进度更新
         await websocket_manager.broadcast_message({
             "type": "music_generation_progress",
@@ -258,17 +295,139 @@ async def list_active_tasks():
     }
 
 
+@router.get("/music-tasks")
+async def list_music_generation_tasks(
+    page: int = 1,
+    page_size: int = 10,
+    status: Optional[str] = None
+):
+    """
+    获取音乐生成任务列表（包括pending/processing/completed状态）
+    用于前端音乐库显示所有音乐（生成中+已完成）
+    """
+    try:
+        from app.database import get_db
+        from app.models.music_generation import MusicGenerationTask, MusicGenerationStatus
+        from sqlalchemy import desc
+        
+        db_session = next(get_db())
+        
+        # 构建查询
+        query = db_session.query(MusicGenerationTask)
+        
+        # 状态过滤
+        if status:
+            query = query.filter(MusicGenerationTask.status == status)
+        
+        # 分页
+        total = query.count()
+        tasks = query.order_by(desc(MusicGenerationTask.created_at)).offset(
+            (page - 1) * page_size
+        ).limit(page_size).all()
+        
+        # 格式化结果
+        items = []
+        for task in tasks:
+            # 获取内存中的实时进度（如果有的话）
+            memory_info = active_music_tasks.get(task.task_id, {})
+            
+            items.append({
+                "id": task.id,
+                "task_id": task.task_id,
+                "name": f"音乐生成_{task.id}",  # 临时名称
+                "content": task.content[:50] + "..." if len(task.content) > 50 else task.content,
+                "status": task.status.value if task.status else "unknown",
+                "progress": memory_info.get("progress", task.progress),
+                "message": memory_info.get("message", ""),
+                "custom_style": task.custom_style,
+                "audio_url": task.audio_url,
+                "audio_path": task.audio_path,
+                "duration": task.actual_duration,
+                "file_size": task.file_size,
+                "volume_level": task.volume_level,
+                "error_message": task.error_message,
+                "created_at": task.created_at.isoformat() if task.created_at else None,
+                "completed_at": task.completed_at.isoformat() if task.completed_at else None,
+                # 为了兼容前端，添加category信息
+                "category": {"name": "AI生成"},
+                "category_name": "AI生成"
+            })
+        
+        db_session.close()
+        
+        return {
+            "success": True,
+            "data": {
+                "items": items,
+                "total": total,
+                "page": page,
+                "page_size": page_size,
+                "total_pages": (total + page_size - 1) // page_size
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"获取音乐生成任务列表失败: {e}")
+        raise HTTPException(status_code=500, detail=f"获取任务列表失败: {str(e)}")
+
+
 @router.delete("/task/{task_id}")
-async def cancel_task(task_id: str):
-    """取消任务"""
-    if task_id not in active_music_tasks:
-        raise HTTPException(status_code=404, detail="任务不存在")
-    
-    task_info = active_music_tasks[task_id]
-    if task_info["status"] in ["completed", "failed"]:
-        raise HTTPException(status_code=400, detail="任务已完成，无法取消")
-    
-    # 标记为取消状态
-    await update_task_progress(task_id, -1, "任务已取消", error="用户取消")
-    
-    return {"success": True, "message": f"任务 {task_id} 已取消"}
+async def delete_task(task_id: str):
+    """删除任务（支持内存活跃任务和数据库任务）"""
+    try:
+        from app.database import get_db
+        from app.models.music_generation import MusicGenerationTask
+        import os
+        
+        db_session = next(get_db())
+        
+        # 1. 首先从数据库查找任务
+        db_task = db_session.query(MusicGenerationTask).filter(
+            MusicGenerationTask.task_id == task_id
+        ).first()
+        
+        if not db_task:
+            db_session.close()
+            raise HTTPException(status_code=404, detail="任务不存在")
+        
+        # 2. 如果任务在内存中且正在处理，则取消
+        if task_id in active_music_tasks:
+            task_info = active_music_tasks[task_id]
+            if task_info["status"] == "processing":
+                # 标记为取消状态
+                await update_task_progress(task_id, -1, "任务已取消", error="用户取消")
+                logger.info(f"🔄 已取消正在处理的任务: {task_id}")
+            
+            # 从内存中移除
+            del active_music_tasks[task_id]
+        
+        # 3. 删除音频文件（如果存在）
+        if db_task.audio_path and os.path.exists(db_task.audio_path):
+            try:
+                os.remove(db_task.audio_path)
+                logger.info(f"🗑️ 已删除音频文件: {db_task.audio_path}")
+            except Exception as e:
+                logger.warning(f"⚠️ 删除音频文件失败: {e}")
+        
+        # 4. 从数据库删除任务记录
+        db_session.delete(db_task)
+        db_session.commit()
+        db_session.close()
+        
+        logger.info(f"✅ 成功删除音乐生成任务: {task_id} (DB ID: {db_task.id})")
+        
+        return {
+            "success": True, 
+            "message": f"任务 {task_id} 已删除",
+            "deleted_task_id": task_id,
+            "deleted_db_id": db_task.id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 删除任务失败: {task_id} - {e}")
+        if 'db_session' in locals():
+            db_session.rollback()
+            db_session.close()
+        raise HTTPException(status_code=500, detail=f"删除任务失败: {str(e)}")

@@ -1268,8 +1268,8 @@ export const musicGenerationAPI = {
   // 为章节生成背景音乐
   generateChapterMusic: (data) => apiClient.post('/music-generation/generate', data),
   
-  // 直接基于描述生成音乐（使用专门的generate-direct接口）
-  generateDirectMusic: (data) => apiClient.post('/music-generation/generate-direct', data),
+  // 直接基于描述生成音乐（使用异步接口）
+  generateDirectMusic: (data) => apiClient.post('/music-generation-async/generate', data),
   
   // 批量生成背景音乐 (已禁用 - 资源消耗过大)
   // batchGenerateMusic: (data) => apiClient.post('/music-generation/batch-generate', data),

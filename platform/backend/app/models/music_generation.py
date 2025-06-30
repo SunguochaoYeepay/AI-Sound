@@ -44,6 +44,7 @@ class MusicGenerationTask(BaseModel):
     
     # 任务基本信息
     task_id = Column(String(64), unique=True, nullable=False, index=True, comment="任务唯一标识")
+    name = Column(String(200), nullable=False, comment="音乐名称")
     chapter_id = Column(String(64), nullable=True, index=True, comment="关联章节ID")
     novel_project_id = Column(Integer, ForeignKey("novel_projects.id"), nullable=True, comment="关联小说项目ID")
     

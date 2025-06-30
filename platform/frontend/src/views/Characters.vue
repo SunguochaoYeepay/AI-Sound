@@ -449,7 +449,7 @@
             :multiple="false"
             :before-upload="beforeAudioUpload"
             @change="handleEditAudioChange"
-            accept=".wav,.mp3,.m4a"
+            accept=".wav,.mp3,.m4a,.flac"
             class="edit-upload"
           >
             <div class="upload-content">
@@ -460,7 +460,7 @@
               <p style="font-size: 14px; color: #374151; margin: 0;">
                 {{ editingVoice.id ? '更换音频文件（可选）' : '上传音频文件' }}
               </p>
-              <p style="font-size: 12px; color: #9ca3af; margin: 4px 0 0 0;">支持 WAV, MP3, M4A 格式</p>
+              <p style="font-size: 12px; color: #9ca3af; margin: 4px 0 0 0;">支持 WAV, MP3, M4A, FLAC 格式</p>
             </div>
           </a-upload-dragger>
         </a-form-item>
@@ -887,12 +887,12 @@
                             <!-- 音频文件上传 -->
                             <a-row :gutter="16">
                               <a-col :span="12">
-                                <a-form-item label="参考音频 (WAV)">
+                                <a-form-item label="参考音频">
                                   <a-upload
                                     v-model:file-list="character.config.audioFileList"
                                     :before-upload="beforeAudioUpload"
                                     :max-count="1"
-                                    accept=".wav,.mp3,.m4a"
+                                    accept=".wav,.mp3,.m4a,.flac"
                                     @change="(info) => handleConfigAudioChange(info, character)"
                                   >
                                     <a-button size="small" type="dashed">

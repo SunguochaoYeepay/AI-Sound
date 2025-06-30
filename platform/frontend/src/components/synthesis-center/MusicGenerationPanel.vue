@@ -71,6 +71,18 @@
           
           <div class="quick-options">
             <div class="option-group">
+              <label>音乐名称 <span style="color: #ff4d4f;">*</span></label>
+              <a-input
+                v-model:value="quickOptions.musicName"
+                placeholder="请输入音乐名称（必填）"
+                :maxlength="100"
+                show-count
+                style="width: 300px;"
+                :status="!quickOptions.musicName.trim() ? 'error' : ''"
+              />
+            </div>
+
+            <div class="option-group">
               <label>音量等级</label>
               <a-slider
                 v-model:value="quickOptions.volumeLevel"
@@ -98,7 +110,6 @@
             <div class="option-group">
               <label>音乐风格</label>
               <a-select v-model:value="quickOptions.genre" style="width: 200px;">
-                <a-select-option value="Auto">自动选择</a-select-option>
                 <a-select-option value="Pop">流行</a-select-option>
                 <a-select-option value="R&B">R&B</a-select-option>
                 <a-select-option value="Dance">舞曲</a-select-option>
@@ -289,9 +300,10 @@ const connectionStatus = ref('disconnected')
 
 // 生成选项
 const quickOptions = ref({
+  musicName: '',
   volumeLevel: -12,
   targetDuration: 30,
-  genre: 'Auto'
+  genre: 'Pop'
 })
 
 let startTime = 0
@@ -321,6 +333,7 @@ const canGenerate = computed(() => {
   return serviceStatus.value === 'healthy' && 
          props.selectedChapter && 
          props.chapterContent && 
+         quickOptions.value.musicName.trim() &&
          !generating.value
 })
 
@@ -427,6 +440,7 @@ const handleQuickGenerate = async () => {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
+        name: quickOptions.value.musicName.trim(),
         lyrics: lyrics,
         genre: quickOptions.value.genre,
         description: `为章节"${getSelectedChapterInfo()?.chapter_title || getSelectedChapterInfo()?.title}"生成的背景音乐`,
