@@ -1,5 +1,68 @@
 # 更新日志
 
+## [2025-01-29] 音乐生成功能修复与播放器格式支持优化
+
+### 🎵 音乐生成功能修复
+- **前端窗口消失问题**：修复点击合成后窗口立即关闭的用户体验问题
+- **API端点错误修复**：修正前端错误调用 `/api/v1/music/generate` 404错误
+- **SongGeneration引擎阻塞优化**：解决引擎502 Bad Gateway导致的完全阻塞问题
+- **异步接口改进**：使用 `synthesize_with_progress` 方法实现真正的异步处理
+- **任务名称增强**：为音乐生成任务添加 `name` 字段，提升任务识别度
+
+### 🔧 技术架构优化
+- **非阻塞调用**：SongGeneration引擎从阻塞接口 `/generate` 改为异步调用
+- **进度监控改进**：增强音乐生成过程的进度跟踪和状态监控
+- **错误处理强化**：完善引擎连接失败和超时的错误处理机制
+- **数据库字段扩展**：添加音乐生成任务名称字段，支持更好的任务管理
+
+### 🎧 音频格式支持扩展
+- **FLAC格式全面支持**：播放器、上传组件、后端API全面支持FLAC无损格式
+- **前端上传组件更新**：角色配置、基础TTS页面支持FLAC格式上传
+- **格式描述更新**：用户界面显示"支持 WAV, MP3, M4A, FLAC 格式"
+- **音质保持优化**：避免FLAC到WAV转码，保持原始无损音质
+
+### 📁 文件变更
+#### 后端核心
+- `app/api/v1/music_generation_async.py` - 修复异步音乐生成API
+- `app/clients/songgeneration_engine.py` - 优化SongGeneration引擎客户端
+- `app/models/music_generation.py` - 添加音乐生成任务名称字段
+- `app/services/music_orchestrator.py` - 改进音乐编排服务
+- `app/services/song_generation_service.py` - 修复SongGeneration服务调用
+
+#### 前端优化
+- `src/api/index.js` - 修复API端点路径错误
+- `src/components/synthesis-center/MusicGenerationPanel.vue` - 音乐生成面板优化
+- `src/components/synthesis-center/MusicGenerationPanelFixed.vue` - 修复版音乐生成面板
+- `src/views/MusicLibrary.vue` - 音乐库界面改进
+- `src/views/Characters.vue` - 角色页面支持FLAC格式上传
+- `src/views/BasicTTS.vue` - 基础TTS页面支持FLAC格式
+
+#### 数据库迁移
+- `alembic/versions/20250127_add_name_to_music_generation_tasks.py` - 音乐生成任务名称字段迁移
+
+### 🧪 测试工具添加
+- **异步生成测试**：`test_async_music_generation.py` - 全面的异步音乐生成测试
+- **平台API测试**：`test_platform_music_api.py` - 平台音乐生成API综合测试  
+- **连接诊断工具**：`test_songgeneration_connection.py` - SongGeneration服务连接诊断
+
+### 🗑️ 清理工作
+- **删除冗余测试**：移除重复性测试文件和跨平台兼容性差的脚本
+- **删除已修复文件**：清理临时修复和调试用的脚本文件
+
+### ✅ 验证结果
+- **音乐生成流程**：前端到后端的完整音乐生成流程正常工作
+- **FLAC播放支持**：现代浏览器原生FLAC播放功能完全正常
+- **用户体验改进**：音乐生成窗口保持打开，显示生成进度
+- **系统稳定性**：SongGeneration引擎不再完全阻塞服务
+
+### 💾 技术价值
+- **无损音质支持**：FLAC格式保证最佳音频质量
+- **异步处理优化**：避免长时间阻塞，提升系统响应性
+- **用户体验跃升**：从功能不可用到流畅的音乐生成体验
+- **系统健壮性**：更好的错误处理和进度监控机制
+
+---
+
 ## [2025-01-29] 新增背景音生成模块设计文档
 
 ### 📋 新增设计文档
