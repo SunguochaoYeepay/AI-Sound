@@ -101,13 +101,14 @@ class MusicOrchestrator:
                 if progress_callback:
                     await progress_callback(0.15, f"直接模式，使用风格: {final_style}")
             else:
-            # 完整模式：进行场景分析
+            # 完整模式：进行场景分析，但保留用户歌词
                 if progress_callback:
                     await progress_callback(0.1, "正在分析内容场景...")
                 scene_analysis = self.scene_analyzer.analyze_content(content)
                 logger.info(f"场景分析完成: {scene_analysis.scene_type} -> {scene_analysis.recommended_style}")
                 final_style = custom_style or scene_analysis.recommended_style
-                music_description = self._create_music_description(content, scene_analysis)
+                # 🔧 修复BUG：直接使用用户输入的歌词，不要自动替换！
+                music_description = content  # 保留用户原始歌词
                 if progress_callback:
                     await progress_callback(0.15, f"场景分析完成，风格: {final_style}")
             
@@ -231,11 +232,12 @@ class MusicOrchestrator:
                 music_description = content  # 直接使用用户输入的歌词
                 logger.info(f"直接模式：跳过场景分析，风格: {final_style}")
             else:
-            # 完整模式：进行场景分析
+            # 完整模式：进行场景分析，但保留用户歌词
                 scene_analysis = self.scene_analyzer.analyze_content(content)
                 logger.info(f"场景分析完成: {scene_analysis.scene_type} -> {scene_analysis.recommended_style}")
                 final_style = custom_style or scene_analysis.recommended_style
-                music_description = self._create_music_description(content, scene_analysis)
+                # 🔧 修复BUG：直接使用用户输入的歌词，不要自动替换！
+                music_description = content  # 保留用户原始歌词
             
             # 步骤2：调用引擎生成音乐（使用异步方法）
             logger.info(f"调用引擎异步生成音乐: {final_style}")
@@ -473,60 +475,14 @@ class MusicOrchestrator:
         """获取支持的场景类型列表"""
         return self.scene_analyzer.get_supported_scenes()
     
-    def _create_music_description(self, content: str, scene_analysis: MusicSceneAnalysis) -> str:
-        """
-        创建音乐描述/歌词
-        根据内容和场景分析生成适合的音乐描述
-        """
-        # 基于场景类型生成音乐描述
-        scene_descriptions = {
-            "battle": "激烈的战斗音乐，充满力量和紧张感",
-            "romance": "温柔浪漫的音乐，充满爱意和温暖",
-            "mystery": "神秘诡异的音乐，营造悬疑氛围",
-            "peaceful": "平静安详的音乐，令人放松和舒缓",
-            "sad": "哀伤忧郁的音乐，表达深沉的情感",
-            "adventure": "冒险旅程的音乐，充满探索精神",
-            "celebration": "欢庆快乐的音乐，充满喜悦和活力"
-        }
-        
-        base_description = scene_descriptions.get(
-            scene_analysis.scene_type, 
-            "优美的背景音乐"
-        )
-        
-        # 添加强度修饰
-        if scene_analysis.intensity > 0.7:
-            intensity_modifier = "非常强烈的"
-        elif scene_analysis.intensity > 0.5:
-            intensity_modifier = "较为强烈的"
-        elif scene_analysis.intensity > 0.3:
-            intensity_modifier = "中等强度的"
-        else:
-            intensity_modifier = "轻柔的"
-        
-        # 添加情感基调
-        emotion_modifiers = {
-            "positive": "充满正能量的",
-            "negative": "带有忧伤色彩的",
-            "intense": "激动人心的",
-            "neutral": "平衡的"
-        }
-        
-        emotion_modifier = emotion_modifiers.get(
-            scene_analysis.emotion_tone, 
-            ""
-        )
-        
-        # 组合描述
-        description_parts = [emotion_modifier, intensity_modifier, base_description]
-        final_description = "".join(part for part in description_parts if part)
-        
-        # 添加关键词提示
-        if scene_analysis.keywords:
-            keywords_text = "，".join(scene_analysis.keywords[:3])
-            final_description += f"，体现{keywords_text}的元素"
-        
-        return final_description
+    # 🚨 已废弃的方法 - 这个方法会替换用户歌词，导致严重BUG
+    # def _create_music_description(self, content: str, scene_analysis: MusicSceneAnalysis) -> str:
+    #     """
+    #     ❌ 已废弃：创建音乐描述/歌词 - 会无视用户输入！
+    #     这个方法会根据场景分析自动生成描述，完全忽略用户输入的歌词
+    #     已修复：现在直接使用用户输入的content作为歌词
+    #     """
+    #     pass  # 废弃的垃圾方法，不要再用！
     
     async def _download_and_store_music(self, audio_url: str, filename: str) -> Optional[str]:
         """下载并存储音乐文件 - 优先从引擎输出目录直接复制"""
