@@ -59,6 +59,96 @@ class MusicOrchestrator:
         
         logger.info("音乐编排服务初始化完成")
     
+    def _clean_lyrics_for_songgeneration(self, lyrics: str) -> str:
+        """
+        🚨 严格清理歌词格式，确保符合SongGeneration引擎要求
+        
+        关键规则：
+        1. 前奏、间奏、尾奏段落不能包含歌词内容
+        2. 只有 [verse], [chorus], [bridge] 可以包含歌词
+        3. 纯音乐段落：[intro-*], [inst-*], [outro-*], [silence]
+        
+        Args:
+            lyrics: 原始歌词内容
+            
+        Returns:
+            清理后的歌词
+        """
+        if not lyrics.strip():
+            return "[verse]\n暂无歌词内容"
+        
+        # 需要歌词的标签
+        VOCAL_STRUCTS = {'[verse]', '[chorus]', '[bridge]'}
+        
+        # 纯音乐标签（不能包含歌词）
+        INSTRUMENTAL_STRUCTS = {
+            '[intro-short]', '[intro-medium]', '[intro-long]',
+            '[inst-short]', '[inst-medium]', '[inst-long]', 
+            '[outro-short]', '[outro-medium]', '[outro-long]',
+            '[silence]'
+        }
+        
+        # 旧标签映射
+        LEGACY_MAPPINGS = {
+            '[intro]': '[intro-medium]',
+            '[outro]': '[outro-medium]',
+            '[instrumental]': '[inst-medium]',
+            '[inst]': '[inst-medium]'
+        }
+        
+        try:
+            # 按双换行分割段落
+            paragraphs = [p.strip() for p in lyrics.strip().split('\n\n') if p.strip()]
+            cleaned_paragraphs = []
+            vocal_found = False
+            
+            for paragraph in paragraphs:
+                lines = paragraph.strip().split('\n')
+                if not lines:
+                    continue
+                
+                # 获取标签
+                tag_line = lines[0].strip().lower()
+                
+                # 转换旧标签
+                if tag_line in LEGACY_MAPPINGS:
+                    tag_line = LEGACY_MAPPINGS[tag_line]
+                
+                # 检查标签是否有效
+                if tag_line not in VOCAL_STRUCTS and tag_line not in INSTRUMENTAL_STRUCTS:
+                    # 无效标签，默认为主歌
+                    tag_line = '[verse]'
+                
+                if tag_line in VOCAL_STRUCTS:
+                    # 人声段落，保留歌词
+                    vocal_found = True
+                    if len(lines) > 1:
+                        lyrics_content = '\n'.join(lines[1:]).strip()
+                        if lyrics_content:
+                            cleaned_paragraphs.append(f"{tag_line}\n{lyrics_content}")
+                        else:
+                            cleaned_paragraphs.append(tag_line)
+                    else:
+                        cleaned_paragraphs.append(tag_line)
+                        
+                elif tag_line in INSTRUMENTAL_STRUCTS:
+                    # 🚨 纯音乐段落，绝不包含歌词内容
+                    cleaned_paragraphs.append(tag_line)
+                    logger.info(f"过滤纯音乐段落歌词: {tag_line}")
+            
+            # 确保至少有一个人声段落
+            if not vocal_found:
+                cleaned_paragraphs.insert(0, "[verse]\n暂无歌词内容")
+            
+            result = '\n\n'.join(cleaned_paragraphs)
+            logger.info(f"歌词清理完成: {len(paragraphs)} -> {len(cleaned_paragraphs)} 段落")
+            return result
+            
+        except Exception as e:
+            logger.error(f"歌词清理失败: {e}")
+            # 返回安全的默认格式
+            return "[verse]\n暂无歌词内容"
+
     async def generate_music_for_content_with_progress(self, 
                                        content: str,
                                        chapter_id: Optional[str] = None,
@@ -96,7 +186,8 @@ class MusicOrchestrator:
                 # 直接模式：跳过复杂场景分析，使用默认值
                 scene_analysis = None
                 final_style = custom_style or "Auto"
-                music_description = content  # 直接使用用户输入的歌词
+                # 🚨 关键修复：严格清理歌词格式
+                music_description = self._clean_lyrics_for_songgeneration(content)
                 logger.info(f"直接模式：跳过场景分析，风格: {final_style}")
                 if progress_callback:
                     await progress_callback(0.15, f"直接模式，使用风格: {final_style}")
@@ -107,8 +198,8 @@ class MusicOrchestrator:
                 scene_analysis = self.scene_analyzer.analyze_content(content)
                 logger.info(f"场景分析完成: {scene_analysis.scene_type} -> {scene_analysis.recommended_style}")
                 final_style = custom_style or scene_analysis.recommended_style
-                # 🔧 修复BUG：直接使用用户输入的歌词，不要自动替换！
-                music_description = content  # 保留用户原始歌词
+                # 🚨 关键修复：严格清理歌词格式，确保引擎兼容性
+                music_description = self._clean_lyrics_for_songgeneration(content)
                 if progress_callback:
                     await progress_callback(0.15, f"场景分析完成，风格: {final_style}")
             
@@ -229,15 +320,16 @@ class MusicOrchestrator:
                 # 直接模式：跳过复杂场景分析，使用默认值
                 scene_analysis = None
                 final_style = custom_style or "Auto"
-                music_description = content  # 直接使用用户输入的歌词
+                # 🚨 关键修复：严格清理歌词格式
+                music_description = self._clean_lyrics_for_songgeneration(content)
                 logger.info(f"直接模式：跳过场景分析，风格: {final_style}")
             else:
             # 完整模式：进行场景分析，但保留用户歌词
                 scene_analysis = self.scene_analyzer.analyze_content(content)
                 logger.info(f"场景分析完成: {scene_analysis.scene_type} -> {scene_analysis.recommended_style}")
                 final_style = custom_style or scene_analysis.recommended_style
-                # 🔧 修复BUG：直接使用用户输入的歌词，不要自动替换！
-                music_description = content  # 保留用户原始歌词
+                # 🚨 关键修复：严格清理歌词格式，确保引擎兼容性
+                music_description = self._clean_lyrics_for_songgeneration(content)
             
             # 步骤2：调用引擎生成音乐（使用异步方法）
             logger.info(f"调用引擎异步生成音乐: {final_style}")

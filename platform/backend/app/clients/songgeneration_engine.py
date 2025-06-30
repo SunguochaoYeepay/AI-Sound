@@ -324,86 +324,87 @@ class SongGenerationEngineClient:
     
     def _format_lyrics_for_songgeneration(self, lyrics: str) -> str:
         """
-        格式化歌词以符合SongGeneration的要求
+        🚨 严格格式化歌词以符合SongGeneration引擎要求
         
-        SongGeneration要求：
-        - 结构标签必须是小写：[verse]、[chorus]、[bridge]等
-        - 每个段落必须以结构标签开始
-        - 人声段落([verse]、[chorus]、[bridge])必须包含歌词内容
+        关键规则：
+        1. 前奏、间奏、尾奏段落不能包含歌词内容
+        2. 只有 [verse], [chorus], [bridge] 可以包含歌词
+        3. 纯音乐段落：[intro-*], [inst-*], [outro-*], [silence]
         """
-        import re
+        if not lyrics.strip():
+            return "[verse]\n暂无歌词内容"
         
-        # 支持的结构标签（从vocab.yaml获得）
-        valid_structs = [
-            '[verse]', '[chorus]', '[bridge]',
+        # 需要歌词的标签
+        VOCAL_STRUCTS = {'[verse]', '[chorus]', '[bridge]'}
+        
+        # 纯音乐标签（不能包含歌词）
+        INSTRUMENTAL_STRUCTS = {
             '[intro-short]', '[intro-medium]', '[intro-long]',
+            '[inst-short]', '[inst-medium]', '[inst-long]', 
             '[outro-short]', '[outro-medium]', '[outro-long]',
-            '[inst-short]', '[inst-medium]', '[inst-long]',
             '[silence]'
-        ]
-        
-        # 标签映射：常见大小写变体 -> 标准小写
-        tag_mapping = {
-            '[verse]': '[verse]',
-            '[Verse]': '[verse]',
-            '[VERSE]': '[verse]',
-            '[chorus]': '[chorus]',
-            '[Chorus]': '[chorus]',
-            '[CHORUS]': '[chorus]',
-            '[bridge]': '[bridge]',
-            '[Bridge]': '[bridge]',
-            '[BRIDGE]': '[bridge]',
-            '[intro]': '[intro-medium]',  # 默认为medium
-            '[Intro]': '[intro-medium]',
-            '[outro]': '[outro-medium]',  # 默认为medium
-            '[Outro]': '[outro-medium]',
-            '[instrumental]': '[inst-medium]',  # 默认为medium
-            '[Instrumental]': '[inst-medium]',
-            '[inst]': '[inst-medium]',
         }
         
-        # 按行处理歌词
-        lines = lyrics.strip().split('\n')
-        formatted_lines = []
+        # 旧标签映射
+        LEGACY_MAPPINGS = {
+            '[intro]': '[intro-medium]',
+            '[outro]': '[outro-medium]',
+            '[instrumental]': '[inst-medium]',
+            '[inst]': '[inst-medium]'
+        }
         
-        for line in lines:
-            line = line.strip()
-            if not line:
-                continue
+        try:
+            # 按双换行分割段落
+            paragraphs = [p.strip() for p in lyrics.strip().split('\n\n') if p.strip()]
+            cleaned_paragraphs = []
+            vocal_found = False
+            
+            for paragraph in paragraphs:
+                lines = paragraph.strip().split('\n')
+                if not lines:
+                    continue
                 
-            # 检查是否是结构标签行
-            tag_match = re.match(r'^(\[[\w-]+\])', line)
-            if tag_match:
-                original_tag = tag_match.group(1).lower()
+                # 获取标签
+                tag_line = lines[0].strip().lower()
                 
-                # 查找映射的标准标签
-                standard_tag = tag_mapping.get(original_tag)
-                if standard_tag:
-                    formatted_lines.append(standard_tag)
-                elif original_tag in valid_structs:
-                    formatted_lines.append(original_tag)
-                else:
-                    # 未知标签，使用默认的[verse]
-                    logger.warning(f"未知结构标签 {original_tag}，使用默认的 [verse]")
-                    formatted_lines.append('[verse]')
-            else:
-                # 普通歌词行
-                if line:
-                    formatted_lines.append(line)
-        
-        # 确保第一行是结构标签
-        if formatted_lines and not formatted_lines[0].startswith('['):
-            formatted_lines.insert(0, '[verse]')
-        
-        # 如果没有内容，添加默认结构
-        if not formatted_lines:
-            formatted_lines = ['[verse]', '暂无歌词内容']
-        
-        result = '\n'.join(formatted_lines)
-        logger.info(f"歌词格式化完成: {len(lines)} 行 -> {len(formatted_lines)} 行")
-        logger.debug(f"格式化后的歌词:\n{result}")
-        
-        return result
+                # 转换旧标签
+                if tag_line in LEGACY_MAPPINGS:
+                    tag_line = LEGACY_MAPPINGS[tag_line]
+                
+                # 检查标签是否有效
+                if tag_line not in VOCAL_STRUCTS and tag_line not in INSTRUMENTAL_STRUCTS:
+                    # 无效标签，默认为主歌
+                    tag_line = '[verse]'
+                
+                if tag_line in VOCAL_STRUCTS:
+                    # 人声段落，保留歌词
+                    vocal_found = True
+                    if len(lines) > 1:
+                        lyrics_content = '\n'.join(lines[1:]).strip()
+                        if lyrics_content:
+                            cleaned_paragraphs.append(f"{tag_line}\n{lyrics_content}")
+                        else:
+                            cleaned_paragraphs.append(tag_line)
+                    else:
+                        cleaned_paragraphs.append(tag_line)
+                        
+                elif tag_line in INSTRUMENTAL_STRUCTS:
+                    # 🚨 纯音乐段落，绝不包含歌词内容
+                    cleaned_paragraphs.append(tag_line)
+                    logger.info(f"过滤纯音乐段落歌词: {tag_line}")
+            
+            # 确保至少有一个人声段落
+            if not vocal_found:
+                cleaned_paragraphs.insert(0, "[verse]\n暂无歌词内容")
+            
+            result = '\n\n'.join(cleaned_paragraphs)
+            logger.info(f"歌词严格清理完成: {len(paragraphs)} -> {len(cleaned_paragraphs)} 段落")
+            return result
+            
+        except Exception as e:
+            logger.error(f"歌词格式化失败: {e}")
+            # 返回安全的默认格式
+            return "[verse]\n暂无歌词内容"
 
     async def _poll_for_completion(self, task_id: str, lyrics_hint: str) -> Optional[SynthesizeResponse]:
         """

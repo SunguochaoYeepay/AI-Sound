@@ -158,18 +158,27 @@
 
     <!-- 智能生成模态框已移除 - 功能复杂，后期优化 -->
 
-    <!-- 基于描述的直接生成模态框 -->
-    <a-modal
+    <!-- 基于描述的直接生成抽屉 -->
+    <a-drawer
       v-model:open="showDirectGenerationModal"
       title="🎵 合成背景音乐"
-      width="700px"
-      @ok="handleDirectGeneration"
-      @cancel="() => { showDirectGenerationModal = false; resetDirectForm() }"
-      :confirm-loading="generating"
-      :ok-button-props="{ disabled: !directForm.musicName.trim() || !directForm.lyrics.trim() || !isServiceHealthy }"
-      ok-text="开始合成"
-      cancel-text="取消"
+      width="600px"
+      placement="right"
+      @close="() => { showDirectGenerationModal = false; resetDirectForm() }"
     >
+      <template #extra>
+        <a-space>
+          <a-button @click="() => { showDirectGenerationModal = false; resetDirectForm() }">取消</a-button>
+          <a-button 
+            type="primary" 
+            @click="handleDirectGeneration"
+            :loading="generating"
+            :disabled="!directForm.musicName.trim() || !directForm.lyrics.trim() || !isServiceHealthy"
+          >
+            开始合成
+          </a-button>
+        </a-space>
+      </template>
       <div class="direct-generation-form">
         <a-form :model="directForm" layout="vertical">
           <a-form-item label="音乐名称" required>
@@ -183,26 +192,8 @@
           </a-form-item>
           
           <a-form-item label="歌词内容" required>
-            <a-textarea
-              v-model:value="directForm.lyrics"
-              placeholder="请输入歌词，格式如下：
-
-[intro-short]
-
-[verse]
-夜晚的街灯闪烁
-我漫步在熟悉的角落
-回忆像潮水般涌来
-
-[chorus]
-音乐的节奏奏响
-我的心却在流浪
-没有你的日子很难过
-
-[outro-short]"
-              :rows="8"
-              :maxLength="2000"
-              show-count
+            <SongStructureHelper 
+              v-model="directForm.lyrics"
             />
           </a-form-item>
           
@@ -326,7 +317,7 @@
           />
         </div>
       </div>
-    </a-modal>
+    </a-drawer>
 
     <!-- 上传音乐模态框 -->
     <a-modal
@@ -401,6 +392,7 @@ import {
 import { getAudioService } from '@/utils/audioService'
 import { useAudioPlayerStore } from '@/stores/audioPlayer'
 import { backgroundMusicAPI, musicGenerationAPI } from '@/api'
+import SongStructureHelper from '@/components/synthesis-center/SongStructureHelper.vue'
 // import { booksAPI, chaptersAPI } from '@/api'  // 移除 - 智能生成功能已移除
 
 // 页面状态
@@ -561,12 +553,13 @@ const loadMusicList = async () => {
       allItems = allItems.concat(genItems.map(item => ({
         ...item,
         type: 'generation_task',
-        // 根据状态显示不同名称前缀
-        name: item.status === 'pending' ? `🎵 合成准备中... (${item.custom_style})` :
-              item.status === 'processing' ? `🎵 正在合成... ${Math.round((item.progress || 0) * 100)}% (${item.custom_style})` :
-              item.status === 'completed' ? `✅ ${item.custom_style}音乐` :
-              item.status === 'failed' ? `❌ 合成失败 (${item.custom_style})` :
-              `📝 ${item.custom_style}音乐`,
+        // ✅ 修复：使用用户输入的音乐名称，加上状态图标
+        name: item.status === 'pending' ? `🎵 ${item.name}` :
+              item.status === 'processing' ? `🎵 ${item.name} (${Math.round((item.progress || 0) * 100)}%)` :
+              item.status === 'completed' ? `✅ ${item.name}` :
+              item.status === 'failed' ? `❌ ${item.name}` :
+              item.name,
+        category_name: item.custom_style || '音乐生成',  // 风格作为分类显示
         duration: item.duration || 0,
         file_size: item.file_size || 0
       })))

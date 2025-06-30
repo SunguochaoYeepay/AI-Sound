@@ -77,6 +77,96 @@ class SongGenerationService:
         # 确保音频输出目录存在
         self.output_dir = Path("data/audio/generated_music")
         self.output_dir.mkdir(parents=True, exist_ok=True)
+
+    def _clean_lyrics_for_songgeneration(self, lyrics: str) -> str:
+        """
+        🚨 严格清理歌词格式，确保符合SongGeneration引擎要求
+        
+        关键规则：
+        1. 前奏、间奏、尾奏段落不能包含歌词内容
+        2. 只有 [verse], [chorus], [bridge] 可以包含歌词
+        3. 纯音乐段落：[intro-*], [inst-*], [outro-*], [silence]
+        
+        Args:
+            lyrics: 原始歌词内容
+            
+        Returns:
+            清理后的歌词
+        """
+        if not lyrics.strip():
+            return "[verse]\n暂无歌词内容"
+        
+        # 需要歌词的标签
+        VOCAL_STRUCTS = {'[verse]', '[chorus]', '[bridge]'}
+        
+        # 纯音乐标签（不能包含歌词）
+        INSTRUMENTAL_STRUCTS = {
+            '[intro-short]', '[intro-medium]', '[intro-long]',
+            '[inst-short]', '[inst-medium]', '[inst-long]', 
+            '[outro-short]', '[outro-medium]', '[outro-long]',
+            '[silence]'
+        }
+        
+        # 旧标签映射
+        LEGACY_MAPPINGS = {
+            '[intro]': '[intro-medium]',
+            '[outro]': '[outro-medium]',
+            '[instrumental]': '[inst-medium]',
+            '[inst]': '[inst-medium]'
+        }
+        
+        try:
+            # 按双换行分割段落
+            paragraphs = [p.strip() for p in lyrics.strip().split('\n\n') if p.strip()]
+            cleaned_paragraphs = []
+            vocal_found = False
+            
+            for paragraph in paragraphs:
+                lines = paragraph.strip().split('\n')
+                if not lines:
+                    continue
+                
+                # 获取标签
+                tag_line = lines[0].strip().lower()
+                
+                # 转换旧标签
+                if tag_line in LEGACY_MAPPINGS:
+                    tag_line = LEGACY_MAPPINGS[tag_line]
+                
+                # 检查标签是否有效
+                if tag_line not in VOCAL_STRUCTS and tag_line not in INSTRUMENTAL_STRUCTS:
+                    # 无效标签，默认为主歌
+                    tag_line = '[verse]'
+                
+                if tag_line in VOCAL_STRUCTS:
+                    # 人声段落，保留歌词
+                    vocal_found = True
+                    if len(lines) > 1:
+                        lyrics_content = '\n'.join(lines[1:]).strip()
+                        if lyrics_content:
+                            cleaned_paragraphs.append(f"{tag_line}\n{lyrics_content}")
+                        else:
+                            cleaned_paragraphs.append(tag_line)
+                    else:
+                        cleaned_paragraphs.append(tag_line)
+                        
+                elif tag_line in INSTRUMENTAL_STRUCTS:
+                    # 🚨 纯音乐段落，绝不包含歌词内容
+                    cleaned_paragraphs.append(tag_line)
+                    logger.info(f"过滤纯音乐段落歌词: {tag_line}")
+            
+            # 确保至少有一个人声段落
+            if not vocal_found:
+                cleaned_paragraphs.insert(0, "[verse]\n暂无歌词内容")
+            
+            result = '\n\n'.join(cleaned_paragraphs)
+            logger.info(f"歌词清理完成: {len(paragraphs)} -> {len(cleaned_paragraphs)} 段落")
+            return result
+            
+        except Exception as e:
+            logger.error(f"歌词清理失败: {e}")
+            # 返回安全的默认格式
+            return "[verse]\n暂无歌词内容"
     
     async def __aenter__(self):
         return self
@@ -357,9 +447,13 @@ class SongGenerationService:
             if not await self.check_service_health():
                 raise Exception("SongGeneration服务不可用")
             
+            # 🚨 关键修复：清理歌词格式确保引擎兼容性
+            cleaned_description = self._clean_lyrics_for_songgeneration(description)
+            logger.info(f"歌词清理完成，原始: {len(description)} 字符 -> 清理后: {len(cleaned_description)} 字符")
+            
             # 创建生成请求
             request = MusicGenerationRequest(
-                content=description,
+                content=cleaned_description,
                 target_duration=duration,
                 custom_style=style,
                 volume_level=volume_level

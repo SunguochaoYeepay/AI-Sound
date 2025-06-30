@@ -5,10 +5,8 @@
       <a-form layout="vertical" @submit="handleGenerate">
         <!-- 歌词输入 -->
         <a-form-item label="歌词内容" required>
-          <a-textarea
-            v-model:value="formData.lyrics"
-            :rows="4"
-            placeholder="请输入歌词内容..."
+          <SongStructureHelper 
+            v-model="formData.lyrics"
             :disabled="isGenerating"
           />
         </a-form-item>
@@ -191,6 +189,7 @@ import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { message } from 'ant-design-vue'
 import { PlayCircleOutlined, DownloadOutlined } from '@ant-design/icons-vue'
 import { useWebSocket } from '@/composables/useWebSocket'
+import SongStructureHelper from './SongStructureHelper.vue'
 
 const emit = defineEmits(['musicGenerated', 'generationCompleted'])
 

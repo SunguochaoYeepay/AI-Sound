@@ -45,7 +45,8 @@ export default defineConfig(({ mode }) => {
       '/voice_profiles': {
           target: API_TARGET,
         changeOrigin: true,
-        secure: false
+        secure: false,
+        rewrite: (path) => path.replace(/^\/voice_profiles/, '/api/v1/voice_profiles')
       },
       '/api': {
           target: API_TARGET,
