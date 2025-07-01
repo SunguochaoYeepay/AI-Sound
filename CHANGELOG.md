@@ -1,5 +1,67 @@
 # 更新日志
 
+## [2025-07-01] 🗂️ 完整日志系统重构与模块覆盖
+
+### 📊 问题背景
+- **日志覆盖不全**：背景音乐等多个模块的日志没有被正确收集
+- **文件日志缺失**：所有日志只输出到控制台，没有文件存储
+- **模块化管理缺失**：缺少按功能模块分类的日志系统
+
+### ✨ 完整日志系统重构
+- **11个专用日志文件**：为AI-Sound平台所有主要模块创建专用日志文件
+  - 📝 `ai_sound_main.log` - 主应用系统日志（详细格式）
+  - 🚨 `ai_sound_errors.log` - 专用错误和警告日志
+  - 🎵 `background_music.log` - 背景音乐相关模块日志 ⭐
+  - 🎼 `music_generation.log` - 音乐生成服务日志
+  - 🤖 `intelligent_analysis.log` - LLM智能分析日志
+  - 🔊 `tts_voice.log` - TTS和语音合成日志
+  - 🌊 `environment_sounds.log` - 环境音生成日志
+  - ✂️ `audio_processing.log` - 音频编辑和处理日志
+  - 🌐 `api_requests.log` - API请求和中间件日志
+  - 🗄️ `database.log` - 数据库操作日志
+  - 🔌 `websocket.log` - WebSocket实时通信日志
+
+### 🔧 专业日志配置
+- **文件轮转机制**：每个日志文件最大50MB，保留10个备份
+- **详细格式记录**：`[时间戳] 模块名.函数名:行号 - 级别 - 消息`
+- **UTF-8编码支持**：完美支持中文日志内容
+- **多级别处理器**：
+  - 主日志文件：DEBUG级别（完整记录）
+  - 错误日志文件：WARNING级别以上（只记录重要问题）
+  - 控制台输出：INFO级别（简化格式）
+
+### 🎯 模块日志覆盖
+- **背景音乐模块**：`background_music_service`, `background_music_generation_service`, `api.v1.background_music`
+- **音乐生成模块**：`song_generation_service`, `music_orchestrator`, `music_generation_async`, `songgeneration_engine`
+- **TTS语音模块**：`tts_client`, `characters`
+- **环境音模块**：`environment_generation_service`, `tangoflux_client`
+- **智能分析模块**：`llm_scene_analyzer`, `intelligent_scene_analyzer`, `chapter_analysis_service`
+- **音频处理模块**：`audio_editor_service`, `audio_sync_service`, `audio_processor`
+
+### 🛠️ 日志管理API
+- **GET `/api/v1/system/logging-info`** - 获取日志系统信息和文件状态
+- **GET `/api/v1/system/logs/modules`** - 查看各模块日志覆盖状态
+- **POST `/api/v1/system/logs/cleanup`** - 清理指定天数的旧日志文件
+
+### 📁 新增文件
+- `app/config/logging_config.py` ⭐ - 完整的日志系统配置管理器
+- 修改：`main.py` - 集成新的日志初始化系统
+- 修改：`app/api/v1/system.py` - 添加日志管理API端点
+
+### ✅ 修复验证
+- **✅ 背景音乐日志覆盖**：创建专用日志文件，等待模块调用时记录
+- **✅ 文件日志工作**：主日志文件7595字节，记录完整启动过程
+- **✅ 模块日志生效**：智能分析日志892字节，音乐生成日志960字节
+- **✅ 错误日志隔离**：错误日志文件独立，便于问题排查
+
+### 💾 技术价值
+- **运维监控能力提升**：完整的日志记录支持系统监控和问题诊断
+- **模块化日志管理**：按功能模块分类，便于开发调试和线上排错
+- **日志存储优化**：文件轮转机制避免磁盘空间占用过多
+- **系统可观测性**：为AI-Sound平台提供完整的运行状态可视化
+
+---
+
 ## [2025-01-31] 音乐内容生成问题根本修复
 
 ### 🚨 重大发现：SongGeneration引擎歌词忽略问题

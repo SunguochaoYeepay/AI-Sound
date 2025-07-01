@@ -35,11 +35,9 @@ from app.exceptions import (
 
 # 移除本地化SongGeneration服务，改用HTTP引擎客户端
 
-# 配置日志
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+# 初始化完整的日志系统
+from app.config.logging_config import init_logging
+init_logging(level="INFO")
 logger = logging.getLogger(__name__)
 
 # TangoFlux服务配置
