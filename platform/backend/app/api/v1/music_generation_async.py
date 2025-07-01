@@ -334,7 +334,7 @@ async def list_music_generation_tasks(
             items.append({
                 "id": task.id,
                 "task_id": task.task_id,
-                "name": f"音乐生成_{task.id}",  # 临时名称
+                "name": task.name,  # ✅ 修复：使用数据库中存储的实际名称
                 "content": task.content[:50] + "..." if len(task.content) > 50 else task.content,
                 "status": task.status.value if task.status else "unknown",
                 "progress": memory_info.get("progress", task.progress),

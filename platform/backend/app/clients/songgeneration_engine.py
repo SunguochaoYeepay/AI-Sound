@@ -161,9 +161,12 @@ class SongGenerationEngineClient:
             # 🔧 修复歌词格式：确保结构标签为小写
             formatted_lyrics = self._format_lyrics_for_songgeneration(lyrics)
             
+            # 🚨 强化歌词重视度：将用户歌词同时放入description字段
+            enhanced_description = f"请严格按照以下歌词内容生成音乐：\n{formatted_lyrics}\n\n{description}" if description else f"请严格按照以下歌词内容生成音乐：\n{formatted_lyrics}"
+            
             request_data = {
                 "lyrics": formatted_lyrics,
-                "description": description or "",
+                "description": enhanced_description,  # 🔧 加强歌词重视度
                 "genre": genre,
                 "cfg_coef": float(cfg_coef),
                 "temperature": float(temperature),
