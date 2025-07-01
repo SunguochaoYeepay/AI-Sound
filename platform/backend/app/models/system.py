@@ -21,6 +21,7 @@ class LogLevel(enum.Enum):
 
 class LogModule(enum.Enum):
     """日志模块枚举"""
+    # 原有基础模块
     SYSTEM = "SYSTEM"
     TTS = "TTS"
     DATABASE = "DATABASE"
@@ -32,6 +33,17 @@ class LogModule(enum.Enum):
     ANALYSIS = "ANALYSIS"
     ENVIRONMENT = "ENVIRONMENT"
     MUSIC = "MUSIC"
+    
+    # 新增专用模块（对应11个日志文件）
+    BACKGROUND_MUSIC = "BACKGROUND_MUSIC"          # 背景音乐模块
+    MUSIC_GENERATION = "MUSIC_GENERATION"          # 音乐生成服务
+    INTELLIGENT_ANALYSIS = "INTELLIGENT_ANALYSIS"  # LLM智能分析
+    TTS_VOICE = "TTS_VOICE"                       # TTS和语音合成
+    ENVIRONMENT_SOUNDS = "ENVIRONMENT_SOUNDS"      # 环境音生成
+    AUDIO_PROCESSING = "AUDIO_PROCESSING"          # 音频编辑和处理
+    API_REQUESTS = "API_REQUESTS"                  # API请求和中间件
+    DATABASE_OPS = "DATABASE_OPS"                  # 数据库操作
+    WEBSOCKET_COMM = "WEBSOCKET_COMM"             # WebSocket实时通信
 
 
 class SystemLog(Base):

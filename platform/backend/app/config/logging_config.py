@@ -11,6 +11,89 @@ import logging.handlers
 from pathlib import Path
 from typing import Dict, Any
 
+# 数据库日志处理器
+class DatabaseLogHandler(logging.Handler):
+    """数据库日志处理器 - 将日志写入SystemLog表"""
+    
+    def __init__(self):
+        super().__init__()
+        self._session = None
+        
+    def get_session(self):
+        """获取数据库会话（延迟初始化）"""
+        if self._session is None:
+            try:
+                from ..database import SessionLocal
+                self._session = SessionLocal()
+            except Exception:
+                # 如果数据库还未初始化，跳过数据库日志
+                return None
+        return self._session
+    
+    def emit(self, record):
+        """发送日志记录到数据库"""
+        try:
+            session = self.get_session()
+            if session is None:
+                return
+                
+            from ..models.system import SystemLog, LogLevel, LogModule
+            
+            # 映射日志级别
+            level_mapping = {
+                'DEBUG': LogLevel.DEBUG,
+                'INFO': LogLevel.INFO,
+                'WARNING': LogLevel.WARNING,
+                'ERROR': LogLevel.ERROR,
+                'CRITICAL': LogLevel.CRITICAL
+            }
+            
+            # 映射模块名称
+            module_mapping = {
+                'background_music': LogModule.BACKGROUND_MUSIC,
+                'music_generation': LogModule.MUSIC_GENERATION,
+                'intelligent_analysis': LogModule.INTELLIGENT_ANALYSIS,
+                'tts_voice': LogModule.TTS_VOICE,
+                'environment_sounds': LogModule.ENVIRONMENT_SOUNDS,
+                'audio_processing': LogModule.AUDIO_PROCESSING,
+                'api_requests': LogModule.API_REQUESTS,
+                'database': LogModule.DATABASE_OPS,
+                'websocket': LogModule.WEBSOCKET_COMM,
+                'main': LogModule.SYSTEM,
+            }
+            
+            # 确定模块类型
+            logger_name = record.name.lower()
+            module = LogModule.SYSTEM  # 默认值
+            
+            for key, mod in module_mapping.items():
+                if key in logger_name:
+                    module = mod
+                    break
+            
+            # 创建日志记录
+            log_entry = SystemLog(
+                level=level_mapping.get(record.levelname, LogLevel.INFO),
+                module=module,
+                message=record.getMessage(),
+                source_file=record.pathname,
+                source_line=record.lineno,
+                function=record.funcName
+            )
+            
+            session.add(log_entry)
+            session.commit()
+            
+        except Exception as e:
+            # 数据库日志失败不应该影响应用运行
+            pass
+    
+    def close(self):
+        """关闭处理器"""
+        if self._session:
+            self._session.close()
+        super().close()
+
 class LoggingConfig:
     """日志系统配置管理器"""
     
@@ -65,7 +148,16 @@ class LoggingConfig:
         console_handler.setFormatter(logging.Formatter(self.simple_format))
         root_logger.addHandler(console_handler)
         
-        # 4. 设置模块专用日志
+        # 4. 数据库日志处理器（WARNING及以上级别）
+        try:
+            db_handler = DatabaseLogHandler()
+            db_handler.setLevel(logging.WARNING)  # 只记录重要日志到数据库
+            root_logger.addHandler(db_handler)
+            logging.info("📊 数据库日志处理器已启用")
+        except Exception as e:
+            logging.warning(f"⚠️ 数据库日志处理器启用失败: {e}")
+        
+        # 5. 设置模块专用日志
         self._setup_module_loggers()
         
         logging.info("✅ 完整日志系统初始化完成")
@@ -277,15 +369,25 @@ class LoggingConfig:
                   and str(h.baseFilename).endswith(log_file) 
                   for h in logger.handlers):
             
-            handler = logging.handlers.RotatingFileHandler(
+            # 1. 文件处理器
+            file_handler = logging.handlers.RotatingFileHandler(
                 self.log_dir / log_file,
                 maxBytes=self.max_file_size,
                 backupCount=self.backup_count,
                 encoding='utf-8'
             )
-            handler.setLevel(level)
-            handler.setFormatter(logging.Formatter(self.detailed_format))
-            logger.addHandler(handler)
+            file_handler.setLevel(level)
+            file_handler.setFormatter(logging.Formatter(self.detailed_format))
+            logger.addHandler(file_handler)
+            
+            # 2. 数据库处理器（INFO及以上级别）
+            try:
+                db_handler = DatabaseLogHandler()
+                db_handler.setLevel(logging.INFO)  # 模块日志记录INFO及以上级别
+                logger.addHandler(db_handler)
+            except Exception:
+                # 数据库处理器失败不影响文件日志
+                pass
     
     def get_log_files_info(self) -> Dict[str, Any]:
         """获取日志文件信息"""
