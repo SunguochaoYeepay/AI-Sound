@@ -533,7 +533,6 @@ const formatDate = (dateString) => {
 <style scoped>
 .environment-mixing-page {
   padding: 24px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   min-height: 100vh;
 }
 
@@ -662,7 +661,6 @@ const formatDate = (dateString) => {
 /* 移动端适配 */
 @media (max-width: 768px) {
   .environment-mixing-page {
-    padding: 16px;
   }
   
   .header-content {

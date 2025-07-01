@@ -275,10 +275,22 @@
         <a-card v-if="generatedAudio" title="生成结果" :bordered="false" class="result-card">
           <div class="audio-result">
             <div class="audio-player">
-              <audio ref="audioPlayer" controls preload="metadata" style="width: 100%;">
-                <source :src="generatedAudio.url" type="audio/wav">
-                您的浏览器不支持音频播放
-              </audio>
+              <!-- 统一播放组件 -->
+              <div class="audio-player-unified">
+                <a-button 
+                  type="primary" 
+                  size="large"
+                  block
+                  @click="playWithUnifiedPlayer"
+                >
+                  <template #icon>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M8,5.14V19.14L19,12.14L8,5.14Z"/>
+                    </svg>
+                  </template>
+                  播放生成音频
+                </a-button>
+              </div>
             </div>
             
             <div class="audio-info">
@@ -325,6 +337,7 @@
 import { ref, computed, reactive, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
 import { systemAPI, voiceAPI } from '../api/index.js'
+import { getAudioService, playCustomAudio } from '@/utils/audioService'
 import { API_BASE_URL } from '../api/config.js'
 import { SoundOutlined } from '@ant-design/icons-vue'
 import AudioTester from '../components/AudioTester.vue'
@@ -524,9 +537,14 @@ const generateSpeech = async () => {
     
     // 4. 处理生成结果
     if (synthesizeResponse.data.success && synthesizeResponse.data.audioUrl) {
+      // 修复音频URL路径 - 后端返回的是/audio/xxx.wav，需要转换为/api/v1/audio/xxx.wav
+      const audioUrl = synthesizeResponse.data.audioUrl.startsWith('/audio/') 
+        ? synthesizeResponse.data.audioUrl.replace('/audio/', '/api/v1/audio/')
+        : synthesizeResponse.data.audioUrl
+      
       // 构建两种可能的URL
-      const directUrl = `${API_BASE_URL}${synthesizeResponse.data.audioUrl}`
-      const proxyUrl = synthesizeResponse.data.audioUrl // 相对路径，通过Vite代理访问
+      const directUrl = `${API_BASE_URL}${audioUrl}`
+      const proxyUrl = audioUrl // 相对路径，通过Vite代理访问
       
       try {
         // 尝试预加载音频文件
@@ -692,6 +710,39 @@ const downloadAudio = async () => {
 const saveToLibrary = () => {
   // TODO: 实现保存到声音库的功能
   message.success('已保存到声音库')
+}
+
+// 使用统一播放组件播放音频
+const playWithUnifiedPlayer = async () => {
+  if (!generatedAudio.value?.url) {
+    message.error('没有可播放的音频文件')
+    return
+  }
+
+  try {
+    const audioInfo = {
+      id: `voice_clone_${Date.now()}`,
+      title: '声音克隆生成结果',
+      url: generatedAudio.value.url,
+      type: 'voice_clone',
+      metadata: {
+        text: text.value,
+        processingTime: generatedAudio.value.processingTime,
+        duration: generatedAudio.value.duration,
+        quality: generatedAudio.value.quality,
+        onEnded: () => {
+          console.log('声音克隆音频播放完成')
+        }
+      }
+    }
+
+    console.log('🎵 [声音克隆] 使用统一播放器播放:', audioInfo)
+    await playCustomAudio(audioInfo.url, audioInfo.title, audioInfo.metadata)
+    message.success('开始播放音频')
+  } catch (error) {
+    console.error('🎵 [声音克隆] 播放失败:', error)
+    message.error('播放失败: ' + error.message)
+  }
 }
 </script>
 

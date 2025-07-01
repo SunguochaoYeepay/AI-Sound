@@ -1064,6 +1064,7 @@ import { message } from 'ant-design-vue'
 import { charactersAPI } from '@/api'
 import { API_BASE_URL } from '@/api/config'
 import { bookAPI, chapterAPI } from '../api/v2.js'
+import { playCustomAudio } from '@/utils/audioService'
 import { ArrowLeftOutlined, PlusOutlined, UserOutlined, SearchOutlined } from '@ant-design/icons-vue'
 
 // 路由
@@ -1423,8 +1424,19 @@ const playVoice = async (voice) => {
 
   try {
     const audioUrl = voice.sampleAudioUrl || voice.audioUrl || voice.referenceAudioUrl
-    const audio = new Audio(audioUrl)
-    await audio.play()
+    
+    // 使用统一播放组件播放
+    await playCustomAudio(audioUrl, `${voice.name} - 声音试听`, {
+      voiceId: voice.id,
+      voiceName: voice.name,
+      description: voice.description,
+      quality: voice.quality,
+      type: voice.type,
+      onEnded: () => {
+        console.log(`角色 ${voice.name} 试听完成`)
+      }
+    })
+    
     message.success(`正在播放：${voice.name}`)
   } catch (error) {
     console.error('播放音频失败:', error)
@@ -2137,13 +2149,27 @@ const getStatusText = (status) => {
 }
 
 // 添加播放当前音频的功能
-const playCurrentAudio = () => {
+const playCurrentAudio = async () => {
   if (editingVoice.value.referenceAudioUrl) {
-    const audio = new Audio(editingVoice.value.referenceAudioUrl)
-    audio.play().catch(error => {
+    try {
+      // 使用统一播放组件播放
+      await playCustomAudio(
+        editingVoice.value.referenceAudioUrl, 
+        `${editingVoice.value.name || '预览'} - 音频试听`, 
+        {
+          voiceId: editingVoice.value.id,
+          voiceName: editingVoice.value.name,
+          description: editingVoice.value.description,
+          onEnded: () => {
+            console.log(`编辑音频 ${editingVoice.value.name} 试听完成`)
+          }
+        }
+      )
+      message.success('开始播放音频')
+    } catch (error) {
       console.error('播放音频失败:', error)
       message.error('播放音频失败')
-    })
+    }
   } else {
     message.warning('没有可播放的音频文件')
   }

@@ -746,8 +746,6 @@ onMounted(() => {
 
 <style scoped>
 .book-detail-container {
-  padding: 24px;
-  background: #f5f5f5;
   min-height: 100vh;
 }
 

@@ -13,45 +13,60 @@ export default defineConfig(({ mode }) => {
   console.log(`[Vite配置] 模式: ${mode}, API代理目标: ${API_TARGET}`)
 
   return {
-  plugins: [vue()],
-  resolve: {
-    alias: {
-      '@': resolve(__dirname, 'src'),
-      'pinia': resolve(__dirname, 'node_modules/pinia/dist/pinia.mjs')
-    }
-  },
-  server: {
-    port: 3000,
-    host: '0.0.0.0',
+    root: resolve(__dirname, '.'),  // 明确指定项目根目录
+    build: {
+      outDir: resolve(__dirname, 'dist'),  // 明确指定输出目录
+    },
+    plugins: [vue()],
+    resolve: {
+      alias: {
+        '@': resolve(__dirname, 'src'),
+        'pinia': resolve(__dirname, 'node_modules/pinia/dist/pinia.mjs')
+      }
+    },
+    server: {
+      port: 3000,
+      host: '0.0.0.0',
       strictPort: true,
-    allowedHosts: [
-      'localhost',
-      '127.0.0.1',
-      '4924bf6a.r35.cpolar.top',
-      '.cpolar.top',
-      'aisound.cpolar.top'
-    ],
-    hmr: {
+      allowedHosts: [
+        'localhost',
+        '127.0.0.1',
+        '4924bf6a.r35.cpolar.top',
+        '.cpolar.top',
+        'aisound.cpolar.top'
+      ],
+      hmr: {
         host: mode === 'development' ? 'localhost' : 'aisound.cpolar.top',
         clientPort: mode === 'development' ? 3000 : 443,
         protocol: mode === 'development' ? 'ws' : 'wss'
-    },
-    proxy: {
-      '/audio': {
-          target: API_TARGET,
-        changeOrigin: true,
-        secure: false
       },
-      '/voice_profiles': {
+      proxy: {
+        // API路由（包含音频）- 最高优先级
+        '/api': {
           target: API_TARGET,
-        changeOrigin: true,
-        secure: false,
-        rewrite: (path) => path.replace(/^\/voice_profiles/, '/api/v1/voice_profiles')
-      },
-      '/api': {
+          changeOrigin: true,
+          secure: false,
+          configure: (proxy, _options) => {
+            proxy.on('error', (err, _req, _res) => {
+              console.log('[Vite API Proxy] 代理错误:', err.message)
+            })
+            proxy.on('proxyReq', (proxyReq, req, _res) => {
+              console.log('[Vite API Proxy] 代理请求:', req.method, req.url)
+            })
+          }
+        },
+        // 向后兼容的音频代理（重定向到/api/v1/audio）
+        '/audio': {
           target: API_TARGET,
-        changeOrigin: true,
-        secure: false
+          changeOrigin: true,
+          secure: false,
+          rewrite: (path) => path.replace(/^\/audio/, '/api/v1/audio')
+        },
+        '/voice_profiles': {
+          target: API_TARGET,
+          changeOrigin: true,
+          secure: false,
+          rewrite: (path) => path.replace(/^\/voice_profiles/, '/api/v1/voice_profiles')
         },
         '/ws': {
           target: API_TARGET.replace('http:', 'ws:'),

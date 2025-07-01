@@ -13,6 +13,8 @@ import logging
 import re
 import os
 from datetime import datetime
+from tempfile import NamedTemporaryFile
+from pydub import AudioSegment
 
 from app.database import get_db
 from app.models import NovelProject, AudioFile, VoiceProfile  # TextSegment已废弃
@@ -1613,12 +1615,32 @@ async def download_segment_audio(
 async def download_chapter_audio(
     project_id: int,
     chapter_id: int,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
 ):
     """
     下载整个章节的音频文件
     """
     try:
+        logger.info(f"开始处理章节音频下载请求 - 项目ID: {project_id}, 章节ID: {chapter_id}")
+        
+        # 🔍 先查询该项目的所有音频文件用于调试
+        all_project_audio = db.query(AudioFile).filter(
+            AudioFile.project_id == project_id,
+            AudioFile.audio_type == 'segment'
+        ).all()
+        logger.info(f"项目 {project_id} 总共有 {len(all_project_audio)} 个segment音频文件")
+        
+        # 按章节分组统计
+        chapter_stats = {}
+        for af in all_project_audio:
+            chapter_key = af.chapter_id or af.chapter_number or 'unknown'
+            if chapter_key not in chapter_stats:
+                chapter_stats[chapter_key] = 0
+            chapter_stats[chapter_key] += 1
+        
+        logger.info(f"按章节分布: {dict(sorted(chapter_stats.items()))}")
+        
         # 获取该章节的所有音频文件 - 修复：同时支持chapter_id和chapter_number查询
         audio_files = db.query(AudioFile).filter(
             AudioFile.project_id == project_id,
@@ -1630,88 +1652,114 @@ async def download_chapter_audio(
             )
         ).order_by(AudioFile.paragraph_index).all()
         
-        # 如果没找到，尝试获取该项目的所有音频文件（可能是单章节项目）
+        logger.info(f"查询结果 - 找到 {len(audio_files)} 个音频文件")
+        
+        # 记录每个音频文件的详细信息
+        total_duration = 0
+        for af in audio_files:
+            logger.info(f"音频文件: ID={af.id}, 章节ID={af.chapter_id}, 章节序号={af.chapter_number}, 段落序号={af.paragraph_index}, 文件路径={af.file_path}, 时长={af.duration}秒")
+            if af.duration:
+                total_duration += af.duration
+        
+        logger.info(f"所有音频文件总时长: {total_duration:.2f}秒")
+        
         if not audio_files:
-            all_audio_files = db.query(AudioFile).filter(
+            logger.warning(f"未找到章节音频文件 - 项目ID: {project_id}, 章节ID: {chapter_id}")
+            
+            # 🔍 额外调试：查看是否有其他匹配条件
+            debug_files_by_id = db.query(AudioFile).filter(
                 AudioFile.project_id == project_id,
-                AudioFile.audio_type == 'segment'
-            ).order_by(AudioFile.paragraph_index).all()
+                AudioFile.audio_type == 'segment',
+                AudioFile.chapter_id == chapter_id
+            ).all()
             
-            logger.info(f"章节 {chapter_id} 没有直接匹配，项目共有 {len(all_audio_files)} 个音频文件")
+            debug_files_by_number = db.query(AudioFile).filter(
+                AudioFile.project_id == project_id,
+                AudioFile.audio_type == 'segment',
+                AudioFile.chapter_number == chapter_id
+            ).all()
             
-            # 如果项目只有一个章节的音频文件，直接使用
-            if all_audio_files:
-                audio_files = all_audio_files
-                logger.info(f"使用项目所有音频文件作为章节 {chapter_id} 的音频")
-        
-        if not audio_files:
-            raise HTTPException(status_code=404, detail=f"章节 {chapter_id} 没有音频文件")
-        
-        # 🔧 修复：不再返回项目级别的final_audio，而是专门处理章节音频
-        # 注释掉项目级别final_audio的查找，因为那是整个项目的音频，不是单个章节的
-        # project_output_dir = f"outputs/projects/{project_id}"
-        # if os.path.exists(project_output_dir):
-        #     final_audio_files = glob.glob(os.path.join(project_output_dir, "final_audio_*.wav"))
-        #     if final_audio_files:
-        #         latest_final_audio = max(final_audio_files, key=os.path.getctime)
-        #         return FileResponse(path=latest_final_audio, ...)  # ← 这返回的是整个项目音频！
-        
-        # 🎯 查找章节级别的合并音频文件（如果存在）
-        project_output_dir = f"outputs/projects/{project_id}"
-        if os.path.exists(project_output_dir):
-            import glob
-            # 查找章节特定的合并音频文件
-            chapter_audio_files = glob.glob(os.path.join(project_output_dir, f"chapter_{chapter_id}_*.wav"))
-            if chapter_audio_files:
-                latest_chapter_audio = max(chapter_audio_files, key=os.path.getctime)
-                logger.info(f"返回章节合并音频: {latest_chapter_audio}")
-                return FileResponse(
-                    path=latest_chapter_audio,
-                    filename=f"chapter_{chapter_id}_merged.wav",
-                    media_type="audio/wav"
-                )
-        
-        # 如果只有一个文件，直接返回
-        if len(audio_files) == 1:
-            audio_file = audio_files[0]
-            if not os.path.exists(audio_file.file_path):
-                raise HTTPException(status_code=404, detail="音频文件不存在")
+            logger.warning(f"调试查询 - 仅通过chapter_id={chapter_id}匹配: {len(debug_files_by_id)} 个文件")
+            logger.warning(f"调试查询 - 仅通过chapter_number={chapter_id}匹配: {len(debug_files_by_number)} 个文件")
             
-            return FileResponse(
-                path=audio_file.file_path,
-                filename=f"chapter_{chapter_id}_{audio_file.filename}",
-                media_type="audio/wav"
+            raise HTTPException(
+                status_code=404,
+                detail="未找到章节音频文件"
             )
         
-        # 🔧 多个文件处理：创建临时合并音频或返回播放列表信息
-        if audio_files:
-            # 方案1：返回第一个文件并在响应头中标注这是多段落章节
-            audio_file = audio_files[0]
-            if os.path.exists(audio_file.file_path):
-                logger.warning(f"章节有{len(audio_files)}个音频文件，返回第一个段落: {audio_file.filename}")
-                logger.info(f"建议：前端应该使用段落播放功能来播放完整章节")
+        # 获取音频文件路径列表
+        audio_paths = [af.file_path for af in audio_files if af.file_path]
+        
+        if not audio_paths:
+            logger.warning(f"章节音频文件路径为空 - 项目ID: {project_id}, 章节ID: {chapter_id}")
+            raise HTTPException(
+                status_code=404,
+                detail="章节音频文件路径为空"
+            )
+        
+        logger.info(f"准备合并 {len(audio_paths)} 个音频文件")
+        
+        # 合并音频文件
+        try:
+            combined_audio = AudioSegment.empty()
+            silence = AudioSegment.silent(duration=500)  # 500ms的静音间隔
+            
+            for i, path in enumerate(audio_paths):
+                logger.info(f"正在处理第 {i+1}/{len(audio_paths)} 个音频文件: {path}")
                 
-                # 在文件名中标注这是多段落章节的第一段
-                filename = f"chapter_{chapter_id}_part1of{len(audio_files)}.wav"
+                # 检查文件是否存在
+                if not os.path.exists(path):
+                    logger.error(f"音频文件不存在: {path}")
+                    continue
+                
+                try:
+                    segment = AudioSegment.from_file(path)
+                    combined_audio += segment
+                    if i < len(audio_paths) - 1:  # 最后一个片段后不加静音
+                        combined_audio += silence
+                    logger.info(f"成功添加音频片段，当前总时长: {len(combined_audio)/1000:.2f}秒")
+                except Exception as e:
+                    logger.error(f"处理音频文件失败: {path}, 错误: {str(e)}")
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"处理音频文件失败: {str(e)}"
+                    )
+            
+            logger.info(f"音频合并完成，总时长: {len(combined_audio)/1000:.2f}秒")
+            
+            # 创建临时文件
+            with NamedTemporaryFile(suffix=".wav", delete=False) as temp_file:
+                combined_audio.export(temp_file.name, format="wav")
+                logger.info(f"临时文件已创建: {temp_file.name}")
+                
+                # 返回音频文件
+                def cleanup_temp_file():
+                    try:
+                        os.unlink(temp_file.name)
+                    except:
+                        pass
+                
+                background_tasks.add_task(cleanup_temp_file)
                 
                 return FileResponse(
-                    path=audio_file.file_path,
-                    filename=filename,
+                    temp_file.name,
                     media_type="audio/wav",
-                    headers={
-                        "X-Chapter-Segments": str(len(audio_files)),
-                        "X-Current-Segment": "1",
-                        "X-Chapter-Note": "This chapter has multiple segments. Use segment API for complete playback."
-                    }
+                    filename=f"chapter_{chapter_id}.wav"
                 )
-        
-        raise HTTPException(status_code=404, detail="音频文件不存在")
-        
-    except HTTPException:
-        raise
+                
+        except Exception as e:
+            logger.error(f"合并音频文件失败: {str(e)}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"合并音频文件失败: {str(e)}"
+            )
+            
     except Exception as e:
         logger.error(f"下载章节音频失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"下载失败: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"下载章节音频失败: {str(e)}"
+        )
 
 @router.post("/projects/{project_id}/reset-status")
 async def reset_project_status(
@@ -1741,6 +1789,100 @@ async def reset_project_status(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"重置失败: {str(e)}")
+
+@router.post("/projects/{project_id}/fix-chapter-mapping/{chapter_id}")
+async def fix_chapter_audio_mapping(
+    project_id: int,
+    chapter_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    修复音频文件的章节关联
+    将项目的音频文件正确关联到指定章节
+    """
+    try:
+        logger.info(f"🔧 开始修复项目 {project_id} 的音频文件章节关联到章节 {chapter_id}")
+        
+        # 1. 查询项目信息
+        project = db.query(NovelProject).filter(NovelProject.id == project_id).first()
+        if not project:
+            raise HTTPException(status_code=404, detail="项目不存在")
+        
+        # 2. 查询章节信息
+        from app.models import BookChapter
+        chapter = db.query(BookChapter).filter(BookChapter.id == chapter_id).first()
+        if not chapter:
+            raise HTTPException(status_code=404, detail="章节不存在")
+        
+        logger.info(f"📁 项目: {project.name}, 📖 章节: {chapter.title}")
+        
+        # 3. 查询该项目的所有音频文件
+        audio_files = db.query(AudioFile).filter(
+            AudioFile.project_id == project_id,
+            AudioFile.audio_type == 'segment'
+        ).all()
+        
+        logger.info(f"🎵 项目音频文件总数: {len(audio_files)}")
+        
+        # 找出缺少章节关联的文件
+        null_chapter_files = [af for af in audio_files if not af.chapter_id and not af.chapter_number]
+        
+        logger.info(f"🔧 需要修复的文件数: {len(null_chapter_files)}")
+        
+        # 4. 修复章节关联
+        if null_chapter_files:
+            for af in null_chapter_files:
+                af.chapter_id = chapter_id
+                af.chapter_number = getattr(chapter, 'chapter_number', None)
+                logger.info(f"   修复文件 ID={af.id}: chapter_id={af.chapter_id}, chapter_number={af.chapter_number}")
+            
+            db.commit()
+            logger.info(f"✅ 成功修复 {len(null_chapter_files)} 个音频文件的章节关联")
+            
+            # 5. 验证修复结果
+            updated_audio_files = db.query(AudioFile).filter(
+                AudioFile.project_id == project_id,
+                AudioFile.audio_type == 'segment'
+            ).filter(
+                or_(
+                    AudioFile.chapter_id == chapter_id,
+                    AudioFile.chapter_number == chapter_id
+                )
+            ).all()
+            
+            logger.info(f"🔍 修复后匹配到的音频文件: {len(updated_audio_files)}")
+            
+            return {
+                "success": True,
+                "message": f"成功修复 {len(null_chapter_files)} 个音频文件的章节关联",
+                "data": {
+                    "project_id": project_id,
+                    "chapter_id": chapter_id,
+                    "total_files": len(audio_files),
+                    "fixed_files": len(null_chapter_files),
+                    "matched_files_after_fix": len(updated_audio_files)
+                }
+            }
+        else:
+            logger.info("✅ 所有音频文件都已有章节关联，无需修复")
+            return {
+                "success": True,
+                "message": "所有音频文件都已有章节关联，无需修复",
+                "data": {
+                    "project_id": project_id,
+                    "chapter_id": chapter_id,
+                    "total_files": len(audio_files),
+                    "fixed_files": 0
+                }
+            }
+    
+    except Exception as e:
+        logger.error(f"修复章节关联失败: {str(e)}")
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"修复章节关联失败: {str(e)}"
+        )
 
 @router.get("/projects/{project_id}/chapters/{chapter_id}/progress")
 async def get_chapter_progress(

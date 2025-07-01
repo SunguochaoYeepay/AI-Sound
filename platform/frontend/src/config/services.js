@@ -34,9 +34,20 @@ const SERVICE_CONFIG = {
     // 主WebSocket连接
     MAIN: () => {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-      const baseUrl = import.meta.env.VITE_API_BASE_URL || SERVICE_CONFIG.BACKEND_BASE_URL
-      const cleanHost = baseUrl.replace(/^https?:\/\//, '')
-      return `${protocol}//${cleanHost}/ws`
+      
+      // 🔧 强制使用正确的后端URL，忽略可能错误的环境变量
+      const backendUrl = SERVICE_CONFIG.BACKEND_BASE_URL
+      const cleanHost = backendUrl.replace(/^https?:\/\//, '')
+      const wsUrl = `${protocol}//${cleanHost}/ws`
+      
+      console.log('[WebSocket配置]', {
+        环境: isDevelopment ? '开发' : '生产',
+        后端URL: backendUrl,
+        WebSocket地址: wsUrl,
+        环境变量覆盖: import.meta.env.VITE_API_BASE_URL
+      })
+      
+      return wsUrl
     },
     
     // 分析进度WebSocket

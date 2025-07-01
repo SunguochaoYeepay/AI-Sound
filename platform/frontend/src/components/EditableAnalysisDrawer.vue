@@ -548,7 +548,20 @@ const testVoice = async (character) => {
         keys: Object.keys(response.data)
       })
       // 🔧 修复：使用正确的字段名
-      const audioUrl = response.data.audioUrl || response.data.audio_url
+      let audioUrl = response.data.audioUrl || response.data.audio_url
+      
+      // 🔧 修复音频URL路径：处理相对路径和完整URL
+      if (audioUrl) {
+        if (audioUrl.startsWith('/audio/')) {
+          // 处理相对路径：/audio/ → /api/v1/audio/
+          audioUrl = audioUrl.replace('/audio/', '/api/v1/audio/')
+          console.log('[EditableAnalysisDrawer] 相对路径URL已修复:', audioUrl)
+        } else if (audioUrl.includes('/audio/')) {
+          // 处理完整URL：http://localhost:8001/audio/ → http://localhost:8001/api/v1/audio/
+          audioUrl = audioUrl.replace('/audio/', '/api/v1/audio/')
+          console.log('[EditableAnalysisDrawer] 完整URL路径已修复:', audioUrl)
+        }
+      }
       
       console.log('[EditableAnalysisDrawer] 准备播放音频:', {
         audioUrl: audioUrl,

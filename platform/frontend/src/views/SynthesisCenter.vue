@@ -342,11 +342,20 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  console.log('🧹 页面卸载，清理资源')
+  
+  // 🔧 清理WebSocket连接
   if (websocket) {
+    console.log('🔌 关闭WebSocket连接')
     websocket.close()
+    websocket = null
   }
+  
+  // 🔧 清理定时器
   if (progressRefreshInterval) {
+    console.log('⏰ 清理进度轮询定时器')
     clearInterval(progressRefreshInterval)
+    progressRefreshInterval = null
   }
 })
 
@@ -391,18 +400,33 @@ const loadSynthesisProgress = async () => {
         synthesis_type: progressData.value?.synthesis_type // 保持合成类型标识
       }
       
-      // 🔧 根据项目状态同步前端合成状态
+      // 🔧 根据API返回的实际状态同步前端合成状态（优先级最高）
+      const apiStatus = progressInfo.status
       const projectStatus = project.value?.status
-      if (projectStatus === 'processing') {
+      
+      // 🔧 强制更新项目状态为API返回的状态
+      if (project.value && apiStatus !== projectStatus) {
+        console.log('🔄 强制更新项目状态:', { 从: projectStatus, 到: apiStatus })
+        project.value.status = apiStatus
+      }
+      
+      if (apiStatus === 'processing') {
         synthesisRunning.value = true
         // 🔧 自动显示进度抽屉
         if (!progressDrawerVisible.value) {
           progressDrawerVisible.value = true
           console.log('📊 项目正在合成中，自动显示进度抽屉')
         }
-      } else if (projectStatus === 'paused' || projectStatus === 'cancelled' || projectStatus === 'completed' || projectStatus === 'failed') {
+      } else if (apiStatus === 'paused' || apiStatus === 'cancelled' || apiStatus === 'completed' || apiStatus === 'failed') {
         synthesisRunning.value = false
-        console.log('📊 项目非运行状态，重置前端状态', projectStatus)
+        console.log('📊 项目非运行状态，重置前端状态', apiStatus)
+        
+        // 🔧 合成完成时停止轮询
+        if (apiStatus === 'completed' && progressRefreshInterval) {
+          console.log('✅ 合成完成，停止进度轮询')
+          clearInterval(progressRefreshInterval)
+          progressRefreshInterval = null
+        }
       }
       
       console.log('📊 加载进度信息 (API格式):', progressData.value)
@@ -603,27 +627,82 @@ const initWebSocket = () => {
   const projectId = route.params.projectId
   const wsUrl = getWebSocketUrl('MAIN')
   
+  console.log('🔌 初始化WebSocket连接:', { projectId, wsUrl })
+  
+  // 🔧 清理旧连接
+  if (websocket && websocket.readyState !== WebSocket.CLOSED) {
+    console.log('🧹 关闭旧WebSocket连接')
+    websocket.close()
+  }
+  
   try {
     websocket = new WebSocket(wsUrl)
     
+    // 🔧 立即检查连接状态
+    console.log('🔍 WebSocket创建状态:', {
+      readyState: websocket.readyState,
+      url: websocket.url,
+      CONNECTING: WebSocket.CONNECTING,
+      OPEN: WebSocket.OPEN
+    })
+    
     websocket.onopen = () => {
       websocketStatus.value = 'connected'
-      console.log('WebSocket连接成功，订阅合成进度主题')
+      console.log('🟢 WebSocket连接成功，订阅合成进度主题')
       
       // 订阅合成进度主题
-      websocket.send(JSON.stringify({
+      const subscribeMsg = {
         type: 'subscribe',
         topic: `synthesis_${projectId}`
-      }))
+      }
+      console.log('📡 准备发送订阅消息:', subscribeMsg)
+      
+      try {
+        websocket.send(JSON.stringify(subscribeMsg))
+        console.log('✅ 订阅消息发送成功')
+      } catch (error) {
+        console.error('❌ 发送订阅消息失败:', error)
+        websocketStatus.value = 'error'
+        return
+      }
+      
+      // 🔧 设置订阅超时检查
+      const subscribeTimeout = setTimeout(() => {
+        if (websocketStatus.value === 'connected') {
+          console.log('⏰ 订阅超时检查 - WebSocket仍连接，但可能订阅未确认')
+          console.log('🔍 当前WebSocket状态:', {
+            status: websocketStatus.value,
+            readyState: websocket.readyState,
+            topic: `synthesis_${projectId}`
+          })
+        }
+      }, 5000)
     }
     
     websocket.onmessage = (event) => {
       const message = JSON.parse(event.data)
-      console.log('收到WebSocket消息:', message)
+      console.log('📨 收到WebSocket消息:', message)
+      
+      // 🔧 订阅确认消息（匹配后端的实际响应类型）
+      if (message.type === 'subscription_confirmed') {
+        console.log('✅ WebSocket订阅成功:', message.topic)
+        return
+      }
+      
+      if (message.type === 'subscribe_success') {
+        console.log('✅ WebSocket订阅成功 (备用格式):', message.topic)
+        return
+      }
+      
+      if (message.type === 'subscribe_error' || message.type === 'subscription_error') {
+        console.error('❌ WebSocket订阅失败:', message)
+        return
+      }
       
       // 处理主题消息
       if (message.type === 'topic_message' && message.topic === `synthesis_${projectId}`) {
         const data = message.data
+        console.log('🎯 收到合成进度消息:', data)
         
         // 更新进度数据
         if (data.type === 'progress_update' && data.data) {
@@ -633,15 +712,17 @@ const initWebSocket = () => {
             completed_segments: data.data.completed_segments || 0,
             total_segments: data.data.total_segments || 0,
             failed_segments: data.data.failed_segments || 0,
-            current_processing: data.data.current_processing || ''
+            current_processing: data.data.current_processing || '',
+            synthesis_type: progressData.value?.synthesis_type // 保持合成类型
           }
           
-          console.log('更新进度数据:', progressData.value)
+          console.log('📊 WebSocket更新进度数据:', progressData.value)
           
           // 🔧 同时更新章节进度
           loadCurrentChapterProgress()
           
           if (data.data.status === 'completed' || data.data.status === 'failed') {
+            console.log('🎉 WebSocket收到合成完成消息，更新项目状态')
             loadProject()
             synthesisRunning.value = false
             
@@ -652,20 +733,69 @@ const initWebSocket = () => {
             }
           }
         }
+      } else if (message.type === 'topic_message') {
+        console.log('🔍 收到其他主题消息:', message.topic, '期望主题:', `synthesis_${projectId}`)
       }
     }
     
-    websocket.onclose = () => {
+    websocket.onclose = (event) => {
       websocketStatus.value = 'disconnected'
-      console.log('WebSocket连接关闭')
+      console.log('🔴 WebSocket连接关闭:', { code: event.code, reason: event.reason })
+      
+      // 🔧 自动重连机制（仅在合成进行中时重连）
+      if (synthesisRunning.value) {
+        console.log('🔄 合成进行中，5秒后尝试重连WebSocket...')
+        setTimeout(() => {
+          if (synthesisRunning.value && websocketStatus.value === 'disconnected') {
+            console.log('🔄 开始重连WebSocket...')
+            initWebSocket()
+          }
+        }, 5000)
+      }
     }
     
     websocket.onerror = (error) => {
       websocketStatus.value = 'error'
-      console.error('WebSocket error:', error)
+      console.error('🔴 WebSocket错误:', error)
     }
   } catch (error) {
     console.error('WebSocket initialization failed:', error)
+  }
+}
+
+// 🔧 WebSocket诊断函数
+const testWebSocketConnection = () => {
+  console.log('🧪 开始WebSocket连接诊断')
+  console.log('📊 当前状态:', {
+    websocketStatus: websocketStatus.value,
+    websocketExists: !!websocket,
+    websocketReadyState: websocket?.readyState,
+    projectId: route.params.projectId
+  })
+  
+  if (websocket) {
+    console.log('🔍 WebSocket详细信息:', {
+      url: websocket.url,
+      readyState: websocket.readyState,
+      CONNECTING: WebSocket.CONNECTING,
+      OPEN: WebSocket.OPEN,
+      CLOSING: WebSocket.CLOSING,
+      CLOSED: WebSocket.CLOSED
+    })
+    
+    // 尝试发送测试消息
+    if (websocket.readyState === WebSocket.OPEN) {
+      const testMsg = {
+        type: 'ping',
+        timestamp: Date.now()
+      }
+      console.log('📡 发送测试ping消息:', testMsg)
+      websocket.send(JSON.stringify(testMsg))
+    } else {
+      console.warn('⚠️ WebSocket未处于OPEN状态，无法发送消息')
+    }
+  } else {
+    console.error('❌ WebSocket对象不存在')
   }
 }
 
@@ -703,6 +833,31 @@ const handleStartSynthesis = async () => {
       message.success('🎤 开始角色音合成')
       synthesisRunning.value = true
       progressDrawerVisible.value = true
+      
+      // 🔧 确保WebSocket连接正常
+      if (websocketStatus.value !== 'connected') {
+        console.log('🔄 合成开始前，WebSocket未连接，重新初始化')
+        initWebSocket()
+        
+        // 等待连接建立后再继续
+        setTimeout(() => {
+          if (websocketStatus.value !== 'connected') {
+            console.warn('⚠️ WebSocket连接建立超时，将依赖轮询获取进度')
+          }
+        }, 3000)
+      } else {
+        // 即使已连接，也重新订阅主题确保订阅正常
+        const subscribeMsg = {
+          type: 'subscribe',
+          topic: `synthesis_${project.value.id}`
+        }
+        console.log('🔄 合成开始，重新确认订阅:', subscribeMsg)
+        try {
+          websocket.send(JSON.stringify(subscribeMsg))
+        } catch (error) {
+          console.error('❌ 重新订阅失败:', error)
+        }
+      }
       
       // 🔧 初始化进度数据
       progressData.value = {
