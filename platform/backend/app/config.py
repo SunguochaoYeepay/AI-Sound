@@ -12,7 +12,7 @@ class Settings:
     """应用设置配置类"""
     
     # 数据库配置
-    DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./ai_sound.db")
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://ai_sound_user:ai_sound_password@localhost:5432/ai_sound")
     
     # TTS服务配置
     TTS_SERVER_URL: str = os.getenv("MEGATTS3_URL", "http://localhost:7929")
