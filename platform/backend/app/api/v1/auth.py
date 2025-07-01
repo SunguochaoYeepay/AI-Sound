@@ -6,6 +6,7 @@
 
 from datetime import timedelta
 from typing import Any
+import logging
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordRequestForm, HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
@@ -16,6 +17,9 @@ from ...database import get_db
 # from ...models.auth import User, Role, Permission, UserSession, LoginLog, UserStatus
 from ...core.auth import auth_manager
 
+# 配置日志
+logger = logging.getLogger(__name__)
+
 router = APIRouter(tags=["认证"])
 
 # HTTPBearer认证
@@ -24,8 +28,7 @@ security = HTTPBearer()
 # ==================== 辅助函数 ====================
 
 async def get_current_user_from_token(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: Session = Depends(get_db)
+    credentials: HTTPAuthorizationCredentials = Depends(security)
 ) -> int:
     """临时的简化用户认证函数，返回用户ID而不是完整User对象"""
     credentials_exception = HTTPException(
@@ -48,14 +51,25 @@ async def get_current_user_from_token(
     if user_id is None:
         raise credentials_exception
     
-    # 验证用户是否存在
-    user_query = text("SELECT id, status FROM users WHERE id = :user_id")
-    result = db.execute(user_query, {"user_id": int(user_id)}).fetchone()
-    
-    if not result:  # 用户不存在
+    # 在独立的数据库会话中验证用户是否存在
+    try:
+        from ...database import SessionLocal
+        db = SessionLocal()
+        user_query = text("SELECT id, status FROM users WHERE id = :user_id")
+        result = db.execute(user_query, {"user_id": int(user_id)}).fetchone()
+        db.close()
+        
+        if not result:  # 用户不存在
+            raise credentials_exception
+            
+        return int(user_id)
+    except HTTPException:
+        # 重新抛出认证相关的HTTPException
+        raise
+    except Exception as e:
+        # 数据库错误转换为认证失败
+        logger.error(f"认证过程中数据库错误: {e}")
         raise credentials_exception
-    
-    return int(user_id)
 
 # ==================== 基础认证接口 ====================
 

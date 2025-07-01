@@ -4,6 +4,11 @@
 认证核心模块
 """
 
+import warnings
+# 抑制bcrypt版本兼容性警告，这是已知的兼容性问题
+warnings.filterwarnings("ignore", message=".*bcrypt version.*")
+warnings.filterwarnings("ignore", message=".*error reading bcrypt version.*")
+
 from jose import jwt
 from jose.exceptions import JWTError, ExpiredSignatureError
 import uuid
@@ -20,8 +25,14 @@ from app.database import get_db
 from app.models.auth import User, UserSession, LoginLog, Role, Permission, UserStatus
 from app.config import settings
 
-# 密码加密上下文
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# 密码加密上下文 - 添加兼容性配置
+pwd_context = CryptContext(
+    schemes=["bcrypt"], 
+    deprecated="auto",
+    # 兼容新版bcrypt，避免版本警告
+    bcrypt__rounds=12,
+    bcrypt__ident="2b"
+)
 
 # HTTP Bearer认证
 security = HTTPBearer()

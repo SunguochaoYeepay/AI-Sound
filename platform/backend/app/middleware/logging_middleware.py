@@ -13,7 +13,7 @@ from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from ..utils.logger import log_api_request
-from ..models.log import LogModule
+from ..models.system import LogModule
 
 logger = logging.getLogger(__name__)
 
@@ -45,8 +45,12 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         path = str(request.url.path)
         query_params = str(request.query_params) if request.query_params else None
         
-        # 检查是否需要跳过日志记录
-        should_skip = any(skip_path in path for skip_path in self.skip_paths)
+        # 检查是否需要跳过日志记录（精确匹配，避免误杀）
+        should_skip = any(
+            path == skip_path or path.startswith(skip_path) 
+            for skip_path in self.skip_paths
+            if skip_path != "/health"  # 排除/health，允许/api/health通过
+        ) or path == "/health"  # 只跳过根路径的/health
         
         # 获取客户端信息
         client_ip = self._get_client_ip(request)
@@ -96,7 +100,16 @@ class LoggingMiddleware(BaseHTTPMiddleware):
                         "content_type": response.headers.get("content-type")
                     }
                     
-                    # 记录API请求日志
+                    # 首先直接输出到控制台日志（确保能看到）
+                    log_message = f"🌐 API请求: {method} {path} -> {response.status_code} ({process_time:.2f}ms) | IP: {client_ip}"
+                    if response.status_code >= 500:
+                        logger.error(log_message)
+                    elif response.status_code >= 400:
+                        logger.warning(log_message)
+                    else:
+                        logger.info(log_message)
+                    
+                    # 然后记录到数据库
                     log_api_request(
                         method=method,
                         path=path,
@@ -122,6 +135,10 @@ class LoggingMiddleware(BaseHTTPMiddleware):
             
             if not should_skip:
                 try:
+                    # 直接输出到控制台
+                    logger.error(f"🌐 API异常: {method} {path} -> 500 ({process_time:.2f}ms) | 错误: {str(e)} | IP: {client_ip}")
+                    
+                    # 记录到数据库
                     log_api_request(
                         method=method,
                         path=path,

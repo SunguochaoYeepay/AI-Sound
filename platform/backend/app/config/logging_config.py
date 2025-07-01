@@ -142,10 +142,23 @@ class LoggingConfig:
         error_handler.setFormatter(logging.Formatter(self.detailed_format))
         root_logger.addHandler(error_handler)
         
-        # 3. 控制台输出（简化格式）
+        # 3. 控制台输出（根据环境调整详细程度）
         console_handler = logging.StreamHandler()
-        console_handler.setLevel(logging.INFO)
-        console_handler.setFormatter(logging.Formatter(self.simple_format))
+        
+        # 检查是否为调试模式
+        debug_mode = os.getenv("DEBUG_MODE", "false").lower() == "true"
+        local_dev = os.getenv("LOCAL_DEV", "true").lower() == "true"  # 默认开启本地开发模式
+        
+        if debug_mode or local_dev:
+            # 开发模式：显示详细信息，包括DEBUG级别
+            console_handler.setLevel(logging.DEBUG)
+            console_handler.setFormatter(logging.Formatter(self.detailed_format))
+            logging.info("🔧 本地开发模式：控制台显示详细日志")
+        else:
+            # 生产模式：简化格式，只显示INFO及以上
+            console_handler.setLevel(logging.INFO)
+            console_handler.setFormatter(logging.Formatter(self.simple_format))
+        
         root_logger.addHandler(console_handler)
         
         # 4. 数据库日志处理器（WARNING及以上级别）

@@ -325,6 +325,8 @@
 import { ref, reactive, computed, onMounted, onUnmounted, h } from 'vue'
 import { message } from 'ant-design-vue'
 import dayjs from 'dayjs'
+import utc from 'dayjs/plugin/utc'
+import timezone from 'dayjs/plugin/timezone'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import 'dayjs/locale/zh-cn'
 import {
@@ -339,6 +341,8 @@ import {
 import { logApi } from '../api/logs'
 
 // 扩展dayjs并设置中文
+dayjs.extend(utc)
+dayjs.extend(timezone)
 dayjs.extend(relativeTime)
 dayjs.locale('zh-cn')
 
@@ -473,11 +477,13 @@ function getModuleText(module) {
 }
 
 function formatTime(timestamp) {
-  return dayjs(timestamp).format('YYYY-MM-DD HH:mm:ss')
+  // 将UTC时间转换为本地时间显示
+  return dayjs.utc(timestamp).local().format('YYYY-MM-DD HH:mm:ss')
 }
 
 function formatRelativeTime(timestamp) {
-  return dayjs(timestamp).fromNow()
+  // 将UTC时间转换为本地时间后计算相对时间
+  return dayjs.utc(timestamp).local().fromNow()
 }
 
 function truncateText(text, maxLength) {

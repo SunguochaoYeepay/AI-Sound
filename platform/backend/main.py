@@ -26,6 +26,8 @@ from app.clients.audio_processor import audio_processor
 from app.clients.file_manager import file_manager
 from app.websocket.manager import websocket_manager
 from app.utils.logger import log_system_event, LogModule
+from app.middleware.logging_middleware import LoggingMiddleware
+from app.config.log_config import log_config
 from app.exceptions import (
     AIServiceException,
     TTSServiceException,
@@ -37,8 +39,15 @@ from app.exceptions import (
 
 # 初始化完整的日志系统
 from app.config.logging_config import init_logging
-init_logging(level="INFO")
+
+# 从环境变量读取日志级别，默认为INFO
+log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+init_logging(level=log_level)
 logger = logging.getLogger(__name__)
+
+# 如果是开发模式，显示额外提示
+if os.getenv("LOCAL_DEV", "false").lower() == "true":
+    logger.info("🔧 本地开发模式已启用 - 控制台将显示详细日志")
 
 # TangoFlux服务配置
 TANGOFLUX_SERVICE_URL = os.getenv("TANGOFLUX_URL", "http://localhost:7930")
@@ -229,6 +238,13 @@ app.add_middleware(
 )
 
 app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+# 添加API日志记录中间件
+if log_config.API_LOG_ENABLED:
+    app.add_middleware(
+        LoggingMiddleware, 
+        skip_paths=log_config.API_LOG_SKIP_PATHS
+    )
 
 # 挂载静态文件目录 - 匹配API路径规范
 app.mount("/api/v1/audio", StaticFiles(directory="data/audio"), name="audio")
