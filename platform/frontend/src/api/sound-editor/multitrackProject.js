@@ -98,7 +98,7 @@ export function createEmptyProject(title = '新建项目') {
       title,
       description: '',
       author: 'AI-Sound',
-      totalDuration: 0,
+      totalDuration: 60, // 最小时长，会根据内容自动扩展
       sampleRate: 44100,
       channels: 2,
       bitDepth: 16,

@@ -63,19 +63,7 @@
                     >
                       下载
                     </a-button>
-                    <a-button
-                      size="small"
-                      @click="$emit('open-audio-editor')"
-                      type="dashed"
-                    >
-                      <template #icon>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/>
-                          <path d="M14 8v8h2V8h-2zm4 0v8h2V8h-2z"/>
-                        </svg>
-                      </template>
-                      进入编辑器
-                    </a-button>
+                    
                   </template>
 
                   <!-- 处理中状态：显示暂停和取消按钮 -->
@@ -170,7 +158,7 @@ import { ref, computed, h } from 'vue'
 import { Empty, Modal, message } from 'ant-design-vue'
 import { getWebSocketUrl } from '@/config/services'
 import DialogueBubble from './DialogueBubble.vue'
-import apiClient from '@/api/config.js'
+import apiClient, { llmAnalysisClient } from '@/api/config.js'
 
 const props = defineProps({
   project: Object,
@@ -428,6 +416,7 @@ const handleTriggerPreparation = async () => {
 const executePreparation = async () => {
   let hideLoading = null
   let websocket = null
+  let wsConnected = false
   
   try {
     console.log('🚀 用户确认开始智能准备，开始执行...')
@@ -435,36 +424,82 @@ const executePreparation = async () => {
     // 🔧 修复：确保只在用户确认后才显示loading状态
     emit('trigger-preparation-loading', true)
     
-    // 🔧 建立WebSocket连接监听进度
+    // 🔧 先建立WebSocket连接并等待连接成功，再调用API
     try {
-              const wsUrl = getWebSocketUrl('ANALYSIS_PROGRESS', props.selectedChapter)
+      const wsUrl = getWebSocketUrl('MAIN')
+      console.log('📡 连接WebSocket:', wsUrl)
       websocket = new WebSocket(wsUrl)
       
+      // 等待WebSocket连接建立
+      await new Promise((resolve, reject) => {
+        websocket.onopen = () => {
+          console.log('✅ WebSocket连接成功，订阅智能准备进度主题')
+          const subscribeMsg = {
+            type: 'subscribe',
+            topic: `analysis_session_${props.selectedChapter}`
+          }
+          console.log('📡 发送订阅消息:', subscribeMsg)
+          websocket.send(JSON.stringify(subscribeMsg))
+          wsConnected = true
+          resolve()
+        }
+        
+        websocket.onerror = (error) => {
+          console.warn('⚠️ WebSocket连接失败:', error)
+          reject(error)
+        }
+        
+        // 3秒超时
+        setTimeout(() => {
+          if (!wsConnected) {
+            console.warn('⚠️ WebSocket连接超时')
+            resolve() // 仍然继续，不阻止API调用
+          }
+        }, 3000)
+      })
+      
       websocket.onmessage = (event) => {
-        const data = JSON.parse(event.data)
-        if (data.type === 'progress_update') {
-          console.log('📊 智能准备进度:', data.data)
-          // 可以在这里更新进度显示
+        const message = JSON.parse(event.data)
+        console.log('📨 收到WebSocket消息:', message)
+        
+        if (message.type === 'subscription_confirmed') {
+          console.log('✅ WebSocket订阅确认:', message.topic)
+          return
+        }
+        
+        if (message.type === 'topic_message' && message.topic === `analysis_session_${props.selectedChapter}`) {
+          const data = message.data
+          if (data.type === 'progress_update') {
+            console.log('📊 智能准备进度:', data.data)
+            // 更新进度显示
+            if (hideLoading) {
+              hideLoading()
+              const progress = data.data.progress || 0
+              const progressMsg = data.data.message || '智能准备进行中'
+              hideLoading = message.loading(`${progressMsg} (${progress}%)`, 0)
+            }
+          }
         }
       }
       
-      websocket.onerror = (error) => {
-        console.warn('⚠️ WebSocket连接失败:', error)
+      websocket.onclose = () => {
+        console.log('🔌 WebSocket连接关闭')
+        wsConnected = false
       }
+      
     } catch (wsError) {
-      console.warn('⚠️ WebSocket初始化失败:', wsError)
+      console.warn('⚠️ WebSocket初始化失败，将无法显示实时进度:', wsError)
     }
     
-    // 🔧 延迟100ms显示loading消息，确保在确认对话框关闭后
-    await new Promise(resolve => setTimeout(resolve, 100))
-    hideLoading = message.loading('正在进行智能准备，请稍候...', 0)
+    // 显示初始loading消息
+    hideLoading = message.loading('正在连接服务并准备智能分析...', 0)
     
     // 构造API调用URL
     const apiUrl = `/content-preparation/prepare-synthesis/${props.selectedChapter}`
     console.log('📡 调用API:', apiUrl)
     
-    // 调用智能准备API - 复用书籍智能准备的API（优化版）
-    const response = await apiClient.post(apiUrl, {
+    // 调用智能准备API - 使用长超时客户端和进度监控
+    const response = await llmAnalysisClient.post(apiUrl, {
       auto_add_narrator: true,
       processing_mode: 'auto',
       tts_optimization: 'fast'  // 🚀 使用快速模式，减少token消耗
@@ -532,30 +567,59 @@ const executePreparation = async () => {
       status: error.response?.status,
       statusText: error.response?.statusText,
       data: error.response?.data,
-      message: error.message
+      message: error.message,
+      code: error.code
     })
     
-    const errorDetail = error.response?.data?.detail || error.message || '智能准备失败'
+    // 详细的错误处理
+    let errorDetail = '智能准备失败'
+    let errorType = '未知错误'
+    
+    if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
+      errorType = '请求超时'
+      errorDetail = '智能准备处理时间过长，请重试或联系管理员'
+    } else if (error.response) {
+      // 服务器响应错误
+      errorType = `服务器错误 (${error.response.status})`
+      errorDetail = error.response.data?.detail || 
+                   error.response.data?.message || 
+                   error.response.statusText || 
+                   `HTTP ${error.response.status} 错误`
+    } else if (error.request) {
+      // 网络错误
+      errorType = '网络连接错误'
+      errorDetail = '无法连接到服务器，请检查网络连接'
+    } else {
+      // 其他错误
+      errorType = '客户端错误'
+      errorDetail = error.message || '智能准备过程中发生未知错误'
+    }
     
     Modal.error({
-      title: '智能准备失败',
+      title: `智能准备失败 - ${errorType}`,
       content: h('div', [
         h('p', '章节智能准备过程中发生错误：'),
-        h('p', { 
-          style: 'color: #ff4d4f; background: #fff2f0; padding: 8px; border-radius: 4px; margin: 8px 0; font-family: monospace;' 
-        }, errorDetail),
-        h('p', '请检查：'),
-        h('ul', { style: 'margin: 8px 0; padding-left: 20px;' }, [
-          h('li', '章节内容是否完整'),
-          h('li', '网络连接是否正常'),
-          h('li', '是否有足够的处理权限'),
-          h('li', '后端服务是否正常运行')
+        h('div', { 
+          style: 'background: #fff2f0; padding: 12px; border-radius: 6px; margin: 12px 0; border-left: 4px solid #ff4d4f;' 
+        }, [
+          h('p', { style: 'color: #ff4d4f; font-weight: 600; margin: 0 0 8px 0;' }, errorType),
+          h('p', { style: 'color: #333; margin: 0; font-family: monospace; font-size: 13px;' }, errorDetail)
+        ]),
+        h('div', { style: 'margin-top: 16px;' }, [
+          h('p', { style: 'font-weight: 600; margin-bottom: 8px;' }, '解决建议：'),
+          h('ul', { style: 'margin: 0; padding-left: 20px; color: #666;' }, [
+            errorType.includes('超时') ? h('li', '请耐心等待或尝试分批处理较短的章节') : null,
+            errorType.includes('网络') ? h('li', '检查网络连接是否稳定') : null,
+            errorType.includes('服务器') ? h('li', '稍后重试或联系管理员') : null,
+            h('li', '确保章节内容完整且格式正确'),
+            h('li', '检查后端服务是否正常运行')
+          ].filter(Boolean))
         ])
       ]),
-      width: 500
+      width: 600
     })
     
-    message.error('智能准备失败：' + errorDetail)
+    message.error(`智能准备失败：${errorDetail}`)
   } finally {
     // 🔧 确保在错误情况下也清理loading状态
     if (hideLoading) {

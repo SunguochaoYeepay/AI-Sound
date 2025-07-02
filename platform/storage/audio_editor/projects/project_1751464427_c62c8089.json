@@ -4,7 +4,7 @@
     "title": "wqeqwe",
     "description": "wqeeqwweqqew",
     "author": "AI-Sound",
-    "totalDuration": 300.0,
+    "totalDuration": 716.9268108367921,
     "sampleRate": 44100,
     "channels": 2,
     "bitDepth": 16,
@@ -24,7 +24,7 @@
       "order": 1,
       "clips": [
         {
-          "id": "clip_1751464488821_ozzvbmhaj",
+          "id": "clip_1751474974065_mt3to2tp3",
           "fileId": "",
           "filename": "file_1751464485_492316a7",
           "startTime": 0.0,
@@ -47,11 +47,11 @@
       "order": 2,
       "clips": [
         {
-          "id": "clip_1751467756648_adthrsjsp",
+          "id": "clip_1751476376712_w7n135ltz",
           "fileId": "",
-          "filename": "file_1751467736_bc8e6a14",
-          "startTime": 2.18,
-          "duration": 270.51648712158203,
+          "filename": "file_1751465129_00990c27",
+          "startTime": 522.6000000000001,
+          "duration": 194.326810836792,
           "volume": 1.0,
           "offset": 0.0,
           "fadeIn": 0.1,
@@ -70,10 +70,10 @@
       "order": 3,
       "clips": [
         {
-          "id": "clip_1751465249181_6ebb74dnx",
+          "id": "clip_1751476519488_l408ggsd2",
           "fileId": "",
           "filename": "file_1751465129_00990c27",
-          "startTime": 1.977142333984375,
+          "startTime": 164.89999999999998,
           "duration": 194.326810836792,
           "volume": 1.0,
           "offset": 0.0,

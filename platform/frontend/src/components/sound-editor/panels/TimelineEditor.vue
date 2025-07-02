@@ -28,8 +28,24 @@
             <span class="zoom-percentage">{{ Math.round(zoomLevel * 100) }}%</span>
           </div>
           
+          <!-- 适合窗口按钮 -->
+          <a-tooltip title="适合窗口 (Ctrl+F)">
+            <a-button size="small" @click="$emit('fit-to-window')">
+              <template #icon><FullscreenOutlined /></template>
+            </a-button>
+          </a-tooltip>
+          
           <!-- 当前显示范围 -->
           <span class="view-range">显示: {{ Math.round(viewDuration) }}s</span>
+          
+          <!-- 时长信息 -->
+          <div class="duration-info">
+            <span class="duration-label">总时长:</span>
+                         <span class="duration-value">{{ formatTime(timelineWidth / pixelsPerSecond) }}</span>
+            <a-tooltip title="时长根据音频内容自动调整">
+              <QuestionCircleOutlined style="margin-left: 4px; color: #999;" />
+            </a-tooltip>
+          </div>
         </div>
       </div>
     </div>
@@ -60,21 +76,21 @@
         </div>
       </div>
 
-      <!-- 音轨容器 -->
-      <div class="tracks-scroll-container" ref="tracksScrollContainer" @scroll="handleTimelineScroll">
-        <div class="tracks-wrapper">
-          <!-- 左侧音轨控制面板 -->
-          <div class="tracks-controls">
-            <div v-for="track in tracks" :key="track.id" class="track-control">
-              <div class="track-color-bar" :style="{ backgroundColor: track.color }"></div>
-              <div class="track-info">
-                <span class="track-name">{{ track.name }}</span>
-                <span class="track-type">{{ track.type }}</span>
-              </div>
+      <!-- 音轨主要区域 -->
+      <div class="tracks-main">
+        <!-- 左侧音轨控制面板 - 固定不滚动 -->
+        <div class="tracks-controls">
+          <div v-for="track in tracks" :key="track.id" class="track-control">
+            <div class="track-color-bar" :style="{ backgroundColor: track.color }"></div>
+            <div class="track-info">
+              <span class="track-name">{{ track.name }}</span>
+              <span class="track-type">{{ track.type }}</span>
             </div>
           </div>
-          
-          <!-- 右侧音轨内容区域 -->
+        </div>
+        
+        <!-- 右侧音轨内容区域 - 可滚动 -->
+        <div class="tracks-content-scroll" ref="tracksScrollContainer" @scroll="handleTimelineScroll">
           <div class="tracks-content" :style="{ width: timelineWidth + 'px' }">
             <TrackEditor
               v-for="track in tracks"
@@ -99,6 +115,7 @@
 
 <script setup>
 import { ref, computed } from 'vue'
+import { QuestionCircleOutlined, FullscreenOutlined } from '@ant-design/icons-vue'
 import TrackEditor from '../tracks/TrackEditor.vue'
 
 // Props
@@ -133,7 +150,7 @@ const props = defineProps({
   },
   minZoom: {
     type: Number,
-    default: 0.25
+    default: 0.1
   },
   maxZoom: {
     type: Number,
@@ -149,17 +166,46 @@ const emit = defineEmits([
   'update-clip',
   'delete-clip',
   'add-clip',
-  'select-exclusive'
+  'select-exclusive',
+  'fit-to-window'
 ])
 
 // 模板引用
 const rulerScrollContainer = ref(null)
 const tracksScrollContainer = ref(null)
 
+// 计算实际内容时长
+const calculateContentDuration = computed(() => {
+  let maxTime = 0
+  
+  // 遍历所有轨道和片段，找到最大的结束时间
+  if (props.tracks && props.tracks.length > 0) {
+    props.tracks.forEach(track => {
+      if (track.clips && track.clips.length > 0) {
+        track.clips.forEach(clip => {
+          const endTime = (clip.startTime || 0) + (clip.duration || 0)
+          if (endTime > maxTime) {
+            maxTime = endTime
+          }
+        })
+      }
+    })
+  }
+  
+  // 添加30秒缓冲区，最小60秒
+  return Math.max(60, maxTime + 30)
+})
+
+// 使用动态计算的时长，但仍然尊重外部传入的totalDuration
+const effectiveTotalDuration = computed(() => {
+  return Math.max(props.totalDuration || 0, calculateContentDuration.value)
+})
+
 // 时间标记计算
 const timeMarkers = computed(() => {
   const markers = []
-  const totalDuration = Math.max(props.totalDuration || 60, props.viewDuration)
+  // 计算时间轴总时长：根据时间轴宽度和像素比例反推
+  const timelineDuration = props.timelineWidth / props.pixelsPerSecond
   
   // 根据缩放级别动态调整时间刻度间隔
   let step
@@ -171,11 +217,13 @@ const timeMarkers = computed(() => {
     step = 5    // 默认显示5秒间隔
   } else if (props.zoomLevel >= 0.5) {
     step = 10   // 缩小时显示10秒间隔
+  } else if (props.zoomLevel >= 0.2) {
+    step = 30   // 中度缩小时显示30秒间隔
   } else {
-    step = 30   // 高度缩小时显示30秒间隔
+    step = 60   // 高度缩小时显示1分钟间隔
   }
   
-  for (let time = 0; time <= totalDuration; time += step) {
+  for (let time = 0; time <= timelineDuration; time += step) {
     markers.push({ time })
   }
   return markers
@@ -197,6 +245,8 @@ function formatTime(seconds) {
   const remainingSeconds = Math.floor(seconds % 60)
   return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`
 }
+
+
 
 // 暴露方法供父组件调用
 defineExpose({
@@ -259,7 +309,7 @@ defineExpose({
 }
 
 .ruler-left-space {
-  width: 200px;
+  width: 150px; /* 缩小左侧宽度 */
   background: #333;
   border-right: 1px solid #444;
 }
@@ -319,27 +369,52 @@ defineExpose({
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
-.tracks-scroll-container {
+/* 音轨主要区域 */
+.tracks-main {
+  flex: 1;
+  display: flex;
+  background: #1e1e1e;
+}
+
+/* 左侧音轨控制面板 - 固定不滚动 */
+.tracks-controls {
+  width: 150px; /* 缩小宽度 */
+  background: #333;
+  border-right: 1px solid #444;
+  flex-shrink: 0;
+  overflow-y: auto; /* 允许垂直滚动 */
+}
+
+/* 右侧音轨内容滚动容器 */
+.tracks-content-scroll {
   flex: 1;
   overflow: auto;
   background: #1e1e1e;
 }
 
-.tracks-wrapper {
-  display: flex;
-  min-height: 100%;
+/* 确保滚动条可见 */
+.tracks-content-scroll::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
 }
 
-.tracks-controls {
-  width: 200px;
-  background: #333;
-  border-right: 1px solid #444;
-  flex-shrink: 0;
+.tracks-content-scroll::-webkit-scrollbar-track {
+  background: #2a2a2a;
 }
 
+.tracks-content-scroll::-webkit-scrollbar-thumb {
+  background: #555;
+  border-radius: 6px;
+}
+
+.tracks-content-scroll::-webkit-scrollbar-thumb:hover {
+  background: #666;
+}
+
+/* 音轨内容区域 */
 .tracks-content {
-  flex: 1;
-  min-width: 0;
+  min-height: 100%;
+  overflow: visible; /* 确保内容可见 */
 }
 
 .track-control {
@@ -381,6 +456,25 @@ defineExpose({
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.duration-info {
+  display: flex;
+  align-items: center;
+  margin-left: 16px;
+}
+
+.duration-label {
+  color: #ccc;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.duration-value {
+  color: #fff;
+  font-size: 12px;
+  font-weight: 500;
+  margin-left: 4px;
 }
 
 .zoom-slider-container {

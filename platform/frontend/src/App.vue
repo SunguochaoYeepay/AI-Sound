@@ -2275,6 +2275,24 @@ a:hover {
   gap: 8px;
 }
 
+/* 音频编辑器全屏模式样式 */
+body.sound-editor-fullscreen .ant-layout-sider {
+  display: none !important;
+}
+
+body.sound-editor-fullscreen .ant-layout-header {
+  display: none !important;
+}
+
+body.sound-editor-fullscreen .ant-layout-content {
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+body.sound-editor-fullscreen .ant-layout-content > div {
+  padding: 0 !important;
+}
+
 /* 响应式设计 */
 @media (max-width: 768px) {
   .ant-layout-sider {

@@ -63,7 +63,7 @@
           :view-duration="viewDuration"
           :pixels-per-second="pixelsPerSecond"
           :timeline-width="timelineWidth"
-          :total-duration="currentProject.project.totalDuration || 60"
+          :total-duration="Math.max(calculateContentDuration, currentProject.project.totalDuration || 60)"
           :min-zoom="minZoom"
           :max-zoom="maxZoom"
           @zoom-change="handleZoomChange"
@@ -73,6 +73,7 @@
           @delete-clip="deleteClip"
           @add-clip="addClip"
           @select-exclusive="handleExclusiveSelect"
+          @fit-to-window="fitToWindow"
         />
 
         <!-- 空状态 -->
@@ -213,11 +214,49 @@ const selectedClip = computed(() => {
 
 // 时间轴相关
 const zoomLevel = ref(1)
-const viewDuration = computed(() => 60 / zoomLevel.value)
-const pixelsPerSecond = computed(() => 50 * zoomLevel.value)
-const timelineWidth = computed(() => Math.max(3000, (currentProject.project.totalDuration || 60) * pixelsPerSecond.value))
-const minZoom = ref(0.25)
-const maxZoom = ref(8)
+const basePixelsPerSecond = ref(50) // 基础像素密度（每秒像素数）
+const pixelsPerSecond = computed(() => basePixelsPerSecond.value * zoomLevel.value)
+
+// 计算实际音频内容长度
+const calculateContentDuration = computed(() => {
+  let maxTime = 0
+  
+  if (currentProject.tracks && currentProject.tracks.length > 0) {
+    currentProject.tracks.forEach(track => {
+      if (track.clips && track.clips.length > 0) {
+        track.clips.forEach(clip => {
+          const endTime = (clip.startTime || 0) + (clip.duration || 0)
+          if (endTime > maxTime) {
+            maxTime = endTime
+          }
+        })
+      }
+    })
+  }
+  
+  // 添加30秒缓冲区，最小60秒
+  return Math.max(60, maxTime + 30)
+})
+
+// 时间轴总宽度：基于实际内容长度计算，考虑缩放
+const timelineWidth = computed(() => {
+  const contentDuration = Math.max(calculateContentDuration.value, currentProject.project.totalDuration || 60)
+  const calculatedWidth = contentDuration * pixelsPerSecond.value
+  
+  // 确保最小宽度，特别是在高度缩小时
+  // 调整为更合理的最小宽度计算，适配新的左侧面板宽度(150px)
+  const minWidth = Math.max(800, 1200 / zoomLevel.value) // 基础最小宽度800px
+  
+  return Math.max(minWidth, calculatedWidth)
+})
+
+// 视窗显示时长：缩放越大，显示的时间越短（越精细）
+const viewDuration = computed(() => {
+  const baseViewTime = 60 // 基础视窗时间（秒）
+  return baseViewTime / zoomLevel.value
+})
+const minZoom = ref(0.1)  // 最小缩放10%，支持显示长时间音频
+const maxZoom = ref(8)    // 最大缩放800%
 
 // 对话框显示状态
 const showCreateProject = ref(false)
@@ -477,7 +516,7 @@ async function startPlayback() {
     }
     
     // 计算预览时长
-    const totalDuration = currentProject.project.totalDuration || 60  // 默认60秒
+    const totalDuration = currentProject.project.totalDuration || 60  // 默认60秒，会根据内容自动扩展
     const remainingDuration = totalDuration - currentTime.value
     const previewDuration = Math.max(1.0, remainingDuration)  // 至少1秒，不设上限
     
@@ -870,7 +909,10 @@ function addClip(trackId, clipData) {
 }
 
 function updateProjectDuration() {
-  currentProject.project.totalDuration = calculateProjectDuration(currentProject)
+  const calculatedDuration = calculateProjectDuration(currentProject)
+  // 设置最小时长为60秒，并添加30秒缓冲
+  currentProject.project.totalDuration = Math.max(60, calculatedDuration + 30)
+  console.log('项目时长已更新:', currentProject.project.totalDuration, '秒')
 }
 
 
@@ -892,6 +934,8 @@ function handleExclusiveSelect(trackId, clipId) {
     }
   }
 }
+
+
 
 function clearSelectedClip() {
   currentProject.tracks.forEach(track => {
@@ -1261,6 +1305,14 @@ function handleKeyDown(event) {
         event.preventDefault()
       }
       break
+    case 'f':
+    case 'F':
+      // Ctrl+F：适合窗口
+      if (event.ctrlKey || event.metaKey) {
+        fitToWindow()
+        event.preventDefault()
+      }
+      break
   }
 }
 
@@ -1317,20 +1369,50 @@ function clearAllSelections() {
   })
 }
 
-// 缩放功能（需要配合 TimelineEditor 组件）
+// 缩放功能
 function zoomIn() {
-  // 这个功能需要通过 TimelineEditor 组件实现
-  console.log('放大时间轴')
+  const newZoom = Math.min(maxZoom.value, zoomLevel.value * 1.5)
+  if (newZoom !== zoomLevel.value) {
+    zoomLevel.value = newZoom
+    message.success(`放大到 ${Math.round(newZoom * 100)}%`)
+  }
 }
 
 function zoomOut() {
-  // 这个功能需要通过 TimelineEditor 组件实现
-  console.log('缩小时间轴')
+  const newZoom = Math.max(minZoom.value, zoomLevel.value / 1.5)
+  if (newZoom !== zoomLevel.value) {
+    zoomLevel.value = newZoom
+    message.success(`缩小到 ${Math.round(newZoom * 100)}%`)
+  }
 }
 
 function resetZoom() {
-  // 这个功能需要通过 TimelineEditor 组件实现
-  console.log('重置时间轴缩放')
+  zoomLevel.value = 1
+  message.success('缩放重置到 100%')
+}
+
+// 适合窗口：自动调整缩放以显示所有内容
+function fitToWindow() {
+  const contentDuration = Math.max(calculateContentDuration.value, currentProject.project.totalDuration || 60)
+  
+  // 获取实际可用宽度
+  // 假设总宽度1400px，减去左侧面板150px，减去滚动条和边距50px，剩余约1200px
+  const availableWidth = 1200
+  const targetPixelsPerSecond = availableWidth / contentDuration
+  const targetZoom = targetPixelsPerSecond / basePixelsPerSecond.value
+  
+  // 如果目标缩放小于最小值，调整最小缩放限制
+  if (targetZoom < minZoom.value) {
+    // 对于长时间音频，允许更小的缩放
+    minZoom.value = Math.max(0.1, targetZoom * 0.9) // 最小不低于0.1
+  }
+  
+  // 确保在缩放范围内
+  const clampedZoom = Math.max(minZoom.value, Math.min(maxZoom.value, targetZoom))
+  zoomLevel.value = clampedZoom
+  
+  console.log(`适配窗口计算: 内容时长=${contentDuration}s, 可用宽度=${availableWidth}px, 目标缩放=${Math.round(targetZoom * 100)}%, 实际缩放=${Math.round(clampedZoom * 100)}%`)
+  message.success(`适合窗口：${Math.round(clampedZoom * 100)}% (${Math.round(contentDuration)}秒音频)`)
 }
 
 // ========== 生命周期 ==========

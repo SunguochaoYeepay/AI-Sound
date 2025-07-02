@@ -256,37 +256,7 @@
             </div>
           </a-card>
 
-          <!-- 相关项目 -->
-          <a-card title="🎯 相关项目" :bordered="false" class="projects-card">
-            <div v-if="loadingProjects" class="loading-projects">
-              <a-spin size="small" />
-              <span style="margin-left: 8px;">加载相关项目...</span>
-            </div>
-            
-            <div v-else-if="relatedProjects.length > 0" class="projects-list">
-              <div
-                v-for="project in relatedProjects"
-                :key="project.id"
-                class="project-item"
-              >
-                <div class="project-name">{{ project.name }}</div>
-                <div class="project-meta">
-                  <span class="project-status">{{ getProjectStatusText(project.status) }}</span>
-                  <span class="project-date">{{ formatDate(project.created_at) }}</span>
-                </div>
-              </div>
-            </div>
-            
-            <div v-else class="no-projects">
-              <a-empty
-                description="暂无相关项目"
-              >
-                <a-button type="primary" @click="createProject" :disabled="!book.content">
-                  ➕ 创建项目
-                </a-button>
-              </a-empty>
-            </div>
-          </a-card>
+      
         </a-col>
       </a-row>
     </div>
@@ -633,10 +603,33 @@ const prepareChapterForSynthesis = async (chapter, force = false) => {
     }
   } catch (error) {
     console.error('[BookDetail] 智能准备失败:', error)
-    console.error('[BookDetail] 错误详情:', error.response?.data)
+    console.error('[BookDetail] 错误详情:', {
+      status: error.response?.status,
+      data: error.response?.data,
+      message: error.message,
+      code: error.code
+    })
     
-    const errorMsg = error.response?.data?.detail || '智能准备失败'
-    message.error(errorMsg)
+    // 详细的错误处理
+    let errorMsg = '智能准备失败'
+    let errorType = '未知错误'
+    
+    if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
+      errorType = '请求超时'
+      errorMsg = '智能准备处理时间过长，该章节可能内容较多，请稍后重试'
+    } else if (error.response) {
+      errorType = `服务器错误 (${error.response.status})`
+      errorMsg = error.response.data?.detail || 
+                error.response.data?.message || 
+                `HTTP ${error.response.status} 错误`
+    } else if (error.request) {
+      errorType = '网络连接错误'
+      errorMsg = '无法连接到服务器，请检查网络连接'
+    } else {
+      errorMsg = error.message || '智能准备过程中发生未知错误'
+    }
+    
+    message.error(`智能准备失败 (${errorType})：${errorMsg}`)
   } finally {
     // 从准备中的集合移除
     preparingChapters.value.delete(chapter.id)

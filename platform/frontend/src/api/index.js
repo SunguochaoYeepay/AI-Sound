@@ -545,9 +545,11 @@ export const booksAPI = {
     return apiClient.get(url)
   },
 
-  // 智能准备章节用于语音合成
-  prepareChapterForSynthesis: (chapterId) => 
-    apiClient.post(`/content-preparation/prepare-synthesis/${chapterId}`),
+  // 智能准备章节用于语音合成（使用长超时客户端）
+  prepareChapterForSynthesis: (chapterId, params = {}) => {
+    // 使用llmAnalysisClient来处理可能的长时间AI分析任务
+    return llmAnalysisClient.post(`/content-preparation/prepare-synthesis/${chapterId}`, params)
+  },
 
   // 获取章节智能准备状态
   getPreparationStatus: (chapterId) => 

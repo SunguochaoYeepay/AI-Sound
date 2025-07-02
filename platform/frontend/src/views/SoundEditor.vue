@@ -1,7 +1,7 @@
 <template>
-  <div class="sound-editor-view">
+  <div class="sound-editor-view" :class="{ 'fullscreen-mode': isAppFullscreen }">
     <!-- 页面头部 -->
-    <div class="editor-header">
+    <div class="editor-header" v-show="!isAppFullscreen">
       <div class="header-content">
         <div class="header-left">
           <a-button type="text" @click="handleBack" class="back-button">
@@ -25,10 +25,10 @@
                 <template #icon><SettingOutlined /></template>
               </a-button>
             </a-tooltip>
-            <a-tooltip :title="isFullscreen ? '退出全屏' : '全屏'">
+            <a-tooltip :title="isAppFullscreen ? '退出全屏' : '全屏'">
               <a-button type="text" shape="circle" @click="toggleFullscreen">
                 <template #icon>
-                  <FullscreenExitOutlined v-if="isFullscreen" />
+                  <FullscreenExitOutlined v-if="isAppFullscreen" />
                   <FullscreenOutlined v-else />
                 </template>
               </a-button>
@@ -38,8 +38,27 @@
       </div>
     </div>
 
+    <!-- 全屏模式下的浮动控制栏 -->
+    <div class="fullscreen-controls" v-show="isAppFullscreen">
+      <a-tooltip title="退出全屏">
+        <a-button type="text" shape="circle" @click="toggleFullscreen" class="fullscreen-exit-btn">
+          <template #icon><FullscreenExitOutlined /></template>
+        </a-button>
+      </a-tooltip>
+      <a-tooltip title="设置">
+        <a-button type="text" shape="circle" @click="showSettings">
+          <template #icon><SettingOutlined /></template>
+        </a-button>
+      </a-tooltip>
+      <a-tooltip title="帮助">
+        <a-button type="text" shape="circle" @click="showHelp">
+          <template #icon><QuestionCircleOutlined /></template>
+        </a-button>
+      </a-tooltip>
+    </div>
+
     <!-- 主编辑器区域 -->
-    <div class="editor-content">
+    <div class="editor-content" :class="{ 'fullscreen-content': isAppFullscreen }">
       <MultitrackEditor @project-change="handleProjectChange" />
     </div>
 
@@ -127,7 +146,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { 
@@ -146,7 +165,7 @@ const router = useRouter()
 // 响应式数据
 const helpVisible = ref(false)
 const settingsVisible = ref(false)
-const isFullscreen = ref(false)
+const isAppFullscreen = ref(false)
 const currentProject = ref(null)
 
 // 计算属性
@@ -190,24 +209,21 @@ const saveSettings = () => {
 }
 
 const toggleFullscreen = () => {
-  if (!document.fullscreenElement) {
-    // 进入全屏
-    document.documentElement.requestFullscreen()
-    isFullscreen.value = true
+  // 切换应用内全屏模式
+  isAppFullscreen.value = !isAppFullscreen.value
+  
+  // 通知父组件（App.vue）隐藏/显示导航栏
+  if (isAppFullscreen.value) {
+    document.body.classList.add('sound-editor-fullscreen')
   } else {
-    // 退出全屏
-    document.exitFullscreen()
-    isFullscreen.value = false
+    document.body.classList.remove('sound-editor-fullscreen')
   }
 }
 
-// 监听全屏状态变化
-const handleFullscreenChange = () => {
-  isFullscreen.value = !!document.fullscreenElement
-}
-
-// 绑定全屏事件监听
-document.addEventListener('fullscreenchange', handleFullscreenChange)
+// 组件卸载时清理样式
+onUnmounted(() => {
+  document.body.classList.remove('sound-editor-fullscreen')
+})
 
 const handleProjectChange = (project) => {
   currentProject.value = project
@@ -307,6 +323,58 @@ onMounted(() => {
   border-radius: 3px;
   font-family: 'Courier New', monospace;
   font-size: 12px;
+}
+
+/* 全屏模式样式 */
+.fullscreen-mode {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  z-index: 9999 !important;
+  background: #0f0f0f !important;
+}
+
+.fullscreen-content {
+  height: 100vh !important;
+}
+
+/* 全屏模式下的浮动控制栏 */
+.fullscreen-controls {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 10000;
+  display: flex;
+  gap: 8px;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(10px);
+  border-radius: 8px;
+  padding: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.fullscreen-controls .ant-btn {
+  background: transparent;
+  border: none;
+  color: #fff;
+}
+
+.fullscreen-controls .ant-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.fullscreen-exit-btn {
+  color: #ff4d4f !important;
+}
+
+.fullscreen-exit-btn:hover {
+  background: rgba(255, 77, 79, 0.1) !important;
+  color: #ff4d4f !important;
 }
 
 :deep(.ant-page-header) {

@@ -145,8 +145,26 @@ async def prepare_chapter_for_synthesis(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"章节智能准备失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"章节智能准备失败: {str(e)}")
+        error_msg = str(e)
+        logger.error(f"章节智能准备失败: {error_msg}")
+        
+        # 提供用户友好的错误消息
+        user_friendly_msg = "章节智能准备失败"
+        
+        if "timeout" in error_msg.lower() or "超时" in error_msg:
+            user_friendly_msg = "智能准备超时，该章节内容可能较长，请稍后重试"
+        elif "ollama" in error_msg.lower():
+            user_friendly_msg = "AI分析服务暂时不可用，请稍后重试"
+        elif "network" in error_msg.lower() or "connection" in error_msg.lower():
+            user_friendly_msg = "网络连接错误，请检查网络后重试"
+        elif "analysis" in error_msg.lower():
+            user_friendly_msg = "文本分析失败，请检查章节内容格式"
+        elif "character" in error_msg.lower():
+            user_friendly_msg = "角色识别失败，请确保章节包含对话内容"
+        else:
+            user_friendly_msg = f"智能准备过程中发生错误：{error_msg}"
+        
+        raise HTTPException(status_code=500, detail=user_friendly_msg)
 
 
 @router.get("/preparation-status/{chapter_id}")
