@@ -145,20 +145,11 @@
         <a-menu-item key="environment-mixing" @click="navigateTo('environment-mixing')">
           <template #icon>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M7 9v6h4l5 5V4l-5 5H7z"/>
+              <path d="M12 3v9.28c-.47-.17-.97-.28-1.5-.28C8.01 12 6 14.01 6 16.5S8.01 21 10.5 21s4.5-2.01 4.5-4.5V7h4V3h-6zM10.5 19C9.12 19 8 17.88 8 16.5S9.12 14 10.5 14s2.5 1.12 2.5 2.5S11.88 19 10.5 19z"/>
+              <path d="M3 9h2v6H3zM19 9h2v6h-2z"/>
             </svg>
           </template>
           <span style="font-weight: 500;">环境混音</span>
-        </a-menu-item>
-
-        <a-menu-item key="audio-video-editor" @click="navigateTo('audio-video-editor')">
-          <template #icon>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/>
-              <path d="M14 8v8h2V8h-2zm4 0v8h2V8h-2z"/>
-            </svg>
-          </template>
-          <span style="font-weight: 500;">视频编辑</span>
         </a-menu-item>
 
         <a-menu-item key="sound-editor" @click="navigateTo('sound-editor')">
@@ -367,8 +358,7 @@ const updateSelectedKeys = () => {
   const routeToKey = {
     '/': 'home',
     '/books': 'books',
-    '/dashboard': 'voice-clone',
-    '/basic-tts': 'voice-clone', 
+    '/basic-tts': 'voice-clone',
     '/characters': 'voice-library',
     '/environment-sounds': 'environment-sounds',
     '/audio-library': 'audio-library',
@@ -377,7 +367,8 @@ const updateSelectedKeys = () => {
     '/novel-reader/create': 'novel-projects',
     '/novel-reader/edit': 'novel-projects',
     '/synthesis': 'novel-projects',
-    '/editor': 'audio-video-editor',
+    '/sound-editor': 'sound-editor',  // 🎵 新增音频编辑器路由映射
+    '/environment-mixing': 'environment-mixing',  // 环境混音页面
     '/users': 'users',
     '/roles': 'roles',
     '/logs': 'logs',
@@ -426,8 +417,7 @@ const navigateTo = (view) => {
     'audio-library': '/audio-library',
     'music-library': '/music-library',  // 🎵 添加背景音乐路由映射
     'novel-projects': '/novel-reader',
-            'environment-mixing': '/environment-mixing',  // 环境混音页面
-    'audio-video-editor': '/editor',
+    'environment-mixing': '/environment-mixing',  // 环境混音页面
     'sound-editor': '/sound-editor',  // 🎵 新增音频编辑器路由映射
     'users': '/users',
     'roles': '/roles',
@@ -460,8 +450,8 @@ const getPageTitle = () => {
     '/novel-reader/create': '语音合成',
     '/novel-reader/edit': '语音合成',
     '/synthesis': '创作中心',
-    '/editor': '视频编辑',
     '/sound-editor': '多轨音频编辑器',  // 🎵 新增音频编辑器页面标题
+    '/environment-mixing': '环境混音',  // 环境混音页面标题
     '/users': '用户管理',
     '/roles': '角色权限',
     '/logs': '日志监控',

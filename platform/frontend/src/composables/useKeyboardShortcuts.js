@@ -3,7 +3,7 @@ import { message } from 'ant-design-vue'
 
 /**
  * 键盘快捷键管理组合函数
- * 支持专业音视频编辑器的所有常用快捷键
+ * 支持专业音频编辑器的所有常用快捷键
  */
 export function useKeyboardShortcuts(callbacks = {}) {
   const isEnabled = ref(true)

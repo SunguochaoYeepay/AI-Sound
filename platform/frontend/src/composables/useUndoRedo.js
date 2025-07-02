@@ -3,7 +3,7 @@ import { message } from 'ant-design-vue'
 
 /**
  * 撤销重做系统
- * 支持音视频编辑器的完整操作历史管理
+ * 支持音频编辑器的完整操作历史管理
  */
 export function useUndoRedo(options = {}) {
   const {

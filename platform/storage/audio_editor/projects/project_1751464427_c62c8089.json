@@ -45,7 +45,19 @@
       "solo": false,
       "color": "#27ae60",
       "order": 2,
-      "clips": []
+      "clips": [
+        {
+          "id": "clip_1751467756648_adthrsjsp",
+          "fileId": "",
+          "filename": "file_1751467736_bc8e6a14",
+          "startTime": 2.18,
+          "duration": 270.51648712158203,
+          "volume": 1.0,
+          "offset": 0.0,
+          "fadeIn": 0.1,
+          "fadeOut": 0.1
+        }
+      ]
     },
     {
       "id": "track_background",
