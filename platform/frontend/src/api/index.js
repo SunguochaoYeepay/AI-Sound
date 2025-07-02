@@ -1094,93 +1094,7 @@ export const environmentMixingAPI = {
   updateMixingConfig: (mixingId, config) => apiClient.put(`/environment/mixing/${mixingId}/config`, config)
 }
 
-// 音视频编辑器API
-export const audioEditorAPI = {
-  // 获取编辑项目列表
-  getProjects: (params = {}) => {
-    const queryParams = new URLSearchParams()
-    if (params.page) queryParams.append('page', params.page)
-    if (params.page_size) queryParams.append('page_size', params.page_size)
-    if (params.search) queryParams.append('search', params.search)
-    if (params.status) queryParams.append('status', params.status)
-    if (params.type) queryParams.append('type', params.type)
-    
-    const queryString = queryParams.toString()
-    const url = queryString ? `/audio-editor/projects?${queryString}` : '/audio-editor/projects'
-    return apiClient.get(url)
-  },
-  
-  // 创建编辑项目
-  createProject: (data) => apiClient.post('/audio-editor/projects', data),
-  
-  // 获取编辑项目详情
-  getProject: (projectId) => apiClient.get(`/audio-editor/projects/${projectId}`),
-  
-  // 更新编辑项目
-  updateProject: (projectId, data) => apiClient.put(`/audio-editor/projects/${projectId}`, data),
-  
-  // 删除编辑项目
-  deleteProject: (projectId) => apiClient.delete(`/audio-editor/projects/${projectId}`),
-  
-  // 从合成结果导入项目
-  importFromSynthesis: (data) => apiClient.post('/audio-editor/projects/import', data),
-  
-  // 复制项目
-  duplicateProject: (projectId) => apiClient.post(`/audio-editor/projects/${projectId}/duplicate`),
-  
-  // 导出项目
-  exportProject: (projectId) => apiClient.post(`/audio-editor/projects/${projectId}/export`),
-  
-  // 音频混合
-  mixAudio: (data) => apiClient.post('/audio-editor/mix-audio', data),
-  
-  // 创建章节音频
-  createChapterAudio: (data) => apiClient.post('/audio-editor/create-chapter', data),
-  
-  // 应用音频效果
-  applyEffects: (data) => apiClient.post('/audio-editor/apply-effects', data),
-  
-  // 获取音频信息
-  getAudioInfo: (filePath) => apiClient.get(`/audio-editor/audio-info?file_path=${encodeURIComponent(filePath)}`),
-  
-  // 上传文件
-  uploadFile: (formData) => apiClient.post('/audio-editor/upload', formData, {
-    headers: {
-      'Content-Type': 'multipart/form-data'
-    }
-  }),
-  
-  // 下载文件
-  downloadFile: (filename) => apiClient.get(`/audio-editor/download/${filename}`, {
-    responseType: 'blob'
-  }),
-  
-  // 健康检查
-  healthCheck: () => apiClient.get('/audio-editor/health'),
-  
-  // 轨道管理
-  getTracks: (projectId) => apiClient.get(`/audio-editor/projects/${projectId}/tracks`),
-  addTrack: (projectId, data) => apiClient.post(`/audio-editor/projects/${projectId}/tracks`, data),
-  updateTrack: (projectId, trackId, data) => apiClient.put(`/audio-editor/projects/${projectId}/tracks/${trackId}`, data),
-  deleteTrack: (projectId, trackId) => apiClient.delete(`/audio-editor/projects/${projectId}/tracks/${trackId}`),
-  
-  // 音频片段管理
-  getSegments: (projectId, trackId) => apiClient.get(`/audio-editor/projects/${projectId}/tracks/${trackId}/segments`),
-  addSegment: (projectId, trackId, data) => apiClient.post(`/audio-editor/projects/${projectId}/tracks/${trackId}/segments`, data),
-  updateSegment: (projectId, trackId, segmentId, data) => apiClient.put(`/audio-editor/projects/${projectId}/tracks/${trackId}/segments/${segmentId}`, data),
-  deleteSegment: (projectId, trackId, segmentId) => apiClient.delete(`/audio-editor/projects/${projectId}/tracks/${trackId}/segments/${segmentId}`),
-  
-  // 预览和渲染
-  previewProject: (projectId, data) => apiClient.post(`/audio-editor/projects/${projectId}/preview`, data),
-  renderProject: (projectId, data) => apiClient.post(`/audio-editor/projects/${projectId}/render`, data),
-  
-  // 获取渲染状态
-  getRenderStatus: (projectId, taskId) => apiClient.get(`/audio-editor/projects/${projectId}/render/${taskId}/status`),
-  
-  // 项目模板
-  getTemplates: () => apiClient.get('/audio-editor/templates'),
-  createFromTemplate: (templateId, data) => apiClient.post(`/audio-editor/templates/${templateId}/create-project`, data)
-}
+
 
 // 背景音乐库API
 export const backgroundMusicAPI = {
@@ -1308,7 +1222,6 @@ const api = {
   ...environmentGenerationAPI,
   ...environmentMixingAPI,
   ...backgroundMusicAPI,
-  audioEditor: audioEditorAPI,
   
   // 环境混音专用接口
   getEnvironmentMixingResults: environmentMixingAPI.getResults,

@@ -25,9 +25,7 @@ from .auth import (
     User, Role, Permission, UserSession, LoginLog, UserStatus,
     user_roles, role_permissions
 )
-from .audio_editor import (
-    AudioVideoProject, EditorTrack, AudioClip, EditorSettings, RenderTask
-)
+
 from .synthesis_task import SynthesisTask
 from .text_segment import TextSegment
 from .environment_generation import (
@@ -79,12 +77,7 @@ __all__ = [
     'UserStatus',
     'user_roles',
     'role_permissions',
-    # 音频编辑器模型
-    'AudioVideoProject',
-    'EditorTrack', 
-    'AudioClip',
-    'EditorSettings',
-    'RenderTask',
+
     # 其他模型
     'SynthesisTask',
     'TextSegment',

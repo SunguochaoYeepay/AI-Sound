@@ -24,8 +24,7 @@ import BackupManagement from '../views/BackupManagement.vue'
 import UserManagement from '../views/UserManagement.vue'
 import RoleManagement from '../views/RoleManagement.vue'
 import LoginView from '../views/auth/LoginView.vue'
-import AudioVideoEditor from '../views/AudioVideoEditor.vue'
-import EditorProjects from '../views/EditorProjects.vue'
+
 
 const routes = [
   // 认证路由
@@ -171,28 +170,7 @@ const routes = [
     name: 'MusicLibrary',
     component: MusicLibrary
   },
-  // 音视频编辑器路由
-  {
-    path: '/editor',
-    name: 'EditorProjects',
-    component: EditorProjects
-  },
-  {
-    path: '/editor/new',
-    name: 'NewEditorProject',
-    component: AudioVideoEditor
-  },
-  {
-    path: '/editor/project/:projectId',
-    name: 'AudioVideoEditor',
-    component: AudioVideoEditor
-  },
-  {
-    path: '/editor/synthesis/:synthesisProjectId',
-    name: 'EditorFromSynthesis',
-    component: AudioVideoEditor,
-    props: route => ({ fromSynthesis: true, synthesisProjectId: route.params.synthesisProjectId })
-  },
+
   // 音频编辑器路由（新增）
   {
     path: '/sound-editor',

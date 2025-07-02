@@ -68,7 +68,7 @@
         @download-audio="handleDownloadAudio"
         @restart-synthesis="handleRestartSynthesis"
         @reset-project-status="handleResetProjectStatus"
-        @open-audio-editor="handleOpenAudioEditor"
+
       />
 
       <!-- 环境混音查询区域 (旧版，保持兼容) -->
@@ -1027,43 +1027,7 @@ const handleDownloadAudio = async () => {
   }
 }
 
-// 打开音视频编辑器
-const handleOpenAudioEditor = async () => {
-  try {
-    const projectId = route.params.projectId
-    
-    if (!projectId) {
-      message.error('无效的项目ID')
-      return
-    }
-    
-    if (!project.value || project.value.status !== 'completed') {
-      message.warning('请先完成语音合成后再进入编辑器')
-      return
-    }
-    
-    // 检查是否已有编辑器项目
-    console.log('正在导入合成结果到音视频编辑器...')
-    
-    // 调用API导入合成结果到编辑器
-    const response = await api.audioEditor.importFromSynthesis({
-      synthesis_project_id: projectId,
-      project_name: `${project.value.title} - 编辑项目`,
-      description: `从合成项目"${project.value.title}"导入的音频编辑项目`
-    })
-    
-    if (response.success) {
-      message.success('导入成功，正在跳转到音视频编辑器...')
-      // 跳转到音视频编辑器
-      router.push(`/editor/project/${response.data.project_id}`)
-    } else {
-      message.error(response.message || '导入失败')
-    }
-  } catch (error) {
-    console.error('打开音视频编辑器失败:', error)
-    message.error('打开音视频编辑器失败')
-  }
-}
+
 
 const handlePlaySegment = async (segment) => {
   try {
