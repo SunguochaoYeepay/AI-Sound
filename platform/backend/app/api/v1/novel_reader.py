@@ -549,6 +549,11 @@ async def start_project_generation(
                 detail="智能准备结果中没有合成段落数据，请重新进行智能准备"
             )
         
+        # 🔥 关键修复：为synthesis_data添加章节信息
+        from app.novel_reader import add_chapter_info_to_synthesis_data
+        synthesis_data = add_chapter_info_to_synthesis_data(synthesis_data, analysis_results, db)
+        logger.info(f"[CHAPTER_FIX] 已为 {len(synthesis_data)} 个段落添加章节信息")
+        
         # 🚀 用户点击重新合成 = 强制重新合成！不要过度智能判断！
         logger.info(f"[FORCE_RESYNTH] 用户要求重新合成，清理现有数据并重新开始")
         
@@ -763,6 +768,11 @@ async def resume_generation(
                 status_code=400, 
                 detail="智能准备结果中没有合成段落数据，请重新进行智能准备"
             )
+        
+        # 🔥 关键修复：为synthesis_data添加章节信息
+        from app.novel_reader import add_chapter_info_to_synthesis_data
+        synthesis_data = add_chapter_info_to_synthesis_data(synthesis_data, analysis_results, db)
+        logger.info(f"[CHAPTER_FIX] 已为 {len(synthesis_data)} 个段落添加章节信息")
         
         # 更新项目状态为处理中
         # 如果是failed状态，重置进度；如果是paused状态，保持进度
@@ -1135,6 +1145,11 @@ async def retry_all_failed_segments(
                     if segment_id:
                         expected_segments.add(segment_id)
                 synthesis_data.extend(plan_segments)
+        
+        # 🔥 关键修复：为synthesis_data添加章节信息
+        from app.novel_reader import add_chapter_info_to_synthesis_data
+        synthesis_data = add_chapter_info_to_synthesis_data(synthesis_data, analysis_results, db)
+        logger.info(f"[CHAPTER_FIX] 已为 {len(synthesis_data)} 个段落添加章节信息")
         
         # 🚀 新架构：查找已存在的AudioFile段落ID
         existing_audio_files = db.query(AudioFile).filter(
@@ -1814,7 +1829,7 @@ async def fix_chapter_audio_mapping(
         if not chapter:
             raise HTTPException(status_code=404, detail="章节不存在")
         
-        logger.info(f"📁 项目: {project.name}, 📖 章节: {chapter.title}")
+        logger.info(f"📁 项目: {project.name}, 📖 章节: {chapter.chapter_title}")
         
         # 3. 查询该项目的所有音频文件
         audio_files = db.query(AudioFile).filter(
