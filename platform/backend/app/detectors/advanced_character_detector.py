@@ -211,7 +211,7 @@ class AdvancedCharacterDetector:
         """简化的Ollama调用，用于快速判断"""
         try:
             payload = {
-                "model": "qwen3:30b",  # 使用相同的模型
+                "model": "qwen2.5:14b",  # 🔥 使用中文优化模型
                 "prompt": prompt,
                 "stream": False,
                 "options": {

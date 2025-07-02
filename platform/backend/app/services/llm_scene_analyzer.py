@@ -43,7 +43,7 @@ class OllamaLLMSceneAnalyzer:
     def __init__(self):
         # Ollama配置
         self.ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-        self.model_name = os.getenv("OLLAMA_MODEL", "gemma3:27b")  # 使用可用的gemma3模型
+        self.model_name = os.getenv("OLLAMA_MODEL", "qwen2.5:14b")  # 🔥 改用中文优化模型
         
         logger.info(f"[LLM_ANALYZER] 初始化完成，模型: {self.model_name}, URL: {self.ollama_base_url}")
 

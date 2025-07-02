@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 class OllamaCharacterDetector:
     """使用Ollama进行角色分析的检测器 - 主力方案"""
     
-    def __init__(self, model_name: str = "qwen3:30b", ollama_url: str = None):
+    def __init__(self, model_name: str = "qwen2.5:14b", ollama_url: str = None):
         self.model_name = model_name
         # 优先使用环境变量，支持Docker部署
         self.ollama_url = ollama_url or os.getenv("OLLAMA_URL", "http://localhost:11434")
