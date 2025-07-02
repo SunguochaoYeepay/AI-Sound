@@ -27,6 +27,8 @@ from .environment_generation import router as environment_generation_router
 from .environment_mixing import router as environment_mixing_router
 # Import audio editor router
 from .audio_editor import router as audio_editor_router
+# Import sound editor router (for multi-track audio editor)
+from .sound_editor import router as sound_editor_router
 # Import background music router
 from .background_music import router as background_music_router
 # 🎵 Import music generation router
@@ -128,6 +130,8 @@ api.include_router(users_router, tags=["User Management"])
 api.include_router(roles_router, tags=["Role Management"])
 # Register audio editor router
 api.include_router(audio_editor_router, prefix="/audio-editor", tags=["Audio Editor"])
+# Register sound editor router (multi-track audio editor)
+api.include_router(sound_editor_router, tags=["Sound Editor"])
 # Register background music router
 api.include_router(background_music_router, prefix="/background-music", tags=["Background Music"])
 # 🎵 Register music generation router

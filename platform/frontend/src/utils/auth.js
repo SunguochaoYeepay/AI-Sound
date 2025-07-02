@@ -41,7 +41,12 @@ export const PERMISSIONS = {
   // 系统管理权限
   SYSTEM_SETTINGS: 'system.settings',
   SYSTEM_LOGS: 'system.logs',
-  SYSTEM_BACKUP: 'system.backup'
+  SYSTEM_BACKUP: 'system.backup',
+  
+  // 编辑器权限
+  EDITOR_USE: 'editor.use',
+  EDITOR_PROJECT_MANAGE: 'editor.project_manage',
+  EDITOR_EXPORT: 'editor.export'
 }
 
 // 角色常量定义

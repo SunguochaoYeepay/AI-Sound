@@ -1,5 +1,81 @@
 # 更新日志
 
+## [2025-07-02] - 🎚️ 音频编辑器系统完整修复
+
+### 🚨 关键兼容性问题修复
+- **Windows异步子进程问题**：修复`asyncio.create_subprocess_exec`在Windows环境下抛出`NotImplementedError`的致命问题
+  - 问题现象：音频预览播放失败，返回HTTP 416错误和MediaError "DEMUXER_ERROR_COULD_NOT_OPEN"
+  - 根本原因：Windows下asyncio异步子进程存在兼容性问题
+  - 修复方案：将所有异步subprocess调用改为同步`subprocess.run`，添加超时控制
+  - 影响模块：音频混合、静音文件生成、音频信息获取
+
+### 🎵 音频文件分类系统重大修复
+- **音频分类显示问题**：修复主题音上传后无法在对应tab显示的严重BUG
+  - 问题现象：所有上传的音频文件都显示在"对话音"tab中，主题音tab显示为空
+  - 根本原因：后端强制将所有文件的`category`设为"dialogue"，忽略实际分类
+  - 修复方案：
+    - 📁 **分类存储**：按category创建子目录（dialogue/、environment/、theme/、background/）
+    - 🧠 **智能识别**：根据文件位置自动推断category
+    - 🔄 **兼容性保持**：支持旧文件结构，主目录文件默认为dialogue
+    - 🔍 **全局搜索**：文件下载和删除支持跨目录查找
+
+### 🐳 Docker部署优化
+- **FFmpeg集成**：在Docker镜像中添加FFmpeg支持，确保容器化部署的音频处理能力
+  - 系统依赖更新：`apt-get install ffmpeg`
+  - 解决音频处理在容器环境中的依赖问题
+
+### 🎛️ 新增音频编辑器完整模块
+- **全新音频编辑系统**：构建专业级多轨音频编辑器
+  - 🎚️ **MultitrackEditor.vue** - 核心多轨编辑界面
+  - 📂 **SoundEditorProjects.vue** - 项目管理页面
+  - 🔧 **完整API体系** - 音频文件管理、项目保存、预览生成、导出功能
+  - 🎵 **资源面板** - 支持对话音、环境音、主题音的分类管理
+
+### 🛠️ 技术修复详情
+
+#### 后端API修复 (`sound_editor.py`)
+- ✅ **异步转同步**：音频处理函数全部改用同步subprocess
+- ✅ **分类存储逻辑**：上传时按category自动创建子目录
+- ✅ **智能文件查找**：支持多目录、多扩展名的文件搜索
+- ✅ **参数优化**：修正Query/Form参数接收方式
+
+#### 前端组件体系
+- 🎨 **ResourcePanel.vue** - 音频资源分类管理面板
+- 🎵 **AudioFileList.vue** - 音频文件列表组件
+- 📊 **TrackEditor.vue** - 音轨编辑组件
+- 🎛️ **PreviewPanel.vue** - 音频预览控制面板
+
+### 📁 目录结构优化
+```
+storage/audio_editor/uploads/
+├── dialogue/      # 对话音文件
+├── environment/   # 环境音文件  
+├── theme/         # 主题音文件 ⭐ 新增分类
+├── background/    # 背景音文件
+└── (旧文件)       # 兼容性保持
+```
+
+### ✅ 修复验证
+- **✅ Windows兼容性**：异步子进程问题完全解决
+- **✅ 音频分类**：主题音正确显示在对应tab
+- **✅ 预览播放**：FFmpeg音频处理正常工作
+- **✅ 虚拟环境**：后端服务在venv中正常运行（8001端口）
+
+### 🛠️ 相关文件变更
+- `platform/backend/app/api/v1/sound_editor.py` ⭐ - 音频编辑器完整API系统
+- `docker/backend/Dockerfile` - 添加FFmpeg依赖
+- `platform/frontend/src/components/sound-editor/` - 完整前端组件体系
+- `platform/frontend/src/api/sound-editor/` - 前端API封装
+- `platform/frontend/src/views/SoundEditor*.vue` - 音频编辑器页面
+
+### 💾 技术价值
+- **跨平台兼容性**：解决Windows环境下的音频处理问题
+- **用户体验提升**：音频文件分类清晰，上传即可在对应位置查看
+- **专业音频编辑**：提供多轨编辑、实时预览、项目管理的完整解决方案
+- **容器化就绪**：Docker环境下的完整音频处理能力
+
+---
+
 ## [2025-01-28] - 🚨 重大修复：章节播放功能完全恢复
 
 ### 🚨 紧急修复

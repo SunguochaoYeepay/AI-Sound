@@ -9,12 +9,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app
 
-# 安装系统依赖
+# 安装系统依赖 (包含FFmpeg用于音频处理)
 RUN apt-get update && apt-get install -y \
     curl \
     git \
     build-essential \
     postgresql-client \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 # 复制requirements文件并安装Python依赖

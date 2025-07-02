@@ -1,0 +1,63 @@
+{
+  "project": {
+    "id": "project_1751455976_cf61ac56",
+    "title": "fdsaf",
+    "description": "fdsafsd",
+    "author": "AI-Sound",
+    "totalDuration": 249.24150566101073,
+    "sampleRate": 44100,
+    "channels": 2,
+    "bitDepth": 16,
+    "exportFormat": "wav",
+    "createdAt": "2025-07-02T11:32:56.004Z",
+    "version": "1.0"
+  },
+  "tracks": [
+    {
+      "id": "track_dialogue",
+      "name": "角色对话",
+      "type": "dialogue",
+      "volume": 1.0,
+      "muted": false,
+      "solo": false,
+      "color": "#3498db",
+      "order": 1,
+      "clips": [
+        {
+          "id": "clip_1751461741728_3c97sg7vh",
+          "fileId": "",
+          "filename": "file_1751461724_112c25b6",
+          "startTime": 0.017142333984375036,
+          "duration": 249.22436332702637,
+          "volume": 1.0,
+          "offset": 0.0,
+          "fadeIn": 0.1,
+          "fadeOut": 0.1
+        }
+      ]
+    },
+    {
+      "id": "track_environment",
+      "name": "环境音效",
+      "type": "environment",
+      "volume": 0.8,
+      "muted": false,
+      "solo": false,
+      "color": "#27ae60",
+      "order": 2,
+      "clips": []
+    },
+    {
+      "id": "track_background",
+      "name": "背景音乐",
+      "type": "background",
+      "volume": 0.5,
+      "muted": false,
+      "solo": false,
+      "color": "#e74c3c",
+      "order": 3,
+      "clips": []
+    }
+  ],
+  "markers": []
+}

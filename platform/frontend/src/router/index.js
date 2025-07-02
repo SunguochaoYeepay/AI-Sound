@@ -193,6 +193,27 @@ const routes = [
     component: AudioVideoEditor,
     props: route => ({ fromSynthesis: true, synthesisProjectId: route.params.synthesisProjectId })
   },
+  // 音频编辑器路由（新增）
+  {
+    path: '/sound-editor',
+    name: 'SoundEditorProjects',
+    component: () => import('../views/SoundEditorProjects.vue'),
+    meta: {
+      title: '音频编辑器',
+      requiresAuth: true,
+      permission: PERMISSIONS.EDITOR_USE
+    }
+  },
+  {
+    path: '/sound-editor/edit/:projectId',
+    name: 'SoundEditor',
+    component: () => import('../views/SoundEditor.vue'),
+    meta: {
+      title: '编辑器',
+      requiresAuth: true,
+      permission: PERMISSIONS.EDITOR_USE
+    }
+  },
   {
     path: '/websocket-test',
     name: 'WebSocketTest',

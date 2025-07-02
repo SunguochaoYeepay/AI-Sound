@@ -161,6 +161,16 @@
           <span style="font-weight: 500;">视频编辑</span>
         </a-menu-item>
 
+        <a-menu-item key="sound-editor" @click="navigateTo('sound-editor')">
+          <template #icon>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6zM10 19c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/>
+              <path d="M2 7h4v2H2V7zm0 3h4v2H2v-2zm0 3h4v2H2v-2z"/>
+            </svg>
+          </template>
+          <span style="font-weight: 500;">编辑器</span>
+        </a-menu-item>
+
         <!-- 用户权限 -->
         <a-menu-divider class="menu-group-divider" />
         <div v-if="!collapsed" class="menu-group-title">
@@ -418,6 +428,7 @@ const navigateTo = (view) => {
     'novel-projects': '/novel-reader',
             'environment-mixing': '/environment-mixing',  // 环境混音页面
     'audio-video-editor': '/editor',
+    'sound-editor': '/sound-editor',  // 🎵 新增音频编辑器路由映射
     'users': '/users',
     'roles': '/roles',
     'logs': '/logs',
@@ -450,6 +461,7 @@ const getPageTitle = () => {
     '/novel-reader/edit': '语音合成',
     '/synthesis': '创作中心',
     '/editor': '视频编辑',
+    '/sound-editor': '多轨音频编辑器',  // 🎵 新增音频编辑器页面标题
     '/users': '用户管理',
     '/roles': '角色权限',
     '/logs': '日志监控',
