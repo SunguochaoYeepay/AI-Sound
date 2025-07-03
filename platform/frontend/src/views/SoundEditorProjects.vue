@@ -22,6 +22,15 @@
           新建项目
         </a-button>
         
+        <a-button size="large" @click="importFromBook">
+          <template #icon>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M21,5c-1.11-0.35-2.33-0.5-3.5-0.5c-1.95,0-4.05,0.4-5.5,1.5c-1.45-1.1-3.55-1.5-5.5-1.5S2.45,4.9,1,6v14.65 c0,0.25,0.25,0.5,0.5,0.5c0.1,0,0.15-0.05,0.25-0.05C3.1,20.45,5.05,20,6.5,20c1.95,0,4.05,0.4,5.5,1.5c1.35-0.85,3.8-1.5,5.5-1.5 c1.65,0,3.35,0.3,4.75,1.05c0.1,0.05,0.15,0.05,0.25,0.05c0.25,0,0.5-0.25,0.5-0.5V6C22.4,5.55,21.75,5.25,21,5z M21,18.5 c-1.1-0.35-2.3-0.5-3.5-0.5c-1.7,0-4.15,0.65-5.5,1.5V8c1.35-0.85,3.8-1.5,5.5-1.5c1.2,0,2.4,0.15,3.5,0.5V18.5z"/>
+            </svg>
+          </template>
+          从书籍导入
+        </a-button>
+        
         <a-button size="large" @click="importProject">
           <template #icon>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
@@ -281,6 +290,17 @@
         </a-form>
       </div>
     </a-modal>
+    
+    <!-- 从书籍导入资源弹窗 -->
+    <a-modal
+      v-model:open="bookImportModalVisible"
+      title="从书籍导入资源"
+      width="900px"
+      :footer="null"
+      :destroyOnClose="true"
+    >
+      <BookChapterSelector @created="onProjectCreatedFromBook" />
+    </a-modal>
   </div>
 </template>
 
@@ -290,6 +310,7 @@ import { useRouter } from 'vue-router'
 import { message, Modal } from 'ant-design-vue'
 import dayjs from 'dayjs'
 import { listProjects, createProject, deleteProject, createEmptyProject } from '@/api/sound-editor/multitrackProject'
+import BookChapterSelector from '@/components/sound-editor/BookChapterSelector.vue'
 
 const router = useRouter()
 
@@ -319,6 +340,9 @@ const newProjectForm = ref({
   description: '',
   template: 'default'
 })
+
+// 从书籍导入弹窗状态
+const bookImportModalVisible = ref(false)
 
 // 表格列配置
 const tableColumns = [
@@ -453,6 +477,22 @@ const importProject = () => {
   message.info('导入功能开发中')
 }
 
+// 从书籍导入资源
+const importFromBook = () => {
+  bookImportModalVisible.value = true
+}
+
+// 处理从书籍创建项目成功
+const onProjectCreatedFromBook = (result) => {
+  bookImportModalVisible.value = false
+  loadProjects()
+  
+  // 显示创建结果
+  if (result && result.projectId) {
+    message.success(`项目创建成功，已导入${result.summary?.chapters_count || 0}个章节的资源`)
+  }
+}
+
 // 处理视图切换
 const handleViewChange = ({ key }) => {
   viewMode.value = key
@@ -560,8 +600,6 @@ const formatDuration = (seconds) => {
 
 <style scoped>
 .sound-editor-projects {
-  padding: 24px;
-  background: #f5f5f5;
   min-height: 100vh;
 }
 
@@ -569,7 +607,6 @@ const formatDuration = (seconds) => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: white;
   padding: 24px;
   border-radius: 8px;
   margin-bottom: 24px;
@@ -605,7 +642,6 @@ const formatDuration = (seconds) => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: white;
   padding: 16px 24px;
   border-radius: 8px;
   margin-bottom: 24px;
@@ -625,7 +661,6 @@ const formatDuration = (seconds) => {
 }
 
 .projects-container {
-  background: white;
   border-radius: 8px;
   padding: 24px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
@@ -658,7 +693,6 @@ const formatDuration = (seconds) => {
   padding: 20px;
   cursor: pointer;
   transition: all 0.2s;
-  background: white;
 }
 
 .project-card:hover {

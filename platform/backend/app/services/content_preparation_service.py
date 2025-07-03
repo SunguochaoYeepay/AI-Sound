@@ -155,28 +155,48 @@ class ContentPreparationService:
                 from ..models import Book
                 book = self.db.query(Book).filter(Book.id == chapter.book_id).first()
                 if book:
-                    # 提取角色信息用于汇总
+                    # 🎭 提取角色信息用于汇总 - 修复数据格式
                     characters_for_summary = []
                     for char in detected_characters:
+                        char_name = char.get('name', '').strip()
+                        if not char_name:
+                            continue
+                            
+                        # 🔥 修复：确保旁白角色的数据完整性
                         char_data = {
-                            'name': char.get('name', ''),
-                            'gender': char.get('gender', ''),
-                            'age': char.get('age', ''),
-                            'personality': char.get('personality', ''),
-                            'description': char.get('description', ''),
+                            'name': char_name,
+                            'gender': char.get('gender', char.get('recommended_config', {}).get('gender', '')),
+                            'age': char.get('age', char.get('recommended_config', {}).get('age_range', '')),
+                            'personality': char.get('personality', char.get('recommended_config', {}).get('personality', '')),
+                            'description': char.get('description', f"智能检测到的{char_name}角色"),
                             'appearances': 1  # 本章节出现1次
                         }
                         characters_for_summary.append(char_data)
+                        
+                        logger.debug(f"📝 准备更新角色汇总: {char_name} -> {char_data}")
                     
                     # 更新书籍角色汇总
+                    logger.info(f"🎭 开始更新书籍 {book.id} 的角色汇总，本章识别角色: {[c['name'] for c in characters_for_summary]}")
                     book.update_character_summary(characters_for_summary, chapter_id)
                     self.db.commit()
                     
-                    logger.info(f"已更新书籍 {book.id} 的角色汇总，来源章节: {chapter_id}")
+                    # 📊 验证更新结果
+                    updated_summary = book.get_character_summary()
+                    all_characters = [char['name'] for char in updated_summary.get('characters', [])]
+                    logger.info(f"✅ 书籍角色汇总更新完成，当前所有角色: {all_characters}")
+                    
+                    # 🔍 特别检查旁白角色
+                    narrator_exists = any(char['name'] == '旁白' for char in updated_summary.get('characters', []))
+                    if narrator_exists:
+                        logger.info("🎭 ✅ 旁白角色已成功添加到书籍角色汇总")
+                    else:
+                        logger.warning("🎭 ❌ 旁白角色未能添加到书籍角色汇总，需要手动检查")
                 else:
                     logger.warning(f"未找到章节 {chapter_id} 对应的书籍")
             except Exception as e:
                 logger.error(f"更新书籍角色汇总失败: {str(e)}")
+                import traceback
+                logger.error(f"异常堆栈: {traceback.format_exc()}")
                 # 不抛出异常，避免影响主流程
             
             # 11. 返回结果

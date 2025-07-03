@@ -95,11 +95,51 @@ class EnvironmentGenerationService:
                 {'synthesis_plan_segments': len(synthesis_plan.get('segments', []))}
             )
             
-            # 使用分析器处理
-            analysis_result = self.analyzer.analyze_narration_environment(
-                synthesis_plan, 
-                options or {}
-            )
+            # 使用分析器处理 - 调用正确的方法名
+            # 注意：此方法需要synthesis_plan中包含segments列表
+            segments = synthesis_plan.get('segments', [])
+            if not segments:
+                # 如果没有segments，尝试直接使用synthesis_plan作为segments
+                segments = synthesis_plan if isinstance(synthesis_plan, list) else []
+            
+            # 由于分析器方法是异步的，这里需要同步调用
+            import asyncio
+            
+            try:
+                # 在新的事件循环中运行异步方法
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                raw_result = loop.run_until_complete(
+                    self.analyzer.extract_and_analyze_narration(segments)
+                )
+                loop.close()
+                
+                # 转换结果格式以匹配期望的结构
+                analysis_result = {
+                    'analysis_result': raw_result,
+                    'analysis_stats': raw_result.get('analysis_summary', {})
+                }
+                
+            except Exception as analyzer_error:
+                logger.error(f"分析器执行失败: {analyzer_error}")
+                # 提供一个默认的空结果
+                analysis_result = {
+                    'analysis_result': {
+                        'environment_tracks': [],
+                        'analysis_summary': {
+                            'total_duration': 0.0,
+                            'narration_segments': 0,
+                            'environment_tracks_detected': 0,
+                            'analysis_timestamp': datetime.utcnow().isoformat(),
+                            'error': str(analyzer_error)
+                        }
+                    },
+                    'analysis_stats': {
+                        'total_duration': 0.0,
+                        'avg_confidence': 0.0,
+                        'error': str(analyzer_error)
+                    }
+                }
             
             # 保存分析结果到数据库
             session.analysis_result = analysis_result['analysis_result']

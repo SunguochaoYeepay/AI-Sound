@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Q
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy import desc, asc, func, or_, and_
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Any
 import asyncio
 import logging
 import json
@@ -694,9 +694,16 @@ async def set_character_voice_mapping(
         db.commit()
         
         # 🔥 关键修复：同步更新相关章节的synthesis_plan
-        updated_chapters = await _sync_character_voice_to_synthesis_plans(
-            book_id, {character_name: voice_id}, db
-        )
+        # 获取完整的角色语音映射（而不是只传递单个角色映射）
+        db.refresh(book)  # 确保获取最新数据
+        complete_voice_mappings = book.get_character_summary().get('voice_mappings', {})
+        
+        if complete_voice_mappings:
+            updated_chapters = await _sync_character_voice_to_synthesis_plans(
+                book_id, complete_voice_mappings, db
+            )
+        else:
+            updated_chapters = 0
         
         logger.info(f"设置角色语音映射: 书籍{book_id} - {character_name} -> {voice_id}，同步更新了 {updated_chapters} 个章节")
         
@@ -775,11 +782,19 @@ async def batch_set_character_voice_mappings(
             logger.warning(f"[调试] 提交后数据格式异常: {type(post_commit_summary)} - {post_commit_summary}")
         
         # 🔥 关键修复：同步更新所有相关章节的synthesis_plan
-        if updated_mappings:
+        # 获取完整的角色语音映射（而不是只传递本次更新的部分映射）
+        db.refresh(book)  # 确保获取最新数据
+        complete_voice_mappings = book.get_character_summary().get('voice_mappings', {})
+        
+        if complete_voice_mappings:
+            # 🔥 修复：传递完整的角色映射，确保所有角色都能被正确同步
             updated_chapters = await _sync_character_voice_to_synthesis_plans(
-                book_id, updated_mappings, db
+                book_id, complete_voice_mappings, db
             )
-            logger.info(f"同步更新了 {updated_chapters} 个章节的synthesis_plan")
+            logger.info(f"同步更新了 {updated_chapters} 个章节的synthesis_plan，完整映射: {complete_voice_mappings}")
+        else:
+            updated_chapters = 0
+            logger.warning(f"书籍 {book_id} 没有任何角色语音映射，跳过同步")
         
         logger.info(f"批量设置角色语音映射: 书籍{book_id} - 成功设置 {success_count} 个角色")
         
@@ -889,7 +904,7 @@ async def rebuild_character_summary(
 
 async def _sync_character_voice_to_synthesis_plans(
     book_id: int, 
-    character_voice_mappings: Dict[str, int], 
+    character_voice_mappings: Dict[str, Any], 
     db: Session
 ) -> int:
     """
@@ -904,6 +919,9 @@ async def _sync_character_voice_to_synthesis_plans(
         更新的章节数量
     """
     try:
+        # 🔥 增强调试：记录传入的映射信息
+        logger.info(f"🚀 [开始同步] 书籍 {book_id}, 传入映射: {character_voice_mappings}")
+        
         # 获取这本书所有已完成分析的章节
         # 注意：BookChapter, AnalysisResult 已在文件顶部导入
         chapters_with_analysis = db.query(BookChapter, AnalysisResult).join(
@@ -949,8 +967,8 @@ async def _sync_character_voice_to_synthesis_plans(
                         old_voice_id = segment.get('voice_id')
                         new_voice_id = character_voice_mappings[speaker]
                         
-                        # 调试：记录同步过程
-                        logger.debug(f"章节 {chapter.id} 角色 '{speaker}': old_voice_id={old_voice_id}, new_voice_id={new_voice_id}")
+                        # 🔥 增强调试：记录同步过程
+                        logger.info(f"📝 [同步调试] 章节 {chapter.id} 角色 '{speaker}': old_voice_id='{old_voice_id}'({type(old_voice_id).__name__}), new_voice_id='{new_voice_id}'({type(new_voice_id).__name__})")
                         
                         # 🔥 修复：确保类型一致比较（都转为字符串或数字）
                         if str(old_voice_id) != str(new_voice_id):
@@ -961,9 +979,9 @@ async def _sync_character_voice_to_synthesis_plans(
                                 segment['voice_id'] = str(new_voice_id)
                             
                             plan_updated = True
-                            logger.info(f"同步角色语音: {speaker} 从 {old_voice_id} 更新为 {segment['voice_id']}")
+                            logger.info(f"✅ [同步成功] {speaker}: {old_voice_id} → {segment['voice_id']}")
                         else:
-                            logger.debug(f"角色 '{speaker}' 语音ID已是最新: {old_voice_id}")
+                            logger.info(f"ℹ️ [跳过同步] 角色 '{speaker}' 语音ID已是最新: {old_voice_id}")
                 
                 # 如果有更新，保存到数据库
                 if plan_updated:
@@ -977,6 +995,13 @@ async def _sync_character_voice_to_synthesis_plans(
                     from sqlalchemy.orm.attributes import flag_modified
                     analysis.synthesis_plan = synthesis_plan
                     flag_modified(analysis, 'synthesis_plan')
+                    
+                    # 🔥 CRITICAL FIX: 清空final_config避免API返回旧数据
+                    # 当synthesis_plan更新时，自动清空final_config，确保API返回最新同步的数据
+                    if analysis.final_config:
+                        logger.info(f"🗑️ [清空缓存] 章节 {chapter.id} 清空final_config，避免API返回过期数据")
+                        analysis.final_config = None
+                        flag_modified(analysis, 'final_config')
                     
                     analysis.updated_at = datetime.utcnow()
                     updated_count += 1

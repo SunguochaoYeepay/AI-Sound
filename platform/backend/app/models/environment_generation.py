@@ -14,7 +14,7 @@ class EnvironmentGenerationSession(Base):
     __tablename__ = 'environment_generation_sessions'
     
     id = Column(Integer, primary_key=True, index=True)
-    project_id = Column(Integer, ForeignKey('projects.id'), nullable=False, index=True)
+    project_id = Column(Integer, nullable=True, index=True)  # 移除外键约束，改为普通字段
     chapter_id = Column(String(50), nullable=False, index=True)
     session_status = Column(String(20), default='active', index=True)  # active, completed, cancelled
     
@@ -96,7 +96,7 @@ class EnvironmentAudioMixingJob(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     session_id = Column(Integer, ForeignKey('environment_generation_sessions.id'), nullable=False, index=True)
-    project_id = Column(Integer, ForeignKey('projects.id'), nullable=False, index=True)
+    project_id = Column(Integer, nullable=True, index=True)  # 移除外键约束，改为普通字段
     chapter_id = Column(String(50), nullable=False, index=True)
     
     # 任务状态

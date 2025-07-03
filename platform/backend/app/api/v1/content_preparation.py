@@ -242,7 +242,7 @@ async def get_preparation_result(
                 "last_updated": latest_result.updated_at.isoformat() if latest_result.updated_at else latest_result.created_at.isoformat()
             }
             
-            # 如果有final_config，优先使用其中的数据
+            # 🔥 CRITICAL FIX: 智能处理final_config，优先返回最新数据
             if latest_result.final_config:
                 try:
                     final_config = latest_result.final_config
@@ -250,14 +250,23 @@ async def get_preparation_result(
                         import json
                         final_config = json.loads(final_config)
                     
-                    if final_config.get('synthesis_json'):
+                    # 🔥 简化逻辑：只有final_config包含明确的更新时间戳时才使用
+                    # 否则优先使用synthesis_plan（角色同步后的最新数据）
+                    if (final_config.get('synthesis_json') and 
+                        final_config.get('last_updated')):
+                        
+                        # 有明确更新时间的final_config，认为是用户手动编辑的最新数据
                         result_data["synthesis_json"] = final_config['synthesis_json']
+                        logger.info(f"使用final_config数据 (手动编辑于: {final_config.get('last_updated')})")
+                    else:
+                        # 没有时间戳的final_config认为是过期数据，使用synthesis_plan
+                        logger.info("final_config缺少时间戳，使用synthesis_plan数据（角色同步后的最新数据）")
                     
                     if final_config.get('processing_info'):
                         result_data["processing_info"].update(final_config['processing_info'])
                         
                 except Exception as e:
-                    logger.warning(f"解析final_config失败: {str(e)}")
+                    logger.warning(f"解析final_config失败，使用synthesis_plan数据: {str(e)}")
             
             return {
                 "success": True,
@@ -330,6 +339,11 @@ async def update_preparation_result(
             # 更新final_config以保存完整的编辑后数据
             import json
             from sqlalchemy import func
+            from datetime import datetime
+            
+            # 🔥 添加时间戳，确保API能够正确识别手动编辑的数据
+            update_data['last_updated'] = datetime.utcnow().isoformat()
+            
             latest_result.final_config = json.dumps(update_data, ensure_ascii=False)
             latest_result.updated_at = func.now()
             

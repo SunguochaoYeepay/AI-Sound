@@ -1289,6 +1289,130 @@ async def download_exported_audio(
         logger.error(f"下载导出音频失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"导出下载失败: {str(e)}")
 
+# ========== 书籍资源集成 ==========
+
+@router.get("/books/list", response_model=dict)
+async def get_available_books(db: Session = Depends(get_db)):
+    """获取可用的书籍列表，用于音频编辑器集成"""
+    try:
+        from ...services.audio_editor_book_integration_service import AudioEditorBookIntegrationService
+        
+        service = AudioEditorBookIntegrationService(db)
+        books = service.get_available_books()
+        
+        return {
+            "success": True,
+            "data": books,
+            "message": f"获取到 {len(books)} 本可用书籍"
+        }
+        
+    except Exception as e:
+        logger.error(f"获取书籍列表失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/books/{book_id}/chapters", response_model=dict)
+async def get_book_chapters(book_id: int, db: Session = Depends(get_db)):
+    """获取书籍的章节列表，显示资源统计信息"""
+    try:
+        from ...services.audio_editor_book_integration_service import AudioEditorBookIntegrationService
+        
+        service = AudioEditorBookIntegrationService(db)
+        chapters = service.get_book_chapters(book_id)
+        
+        return {
+            "success": True,
+            "data": chapters,
+            "message": f"获取到 {len(chapters)} 个章节"
+        }
+        
+    except Exception as e:
+        logger.error(f"获取书籍章节失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/books/{book_id}/chapters/resources", response_model=dict)
+async def get_chapter_resources(
+    book_id: int, 
+    request: Dict[str, List[int]], 
+    db: Session = Depends(get_db)
+):
+    """获取指定章节的所有可导入资源"""
+    try:
+        from ...services.audio_editor_book_integration_service import AudioEditorBookIntegrationService
+        
+        chapter_ids = request.get('chapter_ids', [])
+        if not chapter_ids:
+            raise HTTPException(status_code=400, detail="章节ID列表不能为空")
+        
+        service = AudioEditorBookIntegrationService(db)
+        resources = service.get_chapter_resources(book_id, chapter_ids)
+        
+        if 'error' in resources:
+            raise HTTPException(status_code=400, detail=resources['error'])
+        
+        return {
+            "success": True,
+            "data": resources,
+            "message": f"获取到章节资源: {resources['resource_summary']}"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取章节资源失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/create-from-chapters", response_model=dict)
+async def create_project_from_chapters(
+    request: Dict[str, Any], 
+    db: Session = Depends(get_db)
+):
+    """从书籍章节创建音频编辑器项目"""
+    try:
+        from ...services.audio_editor_book_integration_service import AudioEditorBookIntegrationService
+        
+        # 验证请求参数
+        project_name = request.get('project_name')
+        book_id = request.get('book_id')
+        chapter_ids = request.get('chapter_ids', [])
+        selected_resources = request.get('selected_resources', {})
+        
+        if not project_name:
+            raise HTTPException(status_code=400, detail="项目名称不能为空")
+        if not book_id:
+            raise HTTPException(status_code=400, detail="书籍ID不能为空")
+        if not chapter_ids:
+            raise HTTPException(status_code=400, detail="章节ID列表不能为空")
+        
+        service = AudioEditorBookIntegrationService(db)
+        result = service.create_editor_project_with_chapters(
+            project_name=project_name,
+            book_id=book_id,
+            chapter_ids=chapter_ids,
+            selected_resources=selected_resources
+        )
+        
+        if not result.get('success'):
+            raise HTTPException(status_code=400, detail=result.get('error', '创建项目失败'))
+        
+        return {
+            "success": True,
+            "data": {
+                "project_id": result['project_id'],
+                "resource_summary": result['resource_summary']
+            },
+            "message": result['message']
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"从章节创建项目失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ========== 健康检查 ==========
 
 @router.get("/health")
