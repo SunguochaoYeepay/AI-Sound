@@ -4,7 +4,7 @@
     "title": "3333333",
     "description": "33333333333333",
     "author": "AI-Sound",
-    "totalDuration": 300.0,
+    "totalDuration": 301.68,
     "sampleRate": 44100,
     "channels": 2,
     "bitDepth": 16,
@@ -68,7 +68,19 @@
       "solo": false,
       "color": "#e74c3c",
       "order": 3,
-      "clips": []
+      "clips": [
+        {
+          "id": "clip_1751561623916_3wg5nh72k",
+          "fileId": "",
+          "filename": "file_1751476226_7271a026",
+          "startTime": 1.68,
+          "duration": 300.0,
+          "volume": 1.0,
+          "offset": 0.0,
+          "fadeIn": 0.1,
+          "fadeOut": 0.1
+        }
+      ]
     }
   ],
   "markers": []
