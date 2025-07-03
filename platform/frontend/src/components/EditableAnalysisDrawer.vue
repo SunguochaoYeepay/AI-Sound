@@ -550,16 +550,21 @@ const testVoice = async (character) => {
       // 🔧 修复：使用正确的字段名
       let audioUrl = response.data.audioUrl || response.data.audio_url
       
-      // 🔧 修复音频URL路径：处理相对路径和完整URL
+      // 🔧 修复音频URL路径：仅处理需要修复的相对路径
       if (audioUrl) {
+        // 只处理以 /audio/ 开头的相对路径，避免重复替换已有 /api/v1/ 前缀的URL
         if (audioUrl.startsWith('/audio/')) {
           // 处理相对路径：/audio/ → /api/v1/audio/
           audioUrl = audioUrl.replace('/audio/', '/api/v1/audio/')
           console.log('[EditableAnalysisDrawer] 相对路径URL已修复:', audioUrl)
-        } else if (audioUrl.includes('/audio/')) {
-          // 处理完整URL：http://localhost:8001/audio/ → http://localhost:8001/api/v1/audio/
+        } else if (audioUrl.includes('/audio/') && !audioUrl.includes('/api/v1/audio/')) {
+          // 只处理不包含 /api/v1/audio/ 但包含 /audio/ 的URL，避免重复替换
           audioUrl = audioUrl.replace('/audio/', '/api/v1/audio/')
           console.log('[EditableAnalysisDrawer] 完整URL路径已修复:', audioUrl)
+        }
+        // 如果URL已经包含 /api/v1/audio/，则不做任何修改
+        if (audioUrl.includes('/api/v1/audio/')) {
+          console.log('[EditableAnalysisDrawer] URL已正确，无需修复:', audioUrl)
         }
       }
       

@@ -5,6 +5,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy import desc, asc, func, or_, and_
 from typing import List, Optional, Dict
 import asyncio
@@ -767,7 +768,11 @@ async def batch_set_character_voice_mappings(
         # 🔥 调试：提交后重新查询验证
         db.refresh(book)
         post_commit_summary = book.get_character_summary()
-        logger.info(f"[调试] 提交后重新查询 voice_mappings: {post_commit_summary.get('voice_mappings', {})}")
+        # 🔥 安全类型检查
+        if isinstance(post_commit_summary, dict):
+            logger.info(f"[调试] 提交后重新查询 voice_mappings: {post_commit_summary.get('voice_mappings', {})}")
+        else:
+            logger.warning(f"[调试] 提交后数据格式异常: {type(post_commit_summary)} - {post_commit_summary}")
         
         # 🔥 关键修复：同步更新所有相关章节的synthesis_plan
         if updated_mappings:
@@ -853,11 +858,13 @@ async def rebuild_character_summary(
         # 恢复之前的语音映射配置
         try:
             current_summary = book.get_character_summary()
+            # 🔥 增强安全检查
             if isinstance(current_summary, dict):
                 current_summary['voice_mappings'] = current_mappings
                 book.character_summary = current_summary
+                flag_modified(book, 'character_summary')  # 确保SQLAlchemy检测到修改
             else:
-                logger.warning("角色汇总数据格式异常，跳过语音映射恢复")
+                logger.warning(f"角色汇总数据格式异常: {type(current_summary)}, 跳过语音映射恢复")
         except Exception as e:
             logger.warning(f"恢复语音映射失败: {str(e)}")
         
@@ -916,10 +923,21 @@ async def _sync_character_voice_to_synthesis_plans(
         for chapter, analysis in chapters_with_analysis:
             try:
                 synthesis_plan = analysis.synthesis_plan
-                if not synthesis_plan or 'segments' not in synthesis_plan:
+                if not synthesis_plan:
                     continue
                 
-                segments = synthesis_plan.get('segments', [])
+                # 🔥 修复：支持两种数据结构
+                # 结构1: {'segments': [...]}  (旧版本)
+                # 结构2: {'synthesis_plan': [...], 'project_info': {...}, 'characters': [...]}  (新版本)
+                segments = None
+                if 'segments' in synthesis_plan:
+                    segments = synthesis_plan.get('segments', [])
+                elif 'synthesis_plan' in synthesis_plan:
+                    segments = synthesis_plan.get('synthesis_plan', [])
+                
+                if not segments or not isinstance(segments, list):
+                    logger.debug(f"章节 {chapter.id} synthesis_plan格式不匹配或为空，跳过同步")
+                    continue
                 plan_updated = False
                 
                 # 遍历每个段落，更新匹配角色的voice_id
@@ -931,17 +949,38 @@ async def _sync_character_voice_to_synthesis_plans(
                         old_voice_id = segment.get('voice_id')
                         new_voice_id = character_voice_mappings[speaker]
                         
-                        if old_voice_id != new_voice_id:
-                            segment['voice_id'] = new_voice_id
+                        # 调试：记录同步过程
+                        logger.debug(f"章节 {chapter.id} 角色 '{speaker}': old_voice_id={old_voice_id}, new_voice_id={new_voice_id}")
+                        
+                        # 🔥 修复：确保类型一致比较（都转为字符串或数字）
+                        if str(old_voice_id) != str(new_voice_id):
+                            # 🔥 确保设置为正确的类型（根据原数据类型决定）
+                            if isinstance(old_voice_id, int) or (isinstance(old_voice_id, str) and old_voice_id.isdigit()):
+                                segment['voice_id'] = int(new_voice_id) if str(new_voice_id).isdigit() else new_voice_id
+                            else:
+                                segment['voice_id'] = str(new_voice_id)
+                            
                             plan_updated = True
-                            logger.debug(f"章节 {chapter.id} 段落中角色 '{speaker}' 语音ID: {old_voice_id} -> {new_voice_id}")
+                            logger.info(f"同步角色语音: {speaker} 从 {old_voice_id} 更新为 {segment['voice_id']}")
+                        else:
+                            logger.debug(f"角色 '{speaker}' 语音ID已是最新: {old_voice_id}")
                 
                 # 如果有更新，保存到数据库
                 if plan_updated:
+                    # 🔥 修复：根据数据结构保存回正确的位置
+                    if 'segments' in synthesis_plan:
+                        synthesis_plan['segments'] = segments
+                    elif 'synthesis_plan' in synthesis_plan:
+                        synthesis_plan['synthesis_plan'] = segments
+                    
+                    # 🔥 关键修复：强制SQLAlchemy检测JSON字段修改
+                    from sqlalchemy.orm.attributes import flag_modified
                     analysis.synthesis_plan = synthesis_plan
+                    flag_modified(analysis, 'synthesis_plan')
+                    
                     analysis.updated_at = datetime.utcnow()
                     updated_count += 1
-                    logger.info(f"更新章节 {chapter.id} ({chapter.chapter_title}) 的synthesis_plan")
+                    logger.info(f"已更新章节 {chapter.id} ({chapter.chapter_title}) 的合成计划")
                 
             except Exception as e:
                 logger.error(f"更新章节 {chapter.id} 的synthesis_plan失败: {str(e)}")

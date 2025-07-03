@@ -95,14 +95,33 @@ class Book(BaseModel):
         
         # 合并新检测到的角色
         for new_char in detected_characters:
-            char_name = new_char.get('name', '').strip()
+            # 🔥 修复：支持两种数据格式
+            if isinstance(new_char, str):
+                # 格式1：字符串列表 ['小明', '小红', ...]
+                char_name = new_char.strip()
+                char_data = {
+                    'name': char_name,
+                    'gender': '',
+                    'age': '',
+                    'personality': '',
+                    'description': '',
+                    'appearances': 1
+                }
+            elif isinstance(new_char, dict):
+                # 格式2：字典列表 [{'name': '小明', ...}, ...]
+                char_name = new_char.get('name', '').strip()
+                char_data = new_char
+            else:
+                # 未知格式，跳过
+                continue
+                
             if not char_name:
                 continue
                 
             if char_name in existing_characters:
                 # 更新现有角色的信息（合并出现次数、章节等）
                 existing_char = existing_characters[char_name]
-                existing_char['total_appearances'] = existing_char.get('total_appearances', 0) + new_char.get('appearances', 1)
+                existing_char['total_appearances'] = existing_char.get('total_appearances', 0) + char_data.get('appearances', 1)
                 
                 # 合并章节出现记录
                 if 'chapters' not in existing_char:
@@ -112,17 +131,17 @@ class Book(BaseModel):
                 
                 # 更新其他属性（如果新的更详细）
                 for key in ['gender', 'age', 'personality', 'description']:
-                    if new_char.get(key) and (not existing_char.get(key) or len(str(new_char[key])) > len(str(existing_char.get(key, '')))):
-                        existing_char[key] = new_char[key]
+                    if char_data.get(key) and (not existing_char.get(key) or len(str(char_data[key])) > len(str(existing_char.get(key, '')))):
+                        existing_char[key] = char_data[key]
             else:
                 # 添加新角色
                 new_character = {
                     'name': char_name,
-                    'gender': new_char.get('gender', ''),
-                    'age': new_char.get('age', ''),
-                    'personality': new_char.get('personality', ''),
-                    'description': new_char.get('description', ''),
-                    'total_appearances': new_char.get('appearances', 1),
+                    'gender': char_data.get('gender', ''),
+                    'age': char_data.get('age', ''),
+                    'personality': char_data.get('personality', ''),
+                    'description': char_data.get('description', ''),
+                    'total_appearances': char_data.get('appearances', 1),
                     'chapters': [chapter_id] if chapter_id else [],
                     'first_detected': datetime.utcnow().isoformat()
                 }
