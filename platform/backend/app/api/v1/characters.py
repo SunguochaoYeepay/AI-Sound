@@ -746,7 +746,7 @@ async def test_voice_synthesis(
         # 动态生成音频URL，支持外网访问
         host = request.headers.get("host", "localhost:8000")
         scheme = "https" if request.headers.get("x-forwarded-proto") == "https" else "http"
-        audio_url = f"{scheme}://{host}/audio/{audio_id}.wav"
+        audio_url = f"{scheme}://{host}/api/v1/audio/{audio_id}.wav"
         
         return {
             "success": True,

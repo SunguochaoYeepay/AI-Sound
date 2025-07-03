@@ -150,6 +150,35 @@ class ContentPreparationService:
             
             logger.info(f"章节 {chapter_id} 智能准备完成，共识别 {len(detected_characters)} 个角色")
             
+            # 10.5. 更新书籍角色汇总（高性能）
+            try:
+                from ..models import Book
+                book = self.db.query(Book).filter(Book.id == chapter.book_id).first()
+                if book:
+                    # 提取角色信息用于汇总
+                    characters_for_summary = []
+                    for char in detected_characters:
+                        char_data = {
+                            'name': char.get('name', ''),
+                            'gender': char.get('gender', ''),
+                            'age': char.get('age', ''),
+                            'personality': char.get('personality', ''),
+                            'description': char.get('description', ''),
+                            'appearances': 1  # 本章节出现1次
+                        }
+                        characters_for_summary.append(char_data)
+                    
+                    # 更新书籍角色汇总
+                    book.update_character_summary(characters_for_summary, chapter_id)
+                    self.db.commit()
+                    
+                    logger.info(f"已更新书籍 {book.id} 的角色汇总，来源章节: {chapter_id}")
+                else:
+                    logger.warning(f"未找到章节 {chapter_id} 对应的书籍")
+            except Exception as e:
+                logger.error(f"更新书籍角色汇总失败: {str(e)}")
+                # 不抛出异常，避免影响主流程
+            
             # 11. 返回结果
             return {
                 "synthesis_json": synthesis_json,

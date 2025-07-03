@@ -6,7 +6,7 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, asc, func, or_, and_
-from typing import List, Optional
+from typing import List, Optional, Dict
 import asyncio
 import logging
 import json
@@ -619,3 +619,341 @@ async def get_book_analysis_results(
     except Exception as e:
         logger.error(f"获取书籍分析结果失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"获取分析结果失败: {str(e)}") 
+
+
+# ============= 角色管理相关API =============
+
+@router.get("/{book_id}/characters")
+async def get_book_characters(
+    book_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    获取书籍角色汇总信息
+    高性能：不遍历所有章节，直接从book.character_summary读取
+    """
+    try:
+        book = db.query(Book).filter(Book.id == book_id).first()
+        if not book:
+            raise HTTPException(status_code=404, detail="书籍不存在")
+        
+        character_summary = book.get_character_summary()
+        
+        # 🔧 添加调试信息
+        logger.info(f"[调试] 获取书籍{book_id}角色汇总:")
+        logger.info(f"  character_summary原始类型: {type(book.character_summary)}")
+        logger.info(f"  character_summary原始数据: {book.character_summary}")
+        logger.info(f"  get_character_summary()返回类型: {type(character_summary)}")
+        logger.info(f"  get_character_summary()返回数据: {character_summary}")
+        logger.info(f"  voice_mappings: {character_summary.get('voice_mappings', {})}")
+        
+        return {
+            "success": True,
+            "data": {
+                "book_id": book_id,
+                "book_title": book.title,
+                "characters": character_summary.get('characters', []),
+                "voice_mappings": character_summary.get('voice_mappings', {}),
+                "last_updated": character_summary.get('last_updated'),
+                "total_chapters_analyzed": character_summary.get('total_chapters_analyzed', 0),
+                "character_count": len(character_summary.get('characters', [])),
+                "configured_count": len(character_summary.get('voice_mappings', {}))
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取书籍角色汇总失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取角色汇总失败: {str(e)}")
+
+
+@router.post("/{book_id}/characters/{character_name}/voice-mapping")
+async def set_character_voice_mapping(
+    book_id: int,
+    character_name: str,
+    voice_id: str = Form(...),
+    db: Session = Depends(get_db)
+):
+    """
+    设置单个角色的语音映射
+    """
+    try:
+        book = db.query(Book).filter(Book.id == book_id).first()
+        if not book:
+            raise HTTPException(status_code=404, detail="书籍不存在")
+        
+        # 检查角色是否存在
+        character_names = book.get_all_character_names()
+        if character_name not in character_names:
+            raise HTTPException(status_code=404, detail=f"角色 '{character_name}' 不存在")
+        
+        # 设置语音映射
+        book.set_character_voice_mapping(character_name, voice_id)
+        db.commit()
+        
+        # 🔥 关键修复：同步更新相关章节的synthesis_plan
+        updated_chapters = await _sync_character_voice_to_synthesis_plans(
+            book_id, {character_name: voice_id}, db
+        )
+        
+        logger.info(f"设置角色语音映射: 书籍{book_id} - {character_name} -> {voice_id}，同步更新了 {updated_chapters} 个章节")
+        
+        return {
+            "success": True,
+            "message": f"已设置角色 '{character_name}' 的语音配置，同步更新了 {updated_chapters} 个章节的合成计划",
+            "data": {
+                "character_name": character_name,
+                "voice_id": voice_id,
+                "updated_chapters": updated_chapters,
+                "updated_at": datetime.utcnow().isoformat()
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"设置角色语音映射失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"设置语音映射失败: {str(e)}")
+
+
+@router.post("/{book_id}/characters/batch-voice-mappings")
+async def batch_set_character_voice_mappings(
+    book_id: int,
+    mappings: str = Form(..., description="角色语音映射JSON字符串，格式: {角色名: voice_id}"),
+    db: Session = Depends(get_db)
+):
+    """
+    批量设置角色语音映射
+    """
+    try:
+        book = db.query(Book).filter(Book.id == book_id).first()
+        if not book:
+            raise HTTPException(status_code=404, detail="书籍不存在")
+        
+        # 解析映射数据
+        if isinstance(mappings, str):
+            try:
+                mappings = json.loads(mappings)
+            except json.JSONDecodeError:
+                raise HTTPException(status_code=400, detail="映射数据格式错误")
+        
+        if not isinstance(mappings, dict):
+            raise HTTPException(status_code=400, detail="映射数据必须是字典格式")
+        
+        # 检查所有角色是否存在
+        character_names = book.get_all_character_names()
+        invalid_characters = [char for char in mappings.keys() if char not in character_names]
+        if invalid_characters:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"以下角色不存在: {', '.join(invalid_characters)}"
+            )
+        
+        # 批量设置语音映射
+        success_count = 0
+        updated_mappings = {}
+        for character_name, voice_id in mappings.items():
+            if voice_id:  # 只设置非空的voice_id
+                logger.info(f"[调试] 设置角色语音映射: {character_name} -> {voice_id}")
+                book.set_character_voice_mapping(character_name, voice_id)
+                updated_mappings[character_name] = voice_id
+                success_count += 1
+        
+        # 🔥 调试：提交前检查数据
+        logger.info(f"[调试] 提交前检查 character_summary: {book.character_summary}")
+        db.commit()
+        
+        # 🔥 调试：提交后重新查询验证
+        db.refresh(book)
+        post_commit_summary = book.get_character_summary()
+        logger.info(f"[调试] 提交后重新查询 voice_mappings: {post_commit_summary.get('voice_mappings', {})}")
+        
+        # 🔥 关键修复：同步更新所有相关章节的synthesis_plan
+        if updated_mappings:
+            updated_chapters = await _sync_character_voice_to_synthesis_plans(
+                book_id, updated_mappings, db
+            )
+            logger.info(f"同步更新了 {updated_chapters} 个章节的synthesis_plan")
+        
+        logger.info(f"批量设置角色语音映射: 书籍{book_id} - 成功设置 {success_count} 个角色")
+        
+        return {
+            "success": True,
+            "message": f"成功设置 {success_count} 个角色的语音配置，已同步更新 {updated_chapters} 个章节的合成计划",
+            "data": {
+                "book_id": book_id,
+                "updated_mappings": updated_mappings,
+                "success_count": success_count,
+                "updated_chapters": updated_chapters,
+                "updated_at": datetime.utcnow().isoformat()
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"批量设置角色语音映射失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"批量设置失败: {str(e)}")
+
+
+@router.post("/{book_id}/characters/rebuild-summary")
+async def rebuild_character_summary(
+    book_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    重建书籍角色汇总（从所有章节分析结果重新汇总）
+    用于修复或更新汇总数据
+    """
+    try:
+        book = db.query(Book).filter(Book.id == book_id).first()
+        if not book:
+            raise HTTPException(status_code=404, detail="书籍不存在")
+        
+        # 获取所有已分析的章节
+        chapters_with_analysis = db.query(BookChapter, AnalysisResult).join(
+            AnalysisResult, BookChapter.id == AnalysisResult.chapter_id
+        ).filter(
+            BookChapter.book_id == book_id,
+            AnalysisResult.detected_characters.isnot(None)
+        ).all()
+        
+        if not chapters_with_analysis:
+            return {
+                "success": True,
+                "message": "暂无章节分析数据，角色汇总为空",
+                "data": book.get_character_summary()
+            }
+        
+        # 保存当前的语音映射配置
+        try:
+            current_summary = book.get_character_summary()
+            # 🔥 确保current_summary是字典格式
+            if isinstance(current_summary, dict):
+                current_mappings = current_summary.get('voice_mappings', {})
+            else:
+                logger.warning(f"角色汇总数据格式异常: {type(current_summary)} - {current_summary}")
+                current_mappings = {}
+        except Exception as e:
+            logger.warning(f"获取当前语音映射失败: {str(e)}，使用空映射")
+            current_mappings = {}
+        
+        # 清空角色汇总，重新构建
+        book.character_summary = None
+        
+        # 逐章节更新角色汇总
+        total_rebuilt = 0
+        for chapter, analysis in chapters_with_analysis:
+            detected_characters = analysis.detected_characters or []
+            if detected_characters:
+                book.update_character_summary(detected_characters, chapter.id)
+                total_rebuilt += 1
+        
+        # 恢复之前的语音映射配置
+        try:
+            current_summary = book.get_character_summary()
+            if isinstance(current_summary, dict):
+                current_summary['voice_mappings'] = current_mappings
+                book.character_summary = current_summary
+            else:
+                logger.warning("角色汇总数据格式异常，跳过语音映射恢复")
+        except Exception as e:
+            logger.warning(f"恢复语音映射失败: {str(e)}")
+        
+        db.commit()
+        
+        logger.info(f"重建书籍角色汇总: 书籍{book_id} - 处理了 {total_rebuilt} 个章节")
+        
+        return {
+            "success": True,
+            "message": f"成功重建角色汇总，处理了 {total_rebuilt} 个章节",
+            "data": book.get_character_summary()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"重建角色汇总失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"重建汇总失败: {str(e)}")
+
+
+# ========== 内部辅助函数 ==========
+
+async def _sync_character_voice_to_synthesis_plans(
+    book_id: int, 
+    character_voice_mappings: Dict[str, int], 
+    db: Session
+) -> int:
+    """
+    同步角色语音配置到所有相关章节的synthesis_plan
+    
+    Args:
+        book_id: 书籍ID
+        character_voice_mappings: 角色语音映射 {角色名: voice_id}
+        db: 数据库会话
+    
+    Returns:
+        更新的章节数量
+    """
+    try:
+        # 获取这本书所有已完成分析的章节
+        # 注意：BookChapter, AnalysisResult 已在文件顶部导入
+        chapters_with_analysis = db.query(BookChapter, AnalysisResult).join(
+            AnalysisResult, BookChapter.id == AnalysisResult.chapter_id
+        ).filter(
+            BookChapter.book_id == book_id,
+            AnalysisResult.status == 'completed',
+            AnalysisResult.synthesis_plan.isnot(None)
+        ).all()
+        
+        if not chapters_with_analysis:
+            logger.info(f"书籍 {book_id} 暂无需要同步的章节分析结果")
+            return 0
+        
+        updated_count = 0
+        
+        for chapter, analysis in chapters_with_analysis:
+            try:
+                synthesis_plan = analysis.synthesis_plan
+                if not synthesis_plan or 'segments' not in synthesis_plan:
+                    continue
+                
+                segments = synthesis_plan.get('segments', [])
+                plan_updated = False
+                
+                # 遍历每个段落，更新匹配角色的voice_id
+                for segment in segments:
+                    speaker = segment.get('speaker', '')
+                    
+                    # 检查这个角色是否在要更新的映射中
+                    if speaker in character_voice_mappings:
+                        old_voice_id = segment.get('voice_id')
+                        new_voice_id = character_voice_mappings[speaker]
+                        
+                        if old_voice_id != new_voice_id:
+                            segment['voice_id'] = new_voice_id
+                            plan_updated = True
+                            logger.debug(f"章节 {chapter.id} 段落中角色 '{speaker}' 语音ID: {old_voice_id} -> {new_voice_id}")
+                
+                # 如果有更新，保存到数据库
+                if plan_updated:
+                    analysis.synthesis_plan = synthesis_plan
+                    analysis.updated_at = datetime.utcnow()
+                    updated_count += 1
+                    logger.info(f"更新章节 {chapter.id} ({chapter.chapter_title}) 的synthesis_plan")
+                
+            except Exception as e:
+                logger.error(f"更新章节 {chapter.id} 的synthesis_plan失败: {str(e)}")
+                continue
+        
+        # 批量提交数据库更改
+        if updated_count > 0:
+            db.commit()
+            logger.info(f"成功同步更新了 {updated_count} 个章节的synthesis_plan")
+        
+        return updated_count
+        
+    except Exception as e:
+        logger.error(f"同步角色语音配置到synthesis_plan失败: {str(e)}")
+        return 0 

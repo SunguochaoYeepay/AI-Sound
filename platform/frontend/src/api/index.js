@@ -586,7 +586,40 @@ export const booksAPI = {
     const url = queryString ? `/books/${bookId}/analysis-results?${queryString}` : `/books/${bookId}/analysis-results`
     
     return apiClient.get(url)
-  }
+  },
+
+  // ========== 角色管理相关API ==========
+  
+  // 获取书籍角色汇总
+  getBookCharacters: (bookId) => apiClient.get(`/books/${bookId}/characters`),
+  
+  // 设置单个角色的语音映射
+  setCharacterVoiceMapping: (bookId, characterName, voiceId) => {
+    const formData = new FormData()
+    formData.append('voice_id', voiceId)
+    
+    return apiClient.post(`/books/${bookId}/characters/${encodeURIComponent(characterName)}/voice-mapping`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    })
+  },
+  
+  // 批量设置角色语音映射
+  batchSetCharacterVoiceMappings: (bookId, mappings) => {
+    const formData = new FormData()
+    formData.append('mappings', JSON.stringify(mappings))
+    
+    return apiClient.post(`/books/${bookId}/characters/batch-voice-mappings`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    })
+  },
+  
+  // 重建书籍角色汇总
+  rebuildCharacterSummary: (bookId) => 
+    apiClient.post(`/books/${bookId}/characters/rebuild-summary`)
 }
 
 // 章节管理API
