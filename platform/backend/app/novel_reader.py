@@ -1342,6 +1342,61 @@ async def process_audio_generation_from_synthesis_plan(
         project.completed_at = datetime.utcnow()
         project.final_audio_path = final_audio_path
         
+        # 🔧 关键修复：更新章节合成状态
+        logger.info(f"[SYNTHESIS_PLAN] 开始更新章节合成状态...")
+        try:
+            # 获取所有相关章节ID
+            chapter_ids = set()
+            for segment in synthesis_data:
+                chapter_id = segment.get('chapter_id')
+                if chapter_id:
+                    chapter_ids.add(chapter_id)
+            
+            # 更新章节状态
+            if chapter_ids:
+                from app.models import BookChapter
+                
+                for chapter_id in chapter_ids:
+                    # 检查该章节是否有完成的音频文件
+                    chapter_audio_count = db.query(AudioFile).filter(
+                        AudioFile.project_id == project_id,
+                        AudioFile.chapter_id == chapter_id,
+                        AudioFile.audio_type == 'segment'
+                    ).count()
+                    
+                    # 更新章节状态
+                    chapter = db.query(BookChapter).filter(BookChapter.id == chapter_id).first()
+                    if chapter and chapter_audio_count > 0:
+                        chapter.synthesis_status = 'completed'
+                        logger.info(f"[SYNTHESIS_PLAN] 章节 {chapter_id} 状态更新为 completed ({chapter_audio_count} 个音频文件)")
+                    elif chapter:
+                        chapter.synthesis_status = 'failed'
+                        logger.info(f"[SYNTHESIS_PLAN] 章节 {chapter_id} 状态更新为 failed (无音频文件)")
+            
+            # 如果没有chapter_id，尝试从project的book中获取
+            elif project.book_id:
+                from app.models import Book, BookChapter
+                book = db.query(Book).filter(Book.id == project.book_id).first()
+                if book:
+                    chapters = db.query(BookChapter).filter(BookChapter.book_id == book.id).all()
+                    for chapter in chapters:
+                        # 检查该章节是否有完成的音频文件
+                        chapter_audio_count = db.query(AudioFile).filter(
+                            AudioFile.project_id == project_id,
+                            AudioFile.chapter_number == chapter.chapter_number,
+                            AudioFile.audio_type == 'segment'
+                        ).count()
+                        
+                        if chapter_audio_count > 0:
+                            chapter.synthesis_status = 'completed'
+                            logger.info(f"[SYNTHESIS_PLAN] 章节 {chapter.id} (第{chapter.chapter_number}章) 状态更新为 completed")
+                        else:
+                            chapter.synthesis_status = 'failed'
+                            logger.info(f"[SYNTHESIS_PLAN] 章节 {chapter.id} (第{chapter.chapter_number}章) 状态更新为 failed")
+            
+        except Exception as e:
+            logger.error(f"[SYNTHESIS_PLAN] 更新章节状态失败: {str(e)}")
+        
         logger.info(f"[SYNTHESIS_PLAN] 最终项目状态: {project.status}, 实际进度: {actual_total}/{final_total}")
         
         if failed_segments:

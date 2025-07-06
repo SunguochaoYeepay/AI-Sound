@@ -9,7 +9,7 @@
     "favicon": ""
   },
   "theme": {
-    "mode": "dark",
+    "mode": "light",
     "colorScheme": "purple",
     "layout": "comfortable",
     "sidebarStyle": "gradient",

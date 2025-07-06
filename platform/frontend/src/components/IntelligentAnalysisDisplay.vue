@@ -32,7 +32,7 @@
               >
                 <div class="segment-header">
                   <span class="segment-id">#{{ segment.segment_id }}</span>
-                  <a-tag color="blue">{{ segment.speaker }}</a-tag>
+                  <a-tag color="blue">{{ segment.speaker || '旁白' }}</a-tag>
                   <a-tag color="green">{{ segment.voice_name }}</a-tag>
                 </div>
                 <div class="segment-text">{{ segment.text }}</div>

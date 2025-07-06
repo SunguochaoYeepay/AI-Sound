@@ -308,21 +308,21 @@ async def start_environment_mixing(
                     logger.info(f"PostgreSQL序列已修复，设置为: {new_seq_value}")
                     
                     # 重新尝试创建任务
-        mixing_job = EnvironmentAudioMixingJob(
-            project_id=project_id,
-            chapter_id=chapter_id,
-            job_status='pending',
-            progress=0.0,
-            mixing_config=config.dict(),
-            total_tracks=len(config.environment_config.get('analysis_result', {}).get('tracks', [])) if config.environment_config.get('analysis_result') else 0,
-            completed_tracks=0,
-            failed_tracks=0,
-            started_at=datetime.now()
-        )
-        
-        db.add(mixing_job)
-        db.commit()
-        db.refresh(mixing_job)
+                    mixing_job = EnvironmentAudioMixingJob(
+                        project_id=project_id,
+                        chapter_id=chapter_id,
+                        job_status='pending',
+                        progress=0.0,
+                        mixing_config=config.dict(),
+                        total_tracks=len(config.environment_config.get('analysis_result', {}).get('tracks', [])) if config.environment_config.get('analysis_result') else 0,
+                        completed_tracks=0,
+                        failed_tracks=0,
+                        started_at=datetime.now()
+                    )
+                    
+                    db.add(mixing_job)
+                    db.commit()
+                    db.refresh(mixing_job)
                     
                     logger.info(f"序列修复后成功创建环境混音任务: ID={mixing_job.id}")
                     

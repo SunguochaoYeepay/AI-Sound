@@ -154,11 +154,12 @@
 </template>
 
 <script setup>
-import { ref, computed, h } from 'vue'
+import { ref, computed, h, watch, onMounted } from 'vue'
 import { Empty, Modal, message } from 'ant-design-vue'
 import { getWebSocketUrl } from '@/config/services'
 import DialogueBubble from './DialogueBubble.vue'
 import apiClient, { llmAnalysisClient } from '@/api/config.js'
+import { getSegmentsStatus } from '@/api/synthesis.js'
 
 const props = defineProps({
   project: Object,
@@ -198,6 +199,10 @@ const emit = defineEmits([
 ])
 
 const showAllSegments = ref(false)
+
+// 🔧 新增：段落状态管理
+const segmentsStatusData = ref({})
+const segmentsStatusLoading = ref(false)
 const playingSegmentId = ref(null)
 
 const canStartSynthesis = computed(() => {
@@ -260,9 +265,40 @@ const getSelectedChapterInfo = () => {
   return props.availableChapters.find(chapter => chapter.id === props.selectedChapter)
 }
 
-// 获取段落状态
+// 🔧 修复：获取段落真实状态
 const getSegmentStatus = (chapterId, segmentId) => {
-  // 简化的状态判断，基于项目状态
+  // 优先从真实的段落状态数据中获取
+  const statusData = segmentsStatusData.value
+  
+  if (statusData && statusData.segments) {
+    // 尝试多种方式查找段落状态
+    const segmentKeys = [
+      `segment_${segmentId}`,
+      `paragraph_${segmentId}`,
+      `file_${segmentId}`
+    ]
+    
+    for (const key of segmentKeys) {
+      const segmentStatus = statusData.segments[key]
+      if (segmentStatus && segmentStatus.chapter_id === chapterId) {
+        return segmentStatus.status
+      }
+    }
+    
+    // 按章节查找
+    const chapterKey = `chapter_${chapterId}`
+    const chapterData = statusData.chapters?.[chapterKey]
+    if (chapterData?.segments) {
+      for (const key of segmentKeys) {
+        const segmentStatus = chapterData.segments[key]
+        if (segmentStatus) {
+          return segmentStatus.status
+        }
+      }
+    }
+  }
+  
+  // 降级逻辑：基于项目状态判断
   if (props.project?.status === 'completed') {
     return 'completed'
   }
@@ -363,8 +399,41 @@ const handlePlaySegment = (segmentIndexOrSegment, segment) => {
   }
 }
 
+// 🔧 新增：加载段落状态数据
+const loadSegmentsStatus = async () => {
+  if (!props.project?.id) return
+  
+  segmentsStatusLoading.value = true
+  try {
+    const chapterId = props.selectedChapter
+    const result = await getSegmentsStatus(props.project.id, chapterId)
+    
+    if (result.success) {
+      segmentsStatusData.value = result.data
+      console.log('🔍 段落状态加载成功:', {
+        projectId: props.project.id,
+        chapterId,
+        totalSegments: result.data.total_segments,
+        completedSegments: result.data.completed_segments,
+        chaptersCount: Object.keys(result.data.chapters || {}).length
+      })
+    } else {
+      console.warn('⚠️ 段落状态加载失败:', result.error)
+      // 失败时清空状态数据，使用降级逻辑
+      segmentsStatusData.value = {}
+    }
+  } catch (error) {
+    console.error('🔥 段落状态加载异常:', error)
+    segmentsStatusData.value = {}
+  } finally {
+    segmentsStatusLoading.value = false
+  }
+}
+
 const handleRefreshPreparation = () => {
   emit('refresh-preparation')
+  // 同时刷新段落状态
+  loadSegmentsStatus()
 }
 
 const handleTriggerPreparation = async () => {
@@ -646,6 +715,33 @@ const handlePlayChapter = (chapterId) => {
 const handleDownloadChapter = (chapterId) => {
   emit('download-chapter', chapterId)
 }
+
+// 🔧 新增：监听项目和章节变化，自动加载段落状态
+watch(
+  () => [props.project?.id, props.selectedChapter],
+  ([newProjectId, newChapterId], [oldProjectId, oldChapterId]) => {
+    if (newProjectId && (newProjectId !== oldProjectId || newChapterId !== oldChapterId)) {
+      console.log('🔄 项目或章节变化，重新加载段落状态:', {
+        项目ID: newProjectId,
+        章节ID: newChapterId,
+        变化类型: newProjectId !== oldProjectId ? '项目变化' : '章节变化'
+      })
+      loadSegmentsStatus()
+    }
+  },
+  { immediate: false }
+)
+
+// 🔧 新增：组件挂载时加载段落状态
+onMounted(() => {
+  if (props.project?.id) {
+    console.log('🚀 组件挂载，初始加载段落状态:', {
+      项目ID: props.project.id,
+      章节ID: props.selectedChapter
+    })
+    loadSegmentsStatus()
+  }
+})
 </script>
 
 <style scoped>

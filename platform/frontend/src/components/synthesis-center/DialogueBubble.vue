@@ -1,10 +1,10 @@
 <template>
   <div 
     class="dialogue-bubble"
-    :class="[getCharacterClass(segment.speaker), { 'has-audio': isCompleted }]"
+    :class="[getCharacterClass(displaySpeaker), { 'has-audio': isCompleted }]"
   >
     <div class="bubble-header">
-      <span class="speaker-name">{{ segment.speaker }}</span>
+      <span class="speaker-name">{{ displaySpeaker }}</span>
       <span class="segment-index">#{{ segmentIndex }}</span>
       
       <!-- 段落状态和播放按钮 -->
@@ -78,15 +78,26 @@ const props = defineProps({
 
 defineEmits(['playSegment'])
 
+// 🔧 修复：智能处理空的speaker字段
+const displaySpeaker = computed(() => {
+  const speaker = props.segment?.speaker?.trim()
+  if (!speaker || speaker === '') {
+    return '旁白'  // 空的speaker默认显示为旁白
+  }
+  return speaker
+})
+
 // 获取角色样式类
 const getCharacterClass = (speaker) => {
+  // 🔧 修复：对空speaker也进行处理
+  const actualSpeaker = speaker?.trim() || '旁白'
   const speakerClasses = {
     '旁白': 'narrator',
     '叙述者': 'narrator',
     '作者': 'narrator'
   }
   
-  return speakerClasses[speaker] || 'character'
+  return speakerClasses[actualSpeaker] || 'character'
 }
 
 // 计算状态颜色

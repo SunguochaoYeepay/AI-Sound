@@ -223,10 +223,18 @@ text_type说明：
                     if text_type not in ['dialogue', 'narration', 'inner_monologue']:
                         text_type = 'narration'  # 默认为旁白
                         
+                    # 🔧 修复：正确处理空的speaker字段
+                    speaker = seg_data.get('speaker', '').strip()
+                    if not speaker:  # 处理空字符串、None、或只有空格的情况
+                        if text_type in ['narration', 'inner_monologue']:
+                            speaker = '旁白'
+                        else:
+                            speaker = '未知角色'
+                    
                     segments.append({
                         'order': seg_data.get('order', i + 1),
                         'text': seg_data.get('text', ''),
-                        'speaker': seg_data.get('speaker', '旁白'),
+                        'speaker': speaker,
                         'confidence': seg_data.get('confidence', 0.8),
                         'detection_rule': 'ollama_ai',
                         'text_type': text_type

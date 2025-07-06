@@ -111,7 +111,7 @@
                 class="import-item"
               >
                 <div class="segment-info">
-                  <span class="segment-speaker">{{ segment.speaker }}</span>
+                  <span class="segment-speaker">{{ segment.speaker || '旁白' }}</span>
                   <span class="segment-track">→ 轨道{{ segment.trackNumber }}</span>
                 </div>
                 <div class="segment-text">{{ segment.text.substring(0, 50) }}...</div>

@@ -1997,3 +1997,188 @@ async def get_chapter_progress(
     except Exception as e:
         logger.error(f"获取章节进度失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"获取章节进度失败: {str(e)}")
+
+@router.get("/projects/{project_id}/segments/status")
+async def get_segments_status(
+    project_id: int,
+    chapter_id: Optional[int] = Query(None, description="章节ID"),
+    db: Session = Depends(get_db)
+):
+    """
+    获取项目段落合成状态
+    返回每个段落的真实合成状态，基于AudioFile数据
+    """
+    try:
+        project = db.query(NovelProject).filter(NovelProject.id == project_id).first()
+        if not project:
+            raise HTTPException(status_code=404, detail="项目不存在")
+        
+        # 查询条件
+        audio_query = db.query(AudioFile).filter(
+            AudioFile.project_id == project_id,
+            AudioFile.audio_type == 'segment'
+        )
+        
+        # 如果指定章节，只查询该章节
+        if chapter_id:
+            audio_query = audio_query.filter(AudioFile.chapter_id == chapter_id)
+        
+        # 获取所有音频文件
+        audio_files = audio_query.all()
+        
+        # 构建段落状态映射
+        segments_status = {}
+        
+        for audio_file in audio_files:
+            # 使用多个字段确定段落标识
+            segment_key = None
+            
+            # 优先使用segment_id
+            if audio_file.segment_id is not None:
+                segment_key = f"segment_{audio_file.segment_id}"
+            # 其次使用paragraph_index
+            elif audio_file.paragraph_index is not None:
+                segment_key = f"paragraph_{audio_file.paragraph_index}"
+            # 最后使用文件ID
+            else:
+                segment_key = f"file_{audio_file.id}"
+            
+            segments_status[segment_key] = {
+                "segment_id": audio_file.segment_id,
+                "paragraph_index": audio_file.paragraph_index,
+                "chapter_id": audio_file.chapter_id,
+                "chapter_number": audio_file.chapter_number,
+                "status": "completed",  # 有AudioFile就是已完成
+                "speaker": audio_file.speaker or audio_file.character_name,
+                "text_preview": audio_file.text_content[:50] + "..." if audio_file.text_content and len(audio_file.text_content) > 50 else audio_file.text_content,
+                "filename": audio_file.filename,
+                "file_path": audio_file.file_path,
+                "duration": audio_file.duration,
+                "voice_profile_id": audio_file.voice_profile_id,
+                "created_at": audio_file.created_at.isoformat() if audio_file.created_at else None,
+                "audio_file_id": audio_file.id
+            }
+        
+        # 按章节分组
+        chapters_status = {}
+        for segment_key, segment_data in segments_status.items():
+            chapter_id = segment_data["chapter_id"] or 0
+            chapter_key = f"chapter_{chapter_id}"
+            
+            if chapter_key not in chapters_status:
+                chapters_status[chapter_key] = {
+                    "chapter_id": chapter_id,
+                    "chapter_number": segment_data["chapter_number"],
+                    "segments_count": 0,
+                    "completed_count": 0,
+                    "segments": {}
+                }
+            
+            chapters_status[chapter_key]["segments"][segment_key] = segment_data
+            chapters_status[chapter_key]["segments_count"] += 1
+            if segment_data["status"] == "completed":
+                chapters_status[chapter_key]["completed_count"] += 1
+        
+        # 获取项目总体状态
+        total_segments = len(segments_status)
+        completed_segments = sum(1 for s in segments_status.values() if s["status"] == "completed")
+        
+        logger.info(f"🔍 项目 {project_id} 段落状态查询: 总段落={total_segments}, 已完成={completed_segments}")
+        
+        return {
+            "success": True,
+            "data": {
+                "project_id": project_id,
+                "project_status": project.status,
+                "total_segments": total_segments,
+                "completed_segments": completed_segments,
+                "progress_percentage": round((completed_segments / total_segments) * 100, 1) if total_segments > 0 else 0,
+                "chapters": chapters_status,
+                "segments": segments_status
+            },
+            "message": "段落状态获取成功"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取段落状态失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取段落状态失败: {str(e)}")
+
+@router.get("/projects/{project_id}/chapters/{chapter_id}/segments/status")
+async def get_chapter_segments_status(
+    project_id: int,
+    chapter_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    获取指定章节的段落合成状态
+    更精确的章节级别状态查询
+    """
+    try:
+        # 验证项目和章节存在性
+        project = db.query(NovelProject).filter(NovelProject.id == project_id).first()
+        if not project:
+            raise HTTPException(status_code=404, detail="项目不存在")
+        
+        from app.models import BookChapter
+        chapter = db.query(BookChapter).filter(BookChapter.id == chapter_id).first()
+        if not chapter:
+            raise HTTPException(status_code=404, detail="章节不存在")
+        
+        # 查询该章节的所有音频文件
+        audio_files = db.query(AudioFile).filter(
+            AudioFile.project_id == project_id,
+            AudioFile.chapter_id == chapter_id,
+            AudioFile.audio_type == 'segment'
+        ).order_by(AudioFile.paragraph_index.asc()).all()
+        
+        # 构建段落详细状态
+        segments_detail = []
+        for audio_file in audio_files:
+            segment_detail = {
+                "audio_file_id": audio_file.id,
+                "segment_id": audio_file.segment_id,
+                "paragraph_index": audio_file.paragraph_index,
+                "status": "completed",
+                "speaker": audio_file.speaker or audio_file.character_name,
+                "text_content": audio_file.text_content,
+                "filename": audio_file.filename,
+                "file_path": audio_file.file_path,
+                "duration": audio_file.duration,
+                "file_size": audio_file.file_size,
+                "voice_profile_id": audio_file.voice_profile_id,
+                "processing_time": audio_file.processing_time,
+                "created_at": audio_file.created_at.isoformat() if audio_file.created_at else None,
+                "download_url": f"/api/v1/novel_reader/projects/{project_id}/segments/{audio_file.paragraph_index or audio_file.segment_id or audio_file.id}/download"
+            }
+            segments_detail.append(segment_detail)
+        
+        # 章节统计信息
+        chapter_stats = {
+            "chapter_id": chapter.id,
+            "chapter_number": chapter.chapter_number,
+            "chapter_title": chapter.chapter_title,
+            "synthesis_status": chapter.synthesis_status,
+            "total_segments": len(segments_detail),
+            "completed_segments": len(segments_detail),  # 所有AudioFile都表示已完成
+            "progress_percentage": 100.0 if segments_detail else 0.0
+        }
+        
+        logger.info(f"🔍 章节 {chapter_id} 段落状态: {len(segments_detail)} 个已完成段落")
+        
+        return {
+            "success": True,
+            "data": {
+                "project_id": project_id,
+                "chapter": chapter_stats,
+                "segments": segments_detail
+            },
+            "message": f"章节 {chapter.chapter_number} 段落状态获取成功"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取章节段落状态失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取章节段落状态失败: {str(e)}")

@@ -107,11 +107,14 @@ async def prepare_chapter_for_synthesis(
     
     参数：
     - auto_add_narrator: 是否自动添加旁白角色
-    - processing_mode: 处理模式（auto/fast/detailed）
+    - processing_mode: 处理模式（auto/single/distributed）
+      * auto: 自动选择最佳模式
+      * single: 单块分析模式（适合较短章节）
+      * distributed: 分布式分析模式（适合长章节）
     - tts_optimization: TTS优化模式（fast/balanced/quality）
-      * fast: 旁白使用默认参数，只对复杂对话使用AI分析，大幅减少token消耗
-      * balanced: 平衡模式，适度使用AI分析
-      * quality: 质量模式，对所有内容使用AI分析
+      * fast: 快速模式，优化性能
+      * balanced: 平衡模式，性能与质量兼顾
+      * quality: 质量模式，最高质量分析
     """
     try:
         # 获取章节

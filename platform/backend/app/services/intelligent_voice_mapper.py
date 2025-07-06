@@ -27,24 +27,44 @@ class IntelligentVoiceMapper:
         available_voices = await self._get_available_voices()
         voice_mapping = {}
         
+        # 🔍 调试：输出可用语音信息
+        logger.info(f"🔊 可用语音数量: {len(available_voices)}")
+        for voice in available_voices[:3]:  # 只显示前3个
+            logger.info(f"🎵 可用语音: {voice}")
+        
+        # 🔍 调试：输出要处理的角色
+        logger.info(f"🎭 要分配语音的角色: {[char.get('name') for char in detected_characters]}")
+        
         # 简单的匹配逻辑（可以后续优化）
         for i, character in enumerate(detected_characters):
             char_name = character['name']
+            logger.info(f"🎯 处理角色: {char_name}")
             
             # 为旁白角色特殊处理
             if char_name == '旁白':
+                logger.info("🎭 检测到旁白角色，开始特殊处理")
                 narrator_voice = self._get_narrator_voice_mapping(available_voices)
                 if narrator_voice:
                     voice_mapping[char_name] = narrator_voice
+                    logger.info(f"✅ 旁白分配成功: voice_id = {narrator_voice}")
+                else:
+                    logger.warning("❌ 旁白未能分配voice_id")
                 continue
             
             # 其他角色智能分配
             optimal_voice = self._find_optimal_voice_for_character(character, available_voices)
             if optimal_voice:
                 voice_mapping[char_name] = optimal_voice
+                logger.info(f"✅ {char_name} 智能分配: voice_id = {optimal_voice}")
             elif i < len(available_voices):
                 # 回退方案：简单分配
                 voice_mapping[char_name] = available_voices[i]['id']
+                logger.info(f"🔄 {char_name} 回退分配: voice_id = {available_voices[i]['id']}")
+            else:
+                logger.warning(f"❌ {char_name} 未能分配voice_id")
+        
+        # 🔍 调试：输出最终的voice mapping
+        logger.info(f"🏁 最终voice mapping: {voice_mapping}")
         
         return voice_mapping
     
@@ -117,26 +137,42 @@ class IntelligentVoiceMapper:
     def _get_narrator_voice_mapping(self, available_voices: List[Dict]) -> Optional[int]:
         """为旁白角色选择合适的语音"""
         
+        logger.info(f"🎭 开始为旁白选择语音，可用语音数量: {len(available_voices)}")
+        
         # 优先选择标记为"旁白"或"中性"的语音
         for voice in available_voices:
             voice_type = voice.get('voice_type', '').lower()
             voice_name = voice.get('name', '').lower()
+            voice_id = voice.get('id')
+            
+            logger.debug(f"🔍 检查语音: id={voice_id}, type={voice_type}, name={voice_name}")
             
             if voice_type == 'neutral' or '旁白' in voice_name or 'narrator' in voice_name:
-                return voice.get('id')
+                logger.info(f"✅ 找到匹配的中性/旁白语音: id={voice_id}, type={voice_type}, name={voice_name}")
+                return voice_id
+        
+        logger.info("🔍 未找到中性/旁白语音，尝试女性温和声音")
         
         # 其次选择女性温和声音
         for voice in available_voices:
             voice_type = voice.get('voice_type', '').lower()
             voice_name = voice.get('name', '').lower()
+            voice_id = voice.get('id')
             
             if voice_type == 'female' and ('温柔' in voice_name or '柔和' in voice_name):
-                return voice.get('id')
+                logger.info(f"✅ 找到匹配的女性温和语音: id={voice_id}, name={voice_name}")
+                return voice_id
+        
+        logger.info("🔍 未找到女性温和语音，使用第一个可用语音")
         
         # 最后选择第一个可用声音
         if available_voices:
-            return available_voices[0].get('id')
+            first_voice = available_voices[0]
+            voice_id = first_voice.get('id')
+            logger.info(f"🔄 使用第一个可用语音: id={voice_id}, name={first_voice.get('name', 'Unknown')}")
+            return voice_id
         
+        logger.error("❌ 没有任何可用语音！")
         return None
     
     async def _get_available_voices(self) -> List[Dict]:

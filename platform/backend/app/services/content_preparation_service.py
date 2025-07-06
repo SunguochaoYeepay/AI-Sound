@@ -67,52 +67,61 @@ class ContentPreparationService:
                 "processing_mode": processing_mode
             }
             
-            # 检查用户偏好，决定是否使用简化模式
-            use_simple_mode = user_preferences and user_preferences.get("processing_mode") == "fast"
             # 🔧 新增：支持TTS优化模式
             tts_optimization_mode = user_preferences and user_preferences.get("tts_optimization", "balanced")
             
-            logger.info(f"🔍 处理模式决策: processing_mode={processing_mode}, use_simple_mode={use_simple_mode}, tts_optimization={tts_optimization_mode}")
+            logger.info(f"🔍 处理模式决策: processing_mode={processing_mode}, tts_optimization={tts_optimization_mode}")
             
-            if use_simple_mode:
-                # 使用简化的本地分析，不依赖Ollama
-                logger.info("⚡ 使用快速模式，跳过Ollama分析")
-                analysis_result = await self._simple_local_analysis(cleaned_text, chapter_info)
-            else:
-                # 强制使用AI分析，并增强错误处理
-                logger.info("🤖 尝试使用Ollama AI进行角色分析")
+            # 🚀 强制使用完整AI分析，删除垃圾简化模式
+            logger.info("🤖 使用完整AI智能分析模式")
+            try:
+                # 延迟初始化OllamaCharacterDetector
+                if self.ollama_detector is None:
+                    logger.info("📦 初始化OllamaCharacterDetector...")
+                    try:
+                        from ..detectors.ollama_character_detector import OllamaCharacterDetector
+                        self.ollama_detector = OllamaCharacterDetector()
+                        logger.info("✅ OllamaCharacterDetector初始化成功")
+                    except ImportError as e:
+                        logger.error(f"❌ 无法导入OllamaCharacterDetector，尝试使用编程规则检测器")
+                        from ..detectors.character_detectors import ProgrammaticCharacterDetector
+                        self.ollama_detector = ProgrammaticCharacterDetector()
+                        logger.info("✅ ProgrammaticCharacterDetector初始化成功")
+                
+                # 执行AI分析
+                logger.info(f"🔄 开始智能分析，模式: {processing_mode}")
+                if processing_mode == "single":
+                    analysis_result = await self.ollama_detector.analyze_text(cleaned_text, chapter_info)
+                    logger.info("✅ 智能单块分析完成")
+                else:
+                    analysis_result = await self._analyze_chapter_distributed(cleaned_text, chapter_info)
+                    logger.info("✅ 智能分布式分析完成")
+                    
+            except Exception as e:
+                logger.error(f"❌ 智能分析失败，使用编程规则作为后备: {str(e)}")
+                
+                # 使用编程规则作为可靠的后备方案
                 try:
-                    # 延迟初始化OllamaCharacterDetector
-                    if self.ollama_detector is None:
-                        logger.info("📦 初始化OllamaCharacterDetector...")
-                        try:
-                            from ..detectors.ollama_character_detector import OllamaCharacterDetector
-                            self.ollama_detector = OllamaCharacterDetector()
-                            logger.info("✅ OllamaCharacterDetector初始化成功")
-                        except ImportError as e:
-                            logger.error(f"❌ 无法导入OllamaCharacterDetector: {str(e)}")
-                            raise e
+                    from ..detectors.character_detectors import ProgrammaticCharacterDetector
+                    fallback_detector = ProgrammaticCharacterDetector()
+                    analysis_result = fallback_detector.analyze_text_segments(cleaned_text)
                     
-                    # 执行AI分析
-                    logger.info(f"🔄 开始Ollama分析，模式: {processing_mode}")
-                    if processing_mode == "single":
-                        analysis_result = await self.ollama_detector.analyze_text(cleaned_text, chapter_info)
-                        logger.info("✅ Ollama单块分析完成")
-                    else:
-                        analysis_result = await self._analyze_chapter_distributed(cleaned_text, chapter_info)
-                        logger.info("✅ Ollama分布式分析完成")
-                        
-                except Exception as e:
-                    logger.error(f"❌ Ollama AI分析失败: {str(e)}")
-                    logger.error(f"错误类型: {type(e).__name__}")
+                    # 转换为标准格式
+                    analysis_result = {
+                        'segments': analysis_result.get('segments', []),
+                        'detected_characters': analysis_result.get('detected_characters', []),
+                        'analysis_metadata': {
+                            'total_segments': len(analysis_result.get('segments', [])),
+                            'total_characters': len(analysis_result.get('detected_characters', [])),
+                            'processing_mode': 'programming_rules_fallback',
+                            'method': 'programming_rules'
+                        }
+                    }
+                    logger.info("✅ 编程规则后备分析完成")
                     
-                    # 只有在明确不可恢复的错误时才降级
-                    if "attempted relative import" in str(e) or "No module named" in str(e):
-                        logger.warning("🔧 检测到导入错误，尝试修复后重试")
-                        # 这里可以添加导入修复逻辑
-                    
-                    logger.warning("⬇️  降级到本地规则分析")
-                    analysis_result = await self._simple_local_analysis(cleaned_text, chapter_info)
+                except Exception as fallback_error:
+                    logger.error(f"❌ 编程规则后备也失败: {str(fallback_error)}")
+                    raise ServiceException(f"所有分析方法都失败: 主要错误={str(e)}, 后备错误={str(fallback_error)}")
             
             # 6. 确保有旁白角色
             detected_characters = analysis_result.get('detected_characters', [])
@@ -120,6 +129,28 @@ class ContentPreparationService:
             
             # 7. 智能语音映射
             voice_mapping = await self.voice_mapper.intelligent_voice_mapping(detected_characters, user_preferences)
+            
+            # 🔍 调试：检查voice mapping结果
+            logger.info(f"🔊 Voice mapping结果: {voice_mapping}")
+            logger.info(f"🎭 所有角色: {[char.get('name') for char in detected_characters]}")
+            for char_name, voice_id in voice_mapping.items():
+                logger.info(f"🎵 {char_name} -> voice_id: {voice_id}")
+            
+            # 🔧 特别检查旁白角色的voice mapping
+            if '旁白' in voice_mapping:
+                logger.info(f"✅ 旁白角色已分配voice_id: {voice_mapping['旁白']}")
+            else:
+                logger.warning("❌ 旁白角色未分配voice_id，尝试手动分配")
+                # 手动为旁白分配默认voice_id
+                if voice_mapping:
+                    # 使用第一个可用的voice_id
+                    default_voice_id = list(voice_mapping.values())[0] if voice_mapping.values() else 11
+                    voice_mapping['旁白'] = default_voice_id
+                    logger.info(f"🔧 手动为旁白分配voice_id: {default_voice_id}")
+                else:
+                    # 如果没有任何voice mapping，使用默认值
+                    voice_mapping['旁白'] = 11
+                    logger.info("🔧 使用默认voice_id 11 为旁白角色")
             
             # 8. 转换为合成格式（应用TTS优化配置）
             synthesis_json = self._adapt_to_synthesis_format(
@@ -139,7 +170,7 @@ class ContentPreparationService:
                     "total_segments": len(analysis_result.get('segments', [])),
                     "characters_found": len(detected_characters),
                     "estimated_tokens": estimated_tokens,
-                    "use_simple_mode": use_simple_mode
+                    "analysis_method": analysis_result.get('analysis_metadata', {}).get('method', 'ai_enhanced')
                 }
             )
             
@@ -351,79 +382,7 @@ class ContentPreparationService:
                 "error": str(e)
             }
     
-    async def _simple_local_analysis(self, content: str, chapter_info: Dict) -> Dict:
-        """简化的本地分析，不依赖外部AI服务"""
-        import re
-        
-        # 基本的对话检测
-        dialogue_patterns = [
-            r'"([^"]*)"',  # 双引号对话
-            r'"([^"]*)"',  # 中文双引号
-            r'「([^」]*)」',  # 日式引号
-            r'『([^』]*)』',  # 日式书名号
-        ]
-        
-        segments = []
-        detected_characters = set()
-        
-        # 按段落分割
-        paragraphs = content.split('\n')
-        segment_id = 1
-        
-        for paragraph in paragraphs:
-            paragraph = paragraph.strip()
-            if not paragraph:
-                continue
-            
-            # 检测是否包含对话
-            has_dialogue = False
-            for pattern in dialogue_patterns:
-                if re.search(pattern, paragraph):
-                    has_dialogue = True
-                    # 提取对话内容
-                    matches = re.findall(pattern, paragraph)
-                    for match in matches:
-                        if len(match.strip()) > 2:  # 过滤太短的对话
-                            detected_characters.add(f"角色{len(detected_characters) + 1}")
-                    break
-            
-            # 创建段落
-            segments.append({
-                'text': paragraph,
-                'speaker': f"角色{segment_id % 3 + 1}" if has_dialogue else '旁白',
-                'text_type': 'dialogue' if has_dialogue else 'narration',
-                'confidence': 0.8 if has_dialogue else 0.9,
-                'detection_method': 'simple_local'
-            })
-            segment_id += 1
-        
-        # 确保至少有旁白角色
-        if '旁白' not in detected_characters:
-            detected_characters.add('旁白')
-        
-        # 构建角色列表
-        character_list = []
-        for i, char_name in enumerate(detected_characters):
-            character_list.append({
-                'name': char_name,
-                'confidence': 0.8,
-                'source': 'simple_local',
-                'recommended_config': {
-                    'gender': 'female' if i % 2 == 0 else 'male',
-                    'personality': 'gentle' if char_name == '旁白' else 'normal'
-                }
-            })
-        
-        return {
-            'segments': segments,
-            'detected_characters': character_list,
-            'analysis_metadata': {
-                'total_segments': len(segments),
-                'total_characters': len(character_list),
-                'processing_mode': 'simple_local',
-                'method': 'rule_based'
-            }
-        }
+
     
     async def _analyze_chapter_distributed(self, chapter_content: str, chapter_info: Dict) -> Dict:
         """分布式分析章节"""
@@ -585,27 +544,42 @@ class ContentPreparationService:
         if available_voices:
             voice_id_to_name = {v['id']: v['name'] for v in available_voices}
         
-        # 格式化角色信息
+        # 格式化角色信息  
         characters = []
         for character in analysis_result['detected_characters']:
             char_name = character['name']
             voice_id = voice_mapping.get(char_name)
+            
+            # 🔧 修复：确保所有角色都有voice_id，包括旁白
+            if not voice_id:
+                if char_name == '旁白':
+                    voice_id = 11  # 旁白默认使用voice_id 11
+                    logger.info(f"🎭 为角色列表中的旁白分配默认voice_id: {voice_id}")
+                elif voice_mapping:
+                    voice_id = list(voice_mapping.values())[0]  # 使用第一个可用的voice_id
+                    logger.info(f"🔄 为角色列表中的{char_name}分配备用voice_id: {voice_id}")
+            
             if voice_id:
-                characters.append({
-                    "name": char_name,
-                    "voice_id": voice_id,
-                    "voice_name": voice_id_to_name.get(voice_id, f"Voice_{voice_id}")
-                })
+                voice_name = voice_id_to_name.get(voice_id, f"Voice_{voice_id}")
+            else:
+                voice_name = "未分配"
+            
+            # 计算角色在合成计划中的出现次数
+            char_count = len([s for s in analysis_result['segments'] if s.get('speaker') == char_name])
+            
+            characters.append({
+                "name": char_name,
+                "voice_id": voice_id if voice_id else "",
+                "voice_name": voice_name,
+                "voice_type": character.get('recommended_config', {}).get('voice_type', 'neutral'),
+                "count": char_count
+            })
         
         # 格式化合成计划
         synthesis_plan = []
         segment_id = 1
         
         for segment in analysis_result['segments']:
-            # 获取语音信息
-            voice_id = voice_mapping.get(segment['speaker'])
-            voice_name = voice_id_to_name.get(voice_id, f"Voice_{voice_id}") if voice_id else "未分配"
-            
             # 🎯 智能TTS参数配置 - 基于角色和文本内容
             if not self.tts_optimizer:
                 self.tts_optimizer = AITTSOptimizer(self.ollama_detector)
@@ -622,10 +596,69 @@ class ContentPreparationService:
             
             tts_params = self.tts_optimizer.get_smart_tts_params(segment, analysis_result.get('detected_characters', []))
             
+            # 🔧 修复：智能处理speaker分配
+            speaker = segment.get('speaker', '').strip()
+            if not speaker or speaker == '':
+                # 如果speaker为空，判断是否为旁白
+                if segment.get('text_type') == 'narration':
+                    speaker = '旁白'
+                else:
+                    speaker = '未知角色'
+            
+            # 🎯 进一步修复：检查是否为无效的角色识别
+            if speaker == '未知角色' or speaker not in voice_mapping:
+                # 检查文本内容，判断是否应该是旁白
+                text_content = segment.get('text', '').strip()
+                
+                # 判断是否为旁白的特征
+                is_narration = (
+                    # 没有对话引号
+                    not any(quote in text_content for quote in ['"', '"', '"', '「', '」', '『', '』']) or
+                    # 或者是叙述性文本的特征
+                    any(pattern in text_content for pattern in [
+                        '他', '她', '林渊', '导师', '心里', '想到', '看到', '听到', 
+                        '感受', '发现', '注意', '观察', '回忆', '思考'
+                    ]) or
+                    # 或者text_type明确标记为narration
+                    segment.get('text_type') == 'narration'
+                )
+                
+                if is_narration:
+                    speaker = '旁白'
+                    logger.info(f"🔧 将'未知角色'修正为'旁白': {text_content[:30]}...")
+                else:
+                    # 如果确实不是旁白，但没有voice_id，使用默认分配
+                    speaker = '未知角色'
+                    logger.warning(f"⚠️ 保留'未知角色'但将分配默认voice: {text_content[:30]}...")
+            
+            # 🎵 确保所有speaker都有voice_id
+            voice_id = voice_mapping.get(speaker)
+            if not voice_id:
+                # 如果当前speaker没有voice_id，根据角色类型分配
+                if speaker == '旁白':
+                    # 旁白使用专门的voice_id
+                    voice_id = voice_mapping.get('旁白') or 11  # 默认使用11
+                    logger.info(f"🎭 为旁白分配默认voice_id: {voice_id}")
+                elif speaker == '未知角色':
+                    # 未知角色使用旁白的voice_id
+                    voice_id = voice_mapping.get('旁白') or 11
+                    logger.info(f"🔧 为未知角色分配旁白voice_id: {voice_id}")
+                else:
+                    # 其他已知角色使用第一个可用的voice_id
+                    if voice_mapping:
+                        voice_id = list(voice_mapping.values())[0]
+                        logger.info(f"🔄 为{speaker}分配备用voice_id: {voice_id}")
+                    else:
+                        voice_id = 11  # 最后的后备方案
+                        logger.warning(f"⚠️ 为{speaker}使用最后备用voice_id: {voice_id}")
+            
+            # 更新voice_name
+            voice_name = voice_id_to_name.get(voice_id, f"Voice_{voice_id}") if voice_id else "未分配"
+            
             synthesis_plan.append({
                 "segment_id": segment_id,
                 "text": segment['text'],  # 🔒 原文不变
-                "speaker": segment['speaker'],
+                "speaker": speaker,
                 "voice_id": voice_id,
                 "voice_name": voice_name,
                 "parameters": tts_params
