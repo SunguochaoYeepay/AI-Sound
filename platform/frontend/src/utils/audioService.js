@@ -216,7 +216,7 @@ export class AudioService {
       const audioInfo = {
         id: `env_mixing_${result.id}`,
         title: result.name || `环境混音 ${result.id}`,
-        url: `/api/v1/environment-mixing/results/${result.id}/download`,
+        url: `/api/v1/environment/mixing/${result.id}/audio`,
         type: 'environment_mixing',
         metadata: {
           resultId: result.id,

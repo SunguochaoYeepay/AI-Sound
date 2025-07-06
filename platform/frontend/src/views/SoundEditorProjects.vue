@@ -31,14 +31,7 @@
           从书籍导入
         </a-button>
         
-        <a-button size="large" @click="importProject">
-          <template #icon>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z"/>
-            </svg>
-          </template>
-          导入项目
-        </a-button>
+
       </div>
     </div>
 
@@ -472,10 +465,7 @@ const openProject = (project) => {
   router.push(`/sound-editor/edit/${project.id}`)
 }
 
-// 导入项目
-const importProject = () => {
-  message.info('导入功能开发中')
-}
+
 
 // 从书籍导入资源
 const importFromBook = () => {

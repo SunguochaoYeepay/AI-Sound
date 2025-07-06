@@ -299,6 +299,34 @@ class SoundMatchingEngine:
         
         return filtered_matches
     
+    async def search_environment_sounds(self, 
+                                      query: str, 
+                                      db: Session, 
+                                      limit: int = 10) -> List[MatchResult]:
+        """
+        搜索环境音的公共接口
+        
+        Args:
+            query: 搜索查询
+            db: 数据库会话
+            limit: 最大返回结果数
+            
+        Returns:
+            匹配结果列表
+        """
+        logger.info(f"[SOUND_MATCHING] 搜索查询: '{query}'")
+        
+        # 将查询分割为关键词
+        keywords = [query.strip()]
+        if ' ' in query:
+            keywords.extend(query.split())
+        
+        # 使用现有的匹配方法
+        matches = await self.find_matching_sounds(keywords, db, limit)
+        
+        logger.info(f"[SOUND_MATCHING] 搜索完成，找到{len(matches)}个结果")
+        return matches
+
     async def batch_match_analysis_result(self, 
                                         analysis_result: Dict[str, Any], 
                                         db: Session) -> Dict[str, Any]:

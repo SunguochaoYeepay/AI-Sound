@@ -8,9 +8,10 @@
     <!-- 步骤导航 -->
     <a-steps :current="currentStep" size="small" class="selector-steps">
       <a-step title="选择书籍" />
+      <a-step title="选择朗读项目" />
       <a-step title="选择章节" />
       <a-step title="选择资源" />
-      <a-step title="创建项目" />
+      <a-step title="创建编辑器项目" />
     </a-steps>
 
     <!-- 步骤1: 选择书籍 -->
@@ -56,8 +57,55 @@
       </a-spin>
     </div>
 
-    <!-- 步骤2: 选择章节 -->
+    <!-- 步骤2: 选择朗读项目 -->
     <div v-if="currentStep === 1" class="step-content">
+      <div class="step-header">
+        <h3>选择朗读项目</h3>
+        <p>选择该书籍下的朗读项目，获取章节音频资源</p>
+      </div>
+
+      <a-spin :spinning="loadingProjects">
+        <div v-if="projects.length === 0" class="empty-state">
+          <a-alert
+            message="该书籍暂无朗读项目"
+            description="请先在语音合成中心为该书籍创建朗读项目，完成语音合成后才能导入到音频编辑器。"
+            type="warning"
+            show-icon
+          />
+        </div>
+        <div v-else class="projects-list">
+          <div
+            v-for="project in projects"
+            :key="project.id"
+            class="project-card"
+            :class="{ 'selected': selectedProject?.id === project.id }"
+            @click="selectProject(project)"
+          >
+            <div class="project-info">
+              <h4 class="project-name">{{ project.name }}</h4>
+              <p class="project-description">{{ project.description }}</p>
+              <div class="project-stats">
+                <span class="stat-item">{{ project.total_segments }}个片段</span>
+                <span class="stat-item">{{ project.processed_segments }}/{{ project.total_segments }} 已完成</span>
+                <a-tag :color="getProjectStatusColor(project.status)">{{ getProjectStatusText(project.status) }}</a-tag>
+              </div>
+            </div>
+            <div class="project-status">
+              <div class="progress-bar">
+                <a-progress 
+                  :percent="getProjectProgress(project)" 
+                  size="small" 
+                  :stroke-color="getProjectStatusColor(project.status)"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </a-spin>
+    </div>
+
+    <!-- 步骤3: 选择章节 -->
+    <div v-if="currentStep === 2" class="step-content">
       <div class="step-header">
         <h3>选择章节</h3>
         <div class="header-actions">
@@ -93,8 +141,8 @@
       </a-spin>
     </div>
 
-    <!-- 步骤3: 选择资源 -->
-    <div v-if="currentStep === 2" class="step-content">
+    <!-- 步骤4: 选择资源 -->
+    <div v-if="currentStep === 3" class="step-content">
       <div class="step-header">
         <h3>选择资源</h3>
       </div>
@@ -168,8 +216,8 @@
       </a-spin>
     </div>
 
-    <!-- 步骤4: 创建项目 -->
-    <div v-if="currentStep === 3" class="step-content">
+    <!-- 步骤5: 创建编辑器项目 -->
+    <div v-if="currentStep === 4" class="step-content">
       <div class="step-header">
         <h3>创建项目</h3>
       </div>
@@ -209,7 +257,7 @@
     <div class="step-actions">
       <a-button v-if="currentStep > 0" @click="prevStep">上一步</a-button>
       <a-button
-        v-if="currentStep < 3"
+        v-if="currentStep < 4"
         type="primary"
         @click="nextStep"
         :disabled="!canProceed"
@@ -247,10 +295,11 @@ const currentStep = ref(0)
 const canProceed = computed(() => {
   switch (currentStep.value) {
     case 0: return !!selectedBook.value
-    case 1: return selectedChapterIds.value.length > 0
-    case 2: return selectedResources.value.dialogue_audio.length > 0 || 
+    case 1: return !!selectedProject.value
+    case 2: return selectedChapterIds.value.length > 0
+    case 3: return selectedResources.value.dialogue_audio.length > 0 || 
                    selectedResources.value.environment_configs.length > 0
-    case 3: return !!projectForm.value.name
+    case 4: return !!projectForm.value.name
     default: return false
   }
 })
@@ -260,6 +309,11 @@ const books = ref([])
 const selectedBook = ref(null)
 const bookSearchTerm = ref('')
 const loadingBooks = ref(false)
+
+// 朗读项目选择状态
+const projects = ref([])
+const selectedProject = ref(null)
+const loadingProjects = ref(false)
 
 // 章节选择状态
 const chapters = ref([])
@@ -316,15 +370,81 @@ const searchBooks = () => {
 // 选择书籍
 const selectBook = async (book) => {
   selectedBook.value = book
+  selectedProject.value = null
+  selectedChapterIds.value = []
+  chapterResources.value = null
+  
+  // 自动加载朗读项目
+  await loadProjects(book.id)
+}
+
+// 加载朗读项目
+const loadProjects = async (bookId) => {
+  loadingProjects.value = true
+  try {
+    // 使用axios或者API客户端
+    const response = await import('@/api').then(api => api.default.get(`/api/v1/projects?book_id=${bookId}`))
+    
+    if (response && response.data && response.data.success) {
+      projects.value = response.data.data || []
+      
+      // 如果只有一个项目，自动选择
+      if (projects.value.length === 1) {
+        await selectProject(projects.value[0])
+      }
+    } else {
+      message.error('加载朗读项目列表失败')
+    }
+  } catch (error) {
+    console.error('加载朗读项目列表失败:', error)
+    message.error('加载朗读项目列表失败')
+  } finally {
+    loadingProjects.value = false
+  }
+}
+
+// 选择朗读项目
+const selectProject = async (project) => {
+  selectedProject.value = project
   selectedChapterIds.value = []
   chapterResources.value = null
   
   // 自动加载章节
-  await loadChapters(book.id)
+  await loadChapters(selectedBook.value.id, project.id)
+}
+
+// 获取项目状态颜色
+const getProjectStatusColor = (status) => {
+  const colors = {
+    'pending': 'orange',
+    'processing': 'blue',
+    'paused': 'orange',
+    'completed': 'green',
+    'failed': 'red'
+  }
+  return colors[status] || 'default'
+}
+
+// 获取项目状态文本
+const getProjectStatusText = (status) => {
+  const texts = {
+    'pending': '待处理',
+    'processing': '处理中',
+    'paused': '已暂停',
+    'completed': '已完成',
+    'failed': '失败'
+  }
+  return texts[status] || status
+}
+
+// 获取项目进度
+const getProjectProgress = (project) => {
+  if (!project.total_segments || project.total_segments === 0) return 0
+  return Math.round((project.processed_segments / project.total_segments) * 100)
 }
 
 // 加载章节
-const loadChapters = async (bookId) => {
+const loadChapters = async (bookId, projectId) => {
   loadingChapters.value = true
   try {
     const response = await getBookChapters(bookId)
@@ -413,8 +533,8 @@ const deselectAllEnvironmentConfigs = () => {
 
 // 步骤导航
 const nextStep = async () => {
-  if (currentStep.value === 1 && selectedChapterIds.value.length > 0) {
-    // 从步骤2到步骤3时，加载章节资源
+  if (currentStep.value === 3 && selectedChapterIds.value.length > 0) {
+    // 从步骤3到步骤4时，加载章节资源
     await loadChapterResources()
   }
   
@@ -582,6 +702,67 @@ initSelector()
 .stat-item {
   font-size: 12px;
   color: #666;
+}
+
+/* 项目选择样式 */
+.projects-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.project-card {
+  border: 1px solid #e8e8e8;
+  border-radius: 6px;
+  padding: 16px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.project-card:hover {
+  border-color: #1890ff;
+  box-shadow: 0 2px 8px rgba(24, 144, 255, 0.15);
+}
+
+.project-card.selected {
+  border-color: #1890ff;
+  background-color: #e6f7ff;
+}
+
+.project-info {
+  flex: 1;
+}
+
+.project-name {
+  margin: 0 0 4px 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.project-description {
+  margin: 0 0 8px 0;
+  color: #666;
+  font-size: 14px;
+}
+
+.project-stats {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.project-status {
+  flex-shrink: 0;
+  width: 120px;
+}
+
+.progress-bar {
+  margin-top: 4px;
 }
 
 .chapters-list {

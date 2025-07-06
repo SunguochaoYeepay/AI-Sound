@@ -24,6 +24,7 @@ async def get_projects(
     page_size: int = Query(20, ge=1, le=100, description="每页数量"),
     search: str = Query("", description="搜索关键词"),
     status: str = Query("", description="状态过滤"),
+    book_id: Optional[int] = Query(None, description="书籍ID过滤"),
     sort_by: str = Query("created_at", description="排序字段"),
     sort_order: str = Query("desc", description="排序方向"),
     db: Session = Depends(get_db)
@@ -46,6 +47,10 @@ async def get_projects(
         # 状态过滤
         if status and status in ['pending', 'processing', 'paused', 'completed', 'failed']:
             query = query.filter(NovelProject.status == status)
+        
+        # 书籍ID过滤
+        if book_id:
+            query = query.filter(NovelProject.book_id == book_id)
         
         # 排序
         sort_field = getattr(NovelProject, sort_by, NovelProject.created_at)
@@ -88,7 +93,8 @@ async def get_projects(
             },
             "filters": {
                 "search": search,
-                "status": status
+                "status": status,
+                "book_id": book_id
             }
         }
         

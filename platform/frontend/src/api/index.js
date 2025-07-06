@@ -201,6 +201,7 @@ export const readerAPI = {
     if (params.status) queryParams.append('status', params.status)
     if (params.sort_by) queryParams.append('sort_by', params.sort_by)
     if (params.sort_order) queryParams.append('sort_order', params.sort_order)
+    if (params.book_id) queryParams.append('book_id', params.book_id)
     
     const queryString = queryParams.toString()
     const url = queryString ? `/novel-reader/projects?${queryString}` : '/novel-reader/projects'

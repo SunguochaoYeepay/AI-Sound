@@ -252,7 +252,7 @@ class TangoFluxEnvironmentGenerator:
                 
                 # 发送生成请求
                 async with session.post(
-                    f"{self.tangoflux_url}/generate_audio",
+                    f"{self.tangoflux_url}/api/v1/audio/generate",
                     json=request_data,
                     timeout=aiohttp.ClientTimeout(total=self.tangoflux_timeout)
                 ) as response:
