@@ -1,6 +1,144 @@
 # AI-Sound 变更记录
 
-## [最新版本] - 2025-01-30
+## [最新版本] - 2025-01-05
+
+### 🔥 重大修复 - 环境混音音频生成核心问题
+
+彻底修复了环境混音功能的根本问题，从数学函数模拟改为TangoFlux AI真实音频生成，解决了用户报告的"生成音频都是雨声"的问题。
+
+#### 🎯 问题根源分析
+
+**第一层问题：字段名错误**
+- 代码访问：`mixing_job.config_data` ❌  
+- 数据库实际字段：`mixing_job.mixing_config` ✅
+- 导致配置解析失败，生成默认环境音（低频+白噪声，听起来像雨声）
+
+**第二层问题：数据类型错误** 
+- 数据库存储：Python字典对象 `<class 'dict'>`
+- 代码解析：使用 `json.loads()` 解析字典对象导致错误
+- 解析失败后进入异常处理分支，生成简单白噪音
+
+**第三层问题：音频混合逻辑错误**
+- 音频混合代码被错误地放在异常处理块内
+- 只有TangoFlux调用失败时才执行混合
+- TangoFlux成功时音效根本没有被混合到最终音频
+
+#### 🔧 修复方案
+
+##### 1. 字段名修复
+```python
+# 修正字段访问
+config_data = mixing_job.mixing_config  # 正确字段名
+```
+
+##### 2. 智能数据类型处理
+```python
+# 处理混音配置数据：可能是字典或JSON字符串
+if isinstance(mixing_job.mixing_config, dict):
+    config_data = mixing_job.mixing_config  # 直接使用
+elif isinstance(mixing_job.mixing_config, str):
+    config_data = json.loads(mixing_job.mixing_config)  # JSON解析
+else:
+    config_data = {}  # 降级处理
+```
+
+##### 3. 彻底重构音频生成逻辑
+**之前：数学函数模拟**
+```python
+# ❌ 删除的垃圾代码
+track_left = np.sin(2 * np.pi * frequency * track_time)  # 数学模拟
+```
+
+**现在：TangoFlux AI真实音频生成**
+```python
+# ✅ 真实AI音频生成
+tangoflux_client = TangoFluxClient()
+generation_result = tangoflux_client.generate_environment_sound(
+    prompt=tango_prompt,  # 智能英文提示词
+    duration=track_duration,
+    steps=50,
+    cfg_scale=3.5,
+    return_type='file'
+)
+```
+
+##### 4. 智能关键词映射系统
+```python
+keyword_mapping = {
+    '脚步': 'footsteps walking on wooden floor',
+    '翻书': 'pages turning in a book, paper rustling', 
+    '雷': 'thunder rumbling in the distance',
+    '雨': 'gentle rain falling, water droplets',
+    '娇喝': 'person shouting in distance',
+    '水': 'water flowing, stream sound'
+}
+```
+
+##### 5. 音频混合逻辑重构
+- 将音频混合代码移出异常处理块
+- 添加数组长度匹配验证
+- 确保每个轨道都能正确混合到最终音频
+
+##### 6. 音频长度精确匹配
+```python
+# 🔧 确保音频长度完全匹配
+if len(track_left) > track_samples:
+    track_left = track_left[:track_samples]  # 截取
+elif len(track_left) < track_samples:
+    padding = np.zeros(track_samples - len(track_left))
+    track_left = np.concatenate([track_left, padding])  # 填充
+```
+
+#### 📊 修复效果
+
+**修复前：**
+- 🔴 生成的音频都是"下雨的声音"（白噪音）
+- 🔴 环境分析结果与音频效果完全不匹配
+- 🔴 数学函数模拟音效质量极差
+
+**修复后：**
+- ✅ 根据关键词生成对应的真实音效
+- ✅ "脚步声" → 真实的脚步音效
+- ✅ "娇喝声" → 真实的人声音效  
+- ✅ "雷声" → 真实的雷声音效
+- ✅ "水声" → 真实的水流音效
+
+#### 🧪 测试验证
+
+从生产日志验证修复效果：
+```
+🎵 调用TangoFlux生成音效: ['脚步声', '翻书声'] (时长: 4.5s)
+✅ TangoFlux生成成功: footsteps walking on wooden floor, pages turning...
+🔧 音频填充: 199684 -> 199710 采样点
+🎧 音效处理完成: 199710 采样点 (匹配 199710)
+✅ 轨道 0 混合成功: ['脚步声', '翻书声'] (0.0s-4.5s, 音量:0.4)
+```
+
+#### 🔨 技术细节
+
+- **TangoFlux服务**: Docker部署在7930端口
+- **音频格式**: 44.1kHz 16-bit 立体声 WAV
+- **支持时长**: 1-30秒的环境音片段
+- **智能混合**: 支持多轨道音频层叠混合
+- **渐变效果**: 自动添加渐入渐出效果
+
+#### 📁 修改文件
+
+```
+platform/backend/app/api/v1/environment_mixing.py - 核心修复文件
+platform/backend/app/clients/tangoflux_client.py - 端口配置修复
+```
+
+#### 🎖️ 影响范围
+
+- **环境混音功能**: 从不可用变为完全可用
+- **用户体验**: 从失望变为惊喜
+- **音频质量**: 从垃圾音效变为专业AI音频
+- **系统稳定性**: 修复了多个数组越界和类型错误
+
+---
+
+## [Previous Version] - 2025-01-30
 
 ### 🎉 新增功能 - 音频编辑器与书籍资源库集成
 

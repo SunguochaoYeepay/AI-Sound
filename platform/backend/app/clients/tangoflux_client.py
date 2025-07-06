@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 class TangoFluxClient:
     """TangoFlux环境音合成客户端"""
     
-    def __init__(self, base_url: str = "http://127.0.0.1:7928", timeout: int = 120):
+    def __init__(self, base_url: str = "http://127.0.0.1:7930", timeout: int = 120):
         """
         初始化TangoFlux客户端
         

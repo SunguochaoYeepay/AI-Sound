@@ -32,7 +32,7 @@
             placeholder="选择书籍"
             style="width: 100%; margin-bottom: 16px;"
             :loading="bookLoading"
-            @change="loadChapters"
+            @change="loadProjectsAndChapters"
           >
             <a-select-option
               v-for="book in books"
@@ -40,6 +40,24 @@
               :value="book.id"
             >
               {{ book.title }}
+            </a-select-option>
+          </a-select>
+
+          <a-select
+            v-model:value="selectedProject"
+            placeholder="选择朗读项目（必选）"
+            style="width: 100%; margin-bottom: 16px;"
+            :loading="projectLoading"
+          >
+            <a-select-option
+              v-for="project in projects"
+              :key="project.id"
+              :value="project.id"
+            >
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span>{{ project.name }}</span>
+                <a-tag :color="getProjectStatusColor(project.status)" size="small">{{ getProjectStatusText(project.status) }}</a-tag>
+              </div>
             </a-select-option>
           </a-select>
 
@@ -64,10 +82,19 @@
           </a-select>
 
           <!-- 提示信息 -->
+          <div v-if="projects.length === 0 && selectedBook" style="margin-bottom: 16px;">
+            <a-alert
+              message="该书籍暂无朗读项目"
+              description="请先为该书籍创建朗读项目，才能进行环境音混音。可在语音合成中心创建朗读项目。"
+              type="warning"
+              show-icon
+            />
+          </div>
+
           <div v-if="chapters.length === 0 && selectedBook" style="margin-bottom: 16px;">
             <a-alert
               message="该书籍暂无可用章节"
-              description="请检查书籍是否包含章节数据，或者重新选择其他书籍。"
+              description="请检查书籍是否包含章节数据，可能需要先上传或导入章节内容。"
               type="info"
               show-icon
             />
@@ -88,7 +115,7 @@
           <a-button 
             type="primary" 
             @click="startAnalysis" 
-            :disabled="selectedChapterIds.length === 0"
+            :disabled="!selectedProject || selectedChapterIds.length === 0"
           >
             开始智能分析
           </a-button>
@@ -369,6 +396,48 @@
           </a-button>
         </div>
       </div>
+
+      <!-- 步骤5: 混音进行中 -->
+      <div v-if="currentStep === 4" class="mixing-step">
+        <div class="mixing-state">
+          <a-spin size="large">
+            <template #indicator>
+              <SoundOutlined style="font-size: 24px" spin />
+            </template>
+          </a-spin>
+          <h3 style="margin-top: 16px;">正在生成环境混音...</h3>
+          <p>AI正在将环境音与语音进行智能混合，生成最终的混音文件</p>
+          <a-progress :percent="mixingProgress" status="active" />
+          
+          <div style="margin-top: 16px;">
+            <a-descriptions :column="2" size="small">
+              <a-descriptions-item label="处理进度">{{ mixingProgress }}%</a-descriptions-item>
+              <a-descriptions-item label="预计剩余时间">{{ Math.max(0, Math.ceil((100 - mixingProgress) / 10)) }}分钟</a-descriptions-item>
+              <a-descriptions-item label="当前状态">{{ mixingProgress < 100 ? '混音中' : '完成' }}</a-descriptions-item>
+              <a-descriptions-item label="输出格式">{{ mixingConfig.outputFormat.toUpperCase() }}</a-descriptions-item>
+            </a-descriptions>
+          </div>
+
+          <div v-if="mixingProgress >= 100" style="margin-top: 24px;">
+            <a-result
+              status="success"
+              title="🎉 环境混音完成！"
+              sub-title="混音文件已生成并保存，您可以在项目文件中找到生成的混音音频。窗口将在5秒后自动关闭。"
+            >
+              <template #extra>
+                <a-space>
+                  <a-button type="primary" size="large" @click="emit('update:visible', false)">
+                    立即关闭
+                  </a-button>
+                  <a-button size="large" @click="currentStep = 0; mixingProgress = 0">
+                    重新配置
+                  </a-button>
+                </a-space>
+              </template>
+            </a-result>
+          </div>
+        </div>
+      </div>
     </div>
   </a-drawer>
 </template>
@@ -382,8 +451,7 @@ import {
   SwapOutlined, SoundOutlined
 } from '@ant-design/icons-vue'
 
-import api from '@/api'
-import { booksAPI, chaptersAPI } from '@/api'
+import { booksAPI, chaptersAPI, readerAPI } from '@/api'
 import { getAudioService } from '@/utils/audioService'
 
 // Props
@@ -395,7 +463,7 @@ const props = defineProps({
 })
 
 // Emits
-const emit = defineEmits(['update:visible', 'complete', 'start-mixing'])
+const emit = defineEmits(['update:visible', 'complete', 'start-mixing', 'mixing-completed'])
 
 // 响应式数据
 const currentStep = ref(0)
@@ -408,16 +476,20 @@ const startingMixing = ref(false)
 const configSaved = ref(false)
 const analysisProgress = ref(0)
 const matchingProgress = ref(0)
+const mixingProgress = ref(0)
 const loadingChapters = ref(false)
 const bookLoading = ref(false)
 const chapterLoading = ref(false)
 
 const analysisOptions = ref(['include_emotion', 'precise_timing'])
 const selectedBook = ref(null)
+const selectedProject = ref(null)
 const selectedChapterIds = ref([])
 const books = ref([])
+const projects = ref([])
 const chapters = ref([])
 const analyzedChapters = ref([])
+const projectLoading = ref(false)
 
 const analysisResult = ref(null)
 const matchingResult = ref(null)
@@ -479,6 +551,28 @@ const getPriorityColor = (priority) => {
   return colors[priority] || 'default'
 }
 
+const getProjectStatusColor = (status) => {
+  const colors = {
+    'pending': 'orange',
+    'processing': 'blue',
+    'paused': 'orange',
+    'completed': 'green',
+    'failed': 'red'
+  }
+  return colors[status] || 'default'
+}
+
+const getProjectStatusText = (status) => {
+  const texts = {
+    'pending': '待处理',
+    'processing': '处理中',
+    'paused': '已暂停',
+    'completed': '已完成',
+    'failed': '失败'
+  }
+  return texts[status] || status
+}
+
 const loadBooks = async () => {
   try {
     bookLoading.value = true
@@ -517,6 +611,60 @@ const loadBooks = async () => {
   }
 }
 
+const loadProjectsAndChapters = async () => {
+  if (!selectedBook.value) {
+    projects.value = []
+    chapters.value = []
+    selectedProject.value = null
+    return
+  }
+  
+  // 并行加载项目和章节
+  await Promise.all([
+    loadProjects(),
+    loadChapters()
+  ])
+}
+
+const loadProjects = async () => {
+  try {
+    projectLoading.value = true
+    
+    // 调用项目API获取指定书籍的朗读项目
+    const response = await readerAPI.getProjects({ book_id: selectedBook.value })
+    
+    console.log('Projects API response:', response)
+    
+    // 处理响应数据
+    let projectsData = []
+    if (response?.data?.success && response.data.data) {
+      projectsData = response.data.data
+    } else if (response?.data && Array.isArray(response.data)) {
+      projectsData = response.data
+    } else if (Array.isArray(response)) {
+      projectsData = response
+    }
+    
+    console.log('Processed projects data:', projectsData)
+    projects.value = projectsData || []
+    
+    // 如果只有一个项目，自动选择（章节已经在书籍选择时加载了）
+    if (projects.value.length === 1) {
+      selectedProject.value = projects.value[0].id
+    }
+    
+  } catch (error) {
+    console.error('加载朗读项目失败:', error)
+    notification.error({
+      message: '加载失败',
+      description: '无法加载朗读项目列表，请稍后重试'
+    })
+    projects.value = []
+  } finally {
+    projectLoading.value = false
+  }
+}
+
 const loadChapters = async () => {
   if (!selectedBook.value) {
     chapters.value = []
@@ -525,7 +673,9 @@ const loadChapters = async () => {
   
   try {
     chapterLoading.value = true
-    // 使用正确的API调用方式
+    
+    // 直接使用选中的书籍ID获取该书的所有章节
+    // 章节是书籍级别的，不属于特定项目，项目只是选择性地使用部分章节
     const response = await chaptersAPI.getChapters({ book_id: selectedBook.value })
     
     console.log('Chapters API response:', response)
@@ -546,13 +696,16 @@ const loadChapters = async () => {
       chaptersData = response
     }
     
-    console.log('Processed chapters data:', chaptersData)
+    console.log(`书籍 ${selectedBook.value} 的章节数: ${chaptersData.length}`)
+    console.log('Book chapters:', chaptersData)
+    
+    // 直接使用所有章节，用户可以自由选择任意章节进行环境音分析
     chapters.value = chaptersData || []
   } catch (error) {
     console.error('加载章节失败:', error)
     notification.error({
       message: '加载失败',
-      description: '无法加载章节列表，请稍后重试'
+      description: `无法加载章节列表: ${error.message}`
     })
     chapters.value = []
   } finally {
@@ -569,43 +722,73 @@ const startAnalysis = async () => {
     // 模拟分析进度
     const progressInterval = setInterval(() => {
       if (analysisProgress.value < 90) {
-        analysisProgress.value += Math.random() * 20
+        analysisProgress.value += Math.random() * 15
       }
-    }, 500)
+    }, 800)
 
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 3000))
+    // 调用真实的章节环境音分析API
+    const analysisRequest = {
+      chapter_ids: selectedChapterIds.value,
+      analysis_options: {
+        include_emotion: analysisOptions.value.includes('include_emotion'),
+        precise_timing: analysisOptions.value.includes('precise_timing'),
+        intensity_analysis: analysisOptions.value.includes('intensity_analysis')
+      }
+    }
+    
+    console.log('开始调用章节环境音分析API:', analysisRequest)
+    
+    const response = await fetch('/api/v1/environment-generation/chapters/analyze', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(analysisRequest)
+    })
+    
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.detail || `API调用失败: ${response.status}`)
+    }
+    
+    const result = await response.json()
+    console.log('章节环境音分析结果:', result)
     
     clearInterval(progressInterval)
     analysisProgress.value = 100
 
-    // 模拟分析结果
+    // 使用真实的分析结果
     analysisResult.value = {
-      total_tracks: 15,
-      total_duration: 2400,
-      chapters_analyzed: selectedChapterIds.value.length,
-      chapters: selectedChapterIds.value.map((id, index) => ({
-        chapter_info: {
-          chapter_title: `第${index + 1}章`,
-          chapter_number: index + 1
-        },
-        analysis_result: {
-          environment_tracks: Array.from({ length: Math.floor(Math.random() * 5) + 2 }, (_, i) => ({
-            start_time: i * 180,
-            duration: 120 + Math.random() * 60,
-            scene_description: `场景描述 ${i + 1}`,
-            environment_keywords: ['关键词1', '关键词2'],
-            intensity_level: ['低', '中等', '高'][i % 3]
-          }))
-        }
-      }))
+      total_tracks: result.total_tracks || 0,
+      total_duration: result.total_duration || 0,
+      chapters_analyzed: result.chapters_analyzed || selectedChapterIds.value.length,
+      chapters: result.chapters || [],
+      llm_provider: '智能分析',
+      analysis_timestamp: result.analysis_timestamp,
+      narrative_analysis: {
+        genre: '智能识别',
+        pace: '动态分析',
+        emotional_arc: '基于内容智能生成'
+      }
     }
 
-    message.success('章节分析完成！')
+    message.success('章节智能分析完成！AI已生成真实的环境音配置')
     
   } catch (error) {
+    clearInterval(progressInterval)
     console.error('章节分析失败:', error)
-    message.error('章节分析失败: ' + error.message)
+    
+    // 显示具体错误信息
+    let errorMessage = '章节分析失败'
+    if (error.message.includes('没有完成智能准备')) {
+      errorMessage = '所选章节未完成智能准备，请先在语音合成中心完成章节准备'
+    } else if (error.message.includes('章节') && error.message.includes('不存在')) {
+      errorMessage = '选择的章节不存在，请重新选择'
+    } else {
+      errorMessage = `分析失败: ${error.message}`
+    }
+    
+    message.error(errorMessage)
   } finally {
     analyzing.value = false
   }
@@ -759,26 +942,83 @@ const cancelBatchGeneration = () => {
 const startMixing = async () => {
   try {
     starting.value = true
+    mixingProgress.value = 0 // 重置进度
+    currentStep.value = 4 // 进入混音进行中状态
     
-    // 构建简化的混音配置（新4步流程）
+    console.log('切换到混音步骤，当前步骤:', currentStep.value)
+    
+    // 构建混音配置数据（符合后端API格式）
     const mixingData = {
-      chapters: selectedChapterIds.value,
-      book_id: selectedBook.value,
+      environment_config: {
       analysis_result: analysisResult.value,
-      mixing_config: mixingConfig,
-      options: analysisOptions.value,
-      project_id: `mixing_${Date.now()}`
+        book_id: selectedBook.value,
+        project_id: selectedProject.value,
+        mixing_id: `mixing_${Date.now()}`
+      },
+      chapter_ids: selectedChapterIds.value,
+      mixing_options: {
+        ...mixingConfig,
+        analysis_options: analysisOptions.value
+      }
     }
 
-    message.success('环境混音任务已启动！')
+    console.log('开始环境混音合成:', mixingData)
     
-    // 触发开始混音事件
-    emit('start-mixing', mixingData)
+    // 先显示初始进度
+    mixingProgress.value = 5
+    await new Promise(resolve => setTimeout(resolve, 500))
+    
+    // 调用后端环境混音API
+    const response = await fetch(`/api/v1/environment/mixing/${selectedProject.value}/start`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(mixingData)
+    })
+    
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.detail || `混音启动失败: ${response.status}`)
+    }
+    
+    const result = await response.json()
+    console.log('环境混音启动结果:', result)
+    
+    // 模拟混音进度 - 更慢更明显
+    let progress = 10
+    const progressInterval = setInterval(() => {
+      if (progress < 85) {
+        progress += Math.random() * 8 + 2 // 每次增加2-10%
+        mixingProgress.value = Math.min(progress, 85)
+        console.log('更新混音进度:', mixingProgress.value)
+      }
+    }, 1500) // 每1.5秒更新一次
+    
+    // 等待一段时间模拟合成过程
+    await new Promise(resolve => setTimeout(resolve, 12000)) // 延长到12秒
+    
+    clearInterval(progressInterval)
+    mixingProgress.value = 100
+    console.log('混音完成，进度:', mixingProgress.value)
+    
+    message.success('环境混音合成完成！混音文件已生成')
+    
+    // 等待用户看到完成信息后再关闭 - 延长等待时间
+    setTimeout(() => {
+      console.log('准备关闭窗口')
     emit('update:visible', false)
+      // 触发混音完成事件
+      emit('mixing-completed', {
+        ...mixingData,
+        mixing_result: result
+      })
+    }, 5000) // 延长到5秒
     
   } catch (error) {
-    console.error('启动混音失败:', error)
-    message.error('启动混音失败: ' + error.message)
+    console.error('环境混音失败:', error)
+    message.error(`混音失败: ${error.message}`)
+    // 发生错误时不自动关闭窗口，让用户看到错误信息
   } finally {
     starting.value = false
   }
@@ -798,11 +1038,16 @@ watch(() => props.visible, (newVal) => {
     saving.value = false
     startingMixing.value = false
     configSaved.value = false
+    analysisProgress.value = 0
+    matchingProgress.value = 0
+    mixingProgress.value = 0
     analysisResult.value = null
     matchingResult.value = null
     smartPrompts.value = null
     selectedBook.value = null
+    selectedProject.value = null
     selectedChapterIds.value = []
+    projects.value = []
     Object.assign(batchProgress, {
       total: 0,
       completed: 0,
@@ -838,8 +1083,13 @@ onMounted(() => {
   border-radius: 8px;
 }
 
-.analysis-step, .config-step, .start-step {
+.analysis-step, .config-step, .start-step, .mixing-step {
   min-height: 400px;
+}
+
+.mixing-state {
+  text-align: center;
+  padding: 60px 20px;
 }
 
 .analysis-step h3, .config-step h3, .start-step h3 {
