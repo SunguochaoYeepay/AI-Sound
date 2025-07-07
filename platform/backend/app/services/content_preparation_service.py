@@ -187,6 +187,26 @@ class ContentPreparationService:
                     
                     # 📊 验证更新结果
                     updated_summary = book.get_character_summary()
+                    
+                    # 🔥 关键修复：智能分析完成后自动同步已有的角色配置
+                    if updated_summary and 'voice_mappings' in updated_summary:
+                        voice_mappings = updated_summary['voice_mappings']
+                        if voice_mappings:
+                            logger.info(f"🔄 [智能分析后同步] 发现书籍已有角色配置，自动同步到新章节: {voice_mappings}")
+                            
+                            # 导入同步函数并执行
+                            try:
+                                from ..api.v1.books import _sync_character_voice_to_synthesis_plans
+                                updated_chapters = await _sync_character_voice_to_synthesis_plans(
+                                    book.id, voice_mappings, self.db
+                                )
+                                logger.info(f"✅ [智能分析后同步] 成功同步 {updated_chapters} 个章节的角色配置")
+                            except Exception as sync_error:
+                                logger.error(f"❌ [智能分析后同步] 同步失败: {sync_error}")
+                        else:
+                            logger.info(f"📋 [智能分析后同步] 书籍暂无角色配置，跳过同步")
+                    else:
+                        logger.info(f"📋 [智能分析后同步] 书籍角色汇总格式异常，跳过同步")
                     all_characters = [char['name'] for char in updated_summary.get('characters', [])]
                     logger.info(f"✅ 书籍角色汇总更新完成，当前所有角色: {all_characters}")
                     

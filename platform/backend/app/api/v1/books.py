@@ -972,17 +972,46 @@ async def _sync_character_voice_to_synthesis_plans(
                 for segment in segments:
                     speaker = segment.get('speaker', '')
                     
-                    # 检查这个角色是否在要更新的映射中
+                    # 🔥 智能角色匹配：支持精确匹配和模糊匹配
+                    matched_voice_id = None
+                    matched_character_name = None
+                    
+                    # 1. 精确匹配
                     if speaker in character_voice_mappings:
+                        matched_voice_id = character_voice_mappings[speaker]
+                        matched_character_name = speaker
+                        logger.info(f"🎯 [精确匹配] 角色 '{speaker}' 找到配置: voice_id={matched_voice_id}")
+                    
+                    # 2. 模糊匹配（如果精确匹配失败）
+                    elif speaker:
+                        for config_name, voice_id in character_voice_mappings.items():
+                            # 检查是否为相似角色名（如"太监"和"太监假"）
+                            if (speaker in config_name) or (config_name in speaker):
+                                matched_voice_id = voice_id
+                                matched_character_name = config_name
+                                logger.info(f"🔍 [模糊匹配] 角色 '{speaker}' 匹配到配置角色 '{config_name}': voice_id={voice_id}")
+                                break
+                            
+                            # 检查去除常见后缀后是否匹配（如"太监假"→"太监"）
+                            clean_speaker = speaker.rstrip('假临时备用')
+                            clean_config = config_name.rstrip('假临时备用')
+                            if clean_speaker == clean_config and len(clean_speaker) > 1:
+                                matched_voice_id = voice_id
+                                matched_character_name = config_name
+                                logger.info(f"🧹 [后缀匹配] 角色 '{speaker}' 通过去除后缀匹配到 '{config_name}': voice_id={voice_id}")
+                                break
+                    
+                    # 检查这个角色是否找到了匹配的配置
+                    if matched_voice_id:
                         old_voice_id = segment.get('voice_id')
                         old_voice_name = segment.get('voice_name', '未分配')
-                        new_voice_id = character_voice_mappings[speaker]
+                        new_voice_id = matched_voice_id
                         
                         # 🔥 关键修复：同时更新voice_name
                         new_voice_name = voice_id_to_name.get(str(new_voice_id), f"Voice_{new_voice_id}")
                         
-                        # 🔥 增强调试：记录同步过程
-                        logger.info(f"📝 [同步调试] 章节 {chapter.id} 角色 '{speaker}': old_voice_id='{old_voice_id}', new_voice_id='{new_voice_id}', old_voice_name='{old_voice_name}', new_voice_name='{new_voice_name}'")
+                        # 🔥 增强调试：记录同步过程（包含匹配信息）
+                        logger.info(f"📝 [同步调试] 章节 {chapter.id} 角色 '{speaker}' 匹配到配置角色 '{matched_character_name}': old_voice_id='{old_voice_id}', new_voice_id='{new_voice_id}', old_voice_name='{old_voice_name}', new_voice_name='{new_voice_name}'")
                         
                         # 🔥 关键修复：无论voice_id是否改变，都要确保voice_name正确
                         voice_id_changed = str(old_voice_id) != str(new_voice_id)
@@ -999,7 +1028,7 @@ async def _sync_character_voice_to_synthesis_plans(
                             segment['voice_name'] = new_voice_name
                             
                             plan_updated = True
-                            logger.info(f"✅ [同步成功] {speaker}: voice_id {old_voice_id} → {segment['voice_id']}, voice_name '{old_voice_name}' → '{new_voice_name}'")
+                            logger.info(f"✅ [同步成功] {speaker} (通过{matched_character_name}配置): voice_id {old_voice_id} → {segment['voice_id']}, voice_name '{old_voice_name}' → '{new_voice_name}'")
                         else:
                             logger.info(f"ℹ️ [跳过同步] 角色 '{speaker}' 配置已是最新: voice_id={old_voice_id}, voice_name={old_voice_name}")
                 

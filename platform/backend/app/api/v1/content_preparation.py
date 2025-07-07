@@ -250,16 +250,44 @@ async def get_preparation_result(
                             voices = db.query(VoiceProfile).filter(VoiceProfile.status == 'active').all()
                             voice_id_to_name = {str(v.id): v.name for v in voices}
                             
-                            # 更新每个segment的voice配置
+                            # 更新每个segment的voice配置（使用智能匹配）
                             segments = synthesis_plan['synthesis_plan']
                             for segment in segments:
                                 speaker = segment.get('speaker', '')
+                                
+                                # 🔥 智能角色匹配：支持精确匹配和模糊匹配
+                                matched_voice_id = None
+                                matched_character_name = None
+                                
+                                # 1. 精确匹配
                                 if speaker in voice_mappings:
-                                    new_voice_id = voice_mappings[speaker]
-                                    new_voice_name = voice_id_to_name.get(str(new_voice_id), f"Voice_{new_voice_id}")
-                                    segment['voice_id'] = new_voice_id
+                                    matched_voice_id = voice_mappings[speaker]
+                                    matched_character_name = speaker
+                                
+                                # 2. 模糊匹配（如果精确匹配失败）
+                                elif speaker:
+                                    for config_name, voice_id in voice_mappings.items():
+                                        # 检查是否为相似角色名（如"太监"和"太监假"）
+                                        if (speaker in config_name) or (config_name in speaker):
+                                            matched_voice_id = voice_id
+                                            matched_character_name = config_name
+                                            logger.info(f"🔍 [API模糊匹配] 角色 '{speaker}' 匹配到配置角色 '{config_name}': voice_id={voice_id}")
+                                            break
+                                        
+                                        # 检查去除常见后缀后是否匹配
+                                        clean_speaker = speaker.rstrip('假临时备用')
+                                        clean_config = config_name.rstrip('假临时备用')
+                                        if clean_speaker == clean_config and len(clean_speaker) > 1:
+                                            matched_voice_id = voice_id
+                                            matched_character_name = config_name
+                                            logger.info(f"🧹 [API后缀匹配] 角色 '{speaker}' 通过去除后缀匹配到 '{config_name}': voice_id={voice_id}")
+                                            break
+                                
+                                if matched_voice_id:
+                                    new_voice_name = voice_id_to_name.get(str(matched_voice_id), f"Voice_{matched_voice_id}")
+                                    segment['voice_id'] = matched_voice_id
                                     segment['voice_name'] = new_voice_name
-                                    logger.info(f"✅ [缓存同步] {speaker}: voice_id={new_voice_id}, voice_name={new_voice_name}")
+                                    logger.info(f"✅ [缓存同步] {speaker} (通过{matched_character_name}配置): voice_id={matched_voice_id}, voice_name={new_voice_name}")
                         
                         # 更新characters配置
                         if 'characters' in synthesis_plan and voice_mappings:
