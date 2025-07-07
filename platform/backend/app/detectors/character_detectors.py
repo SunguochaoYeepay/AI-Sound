@@ -64,18 +64,55 @@ class ProgrammaticCharacterDetector:
         # 按句号分割文本
         sentences = [s.strip() for s in text.split('。') if s.strip()]
         
-        for i, sentence in enumerate(sentences):
+        # 🔧 修复：过滤无效的标点符号片段
+        valid_sentences = []
+        for sentence in sentences:
+            # 过滤只包含标点符号或过短的片段
+            if self._is_valid_text_segment(sentence):
+                valid_sentences.append(sentence)
+            else:
+                logger.debug(f"过滤无效文本片段: '{sentence}'")
+        
+        for i, sentence in enumerate(valid_sentences):
             segment_info = self.identify_speaker(sentence)
-            segments.append({
-                'order': i + 1,
-                'text': sentence + '。',
-                'speaker': segment_info['speaker'],
-                'confidence': segment_info['confidence'],
-                'detection_rule': segment_info['rule'],
-                'text_type': segment_info['text_type']
-            })
+            
+            # 🔧 修复：过滤掉置信度极低的段落（通常是无效标点符号）
+            if segment_info['confidence'] >= 0.5:  # 只保留置信度>=0.5的段落
+                segments.append({
+                    'order': len(segments) + 1,  # 重新编号，确保连续性
+                    'text': sentence + '。',
+                    'speaker': segment_info['speaker'],
+                    'confidence': segment_info['confidence'],
+                    'detection_rule': segment_info['rule'],
+                    'text_type': segment_info['text_type']
+                })
+            else:
+                logger.debug(f"过滤低置信度段落 (confidence={segment_info['confidence']}): '{sentence}'")
         
         return segments
+
+    def _is_valid_text_segment(self, text: str) -> bool:
+        """检查文本片段是否有效，过滤纯标点符号"""
+        if not text or len(text.strip()) == 0:
+            return False
+        
+        # 过滤只包含标点符号的片段
+        punct_only_patterns = [
+            r'^[：:，,。.！!？?；;""''「」『』\s]*$',  # 只有标点符号和空格
+            r'^[：:]+$',  # 只有冒号
+            r'^[，,]+$',  # 只有逗号
+            r'^[""''「」『』\s]*$',  # 只有引号和空格
+        ]
+        
+        for pattern in punct_only_patterns:
+            if re.match(pattern, text.strip()):
+                return False
+        
+        # 过滤过短的非中文片段
+        if len(text.strip()) < 2:
+            return False
+            
+        return True
     
     def identify_speaker(self, text: str) -> Dict:
         """识别单个句子的说话者"""
@@ -197,6 +234,16 @@ class ProgrammaticCharacterDetector:
     
     def detect_narration(self, text: str) -> Dict:
         """检测旁白/叙述文本"""
+        # 🔧 修复：检查是否为有效的文本片段
+        if not self._is_valid_text_segment(text):
+            # 对于无效片段，返回极低置信度，避免被处理
+            return {
+                'speaker': '旁白',
+                'confidence': 0.1,
+                'rule': 'invalid_segment',
+                'text_type': 'narration'
+            }
+        
         # 1. 不包含任何对话标记的文本
         has_dialogue_markers = bool(re.search(r'[""''「」『』：:][说道讲叫喊问答回复表示]', text))
         
@@ -206,7 +253,10 @@ class ProgrammaticCharacterDetector:
         # 3. 包含描述性词汇的文本
         has_narrative_words = any(word in text for word in self.narrative_words)
         
-        if not has_dialogue_markers and not starts_with_character and (has_narrative_words or len(text) > 50):
+        # 4. 检查是否包含实际内容（不只是标点符号）
+        has_meaningful_content = bool(re.search(r'[一-龯a-zA-Z0-9]', text))
+        
+        if not has_dialogue_markers and not starts_with_character and has_meaningful_content and (has_narrative_words or len(text) > 50):
             return {
                 'speaker': '旁白',
                 'confidence': 0.9,
@@ -214,11 +264,20 @@ class ProgrammaticCharacterDetector:
                 'text_type': 'narration'
             }
         
-        # 默认归类为旁白
+        # 对于较短但有内容的文本，低置信度归类为旁白
+        if has_meaningful_content and len(text.strip()) >= 5:
+            return {
+                'speaker': '旁白',
+                'confidence': 0.7,
+                'rule': 'default_narration',
+                'text_type': 'narration'
+            }
+        
+        # 对于明显无效的文本，返回极低置信度
         return {
             'speaker': '旁白',
-            'confidence': 0.7,
-            'rule': 'default_narration',
+            'confidence': 0.1,
+            'rule': 'low_confidence_fallback',
             'text_type': 'narration'
         }
     

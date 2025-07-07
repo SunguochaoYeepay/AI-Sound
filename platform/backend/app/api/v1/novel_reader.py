@@ -557,27 +557,43 @@ async def start_project_generation(
         # 🚀 用户点击重新合成 = 强制重新合成！不要过度智能判断！
         logger.info(f"[FORCE_RESYNTH] 用户要求重新合成，清理现有数据并重新开始")
         
-        # 清理该项目的现有AudioFile（用户要求重新合成就是要从头开始）
-        existing_audio_files = db.query(AudioFile).filter(
+        # 🔧 修复音频播放问题：改为增量合成，只删除即将重新合成的段落
+        # 提取要合成的段落ID列表
+        synthesis_segment_ids = [seg.get('segment_id') for seg in synthesis_data if seg.get('segment_id')]
+        synthesis_paragraph_indexes = [seg.get('paragraph_index') for seg in synthesis_data if seg.get('paragraph_index')]
+        
+        # 查找与即将合成的段落冲突的现有音频文件
+        conflicting_audio_files = db.query(AudioFile).filter(
             AudioFile.project_id == project_id,
-            AudioFile.audio_type == 'segment'
+            AudioFile.audio_type == 'segment',
+            or_(
+                AudioFile.paragraph_index.in_(synthesis_segment_ids + synthesis_paragraph_indexes),
+                AudioFile.segment_id.in_(synthesis_segment_ids)
+            )
         ).all()
         
-        logger.info(f"[FORCE_RESYNTH] 删除 {len(existing_audio_files)} 个现有音频文件")
-        for audio_file in existing_audio_files:
+        logger.info(f"[INCREMENTAL_SYNTH] 检测到 {len(conflicting_audio_files)} 个冲突音频文件需要清理")
+        for audio_file in conflicting_audio_files:
             # 删除物理文件
             if audio_file.file_path and os.path.exists(audio_file.file_path):
                 try:
                     os.remove(audio_file.file_path)
-                    logger.debug(f"[FORCE_RESYNTH] 删除音频文件: {audio_file.file_path}")
+                    logger.debug(f"[INCREMENTAL_SYNTH] 删除冲突音频文件: {audio_file.file_path}")
                 except Exception as e:
-                    logger.warning(f"[FORCE_RESYNTH] 删除音频文件失败: {e}")
+                    logger.warning(f"[INCREMENTAL_SYNTH] 删除音频文件失败: {e}")
             
             # 删除数据库记录
             db.delete(audio_file)
         
         db.commit()
-        logger.info(f"[FORCE_RESYNTH] 清理完成，准备重新合成")
+        
+        # 统计现有音频文件数量
+        remaining_audio_count = db.query(AudioFile).filter(
+            AudioFile.project_id == project_id,
+            AudioFile.audio_type == 'segment'
+        ).count()
+        
+        logger.info(f"[INCREMENTAL_SYNTH] 清理完成，项目现有 {remaining_audio_count} 个音频文件，即将新增 {len(synthesis_data)} 个段落")
         
         # 重置项目状态
         project.status = 'processing'
