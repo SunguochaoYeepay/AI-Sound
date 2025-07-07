@@ -395,147 +395,42 @@ class ChapterAnalysisService:
                 raise ServiceException(f"章节结果聚合失败: {str(e)}")
     
     def assign_voices_to_characters(self, characters: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """智能声音分配"""
+        """为角色分配语音 - 已禁用自动分配，保持voice_id为None"""
         try:
-            # 获取可用的声音档案
-            available_voices = self.db.query(VoiceProfile).filter(
-                VoiceProfile.status == 'active'
-            ).all()
+            logger.info(f"🎭 检测到 {len(characters)} 个角色，但不自动分配voice_id")
             
-            if len(available_voices) < 2:
-                logger.warning("可用声音档案不足，使用默认分配")
-                # 如果声音不足，至少保证有基本的声音分配
-                for i, char in enumerate(characters):
-                    if available_voices:
-                        char['voice_id'] = available_voices[i % len(available_voices)].id
-                        char['voice_name'] = available_voices[i % len(available_voices)].name
-                    else:
-                        char['voice_id'] = None
-                        char['voice_name'] = '未分配'
-                return characters
-            
-            # 按性别和类型分类声音
-            male_voices = [v for v in available_voices if v.type == 'male']
-            female_voices = [v for v in available_voices if v.type == 'female']
-            neutral_voices = [v for v in available_voices if v.type in ['neutral', 'narrator']]
-            child_voices = [v for v in available_voices if v.type == 'child']
-            
-            # 为每个角色智能分配声音
+            # 🔧 不再自动分配任何voice_id，让用户手动分配
             assigned_characters = []
-            voice_assignment_counter = {'male': 0, 'female': 0, 'neutral': 0, 'child': 0}
             
             for char in characters:
                 char_name = char.get('name', '')
-                char_gender = char.get('gender', 'unknown')
-                char_personality = char.get('personality', 'calm')
                 
-                assigned_voice = None
-                
-                # 特殊角色处理
-                if char_name in ['旁白', '叙述者', 'narrator']:
-                    # 旁白优先使用旁白专用声音
-                    narrator_voices = [v for v in neutral_voices if 'narrator' in v.type.lower() or 'narrator' in v.name.lower()]
-                    if narrator_voices:
-                        assigned_voice = narrator_voices[0]
-                    elif neutral_voices:
-                        assigned_voice = neutral_voices[voice_assignment_counter['neutral'] % len(neutral_voices)]
-                        voice_assignment_counter['neutral'] += 1
-                
-                # 根据性别分配声音
-                elif char_gender == 'male' and male_voices:
-                    assigned_voice = male_voices[voice_assignment_counter['male'] % len(male_voices)]
-                    voice_assignment_counter['male'] += 1
-                
-                elif char_gender == 'female' and female_voices:
-                    assigned_voice = female_voices[voice_assignment_counter['female'] % len(female_voices)]
-                    voice_assignment_counter['female'] += 1
-                
-                # 智能性别推断
-                elif char_gender == 'unknown':
-                    # 基于角色名称推断性别
-                    inferred_gender = self._infer_gender_from_name(char_name)
-                    
-                    if inferred_gender == 'male' and male_voices:
-                        assigned_voice = male_voices[voice_assignment_counter['male'] % len(male_voices)]
-                        voice_assignment_counter['male'] += 1
-                    elif inferred_gender == 'female' and female_voices:
-                        assigned_voice = female_voices[voice_assignment_counter['female'] % len(female_voices)]
-                        voice_assignment_counter['female'] += 1
-                    else:
-                        # 默认使用中性声音
-                        if neutral_voices:
-                            assigned_voice = neutral_voices[voice_assignment_counter['neutral'] % len(neutral_voices)]
-                            voice_assignment_counter['neutral'] += 1
-                
-                # 回退方案：使用任意可用声音
-                if not assigned_voice and available_voices:
-                    assigned_voice = available_voices[len(assigned_characters) % len(available_voices)]
-                
-                # 更新角色信息
+                # 更新角色信息，但不分配voice_id
                 char_with_voice = char.copy()
-                if assigned_voice:
-                    char_with_voice['voice_id'] = assigned_voice.id
-                    char_with_voice['voice_name'] = assigned_voice.name
-                    char_with_voice['voice_type'] = assigned_voice.type
-                    char_with_voice['voice_description'] = assigned_voice.description
-                else:
-                    # 🔧 关键修复：即使没有分配声音，也必须保留角色！
-                    char_with_voice['voice_id'] = None
-                    char_with_voice['voice_name'] = '未分配'
-                    char_with_voice['voice_type'] = 'unknown'
-                    char_with_voice['voice_description'] = ''
-                    logger.warning(f"角色 '{char_name}' 未能分配声音，但保留在characters列表中")
+                char_with_voice['voice_id'] = None
+                char_with_voice['voice_name'] = '未分配'
+                char_with_voice['voice_type'] = 'unknown'
+                char_with_voice['voice_description'] = ''
                 
+                logger.info(f"⚠️ 角色 '{char_name}' 未分配voice_id，需要用户手动设置")
                 assigned_characters.append(char_with_voice)
             
-            logger.info(f"完成声音分配: {len(assigned_characters)} 个角色, 使用了 {len(available_voices)} 个可用声音")
+            logger.info(f"完成角色处理: {len(assigned_characters)} 个角色，全部需要用户手动分配voice_id")
             
             return assigned_characters
             
         except Exception as e:
-            logger.error(f"声音分配失败: {str(e)}")
+            logger.error(f"角色处理失败: {str(e)}")
             # 回退：返回原始角色列表，不分配声音
             for char in characters:
                 char['voice_id'] = None
-                char['voice_name'] = '分配失败'
+                char['voice_name'] = '处理失败'
             return characters
     
     def _infer_gender_from_name(self, name: str) -> str:
-        """从角色名称推断性别"""
-        try:
-            # 常见的性别关键词
-            male_keywords = ['王', '帝', '皇', '公', '爷', '父', '兄', '弟', '师父', '先生', '大人']
-            female_keywords = ['女', '妃', '后', '姐', '妹', '母', '娘', '夫人', '小姐', '姑娘']
-            
-            name_lower = name.lower()
-            
-            # 检查名称中的性别关键词
-            for keyword in male_keywords:
-                if keyword in name:
-                    return 'male'
-            
-            for keyword in female_keywords:
-                if keyword in name:
-                    return 'female'
-            
-            # 基于常见中文姓名特征
-            if len(name) >= 2:
-                last_char = name[-1]
-                # 常见女性名字结尾字
-                female_endings = ['妹', '娘', '芳', '花', '玉', '珠', '凤', '燕', '莲', '梅', '兰', '竹', '菊']
-                if last_char in female_endings:
-                    return 'female'
-                
-                # 常见男性名字结尾字
-                male_endings = ['强', '勇', '军', '伟', '刚', '豪', '雄', '杰', '峰', '龙', '虎', '鹏']
-                if last_char in male_endings:
-                    return 'male'
-            
-            return 'unknown'
-            
-        except Exception as e:
-            logger.error(f"性别推断失败: {str(e)}")
-            return 'unknown'
+        """从角色名称推断性别 - 已禁用自动推断"""
+        logger.info(f"❌ 性别自动推断已禁用，角色 '{name}' 性别保持为 unknown")
+        return 'unknown'
     
     def convert_to_synthesis_format(self, aggregated_data: Dict[str, Any]) -> Dict[str, Any]:
         """转换为合成格式"""

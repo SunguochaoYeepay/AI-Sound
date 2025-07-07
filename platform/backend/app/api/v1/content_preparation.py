@@ -230,17 +230,68 @@ async def get_preparation_result(
             if not latest_result:
                 raise HTTPException(status_code=404, detail="该章节尚未完成智能准备")
             
+            # 🔥 关键修复：强制应用最新的角色语音配置
+            synthesis_plan = latest_result.synthesis_plan or {}
+            
+            # 获取书籍的最新角色语音配置
+            try:
+                from app.models import Book
+                book = db.query(Book).join(BookChapter).filter(BookChapter.id == chapter_id).first()
+                if book:
+                    character_summary = book.get_character_summary()
+                    if isinstance(character_summary, dict) and 'voice_mappings' in character_summary:
+                        voice_mappings = character_summary['voice_mappings']
+                        logger.info(f"📋 [缓存结果] 应用最新角色配置: {voice_mappings}")
+                        
+                        # 强制同步角色配置到synthesis_plan
+                        if 'synthesis_plan' in synthesis_plan and voice_mappings:
+                            # 获取voice_id到voice_name的映射
+                            from app.models import VoiceProfile
+                            voices = db.query(VoiceProfile).filter(VoiceProfile.status == 'active').all()
+                            voice_id_to_name = {str(v.id): v.name for v in voices}
+                            
+                            # 更新每个segment的voice配置
+                            segments = synthesis_plan['synthesis_plan']
+                            for segment in segments:
+                                speaker = segment.get('speaker', '')
+                                if speaker in voice_mappings:
+                                    new_voice_id = voice_mappings[speaker]
+                                    new_voice_name = voice_id_to_name.get(str(new_voice_id), f"Voice_{new_voice_id}")
+                                    segment['voice_id'] = new_voice_id
+                                    segment['voice_name'] = new_voice_name
+                                    logger.info(f"✅ [缓存同步] {speaker}: voice_id={new_voice_id}, voice_name={new_voice_name}")
+                        
+                        # 更新characters配置
+                        if 'characters' in synthesis_plan and voice_mappings:
+                            for character in synthesis_plan['characters']:
+                                char_name = character.get('name', '')
+                                if char_name in voice_mappings:
+                                    new_voice_id = voice_mappings[char_name]
+                                    new_voice_name = voice_id_to_name.get(str(new_voice_id), f"Voice_{new_voice_id}")
+                                    character['voice_id'] = new_voice_id
+                                    character['voice_name'] = new_voice_name
+                                    logger.info(f"✅ [角色同步] {char_name}: voice_id={new_voice_id}, voice_name={new_voice_name}")
+                        
+                        logger.info("🔄 [缓存结果] 已应用最新角色语音配置")
+                    else:
+                        logger.info("📋 [缓存结果] 书籍暂无角色配置，使用原始数据")
+                else:
+                    logger.warning("📋 [缓存结果] 无法找到对应书籍，使用原始数据")
+            except Exception as e:
+                logger.warning(f"应用最新角色配置失败: {str(e)}，使用原始数据")
+            
             # 构建返回数据
             result_data = {
-                "synthesis_json": latest_result.synthesis_plan or {},
+                "synthesis_json": synthesis_plan,
                 "processing_info": {
                     "mode": "stored",
-                    "total_segments": len(latest_result.synthesis_plan.get('synthesis_plan', [])) if latest_result.synthesis_plan else 0,
+                    "total_segments": len(synthesis_plan.get('synthesis_plan', [])) if synthesis_plan else 0,
                     "characters_found": len(latest_result.detected_characters) if latest_result.detected_characters else 0,
                     "saved_to_database": True,
                     "result_id": latest_result.id,
                     "created_at": latest_result.created_at.isoformat() if latest_result.created_at else None,
-                    "completed_at": latest_result.completed_at.isoformat() if latest_result.completed_at else None
+                    "completed_at": latest_result.completed_at.isoformat() if latest_result.completed_at else None,
+                    "voice_sync_applied": True  # 标记已应用语音同步
                 },
                 "last_updated": latest_result.updated_at.isoformat() if latest_result.updated_at else latest_result.created_at.isoformat()
             }

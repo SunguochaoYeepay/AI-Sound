@@ -557,6 +557,7 @@ const getProjectStatusColor = (status) => {
     'processing': 'blue',
     'paused': 'orange',
     'completed': 'green',
+    'partial_completed': 'gold',
     'failed': 'red'
   }
   return colors[status] || 'default'
@@ -568,6 +569,7 @@ const getProjectStatusText = (status) => {
     'processing': '处理中',
     'paused': '已暂停',
     'completed': '已完成',
+    'partial_completed': '部分完成',
     'failed': '失败'
   }
   return texts[status] || status

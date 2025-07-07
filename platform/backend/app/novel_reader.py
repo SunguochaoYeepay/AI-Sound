@@ -1330,13 +1330,45 @@ async def process_audio_generation_from_synthesis_plan(
             except Exception as e:
                 logger.error(f"[SYNTHESIS_PLAN] 音频合并失败: {str(e)}")
         
-        # 🚀 基于实际AudioFile数量更新项目状态
-        if actual_total >= expected_total:
-            project.status = 'completed'
-        elif actual_total > 0:
-            project.status = 'partial_completed'
+        # 🚀 修复：基于所有章节完成情况更新项目状态
+        # 检查项目中所有章节的状态
+        if project.book_id:
+            from app.models import Book, BookChapter
+            book = db.query(Book).filter(Book.id == project.book_id).first()
+            if book:
+                all_chapters = db.query(BookChapter).filter(BookChapter.book_id == book.id).all()
+                completed_chapters = db.query(BookChapter).filter(
+                    BookChapter.book_id == book.id,
+                    BookChapter.synthesis_status == 'completed'
+                ).count()
+                
+                total_chapters = len(all_chapters)
+                
+                if completed_chapters == total_chapters and total_chapters > 0:
+                    project.status = 'completed'
+                    logger.info(f"[SYNTHESIS_PLAN] 所有章节已完成 ({completed_chapters}/{total_chapters})，项目标记为completed")
+                elif completed_chapters > 0:
+                    project.status = 'partial_completed'
+                    logger.info(f"[SYNTHESIS_PLAN] 部分章节已完成 ({completed_chapters}/{total_chapters})，项目标记为partial_completed")
+                else:
+                    project.status = 'failed'
+                    logger.info(f"[SYNTHESIS_PLAN] 没有章节完成，项目标记为failed")
+            else:
+                # 无书籍关联的项目，使用原逻辑
+                if actual_total >= expected_total:
+                    project.status = 'completed'
+                elif actual_total > 0:
+                    project.status = 'partial_completed'
+                else:
+                    project.status = 'failed'
         else:
-            project.status = 'failed'
+            # 无书籍关联的项目，使用原逻辑
+            if actual_total >= expected_total:
+                project.status = 'completed'
+            elif actual_total > 0:
+                project.status = 'partial_completed'
+            else:
+                project.status = 'failed'
         
         # 🚀 最终数据一致性确认（使用之前计算的final_total）
         project.completed_at = datetime.utcnow()

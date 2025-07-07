@@ -67,6 +67,7 @@
         @play-audio="handlePlayAudio"
         @download-audio="handleDownloadAudio"
         @restart-synthesis="handleRestartSynthesis"
+        @resume-synthesis="handleResumeSynthesis"
         @reset-project-status="handleResetProjectStatus"
 
       />
@@ -1276,6 +1277,43 @@ const handleRestartSynthesis = async () => {
   }
 }
 
+// 继续合成处理函数（用于部分完成的项目）
+const handleResumeSynthesis = async () => {
+  try {
+    // 🔧 防重复合成检查
+    if (!canStartSynthesis.value) {
+      message.warning('当前无法继续合成，请检查项目状态')
+      return
+    }
+    
+    // 🔧 重新获取最新项目状态进行二次确认
+    await loadProject()
+    if (project.value.status === 'processing' || project.value.status === 'paused') {
+      message.warning(`项目正在${project.value.status === 'processing' ? '合成中' : '暂停状态'}，无法继续合成`)
+      return
+    }
+    
+    synthesisStarting.value = true
+    
+    // 继续合成剩余章节（不重新开始已完成的部分）
+    const response = await api.startGeneration(project.value.id, {
+      chapter_ids: selectedChapter.value ? [selectedChapter.value] : undefined,
+      restart: false  // 表示这是继续合成，不重置已完成的部分
+    })
+    
+    if (response.data.success) {
+      message.success('继续合成剩余章节')
+      synthesisRunning.value = true
+      progressDrawerVisible.value = true  // 显示进度抽屉
+    }
+  } catch (error) {
+    console.error('Failed to resume synthesis:', error)
+    message.error('继续合成失败')
+  } finally {
+    synthesisStarting.value = false
+  }
+}
+
 // 获取选中章节的状态
 const getSelectedChapterStatus = () => {
   if (!selectedChapter.value || !chapters.value.length) {
@@ -1303,18 +1341,28 @@ const getSelectedChapterStatus = () => {
     return 'processing'
   }
   
-  // 2. 如果项目已完成，需要检查该章节是否有音频文件
+  // 2. 如果项目已完成，需要检查该章节是否真的有音频文件
   if (projectStatus === 'completed') {
-    // 项目完成意味着有音频输出，章节应该显示为completed
-    console.log('✅ 项目已完成，章节显示为completed状态')
-    return 'completed'
+    // 检查该章节的实际合成状态，而不是仅看项目状态
+    if (chapterSynthesisStatus === 'completed') {
+      console.log('✅ 项目和章节都已完成，显示completed状态')
+      return 'completed'
+    } else {
+      console.log('📋 项目已完成但该章节未合成，显示pending状态')
+      return 'pending'
+    }
   }
   
   // 3. 如果项目部分完成，需要检查具体的章节状态
   if (projectStatus === 'partial_completed') {
-    // 这里需要检查该章节是否在已完成的范围内
-    // 暂时返回completed，实际应该查询该章节的音频文件
-    return 'completed'
+    // 检查该章节是否在已完成的范围内
+    if (chapterSynthesisStatus === 'completed') {
+      console.log('✅ 项目部分完成，该章节已完成，显示completed状态')
+      return 'completed'
+    } else {
+      console.log('⚡ 项目部分完成，该章节未完成，显示partial_completed状态')
+      return 'partial_completed'
+    }
   }
   
   // 4. 如果项目失败或暂停

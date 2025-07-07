@@ -90,9 +90,31 @@
                   </template>
                   
                   <!-- 完成状态：独立的功能按钮 -->
-                  <template v-if="selectedChapterStatus === 'completed' || selectedChapterStatus === 'partial_completed'">
+                  <template v-if="selectedChapterStatus === 'completed'">
                     <!-- 重新合成按钮 -->
                     <a-button size="small" @click="$emit('restart-synthesis')">
+                      🔄 重新合成
+                    </a-button>
+                  </template>
+                  
+                  <!-- 部分完成状态：根据具体章节情况显示按钮 -->
+                  <template v-if="selectedChapterStatus === 'partial_completed'">
+                    <!-- 继续合成按钮（对于未开始的章节） -->
+                    <a-button 
+                      v-if="!isSelectedChapterStarted()" 
+                      type="primary" 
+                      size="small" 
+                      @click="$emit('resume-synthesis')"
+                    >
+                      ⚡ 继续合成
+                    </a-button>
+                    <!-- 重新合成按钮（对于已开始但未完成的章节） -->
+                    <a-button 
+                      v-else
+                      type="primary" 
+                      size="small" 
+                      @click="$emit('restart-synthesis')"
+                    >
                       🔄 重新合成
                     </a-button>
                   </template>
@@ -194,6 +216,7 @@ const emit = defineEmits([
   'play-audio',
   'download-audio',
   'restart-synthesis',
+  'resume-synthesis',
   'reset-project-status',
   'open-audio-editor'
 ])
@@ -263,6 +286,32 @@ const getChapterCharacterCount = (chapterResult) => {
 const getSelectedChapterInfo = () => {
   if (!props.selectedChapter || !props.availableChapters.length) return null
   return props.availableChapters.find(chapter => chapter.id === props.selectedChapter)
+}
+
+// 🔧 新增：判断选中章节是否已经开始过合成
+const isSelectedChapterStarted = () => {
+  if (!props.selectedChapter) return false
+  
+  const chapterInfo = getSelectedChapterInfo()
+  if (!chapterInfo) return false
+  
+  // 检查synthesis_status字段
+  const synthStatus = chapterInfo.synthesis_status
+  console.log(`📝 章节${props.selectedChapter}的synthesis_status:`, synthStatus)
+  
+  // 如果章节状态为completed、failed、processing，说明已经开始过
+  if (['completed', 'failed', 'processing'].includes(synthStatus)) {
+    return true
+  }
+  
+  // 如果章节状态为ready，说明还未开始
+  if (synthStatus === 'ready') {
+    return false
+  }
+  
+  // 降级逻辑：检查是否有生成的音频文件
+  // TODO: 这里可以进一步检查具体的音频文件状态
+  return false
 }
 
 // 🔧 修复：获取段落真实状态

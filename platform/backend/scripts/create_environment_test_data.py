@@ -258,24 +258,8 @@ def create_test_project(db: Session, book: Book, voice_profiles: list):
     db.add(project)
     db.flush()
     
-    # 创建角色声音映射
-    character_mappings = [
-        {"character_name": "林雨", "voice_profile_id": voice_profiles[0].id},
-        {"character_name": "陈剑", "voice_profile_id": voice_profiles[1].id}, 
-        {"character_name": "老管家", "voice_profile_id": voice_profiles[2].id},
-        {"character_name": "小女孩", "voice_profile_id": voice_profiles[3].id},
-        {"character_name": "旁白", "voice_profile_id": voice_profiles[1].id}
-    ]
-    
-    for mapping_data in character_mappings:
-        mapping = CharacterVoiceMapping(
-            project_id=project.id,
-            **mapping_data
-        )
-        db.add(mapping)
-        print(f"✅ 创建角色映射: {mapping_data['character_name']}")
-    
-    db.commit()
+    # 🔧 不再自动创建角色声音映射，让用户手动分配
+    print("⚠️ 角色声音映射需要用户在前端手动分配，不再自动创建")
     return project
 
 def create_test_analysis_result(db: Session, project: NovelProject, book: Book, chapters: list):

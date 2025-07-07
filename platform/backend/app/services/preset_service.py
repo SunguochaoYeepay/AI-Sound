@@ -26,8 +26,7 @@ class PresetTemplates:
             "mappings": {
                 "主角": {"voice_id": None, "voice_name": "请选择声音"},
                 "旁白": {"voice_id": None, "voice_name": "请选择声音"}
-            },
-            "fallback_voice": {"voice_id": None, "voice_name": "默认声音"}
+            }
         }
     
     @staticmethod

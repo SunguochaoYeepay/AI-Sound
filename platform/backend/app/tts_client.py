@@ -53,16 +53,196 @@ class MegaTTS3Client:
         )
         
     def _sanitize_text(self, text: str) -> str:
-        """清理文本，移除可能导致Header问题的字符"""
+        """清理文本，处理特殊字符和TTS不兼容的内容"""
         if not text:
             return ""
         
-        # 简单清理，避免复杂的正则表达式
+        # 基础清理
         text = text.strip()
-        # 只移除明显的控制字符
         text = text.replace('\r', '').replace('\n', ' ')
         
+        # 🔥 统一字符替换规则表
+        text = self._apply_character_replacement_rules(text)
+        
+        # 🔥 检测并记录未知不兼容字符
+        text = self._detect_and_clean_incompatible_chars(text)
+        
+        # 🔥 新增：处理象声词和特殊效果文本
+        clean_text = text.strip()
+        
+        # 🎯 优先处理象声词 - 无论文本长度
+        sound_effects = ['叮', '咚', '嘭', '砰', '啪', '咔', '嘎', '咯', '滴答', '嗒嗒', '呼呼', '哗啦']
+        for sound in sound_effects:
+            if sound in clean_text:
+                # 为象声词添加语境
+                if '叮' in clean_text:
+                    clean_text = clean_text.replace('叮', '手机提示音响起')
+                elif any(s in clean_text for s in ['咚', '嘭', '砰', '啪']):
+                    for s in ['咚', '嘭', '砰', '啪']:
+                        clean_text = clean_text.replace(s, '发出声响')
+                elif any(s in clean_text for s in ['咔', '嘎', '咯']):
+                    for s in ['咔', '嘎', '咯']:
+                        clean_text = clean_text.replace(s, '机械声音')
+                elif any(s in clean_text for s in ['滴答', '嗒嗒']):
+                    for s in ['滴答', '嗒嗒']:
+                        clean_text = clean_text.replace(s, '时钟滴答声')
+                elif any(s in clean_text for s in ['呼呼', '哗啦']):
+                    for s in ['呼呼', '哗啦']:
+                        clean_text = clean_text.replace(s, '风声水声')
+                break
+        
+        # 清理多余空格和标点
+        clean_text = ' '.join(clean_text.split())
+        
+        # 🎯 如果替换后只剩下象声词描述+无意义符号，清理符号
+        if any(desc in clean_text for desc in ['手机提示音响起', '发出声响', '机械声音', '时钟滴答声', '风声水声']):
+            # 移除末尾的无意义标点
+            clean_text = clean_text.rstrip('- .,;!?')
+        
+        # 最终检查：如果文本仍然过短或为空，返回默认文本
+        if len(clean_text.strip()) < 2:
+            clean_text = "停顿"
+        
+        return clean_text
+    
+    def _apply_character_replacement_rules(self, text: str) -> str:
+        """应用统一的字符替换规则"""
+        # 🎯 统一字符替换规则表 - 易于维护和扩展
+        replacement_rules = {
+            # 破折号标准化 (Unicode范围: 8208-8213)
+            '——': '-',    # 双破折号
+            '—': '-',     # em dash (U+2014)
+            '–': '-',     # en dash (U+2013)
+            '−': '-',     # minus sign (U+2212)
+            '‒': '-',     # figure dash (U+2012)
+            
+            # 引号标准化
+            '"': '"',     # 中文左引号 (U+201C)
+            '"': '"',     # 中文右引号 (U+201D)
+            ''': "'",     # 中文左单引号 (U+2018)
+            ''': "'",     # 中文右单引号 (U+2019)
+            '‹': '"',     # 左尖括号引号 (U+2039)
+            '›': '"',     # 右尖括号引号 (U+203A)
+            '«': '"',     # 左双尖括号 (U+00AB)
+            '»': '"',     # 右双尖括号 (U+00BB)
+            
+            # 省略号标准化
+            '…': '...',   # horizontal ellipsis (U+2026)
+            '⋯': '...',   # midline horizontal ellipsis (U+22EF)
+            
+            # 特殊空格标准化
+            '\u00A0': ' ', # 不间断空格 (U+00A0)
+            '\u2003': ' ', # em space (U+2003)
+            '\u2002': ' ', # en space (U+2002)
+            '\u2009': ' ', # thin space (U+2009)
+            '\u200B': '',  # 零宽空格 (U+200B)
+            '\u200C': '',  # 零宽非连字符 (U+200C)
+            '\u200D': '',  # 零宽连字符 (U+200D)
+            
+            # 其他特殊标点
+            '•': '*',     # bullet (U+2022)
+            '◦': '*',     # white bullet (U+25E6)
+            '‡': '*',     # double dagger (U+2021)
+            '†': '*',     # dagger (U+2020)
+            '§': '',      # section sign (U+00A7)
+            '¶': '',      # pilcrow sign (U+00B6)
+            
+            # 数学符号简化
+            '×': 'x',     # multiplication sign (U+00D7)
+            '÷': '/',     # division sign (U+00F7)
+            '±': '+/-',   # plus-minus sign (U+00B1)
+            '≈': '约',    # almost equal to (U+2248)
+            '≠': '不等于', # not equal to (U+2260)
+            
+            # 货币符号标准化
+            '£': '元',    # pound sign (U+00A3)
+            '€': '元',    # euro sign (U+20AC)
+            '$': '元',    # dollar sign (U+0024)
+            '¥': '元',    # yen sign (U+00A5)
+            '₹': '元',    # indian rupee sign (U+20B9)
+        }
+        
+        # 应用所有替换规则
+        for old_char, new_char in replacement_rules.items():
+            text = text.replace(old_char, new_char)
+        
         return text
+    
+    def _detect_and_clean_incompatible_chars(self, text: str) -> str:
+        """检测并清理未知的不兼容字符"""
+        import re
+        
+        # 🔍 定义TTS兼容的字符范围
+        # 基本ASCII + 中日韩统一汉字 + 常用标点
+        compatible_ranges = [
+            (0x0020, 0x007E),     # 基本ASCII可见字符
+            (0x4E00, 0x9FFF),     # 中日韩统一汉字
+            (0x3400, 0x4DBF),     # 中日韩统一汉字扩展A
+            (0x20000, 0x2A6DF),   # 中日韩统一汉字扩展B
+            (0x3000, 0x303F),     # 中日韩符号和标点
+            (0xFF00, 0xFFEF),     # 全角ASCII、全角标点
+        ]
+        
+        def is_compatible_char(char):
+            """检查字符是否在兼容范围内"""
+            code = ord(char)
+            return any(start <= code <= end for start, end in compatible_ranges)
+        
+        # 检测不兼容字符
+        incompatible_chars = []
+        cleaned_text = ""
+        
+        for char in text:
+            if is_compatible_char(char):
+                cleaned_text += char
+            else:
+                # 发现不兼容字符
+                unicode_code = ord(char)
+                char_name = f"U+{unicode_code:04X}"
+                
+                if (char, unicode_code) not in incompatible_chars:
+                    incompatible_chars.append((char, unicode_code))
+                    # 记录到日志，用于后续扩展规则
+                    logger.warning(f"⚠️ TTS不兼容字符: '{char}' ({char_name}) - 建议添加到替换规则")
+                
+                # 尝试智能替换或移除
+                replacement = self._get_fallback_replacement(char, unicode_code)
+                cleaned_text += replacement
+        
+        # 如果发现新的不兼容字符，记录统计信息
+        if incompatible_chars:
+            logger.info(f"📊 本次发现 {len(incompatible_chars)} 种不兼容字符")
+            for char, code in incompatible_chars[:5]:  # 只显示前5个
+                logger.info(f"  - '{char}' (U+{code:04X})")
+            if len(incompatible_chars) > 5:
+                logger.info(f"  - ... 还有 {len(incompatible_chars) - 5} 个")
+        
+        return cleaned_text
+    
+    def _get_fallback_replacement(self, char: str, unicode_code: int) -> str:
+        """为未知字符提供回退替换"""
+        # 根据Unicode范围进行智能替换
+        if 0x2000 <= unicode_code <= 0x206F:  # 常规标点
+            return ' '
+        elif 0x2070 <= unicode_code <= 0x209F:  # 上标和下标
+            return ''
+        elif 0x20A0 <= unicode_code <= 0x20CF:  # 货币符号
+            return '元'
+        elif 0x2100 <= unicode_code <= 0x214F:  # 字母式符号
+            return ''
+        elif 0x2190 <= unicode_code <= 0x21FF:  # 箭头
+            return '→'
+        elif 0x2200 <= unicode_code <= 0x22FF:  # 数学运算符
+            return ''
+        elif 0x2300 <= unicode_code <= 0x23FF:  # 杂项技术符号
+            return ''
+        elif 0x2500 <= unicode_code <= 0x257F:  # 制表符
+            return '|'
+        elif 0x25A0 <= unicode_code <= 0x25FF:  # 几何形状
+            return '□'
+        else:
+            # 默认移除未知字符
+            return ''
         
     async def health_check(self) -> Dict[str, Any]:
         """检查MegaTTS3服务健康状态"""

@@ -60,6 +60,18 @@
       </div>
 
       <div class="stat-card">
+        <div class="stat-icon" style="background: linear-gradient(135deg, #eab308 0%, #ca8a04 100%);">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
+            <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+          </svg>
+        </div>
+        <div class="stat-content">
+          <div class="stat-value">{{ projectStats.partialCompleted }}</div>
+          <div class="stat-label">部分完成</div>
+        </div>
+      </div>
+
+      <div class="stat-card">
         <div class="stat-icon" style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
             <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
@@ -87,7 +99,7 @@
         <a-select
           v-model:value="statusFilter"
           placeholder="项目状态"
-          style="width: 120px;"
+          style="width: 130px;"
           size="large"
           @change="onFilterChange"
           allow-clear
@@ -96,6 +108,7 @@
           <a-select-option value="pending">待处理</a-select-option>
           <a-select-option value="processing">处理中</a-select-option>
           <a-select-option value="completed">已完成</a-select-option>
+          <a-select-option value="partial_completed">部分完成</a-select-option>
           <a-select-option value="failed">失败</a-select-option>
         </a-select>
 
@@ -208,15 +221,15 @@
                   音频
                 </a-button>
                 
-                <!-- 已完成项目：显示重新合成下拉菜单 -->
-                <template v-if="project.status === 'completed'">
+                <!-- 已完成或部分完成项目：显示合成选项菜单 -->
+                <template v-if="project.status === 'completed' || project.status === 'partial_completed'">
                   <a-dropdown @click.stop>
                     <a-button 
                       type="primary" 
                       size="small"
-                      title="选择重新合成方式"
+                      :title="project.status === 'completed' ? '选择重新合成方式' : '继续合成或重新合成'"
                     >
-                      🔄 重新合成 <DownOutlined />
+                      {{ project.status === 'completed' ? '🔄 重新合成' : '⚡ 继续合成' }} <DownOutlined />
                     </a-button>
                     <template #overlay>
                       <a-menu @click="onRestartSynthesis($event, project)">
@@ -304,15 +317,15 @@
                     音频
                   </a-button>
                   
-                  <!-- 已完成项目：显示重新合成下拉菜单 -->
-                  <template v-if="record.status === 'completed'">
+                  <!-- 已完成或部分完成项目：显示合成选项菜单 -->
+                  <template v-if="record.status === 'completed' || record.status === 'partial_completed'">
                     <a-dropdown @click.stop>
                       <a-button 
                         type="primary" 
                         size="small"
-                        title="选择重新合成方式"
+                        :title="record.status === 'completed' ? '选择重新合成方式' : '继续合成或重新合成'"
                       >
-                        🔄 重新合成 <DownOutlined />
+                        {{ record.status === 'completed' ? '🔄 重新合成' : '⚡ 继续合成' }} <DownOutlined />
                       </a-button>
                       <template #overlay>
                         <a-menu @click="onRestartSynthesis($event, record)">
@@ -425,11 +438,12 @@ const tableColumns = [
 
 // 项目统计
 const projectStats = computed(() => {
-  const stats = { total: 0, completed: 0, processing: 0, pending: 0 }
+  const stats = { total: 0, completed: 0, processing: 0, pending: 0, partialCompleted: 0 }
   
   projects.value.forEach(project => {
     stats.total++
     if (project.status === 'completed') stats.completed++
+    else if (project.status === 'partial_completed') stats.partialCompleted++
     else if (project.status === 'processing') stats.processing++
     else if (project.status === 'pending') stats.pending++
   })
@@ -661,6 +675,7 @@ const getProgressColor = (status) => {
     'pending': '#faad14',
     'processing': '#1890ff',
     'completed': '#52c41a',
+    'partial_completed': '#fadb14',
     'failed': '#ff4d4f'
   }
   return colors[status] || '#d9d9d9'
@@ -671,6 +686,7 @@ const getStatusColor = (status) => {
     'pending': 'orange',
     'processing': 'blue',
     'completed': 'green',
+    'partial_completed': 'gold',
     'failed': 'red'
   }
   return colors[status] || 'default'
@@ -681,6 +697,7 @@ const getStatusText = (status) => {
     'pending': '待处理',
     'processing': '处理中',
     'completed': '已完成',
+    'partial_completed': '部分完成',
     'failed': '失败'
   }
   return texts[status] || '未知'

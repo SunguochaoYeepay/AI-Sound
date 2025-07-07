@@ -83,10 +83,8 @@ class ContentPreparationService:
                         self.ollama_detector = OllamaCharacterDetector()
                         logger.info("✅ OllamaCharacterDetector初始化成功")
                     except ImportError as e:
-                        logger.error(f"❌ 无法导入OllamaCharacterDetector，尝试使用编程规则检测器")
-                        from ..detectors.character_detectors import ProgrammaticCharacterDetector
-                        self.ollama_detector = ProgrammaticCharacterDetector()
-                        logger.info("✅ ProgrammaticCharacterDetector初始化成功")
+                        logger.error(f"❌ 无法导入OllamaCharacterDetector: {str(e)}")
+                        raise ServiceException(f"AI分析组件初始化失败: {str(e)}")
                 
                 # 执行AI分析
                 logger.info(f"🔄 开始智能分析，模式: {processing_mode}")
@@ -98,30 +96,8 @@ class ContentPreparationService:
                     logger.info("✅ 智能分布式分析完成")
                     
             except Exception as e:
-                logger.error(f"❌ 智能分析失败，使用编程规则作为后备: {str(e)}")
-                
-                # 使用编程规则作为可靠的后备方案
-                try:
-                    from ..detectors.character_detectors import ProgrammaticCharacterDetector
-                    fallback_detector = ProgrammaticCharacterDetector()
-                    analysis_result = fallback_detector.analyze_text_segments(cleaned_text)
-                    
-                    # 转换为标准格式
-                    analysis_result = {
-                        'segments': analysis_result.get('segments', []),
-                        'detected_characters': analysis_result.get('detected_characters', []),
-                        'analysis_metadata': {
-                            'total_segments': len(analysis_result.get('segments', [])),
-                            'total_characters': len(analysis_result.get('detected_characters', [])),
-                            'processing_mode': 'programming_rules_fallback',
-                            'method': 'programming_rules'
-                        }
-                    }
-                    logger.info("✅ 编程规则后备分析完成")
-                    
-                except Exception as fallback_error:
-                    logger.error(f"❌ 编程规则后备也失败: {str(fallback_error)}")
-                    raise ServiceException(f"所有分析方法都失败: 主要错误={str(e)}, 后备错误={str(fallback_error)}")
+                logger.error(f"❌ AI智能分析失败: {str(e)}")
+                raise ServiceException(f"AI智能分析失败: {str(e)}")
             
             # 6. 确保有旁白角色
             detected_characters = analysis_result.get('detected_characters', [])
@@ -136,28 +112,25 @@ class ContentPreparationService:
             for char_name, voice_id in voice_mapping.items():
                 logger.info(f"🎵 {char_name} -> voice_id: {voice_id}")
             
-            # 🔧 特别检查旁白角色的voice mapping
+            # 🔧 检查旁白角色的voice mapping状态
             if '旁白' in voice_mapping:
                 logger.info(f"✅ 旁白角色已分配voice_id: {voice_mapping['旁白']}")
             else:
-                logger.warning("❌ 旁白角色未分配voice_id，尝试手动分配")
-                # 手动为旁白分配默认voice_id
-                if voice_mapping:
-                    # 使用第一个可用的voice_id
-                    default_voice_id = list(voice_mapping.values())[0] if voice_mapping.values() else 11
-                    voice_mapping['旁白'] = default_voice_id
-                    logger.info(f"🔧 手动为旁白分配voice_id: {default_voice_id}")
-                else:
-                    # 如果没有任何voice mapping，使用默认值
-                    voice_mapping['旁白'] = 11
-                    logger.info("🔧 使用默认voice_id 11 为旁白角色")
+                logger.warning("❌ 旁白角色未分配voice_id，需要用户手动分配")
             
             # 8. 转换为合成格式（应用TTS优化配置）
-            synthesis_json = self._adapt_to_synthesis_format(
+            synthesis_json = await self._adapt_to_synthesis_format(
                 analysis_result, 
                 voice_mapping,
                 tts_optimization_mode=tts_optimization_mode
             )
+            
+            # 🔥 新增：最终完整性校验 - 确保synthesis_plan覆盖了原文所有内容
+            final_completeness = self._validate_synthesis_completeness(cleaned_text, synthesis_json)
+            if not final_completeness:
+                logger.warning("最终合成计划完整性校验失败，可能存在内容丢失")
+                # 记录详细的差异信息用于调试
+                self._log_completeness_details(cleaned_text, synthesis_json)
             
             # 9. 保存分析结果到数据库
             preparation_result = await self._save_preparation_result(
@@ -170,7 +143,8 @@ class ContentPreparationService:
                     "total_segments": len(analysis_result.get('segments', [])),
                     "characters_found": len(detected_characters),
                     "estimated_tokens": estimated_tokens,
-                    "analysis_method": analysis_result.get('analysis_metadata', {}).get('method', 'ai_enhanced')
+                    "analysis_method": analysis_result.get('analysis_metadata', {}).get('method', 'ai_enhanced'),
+                    "final_completeness_validated": final_completeness  # 🔥 新增：记录最终完整性校验结果
                 }
             )
             
@@ -420,8 +394,8 @@ class ContentPreparationService:
                     logger.info(f"分块 {index + 1} 分析完成")
                     return result
                 except Exception as e:
-                    logger.error(f"分块 {index + 1} 分析失败: {str(e)}")
-                    return self._create_fallback_result(chunk, chunk_info)
+                    logger.error(f"分块 {index + 1} AI分析失败: {str(e)}")
+                    raise e
         
         # 并行执行分析
         tasks = [
@@ -431,16 +405,13 @@ class ContentPreparationService:
         
         results = await asyncio.gather(*tasks, return_exceptions=True)
         
-        # 处理异常结果
-        valid_results = []
+        # 检查异常结果
         for i, result in enumerate(results):
             if isinstance(result, Exception):
-                logger.error(f"分块 {i} 分析异常: {result}")
-                valid_results.append(self._create_fallback_result(chunks[i], chapter_info))
-            else:
-                valid_results.append(result)
+                logger.error(f"分块 {i} AI分析异常: {result}")
+                raise ServiceException(f"分布式AI分析失败，分块 {i} 错误: {result}")
         
-        return valid_results
+        return results
     
     async def _merge_chunk_results(self, chunk_results: List[Dict], chapter_info: Dict) -> Dict:
         """合并分块分析结果"""
@@ -479,31 +450,7 @@ class ContentPreparationService:
             }
         }
     
-    def _create_fallback_result(self, chunk: Dict, chapter_info: Dict) -> Dict:
-        """创建降级结果"""
-        return {
-            'segments': [{
-                'text': chunk['content'],
-                'speaker': '旁白',
-                'text_type': 'narration',
-                'confidence': 0.5,
-                'detection_method': 'fallback'
-            }],
-            'detected_characters': [{
-                'name': '旁白',
-                'confidence': 1.0,
-                'source': 'fallback',
-                'recommended_config': {
-                    'gender': 'neutral',
-                    'personality': 'calm'
-                }
-            }],
-            'processing_stats': {
-                'total_segments': 1,
-                'characters_found': 1,
-                'analysis_method': 'fallback'
-            }
-        }
+
     
     def _ensure_narrator_character(self, detected_characters: List[Dict]) -> List[Dict]:
         """确保角色列表中包含旁白角色"""
@@ -530,42 +477,244 @@ class ContentPreparationService:
         
         return detected_characters
     
-    def _adapt_to_synthesis_format(
+    async def _ai_reanalyze_unknown_segments(self, segments: List[Dict], detected_characters: List[Dict]) -> List[Dict]:
+        """🤖 AI二次分析：专门处理未知角色的segment"""
+        unknown_segments = []
+        known_character_names = [char.get('name', '') for char in detected_characters if char.get('name')]
+        
+        # 收集所有未知角色的segment
+        for i, segment in enumerate(segments):
+            if segment.get('speaker') == '未知角色':
+                unknown_segments.append({
+                    'index': i,
+                    'segment': segment,
+                    'context_before': segments[max(0, i-2):i],  # 前2个segment作为上下文
+                    'context_after': segments[i+1:min(len(segments), i+3)]  # 后2个segment作为上下文
+                })
+        
+        if not unknown_segments:
+            return segments
+        
+        logger.info(f"🔍 发现 {len(unknown_segments)} 个未知角色segment，启动AI二次分析")
+        
+        # 构建AI二次分析prompt
+        prompt = self._build_unknown_segment_analysis_prompt(unknown_segments, known_character_names)
+        
+        try:
+            # 延迟初始化OllamaCharacterDetector
+            if self.ollama_detector is None:
+                from ..detectors.ollama_character_detector import OllamaCharacterDetector
+                self.ollama_detector = OllamaCharacterDetector()
+            
+            # 调用AI进行二次分析
+            response = self.ollama_detector._call_ollama(prompt)
+            if response:
+                analysis_result = self._parse_unknown_segment_response(response)
+                
+                # 应用AI分析结果
+                updated_segments = segments.copy()
+                for result in analysis_result:
+                    segment_index = result.get('segment_index')
+                    new_speaker = result.get('speaker', '').strip()
+                    reasoning = result.get('reasoning', '')
+                    
+                    if segment_index is not None and 0 <= segment_index < len(updated_segments):
+                        if new_speaker and new_speaker != '未知角色':
+                            updated_segments[segment_index]['speaker'] = new_speaker
+                            logger.info(f"✅ AI二次分析修正 segment_{segment_index}: '{new_speaker}' (理由: {reasoning})")
+                        else:
+                            # AI也无法确定，保持为未知角色
+                            logger.warning(f"⚠️ AI二次分析仍无法确定 segment_{segment_index}，保持为未知角色")
+                
+                return updated_segments
+            else:
+                logger.warning("AI二次分析调用失败，保持原始结果")
+                return segments
+                
+        except Exception as e:
+            logger.error(f"AI二次分析异常: {str(e)}，保持原始结果")
+            return segments
+
+    def _build_unknown_segment_analysis_prompt(self, unknown_segments: List[Dict], known_characters: List[str]) -> str:
+        """构建未知角色segment的AI分析prompt"""
+        
+        segments_text = ""
+        for i, item in enumerate(unknown_segments):
+            segment = item['segment']
+            context_before = item['context_before']
+            context_after = item['context_after']
+            
+            segments_text += f"\n=== 未知Segment {item['index']} ===\n"
+            
+            # 上下文
+            if context_before:
+                segments_text += "【上文】:\n"
+                for ctx in context_before:
+                    segments_text += f"  {ctx.get('speaker', '旁白')}: {ctx.get('text', '')}\n"
+            
+            # 当前未知segment
+            segments_text += f"【待分析】: {segment.get('text', '')}\n"
+            segments_text += f"【文本类型】: {segment.get('text_type', 'unknown')}\n"
+            
+            # 下文
+            if context_after:
+                segments_text += "【下文】:\n"
+                for ctx in context_after:
+                    segments_text += f"  {ctx.get('speaker', '旁白')}: {ctx.get('text', '')}\n"
+        
+        prompt = f"""你是专业的中文小说角色识别专家。以下是一些无法确定说话者的文本段落，请根据上下文重新分析。
+
+已知角色列表：{', '.join(known_characters) if known_characters else '无'}
+
+待分析的未知角色段落：
+{segments_text}
+
+分析要求：
+1. **仔细阅读上下文**：理解前后文的逻辑关系和语境
+2. **理解文本类型**：
+   - dialogue: 直接对话，需要确定具体说话者
+   - inner_monologue: 心理活动，通常是主角的内心想法
+   - narration: 叙述文字，通常是旁白
+3. **角色一致性**：确保角色名称与已知角色列表一致
+4. **逻辑推理**：基于常识和小说惯例进行合理推断
+
+特殊识别规则：
+- **间接引述内容**：如果上文提到"某某发来消息"、"某某说"，那么引号内容通常是该角色的话
+- **心理活动**：通常属于当前场景的主要角色（通常是主角）
+- **对话内容**：需要根据场景和上下文确定说话者
+- **叙述文字**：描述环境、动作、声音等的文字通常是旁白
+- **无法确定时**：优先选择"旁白"而非保持"未知角色"
+
+重要提示：
+- 如果文本是消息内容、电话内容、信件内容等，说话者应该是消息的发送者
+- 如果文本是心理活动，说话者通常是当前场景的主角
+- 如果文本是纯叙述，说话者应该是"旁白"
+
+输出格式（严格JSON）：
+{{
+  "analysis_results": [
+    {{
+      "segment_index": 段落在原列表中的索引,
+      "speaker": "确定的说话者名称",
+      "reasoning": "详细的分析理由和依据",
+      "confidence": 0.8
+    }}
+  ]
+}}
+
+只输出JSON，不要其他内容："""
+        
+        return prompt
+
+    def _parse_unknown_segment_response(self, response: str) -> List[Dict]:
+        """解析AI二次分析的响应"""
+        try:
+            import json
+            
+            # 提取JSON部分
+            json_start = response.find('{')
+            json_end = response.rfind('}') + 1
+            
+            if json_start != -1 and json_end != -1:
+                json_str = response[json_start:json_end]
+                data = json.loads(json_str)
+                
+                return data.get('analysis_results', [])
+            else:
+                logger.error("AI二次分析响应中未找到有效JSON")
+                return []
+                
+        except Exception as e:
+            logger.error(f"解析AI二次分析响应失败: {str(e)}")
+            return []
+
+    async def _adapt_to_synthesis_format(
         self, 
         analysis_result: Dict, 
         voice_mapping: Dict[str, int],
         available_voices: List[Dict] = None,
         tts_optimization_mode: str = "balanced"
     ) -> Dict:
-        """适配为现有合成系统的JSON格式"""
+        """转换分析结果为语音合成格式"""
+        segments = analysis_result.get('segments', [])
+        detected_characters = analysis_result.get('detected_characters', [])
         
-        # 构建voice_id到voice_name的映射
-        voice_id_to_name = {}
-        if available_voices:
-            voice_id_to_name = {v['id']: v['name'] for v in available_voices}
+        logger.info(f"🔄 开始转换为合成格式，共 {len(segments)} 个segment")
         
-        # 格式化角色信息  
-        characters = []
-        for character in analysis_result['detected_characters']:
-            char_name = character['name']
-            voice_id = voice_mapping.get(char_name)
+        # 🤖 新增：AI二次分析处理未知角色
+        segments = await self._ai_reanalyze_unknown_segments(segments, detected_characters)
+        
+        synthesis_plan = []
+        
+        for i, segment in enumerate(segments):
+            text_content = segment.get('text', '').strip()
+            if not text_content:
+                continue
             
-            # 🔧 修复：确保所有角色都有voice_id，包括旁白
-            if not voice_id:
-                if char_name == '旁白':
-                    voice_id = 11  # 旁白默认使用voice_id 11
-                    logger.info(f"🎭 为角色列表中的旁白分配默认voice_id: {voice_id}")
-                elif voice_mapping:
-                    voice_id = list(voice_mapping.values())[0]  # 使用第一个可用的voice_id
-                    logger.info(f"🔄 为角色列表中的{char_name}分配备用voice_id: {voice_id}")
+            speaker = segment.get('speaker', '').strip()
+            
+            # 🔧 现在只处理真正无法确定的情况
+            if not speaker:
+                speaker = '旁白'
+                logger.info(f"🔧 空speaker自动设为旁白: {text_content[:30]}...")
+            
+            # 获取voice配置
+            voice_id = voice_mapping.get(speaker, None)
+            voice_name = "未分配"
             
             if voice_id:
-                voice_name = voice_id_to_name.get(voice_id, f"Voice_{voice_id}")
+                # 从数据库获取voice_name
+                try:
+                    from ..models import VoiceProfile
+                    voice_profile = self.db.query(VoiceProfile).filter(VoiceProfile.id == voice_id).first()
+                    if voice_profile:
+                        voice_name = voice_profile.name
+                    else:
+                        voice_name = f"Voice_{voice_id}"
+                except Exception as e:
+                    logger.warning(f"获取voice_name失败: {str(e)}")
+                    voice_name = f"Voice_{voice_id}"
             else:
-                voice_name = "未分配"
+                logger.warning(f"⚠️ 角色'{speaker}'没有voice_id映射，需要用户手动分配")
+            
+            # 🔥 TTS优化：根据模式调整参数
+            tts_params = self._get_optimized_tts_params(speaker, tts_optimization_mode, segment)
+            
+            synthesis_plan.append({
+                "segment_id": i + 1,
+                "text": text_content,
+                "speaker": speaker,
+                "voice_id": voice_id,
+                "voice_name": voice_name,
+                "text_type": segment.get('text_type', 'dialogue'),
+                "confidence": segment.get('confidence', 0.8),
+                "detection_rule": segment.get('detection_rule', 'ai_analysis'),
+                **tts_params
+            })
+        
+        # 构建角色信息
+        characters = []
+        for character in detected_characters:
+            char_name = character.get('name', '')
+            if not char_name:
+                continue
+                
+            voice_id = voice_mapping.get(char_name)
+            voice_name = "未分配"
+            
+            if voice_id:
+                try:
+                    from ..models import VoiceProfile
+                    voice_profile = self.db.query(VoiceProfile).filter(VoiceProfile.id == voice_id).first()
+                    if voice_profile:
+                        voice_name = voice_profile.name
+                    else:
+                        voice_name = f"Voice_{voice_id}"
+                except Exception as e:
+                    voice_name = f"Voice_{voice_id}"
             
             # 计算角色在合成计划中的出现次数
-            char_count = len([s for s in analysis_result['segments'] if s.get('speaker') == char_name])
+            char_count = len([s for s in synthesis_plan if s.get('speaker') == char_name])
             
             characters.append({
                 "name": char_name,
@@ -574,96 +723,6 @@ class ContentPreparationService:
                 "voice_type": character.get('recommended_config', {}).get('voice_type', 'neutral'),
                 "count": char_count
             })
-        
-        # 格式化合成计划
-        synthesis_plan = []
-        segment_id = 1
-        
-        for segment in analysis_result['segments']:
-            # 🎯 智能TTS参数配置 - 基于角色和文本内容
-            if not self.tts_optimizer:
-                self.tts_optimizer = AITTSOptimizer(self.ollama_detector)
-                # 根据优化模式配置TTS分析
-                if tts_optimization_mode == "fast":
-                    self.tts_optimizer.set_enable_ai_analysis(False)
-                    logger.info("🚀 TTS优化器设置为快速模式（禁用AI分析）")
-                elif tts_optimization_mode == "quality":
-                    self.tts_optimizer.set_enable_ai_analysis(True)
-                    logger.info("🎯 TTS优化器设置为质量模式（启用AI分析）")
-                else:  # balanced
-                    self.tts_optimizer.set_enable_ai_analysis(True)
-                    logger.info("⚖️ TTS优化器设置为平衡模式")
-            
-            tts_params = self.tts_optimizer.get_smart_tts_params(segment, analysis_result.get('detected_characters', []))
-            
-            # 🔧 修复：智能处理speaker分配
-            speaker = segment.get('speaker', '').strip()
-            if not speaker or speaker == '':
-                # 如果speaker为空，判断是否为旁白
-                if segment.get('text_type') == 'narration':
-                    speaker = '旁白'
-                else:
-                    speaker = '未知角色'
-            
-            # 🎯 进一步修复：检查是否为无效的角色识别
-            if speaker == '未知角色' or speaker not in voice_mapping:
-                # 检查文本内容，判断是否应该是旁白
-                text_content = segment.get('text', '').strip()
-                
-                # 判断是否为旁白的特征
-                is_narration = (
-                    # 没有对话引号
-                    not any(quote in text_content for quote in ['"', '"', '"', '「', '」', '『', '』']) or
-                    # 或者是叙述性文本的特征
-                    any(pattern in text_content for pattern in [
-                        '他', '她', '林渊', '导师', '心里', '想到', '看到', '听到', 
-                        '感受', '发现', '注意', '观察', '回忆', '思考'
-                    ]) or
-                    # 或者text_type明确标记为narration
-                    segment.get('text_type') == 'narration'
-                )
-                
-                if is_narration:
-                    speaker = '旁白'
-                    logger.info(f"🔧 将'未知角色'修正为'旁白': {text_content[:30]}...")
-                else:
-                    # 如果确实不是旁白，但没有voice_id，使用默认分配
-                    speaker = '未知角色'
-                    logger.warning(f"⚠️ 保留'未知角色'但将分配默认voice: {text_content[:30]}...")
-            
-            # 🎵 确保所有speaker都有voice_id
-            voice_id = voice_mapping.get(speaker)
-            if not voice_id:
-                # 如果当前speaker没有voice_id，根据角色类型分配
-                if speaker == '旁白':
-                    # 旁白使用专门的voice_id
-                    voice_id = voice_mapping.get('旁白') or 11  # 默认使用11
-                    logger.info(f"🎭 为旁白分配默认voice_id: {voice_id}")
-                elif speaker == '未知角色':
-                    # 未知角色使用旁白的voice_id
-                    voice_id = voice_mapping.get('旁白') or 11
-                    logger.info(f"🔧 为未知角色分配旁白voice_id: {voice_id}")
-                else:
-                    # 其他已知角色使用第一个可用的voice_id
-                    if voice_mapping:
-                        voice_id = list(voice_mapping.values())[0]
-                        logger.info(f"🔄 为{speaker}分配备用voice_id: {voice_id}")
-                    else:
-                        voice_id = 11  # 最后的后备方案
-                        logger.warning(f"⚠️ 为{speaker}使用最后备用voice_id: {voice_id}")
-            
-            # 更新voice_name
-            voice_name = voice_id_to_name.get(voice_id, f"Voice_{voice_id}") if voice_id else "未分配"
-            
-            synthesis_plan.append({
-                "segment_id": segment_id,
-                "text": segment['text'],  # 🔒 原文不变
-                "speaker": speaker,
-                "voice_id": voice_id,
-                "voice_name": voice_name,
-                "parameters": tts_params
-            })
-            segment_id += 1
         
         # 完全匹配现有系统格式
         return {
@@ -677,6 +736,38 @@ class ContentPreparationService:
             "synthesis_plan": synthesis_plan,
             "characters": characters
         }
+
+    def _get_optimized_tts_params(self, speaker: str, optimization_mode: str, segment: Dict) -> Dict:
+        """获取优化的TTS参数"""
+        try:
+            # 🎯 智能TTS参数配置 - 基于角色和文本内容
+            if not self.tts_optimizer:
+                from ..services.ai_tts_optimizer import AITTSOptimizer
+                self.tts_optimizer = AITTSOptimizer(self.ollama_detector)
+                # 根据优化模式配置TTS分析
+                if optimization_mode == "fast":
+                    self.tts_optimizer.set_enable_ai_analysis(False)
+                    logger.info("🚀 TTS优化器设置为快速模式（禁用AI分析）")
+                elif optimization_mode == "quality":
+                    self.tts_optimizer.set_enable_ai_analysis(True)
+                    logger.info("🎯 TTS优化器设置为质量模式（启用AI分析）")
+                else:  # balanced
+                    self.tts_optimizer.set_enable_ai_analysis(True)
+                    logger.info("⚖️ TTS优化器设置为平衡模式")
+            
+            # 获取智能TTS参数
+            tts_params = self.tts_optimizer.get_smart_tts_params(segment, [])
+            return tts_params
+            
+        except Exception as e:
+            logger.warning(f"获取TTS参数失败: {str(e)}，使用默认参数")
+            # 返回默认参数
+            return {
+                "speed": 1.0,
+                "pitch": 1.0,
+                "volume": 1.0,
+                "emotion": "neutral"
+            }
     
 
     
@@ -782,78 +873,155 @@ class ContentPreparationService:
 
     async def get_preparation_status(self, chapter_id: int, db: Session) -> Dict:
         """
-        获取章节准备状态
+        获取章节智能准备状态
+        检查章节是否已经完成智能准备，以及准备的质量
         """
         try:
-            from app.models import BookChapter
+            from app.models import BookChapter, AnalysisResult
+            
+            # 获取章节基本信息
             chapter = db.query(BookChapter).filter(BookChapter.id == chapter_id).first()
             if not chapter:
                 raise ValueError("章节不存在")
             
-            # 检查分析状态
-            is_analyzed = getattr(chapter, 'analysis_status', 'pending') == 'completed'
-            is_synthesis_ready = getattr(chapter, 'synthesis_status', 'pending') in ['ready', 'completed']
+            # 检查是否有分析结果
+            analysis_result = db.query(AnalysisResult).filter(
+                AnalysisResult.chapter_id == chapter_id
+            ).order_by(AnalysisResult.created_at.desc()).first()
             
-            # 检查是否有相关的合成配置（从AnalysisResult表中查询）
-            try:
-                from ..models import AnalysisResult
-                latest_result = self.db.query(AnalysisResult).filter(
-                    AnalysisResult.chapter_id == chapter_id,
-                    AnalysisResult.status == 'completed'
-                ).order_by(AnalysisResult.created_at.desc()).first()
-                
-                has_synthesis_config = bool(latest_result)
-                has_complete_synthesis_config = False
-                
-                if latest_result:
-                    # 检查是否有synthesis_plan或final_config
-                    has_synthesis_plan = bool(latest_result.synthesis_plan)
-                    has_final_config = bool(latest_result.final_config)
+            if analysis_result and analysis_result.synthesis_plan:
+                # 有分析结果，检查完整性
+                synthesis_plan = analysis_result.synthesis_plan
+                if isinstance(synthesis_plan, dict) and 'synthesis_plan' in synthesis_plan:
+                    segments_count = len(synthesis_plan['synthesis_plan'])
+                    characters_count = len(synthesis_plan.get('characters', []))
                     
-                    # 如果有final_config，检查其中是否包含synthesis_json
-                    if has_final_config and latest_result.final_config:
-                        try:
-                            final_config = latest_result.final_config
-                            if isinstance(final_config, str):
-                                import json
-                                final_config = json.loads(final_config)
-                            has_complete_synthesis_config = bool(final_config.get('synthesis_json'))
-                        except:
-                            has_complete_synthesis_config = has_synthesis_plan
-                    else:
-                        has_complete_synthesis_config = has_synthesis_plan
-                        
-            except ImportError:
-                # 如果没有AnalysisResult模型，回退到章节字段检查
-                analysis_result = getattr(chapter, 'analysis_result', None)
-                has_synthesis_config = bool(analysis_result)
-                has_complete_synthesis_config = False
-                
-                if has_synthesis_config and analysis_result:
-                    try:
-                        import json
-                        if isinstance(analysis_result, str):
-                            result_data = json.loads(analysis_result)
-                        else:
-                            result_data = analysis_result
-                        
-                        has_complete_synthesis_config = bool(result_data.get('synthesis_json'))
-                    except:
-                        has_complete_synthesis_config = False
+                    return {
+                        "chapter_id": chapter_id,
+                        "preparation_complete": True,
+                        "analysis_status": chapter.analysis_status,
+                        "synthesis_status": chapter.synthesis_status,
+                        "segments_count": segments_count,
+                        "characters_count": characters_count,
+                        "last_prepared": analysis_result.created_at.isoformat() if analysis_result.created_at else None,
+                        "preparation_quality": "good" if segments_count > 0 and characters_count > 0 else "poor"
+                    }
             
+            # 没有分析结果或结果不完整
             return {
                 "chapter_id": chapter_id,
-                "chapter_title": chapter.chapter_title,
-                "is_analyzed": is_analyzed,
-                "is_synthesis_ready": is_synthesis_ready,
-                "has_synthesis_config": has_synthesis_config,
-                "has_complete_synthesis_config": has_complete_synthesis_config,
-                "analysis_status": getattr(chapter, 'analysis_status', 'pending'),
-                "synthesis_status": getattr(chapter, 'synthesis_status', 'pending'),
-                "last_updated": chapter.updated_at.isoformat() if getattr(chapter, 'updated_at', None) else None,
-                "preparation_complete": is_analyzed and is_synthesis_ready and has_complete_synthesis_config
+                "preparation_complete": False,
+                "analysis_status": chapter.analysis_status,
+                "synthesis_status": chapter.synthesis_status,
+                "segments_count": 0,
+                "characters_count": 0,
+                "last_prepared": None,
+                "preparation_quality": "none"
             }
             
         except Exception as e:
-            logger.error(f"获取准备状态失败: {str(e)}")
-            raise 
+            logger.error(f"获取章节 {chapter_id} 准备状态失败: {str(e)}")
+            return {
+                "chapter_id": chapter_id,
+                "preparation_complete": False,
+                "analysis_status": "unknown",
+                "synthesis_status": "unknown",
+                "error": str(e)
+            }
+    
+    def _validate_synthesis_completeness(self, original_text: str, synthesis_json: Dict) -> bool:
+        """🔥 新增：校验最终合成计划的完整性"""
+        try:
+            synthesis_plan = synthesis_json.get('synthesis_plan', [])
+            if not synthesis_plan:
+                logger.warning("合成计划为空")
+                return False
+            
+            # 统计原文字数（去除空格和换行）
+            original_chars = len(original_text.replace(' ', '').replace('\n', '').replace('\r', ''))
+            
+            # 统计synthesis_plan中所有text的字数
+            synthesis_chars = sum(
+                len(segment.get('text', '').replace(' ', '').replace('\n', '').replace('\r', ''))
+                for segment in synthesis_plan
+            )
+            
+            # 计算完整度比例
+            completeness_ratio = synthesis_chars / original_chars if original_chars > 0 else 0
+            
+            logger.info(f"最终合成计划完整性校验: 原文{original_chars}字符，合成计划{synthesis_chars}字符，完整度{completeness_ratio:.2%}")
+            
+            # 如果差异超过10%，认为不完整
+            if completeness_ratio < 0.90:
+                logger.warning(f"最终合成计划完整性校验失败: 完整度仅{completeness_ratio:.2%}")
+                return False
+            
+            logger.info("最终合成计划完整性校验通过")
+            return True
+            
+        except Exception as e:
+            logger.error(f"最终完整性校验异常: {str(e)}")
+            return False
+    
+    def _log_completeness_details(self, original_text: str, synthesis_json: Dict):
+        """🔥 新增：记录完整性校验的详细信息，用于调试"""
+        try:
+            synthesis_plan = synthesis_json.get('synthesis_plan', [])
+            
+            logger.info("=== 完整性校验详细信息 ===")
+            logger.info(f"原文长度: {len(original_text)} 字符")
+            logger.info(f"合成计划段落数: {len(synthesis_plan)}")
+            
+            # 记录原文的前100字符和后100字符
+            original_start = original_text[:100] if len(original_text) > 100 else original_text
+            original_end = original_text[-100:] if len(original_text) > 100 else ""
+            
+            logger.info(f"原文开头: {original_start}")
+            if original_end:
+                logger.info(f"原文结尾: {original_end}")
+            
+            # 记录合成计划的第一段和最后一段
+            if synthesis_plan:
+                first_segment = synthesis_plan[0].get('text', '')
+                last_segment = synthesis_plan[-1].get('text', '')
+                
+                logger.info(f"合成计划第一段: {first_segment}")
+                logger.info(f"合成计划最后一段: {last_segment}")
+                
+                # 检查原文结尾是否在合成计划中
+                if original_end and original_end not in ' '.join([seg.get('text', '') for seg in synthesis_plan]):
+                    logger.warning(f"原文结尾内容在合成计划中未找到: {original_end}")
+            
+            logger.info("=== 完整性校验详细信息结束 ===")
+            
+        except Exception as e:
+            logger.error(f"记录完整性详细信息异常: {str(e)}")
+    
+    def _extract_missing_content(self, original_text: str, synthesis_json: Dict) -> str:
+        """🔥 新增：提取丢失的内容，用于调试和修复"""
+        try:
+            synthesis_plan = synthesis_json.get('synthesis_plan', [])
+            synthesis_text = ' '.join([seg.get('text', '') for seg in synthesis_plan])
+            
+            # 简单的差异检测：找出原文中但不在合成计划中的内容
+            missing_parts = []
+            
+            # 按句子分割原文
+            import re
+            original_sentences = re.split(r'[。！？]', original_text)
+            
+            for sentence in original_sentences:
+                sentence = sentence.strip()
+                if sentence and sentence not in synthesis_text:
+                    missing_parts.append(sentence)
+            
+            if missing_parts:
+                missing_content = '；'.join(missing_parts)
+                logger.warning(f"检测到丢失的内容片段: {missing_content}")
+                return missing_content
+            
+            return ""
+            
+        except Exception as e:
+            logger.error(f"提取丢失内容异常: {str(e)}")
+            return "" 

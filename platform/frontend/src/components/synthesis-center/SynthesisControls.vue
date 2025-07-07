@@ -100,6 +100,27 @@
         </template>
       </a-dropdown>
       
+      <!-- 部分完成项目的继续合成按钮 -->
+      <a-dropdown v-if="isPartialCompleted">
+        <a-button size="small" type="primary">
+          ⚡ 继续合成
+          <DownOutlined />
+        </a-button>
+        <template #overlay>
+          <a-menu>
+            <a-menu-item @click="$emit('resumeSynthesis')" style="color: #1890ff;">
+              ⚡ 继续合成剩余章节
+            </a-menu-item>
+            <a-menu-item @click="$emit('restartSynthesis')" style="color: #ff7a00;">
+              🔄 重新开始合成
+            </a-menu-item>
+            <a-menu-item @click="$emit('refresh')" v-if="showRefresh">
+              🔄 刷新数据
+            </a-menu-item>
+          </a-menu>
+        </template>
+      </a-dropdown>
+
       <!-- 项目状态卡死时的重置按钮 -->
       <a-dropdown v-if="isFailed || (projectStatus === 'processing' && !synthesisRunning)">
         <a-button size="small" type="primary">
@@ -213,6 +234,10 @@ const isPausedOrPartiallyFailed = computed(() => {
 
 const isFailed = computed(() => {
   return getDisplayStatus(props.projectStatus) === 'failed'
+})
+
+const isPartialCompleted = computed(() => {
+  return props.projectStatus === 'partial_completed'
 })
 
 // 智能状态显示

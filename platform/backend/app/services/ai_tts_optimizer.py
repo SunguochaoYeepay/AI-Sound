@@ -66,17 +66,21 @@ class AITTSOptimizer:
                 "neutral_mode": True
             }
         
-        try:
-            # 只对真正需要分析的内容使用AI
-            if self.enable_ai_analysis:
+        # 只对真正需要分析的内容使用AI
+        if self.enable_ai_analysis:
+            try:
                 ai_params = self._ai_analyze_tts_params(segment, detected_characters)
                 if ai_params:
                     return ai_params
-        except Exception as e:
-            logger.warning(f"AI TTS参数分析失败，使用默认参数: {str(e)}")
+                else:
+                    logger.warning(f"AI TTS参数分析返回空结果")
+                    return self.CHARACTER_DEFAULT_PARAMS
+            except Exception as e:
+                logger.error(f"AI TTS参数分析失败: {str(e)}")
+                return self.CHARACTER_DEFAULT_PARAMS
         
-        # 降级方案：使用简化规则
-        return self._fallback_tts_params(speaker, text, emotion)
+        # 快速模式：直接使用默认参数
+        return self.CHARACTER_DEFAULT_PARAMS
     
     def _ai_analyze_tts_params(self, segment: Dict, detected_characters: List[Dict]) -> Dict:
         """使用AI智能分析TTS参数 - 简化版提示词"""
@@ -216,36 +220,7 @@ class AITTSOptimizer:
             logger.error(f"解析AI TTS参数失败: {str(e)}")
             return None
     
-    def _fallback_tts_params(self, speaker: str, text: str, emotion: str) -> Dict:
-        """降级方案：基于情感的快速配置"""
-        
-        # 基于情感的快速映射
-        emotion_params = {
-            'angry': {"timeStep": 25, "pWeight": 1.8, "tWeight": 3.2},
-            'excited': {"timeStep": 26, "pWeight": 1.7, "tWeight": 3.1},
-            'happy': {"timeStep": 30, "pWeight": 1.5, "tWeight": 2.8},
-            'sad': {"timeStep": 35, "pWeight": 1.2, "tWeight": 3.5},
-            'fear': {"timeStep": 32, "pWeight": 1.6, "tWeight": 3.3},
-            'surprise': {"timeStep": 28, "pWeight": 1.7, "tWeight": 3.0},
-            'calm': {"timeStep": 32, "pWeight": 1.4, "tWeight": 3.0},
-            'neutral': {"timeStep": 30, "pWeight": 1.4, "tWeight": 3.0}
-        }
-        
-        params = emotion_params.get(emotion, emotion_params['neutral'])
-        
-        # 旁白微调
-        if '旁白' in speaker:
-            params = dict(params)  # 复制避免修改原字典
-            params["pWeight"] = 2.0
-            params["tWeight"] = 3.0
-        
-        logger.debug(f"情感参数映射: {emotion} -> {params}")
-        
-        return {
-            **params,
-            "emotion_based": True,
-            "fallback_mode": True
-        }
+
     
     def set_enable_ai_analysis(self, enabled: bool):
         """设置是否启用AI分析（可用于性能调优）"""

@@ -15,8 +15,11 @@ logger = logging.getLogger(__name__)
 
 class ProgrammaticCharacterDetector:
     """
-    编程规则角色识别器 - 可复用的角色识别引擎
+    编程规则角色识别器 - 独立的角色识别引擎
     基于小说角色编程识别规则.md的实现
+    
+    注意：这是一个独立的分析器，不是AI分析的后备方案！
+    用于需要快速、确定性角色识别的场景，如API测试、调试等。
     """
     
     def __init__(self):

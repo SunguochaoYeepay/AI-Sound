@@ -183,12 +183,8 @@ class AnalysisSessionManager:
             else:
                 # 调用LLM分析
                 start_time = datetime.utcnow()
-                # llm_response = await self.dify_client.analyze_text(  # 🚀 已删除 - DifyClient不存在
-                # 使用模拟响应或其他分析方法
-                llm_response = await self._fallback_analysis(
-                    text=chapter.content,
-                    workflow_id=session.llm_workflow_id
-                )
+                # 🚀 DifyClient已删除，这个服务已废弃
+                raise ServiceException("DifyClient分析服务已废弃，请使用ContentPreparationService")
                 end_time = datetime.utcnow()
                 response_time = int((end_time - start_time).total_seconds() * 1000)
                 
@@ -271,67 +267,7 @@ class AnalysisSessionManager:
             }
         )
 
-    async def _fallback_analysis(self, text: str, workflow_id: str = None) -> Dict[str, Any]:
-        """降级分析方法 - 当DifyClient不可用时使用"""
-        import re
-        
-        # 简单的文本分析逻辑
-        lines = text.split('\n')
-        dialogues = []
-        
-        # 检测对话
-        dialogue_patterns = [r'"([^"]*)"', r'"([^"]*)"', r'「([^」]*)」']
-        
-        for line in lines:
-            for pattern in dialogue_patterns:
-                matches = re.findall(pattern, line)
-                dialogues.extend(matches)
-        
-        # 生成简化的分析结果
-        characters = []
-        if dialogues:
-            # 基于对话数量估算角色
-            char_count = min(len(set(dialogues[:10])), 5)
-            for i in range(char_count):
-                characters.append({
-                    "name": f"角色{i+1}",
-                    "voice_id": i + 1
-                })
-        
-        # 添加旁白
-        characters.append({
-            "name": "旁白",
-            "voice_id": len(characters) + 1
-        })
-        
-        # 生成合成计划
-        synthesis_plan = {
-            "segments": []
-        }
-        
-        segment_id = 1
-        for line in lines[:20]:  # 只处理前20行
-            if line.strip():
-                is_dialogue = any(re.search(pattern, line) for pattern in dialogue_patterns)
-                synthesis_plan["segments"].append({
-                    "id": segment_id,
-                    "text": line.strip(),
-                    "speaker": "角色1" if is_dialogue else "旁白",
-                    "voice_id": 1 if is_dialogue else len(characters)
-                })
-                segment_id += 1
-        
-        return {
-            "request_id": f"fallback_{hash(text) % 10000}",
-            "data": {
-                "project_info": {
-                    "analysis_method": "fallback",
-                    "total_segments": len(synthesis_plan["segments"])
-                },
-                "synthesis_plan": synthesis_plan,
-                "characters": characters
-            }
-        }
+
 
 
 class AnalysisService:
