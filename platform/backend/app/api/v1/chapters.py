@@ -3,7 +3,7 @@
 提供书籍章节管理功能 - 重构简化版
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Form
+from fastapi import APIRouter, Depends, HTTPException, Query, Form, Body
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, asc, func, or_
 from typing import List, Optional, Dict, Any
@@ -99,6 +99,108 @@ async def create_chapter(
     except Exception as e:
         logger.error(f"创建章节失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"创建章节失败: {str(e)}")
+
+@router.post("/batch")
+async def create_chapters_batch(
+    book_id: int = Form(..., description="书籍ID"),
+    chapters: List[Dict[str, Any]] = Body(..., description="章节列表，每个章节包含title和content"),
+    start_chapter_number: Optional[int] = Form(None, description="起始章节序号"),
+    batch_size: int = Form(50, description="每批处理的章节数量"),
+    db: Session = Depends(get_db)
+):
+    """批量创建章节
+    
+    Args:
+        book_id: 书籍ID
+        chapters: 章节列表，格式为[{"title": "章节标题", "content": "章节内容"}, ...]
+        start_chapter_number: 起始章节序号（可选）
+        batch_size: 每批处理的章节数量，默认50
+    """
+    try:
+        # 检查书籍是否存在
+        book = db.query(Book).filter(Book.id == book_id).first()
+        if not book:
+            raise HTTPException(status_code=404, detail="书籍不存在")
+        
+        # 确定起始章节序号
+        if start_chapter_number is None:
+            max_chapter = db.query(func.max(BookChapter.chapter_number)).filter(
+                BookChapter.book_id == book_id
+            ).scalar()
+            start_chapter_number = (max_chapter or 0) + 1
+        
+        created_chapters = []
+        total_chapters = len(chapters)
+        
+        # 分批处理章节
+        for i in range(0, total_chapters, batch_size):
+            batch_chapters = chapters[i:i + batch_size]
+            
+            try:
+                # 开启事务
+                for idx, chapter_data in enumerate(batch_chapters):
+                    chapter_number = start_chapter_number + i + idx
+                    
+                    # 创建新章节
+                    new_chapter = BookChapter(
+                        book_id=book_id,
+                        chapter_number=chapter_number,
+                        chapter_title=chapter_data["title"].strip(),
+                        content=chapter_data["content"],
+                        word_count=len(chapter_data["content"].strip()),
+                        analysis_status='pending',
+                        synthesis_status='pending',
+                        created_at=datetime.utcnow(),
+                        updated_at=datetime.utcnow()
+                    )
+                    
+                    db.add(new_chapter)
+                    created_chapters.append(new_chapter)
+                
+                # 提交当前批次
+                db.commit()
+                
+                # 记录批量创建日志
+                await log_system_event(
+                    db=db,
+                    level="info",
+                    message=f"批量创建章节成功，批次 {i//batch_size + 1}",
+                    module="chapters",
+                    details={
+                        "book_id": book_id,
+                        "batch_start": i,
+                        "batch_size": len(batch_chapters)
+                    }
+                )
+                
+            except Exception as e:
+                db.rollback()
+                logger.error(f"批量创建章节失败，批次 {i//batch_size + 1}: {str(e)}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"批量创建章节失败，批次 {i//batch_size + 1}: {str(e)}"
+                )
+        
+        # 更新书籍的章节数
+        chapter_count = db.query(BookChapter).filter(BookChapter.book_id == book_id).count()
+        book.chapter_count = chapter_count
+        db.commit()
+        
+        return {
+            "success": True,
+            "message": "批量创建章节成功",
+            "data": {
+                "total_created": len(created_chapters),
+                "first_chapter_number": start_chapter_number,
+                "last_chapter_number": start_chapter_number + len(created_chapters) - 1
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"批量创建章节失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"批量创建章节失败: {str(e)}")
 
 @router.get("")
 async def get_chapters(

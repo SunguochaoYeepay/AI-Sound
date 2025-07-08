@@ -126,12 +126,13 @@
 
                   <a-upload-dragger
                     v-model:fileList="fileList"
-                    name="file"
+                    name="text_file"
                     :multiple="false"
                     :beforeUpload="beforeUpload"
                     @remove="handleFileRemove"
                     accept=".txt,.md"
                     :showUploadList="true"
+                    :customRequest="handleFileUpload"
                   >
                     <p class="ant-upload-drag-icon">
                       <InboxOutlined style="font-size: 48px; color: #06b6d4;" />
@@ -155,10 +156,25 @@
                     <div v-if="detectedChapters.length > 0" class="chapters-detection-result">
                       <div class="detection-header">
                         <span>🔍 检测到 {{ detectedChapters.length }} 个章节</span>
-                        <a-button type="link" size="small" @click="showAllChapters = !showAllChapters">
-                          {{ showAllChapters ? '收起' : '查看全部' }}
-                        </a-button>
+                        <div class="detection-actions">
+                          <a-button type="link" size="small" @click="showAllChapters = !showAllChapters">
+                            {{ showAllChapters ? '收起' : '查看全部' }}
+                          </a-button>
+                          <a-button 
+                            type="primary"
+                            :loading="uploadingChapters"
+                            @click="handleBatchUpload"
+                          >
+                            批量导入章节
+                          </a-button>
+                        </div>
                       </div>
+                      <a-progress
+                        v-if="uploadProgress.visible"
+                        :percent="uploadProgress.percent"
+                        :status="uploadProgress.status"
+                        style="margin-top: 16px;"
+                      />
                       <div class="chapters-list">
                         <div
                           v-for="(chapter, index) in (showAllChapters ? detectedChapters : detectedChapters.slice(0, 5))"
@@ -513,12 +529,9 @@ const contentStats = computed(() => {
   }
 })
 
-const fileStats = computed(() => {
-  const content = fileContent.value || ''
-  return {
-    chars: content.length,
-    words: content.replace(/\s/g, '').length
-  }
+const fileStats = reactive({
+  chars: 0,
+  words: 0
 })
 
 const canSave = computed(() => {
@@ -553,15 +566,18 @@ const handleTagInputConfirm = () => {
 
 // 文件处理
 const beforeUpload = (file) => {
-  const isValidType = file.name.toLowerCase().endsWith('.txt') || file.name.toLowerCase().endsWith('.md')
+  // 检查文件类型
+  const isValidType = file.type === 'text/plain' || file.type === 'text/markdown' || 
+                     file.name.endsWith('.txt') || file.name.endsWith('.md')
   if (!isValidType) {
-    message.error('只支持 .txt 和 .md 格式文件')
+    message.error('只支持 .txt 和 .md 格式的文件')
     return false
   }
 
+  // 检查文件大小（限制为50MB）
   const isLt50M = file.size / 1024 / 1024 < 50
   if (!isLt50M) {
-    message.error('文件大小不能超过 50MB')
+    message.error('文件大小不能超过50MB')
     return false
   }
 
@@ -569,19 +585,22 @@ const beforeUpload = (file) => {
   const reader = new FileReader()
   reader.onload = (e) => {
     fileContent.value = e.target.result
-    message.success('文件读取成功')
+    // 更新文件统计信息
+    fileStats.chars = fileContent.value.length
+    fileStats.words = Math.floor(fileContent.value.length / 2) // 简单估算
+    // 检测章节
+    detectChapters()
   }
-  reader.onerror = () => {
-    message.error('文件读取失败')
-  }
-  reader.readAsText(file, 'UTF-8')
+  reader.readAsText(file)
 
   return false // 阻止自动上传
 }
 
 const handleFileRemove = () => {
   fileContent.value = ''
-  return true
+  fileStats.chars = 0
+  fileStats.words = 0
+  detectedChapters.value = []
 }
 
 const onContentMethodChange = (key) => {
@@ -636,83 +655,85 @@ const detectChapters = async () => {
   // 创建模式使用前端检测逻辑
   detectingChapters.value = true
   try {
-    // 简单的章节检测逻辑（前端实现）
     const content = currentContent.value
-    const lines = content.split('\n')
-    const chapters = []
-    
-    const chapterPatterns = [
-      /^第[一二三四五六七八九十百千万\d]+章\s*[：:：]?(.*)$/,
-      /^第[一二三四五六七八九十百千万\d]+节\s*[：:：]?(.*)$/,
-      /^Chapter\s+\d+\s*[：:：]?(.*)$/i,
-      /^\d+[\.、]\s*(.*)$/,
-      /^[一二三四五六七八九十百千万]+[、\.]\s*(.*)$/
-    ]
-    
-    let currentChapter = 1
-    let chapterStart = 0
-    
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim()
-      if (!line) continue
-      
-      let isChapter = false
-      let chapterTitle = line
-      
-      for (const pattern of chapterPatterns) {
-        const match = pattern.exec(line)
-        if (match) {
-          isChapter = true
-          chapterTitle = match[1]?.trim() || line
-          break
-        }
-      }
-      
-      if (isChapter && currentChapter > 1) {
-        // 保存上一章节
-        const chapterContent = lines.slice(chapterStart, i).join('\n')
-        chapters[chapters.length - 1].wordCount = chapterContent.replace(/\s/g, '').length
-        chapterStart = i
-      }
-      
-      if (isChapter) {
-        chapters.push({
-          number: currentChapter,
-          title: chapterTitle,
-          start: chapterStart,
-          end: 0,
-          wordCount: 0
-        })
-        currentChapter++
-      }
-    }
-    
-    // 处理最后一章
-    if (chapters.length > 0) {
-      const lastChapterContent = lines.slice(chapterStart).join('\n')
-      chapters[chapters.length - 1].wordCount = lastChapterContent.replace(/\s/g, '').length
-    }
-    
-    // 如果没有检测到章节，创建默认章节
-    if (chapters.length === 0) {
-      chapters.push({
-        number: 1,
-        title: '全文',
-        start: 0,
-        end: content.length,
-        wordCount: content.replace(/\s/g, '').length
-      })
-    }
-    
+    const chapters = detectChaptersFromContent(content)
     detectedChapters.value = chapters
     message.success(`检测到 ${chapters.length} 个章节`)
-    
   } catch (error) {
     console.error('章节检测失败:', error)
     message.error('章节检测失败')
   } finally {
     detectingChapters.value = false
   }
+}
+
+// 从内容中检测章节的具体实现
+const detectChaptersFromContent = (content) => {
+  const chapterPatterns = [
+    /第[一二三四五六七八九十百千万\d]+章\s*([^\n]+)/g,
+    /第[一二三四五六七八九十百千万\d]+节\s*([^\n]+)/g,
+    /Chapter\s+[0-9]+\s*[:：]?\s*([^\n]+)/gi,
+    /[#]+\s*([^\n]+)/g,
+    /[一二三四五六七八九十百千万\d]+[、.]\s*([^\n]+)/g,
+    /[【（\(][^】）\)]+[】）\)]/g
+  ]
+
+  let chapters = []
+  let lastIndex = 0
+  let chapterNumber = 1
+
+  // 按照不同模式匹配章节
+  for (const pattern of chapterPatterns) {
+    let match
+    while ((match = pattern.exec(content)) !== null) {
+      const title = match[1] || match[0]
+      const startIndex = match.index
+      
+      // 如果已经有章节，更新上一章节的内容
+      if (chapters.length > 0) {
+        const lastChapter = chapters[chapters.length - 1]
+        lastChapter.content = content.slice(lastChapter.startIndex, startIndex).trim()
+        lastChapter.wordCount = lastChapter.content.length
+      }
+
+      chapters.push({
+        number: chapterNumber++,
+        title: title.trim(),
+        startIndex,
+        content: '', // 暂时为空，后面会填充
+        wordCount: 0
+      })
+
+      lastIndex = startIndex
+    }
+  }
+
+  // 处理最后一章的内容
+  if (chapters.length > 0) {
+    const lastChapter = chapters[chapters.length - 1]
+    lastChapter.content = content.slice(lastChapter.startIndex).trim()
+    lastChapter.wordCount = lastChapter.content.length
+  }
+
+  // 如果没有检测到章节，创建默认章节
+  if (chapters.length === 0) {
+    chapters.push({
+      number: 1,
+      title: '全文',
+      content: content.trim(),
+      wordCount: content.trim().length
+    })
+  }
+
+  // 按开始位置排序章节
+  chapters.sort((a, b) => a.startIndex - b.startIndex)
+
+  // 重新编号
+  chapters.forEach((chapter, index) => {
+    chapter.number = index + 1
+  })
+
+  return chapters
 }
 
 // 内容预览
@@ -977,6 +998,159 @@ onMounted(() => {
     loadBook()
   }
 })
+
+// 添加上传进度状态
+const uploadProgress = reactive({
+  visible: false,
+  percent: 0,
+  status: 'active' // 'active', 'exception', 'success'
+})
+
+const uploadingChapters = ref(false)
+
+// 批量上传章节
+const handleBatchUpload = async () => {
+  if (!route.params.id) {
+    message.error('请先保存书籍基本信息')
+    return
+  }
+
+  try {
+    uploadingChapters.value = true
+    uploadProgress.visible = true
+    uploadProgress.percent = 0
+    uploadProgress.status = 'active'
+
+    const MAX_BATCH_SIZE = 10 // 减小每批次的章节数量
+    const MAX_REQUEST_SIZE = 900 * 1024 // 900KB，留出一些缓冲空间
+
+    const totalChapters = detectedChapters.value.length
+    let processedChapters = 0
+    let currentBatch = []
+    let currentBatchSize = 0
+
+    // 处理所有章节
+    for (let i = 0; i < totalChapters; i++) {
+      const chapter = detectedChapters.value[i]
+      const chapterSize = JSON.stringify({
+        title: chapter.title,
+        content: chapter.content
+      }).length
+
+      // 如果当前批次加上新章节会超过大小限制，先上传当前批次
+      if (currentBatchSize + chapterSize > MAX_REQUEST_SIZE || currentBatch.length >= MAX_BATCH_SIZE) {
+        if (currentBatch.length > 0) {
+          await uploadBatch(currentBatch, processedChapters + 1)
+          processedChapters += currentBatch.length
+          // 更新进度
+          uploadProgress.percent = Math.round((processedChapters / totalChapters) * 100)
+        }
+        // 重置当前批次
+        currentBatch = []
+        currentBatchSize = 0
+      }
+
+      // 添加章节到当前批次
+      currentBatch.push({
+        title: chapter.title,
+        content: chapter.content
+      })
+      currentBatchSize += chapterSize
+    }
+
+    // 上传最后一批
+    if (currentBatch.length > 0) {
+      await uploadBatch(currentBatch, processedChapters + 1)
+      processedChapters += currentBatch.length
+      uploadProgress.percent = 100
+    }
+
+    uploadProgress.status = 'success'
+    message.success(`成功导入 ${totalChapters} 个章节`)
+
+    // 重新加载章节列表
+    if (isEditing.value) {
+      await loadExistingChapters()
+    }
+
+    // 清理上传状态
+    fileContent.value = ''
+    detectedChapters.value = []
+    fileList.value = []
+
+  } catch (error) {
+    console.error('批量上传章节失败:', error)
+    uploadProgress.status = 'exception'
+    message.error('批量上传章节失败: ' + (error.message || '未知错误'))
+  } finally {
+    uploadingChapters.value = false
+    // 3秒后隐藏进度条
+    setTimeout(() => {
+      uploadProgress.visible = false
+      uploadProgress.percent = 0
+    }, 3000)
+  }
+}
+
+// 上传单个批次的章节
+const uploadBatch = async (chapters, startChapterNumber) => {
+  try {
+    await chaptersAPI.createChaptersBatch({
+      book_id: route.params.id,
+      chapters: chapters,
+      start_chapter_number: startChapterNumber
+    })
+  } catch (error) {
+    console.error('上传批次失败:', error)
+    throw new Error(`上传批次失败: ${error.message || '未知错误'}`)
+  }
+}
+
+// 处理文件上传
+const handleFileUpload = async () => {
+  if (!bookForm.title) {
+    message.warning('请先填写书籍标题')
+    return
+  }
+
+  try {
+    uploading.value = true
+    
+    // 创建FormData对象
+    const formData = new FormData()
+    formData.append('title', bookForm.title)
+    formData.append('author', bookForm.author || '')
+    formData.append('description', bookForm.description || '')
+    formData.append('tags', JSON.stringify(bookForm.tags || []))
+    formData.append('auto_detect_chapters', 'true')
+    
+    // 如果有文件，添加文件
+    if (fileList.value.length > 0) {
+      formData.append('text_file', fileList.value[0].originFileObj)
+    } else if (fileContent.value) {
+      // 如果没有文件但有内容，直接添加内容
+      formData.append('content', fileContent.value)
+    }
+    
+    // 发送请求
+    const response = await booksAPI.createBook(formData)
+    
+    if (response.data && response.data.success) {
+      message.success('书籍创建成功')
+      // 更新书籍ID
+      currentBookId.value = response.data.data.id
+      // 如果检测到章节，显示章节列表
+      if (response.data.data.chapter_count > 0) {
+        await loadChapters()
+      }
+    }
+  } catch (error) {
+    console.error('创建书籍失败:', error)
+    message.error(error.response?.data?.detail || '创建书籍失败')
+  } finally {
+    uploading.value = false
+  }
+}
 </script>
 
 <style scoped>
@@ -1281,5 +1455,46 @@ onMounted(() => {
   font-size: 12px;
   color: #6b7280;
   margin-top: 4px;
+}
+
+.detection-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.detection-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.chapter-item-preview {
+  display: flex;
+  align-items: center;
+  padding: 8px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.chapter-number {
+  width: 100px;
+  color: #666;
+}
+
+.chapter-title {
+  flex: 1;
+  margin: 0 16px;
+}
+
+.chapter-stats {
+  color: #999;
+}
+
+.more-chapters {
+  text-align: center;
+  padding: 8px;
+  color: #999;
+  background: #f9f9f9;
 }
 </style> 

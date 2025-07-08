@@ -18,7 +18,9 @@ from pydantic import BaseModel
 from app.database import get_db
 from app.models import Book, BookChapter, AnalysisResult
 
-# 注意：PUT端点现在使用Form参数而不是JSON请求
+# 配置文件上传大小限制
+from fastapi import File
+from typing import BinaryIO
 
 router = APIRouter(prefix="/books")
 
@@ -111,7 +113,7 @@ async def upload_book(
     description: Optional[str] = Form(""),
     content: Optional[str] = Form(""),
     tags: Optional[str] = Form("[]"),
-    text_file: Optional[UploadFile] = File(None),
+    text_file: Optional[UploadFile] = File(None, description="上传的文本文件"),
     auto_detect_chapters: bool = Form(True),
     db: Session = Depends(get_db)
 ):
@@ -124,7 +126,6 @@ async def upload_book(
     try:
         # 解析标签
         try:
-            import json
             parsed_tags = json.loads(tags) if tags else []
         except json.JSONDecodeError:
             parsed_tags = []
