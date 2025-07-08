@@ -22,7 +22,7 @@ class EnvironmentGenerationService:
     
     def __init__(self, db: Session):
         self.db = db
-        self.analyzer = NarrationEnvironmentAnalyzer()
+        self.analyzer = NarrationEnvironmentAnalyzer(db=db)  # 传递数据库会话
         self.validator = EnvironmentConfigValidator()
         
     def log_operation(self, session_id: int, level: str, message: str, 

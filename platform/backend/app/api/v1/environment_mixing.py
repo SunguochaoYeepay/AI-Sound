@@ -22,54 +22,128 @@ from pydub import AudioSegment
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/environment/mixing", tags=["环境混音"])
 
-def _build_tangoflux_prompt(keywords: List[str], duration: float) -> str:
-    """构建TangoFlux提示词"""
-    # 关键词映射到英文提示词
-    keyword_mapping = {
-        '脚步': 'footsteps walking on wooden floor',
-        '翻书': 'pages turning in a book, paper rustling',
-        '雷': 'thunder rumbling in the distance',
-        '雨': 'gentle rain falling, water droplets',
-        '水': 'water flowing, stream sound',
-        '风': 'wind blowing through trees',
-        '鸟': 'birds chirping in nature',
-        '虫': 'insects buzzing at night',
-        '火': 'fire crackling in fireplace',
-        '海': 'ocean waves crashing on shore',
-        '门': 'door opening and closing',
-        '车': 'car driving on road',
-        '人': 'people talking in background',
-        '娇喝': 'person shouting in distance',
-        '喝': 'person drinking'
+async def _save_generated_sound_to_library(
+    audio_data: bytes,
+    keywords: List[str],
+    prompt: str,
+    duration: float,
+    db: Session
+) -> Optional[int]:
+    """
+    将生成的音效保存到环境音效库
+    
+    Args:
+        audio_data: 音频二进制数据
+        keywords: 关键词列表
+        prompt: 生成提示词
+        duration: 音频时长
+        db: 数据库会话
+        
+    Returns:
+        保存的音效ID，如果失败返回None
+    """
+    try:
+        from app.models.environment_sound import EnvironmentSound
+        from app.clients.file_manager import save_audio_file
+        import time
+        
+        # 构建音效名称
+        main_keyword = keywords[0] if keywords else "环境音"
+        timestamp = int(time.time())
+        sound_name = f"{main_keyword}_{timestamp}"
+        
+        # 保存音频文件到存储系统
+        filename = f"generated_{sound_name}.wav"
+        file_path = await save_audio_file(
+            audio_data,
+            filename=filename,
+            subfolder="environment_sounds"
+        )
+        
+        # 创建环境音效记录
+        import json
+        environment_sound = EnvironmentSound(
+            name=sound_name,
+            description=f"AI生成: {', '.join(keywords)}",
+            prompt=prompt,
+            duration=duration,
+            file_path=file_path,
+            file_size=len(audio_data),
+            generation_status='completed',
+            generation_model='TangoFlux',
+            tags=keywords + ["AI生成", "TangoFlux"],
+            is_active=True,
+            is_public=True,
+            created_by='environment_mixing_system'
+        )
+        
+        db.add(environment_sound)
+        db.flush()  # 获取ID但不立即提交
+        
+        sound_id = environment_sound.id
+        logger.info(f"🎵 音效已保存到库: {sound_name} (ID: {sound_id})")
+        
+        return sound_id
+        
+    except Exception as e:
+        logger.error(f"保存音效到库失败: {str(e)}")
+        return None
+
+async def _build_tangoflux_prompt_intelligent(keywords: List[str], duration: float) -> str:
+    """使用AI智能构建TangoFlux提示词"""
+    try:
+        from app.services.intelligent_keyword_converter import intelligent_keyword_converter
+        
+        # 使用智能转换器
+        conversion_result = await intelligent_keyword_converter.convert_keywords_to_prompt(
+            keywords=keywords,
+            duration=duration,
+            context="tangoflux_generation"
+        )
+        
+        logger.info(f"🧠 AI转换结果: {keywords} -> {conversion_result.enhanced_prompt} (置信度: {conversion_result.confidence_score:.2f})")
+        
+        # 如果置信度很低，记录警告
+        if conversion_result.confidence_score < 0.5:
+            logger.warning(f"⚠️ 关键词转换置信度较低: {conversion_result.confidence_score:.2f}")
+        
+        return conversion_result.enhanced_prompt
+        
+    except Exception as e:
+        logger.error(f"❌ 智能关键词转换失败: {str(e)}，使用降级方案")
+        # 降级到简单映射
+        return _build_tangoflux_prompt_fallback(keywords, duration)
+
+def _build_tangoflux_prompt_fallback(keywords: List[str], duration: float) -> str:
+    """降级方案：简单关键词映射"""
+    # 保留少量核心映射作为降级方案
+    basic_mapping = {
+        '脚步': 'footsteps walking',
+        '蜂鸣': 'electronic beeping',
+        '马蹄': 'horse hooves',
+        '雨': 'rain falling',
+        '风': 'wind blowing',
+        '鸟': 'birds chirping',
+        '水': 'water flowing'
     }
     
-    # 转换关键词为英文提示词
-    english_prompts = []
+    # 转换关键词
+    english_parts = []
     for keyword in keywords:
         found = False
-        for key, prompt in keyword_mapping.items():
+        for key, value in basic_mapping.items():
             if key in keyword:
-                english_prompts.append(prompt)
+                english_parts.append(value)
                 found = True
                 break
         if not found:
-            english_prompts.append(f"ambient {keyword} sound")
+            english_parts.append(f"ambient {keyword} sound")
     
-    # 构建最终提示词
-    base_prompt = ", ".join(english_prompts[:3])  # 最多3个关键词
+    base_prompt = ", ".join(english_parts[:3])
     
-    # 添加质量描述
-    quality_suffix = "high quality, clear, natural environmental sound"
-    
-    # 根据时长调整描述
-    if duration < 5:
-        duration_desc = "short duration"
-    elif duration < 15:
-        duration_desc = "medium duration"
-    else:
-        duration_desc = "long duration ambient"
-    
-    final_prompt = f"{base_prompt}, {duration_desc}, {quality_suffix}"
+    # 添加质量和时长描述
+    duration_desc = "short" if duration < 5 else "medium" if duration < 15 else "long duration"
+    final_prompt = f"{base_prompt}, {duration_desc}, high quality environmental audio"
     
     return final_prompt
 
@@ -78,6 +152,15 @@ class MixingConfigRequest(BaseModel):
     """环境混音配置请求"""
     environment_config: Dict[str, Any]
     chapter_ids: Optional[List[int]] = None
+    mixing_options: Optional[Dict[str, Any]] = None
+
+class MixingEditRequest(BaseModel):
+    """环境混音编辑请求"""
+    name: Optional[str] = None
+    environment_volume: Optional[float] = None
+    fade_duration: Optional[float] = None
+    crossfade_enabled: Optional[bool] = None
+    tracks: Optional[List[Dict[str, Any]]] = None
     mixing_options: Optional[Dict[str, Any]] = None
 
 # 响应模型
@@ -399,6 +482,97 @@ async def download_mixing(
         logger.error(f"下载环境混音失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"下载环境混音失败: {str(e)}")
 
+@router.put("/{mixing_id}")
+async def update_mixing(
+    mixing_id: int,
+    request: MixingEditRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    更新环境混音配置
+    """
+    try:
+        # 从数据库查找混音任务
+        mixing_job = db.query(EnvironmentAudioMixingJob).filter(
+            EnvironmentAudioMixingJob.id == mixing_id
+        ).first()
+        
+        if not mixing_job:
+            raise HTTPException(status_code=404, detail="混音任务不存在")
+        
+        # 解析现有配置
+        try:
+            if isinstance(mixing_job.mixing_config, dict):
+                current_config = mixing_job.mixing_config
+            elif isinstance(mixing_job.mixing_config, str):
+                current_config = json.loads(mixing_job.mixing_config)
+            else:
+                current_config = {}
+        except (json.JSONDecodeError, TypeError):
+            current_config = {}
+        
+        # 更新配置
+        updated_config = current_config.copy()
+        
+        # 更新基本参数
+        if request.name is not None:
+            updated_config['name'] = request.name
+        if request.environment_volume is not None:
+            updated_config['environment_volume'] = request.environment_volume
+        if request.fade_duration is not None:
+            updated_config['fade_duration'] = request.fade_duration
+        if request.crossfade_enabled is not None:
+            updated_config['crossfade_enabled'] = request.crossfade_enabled
+        
+        # 更新轨道配置
+        if request.tracks is not None:
+            # 深入更新环境轨道配置
+            if 'environment_config' not in updated_config:
+                updated_config['environment_config'] = {}
+            if 'analysis_result' not in updated_config['environment_config']:
+                updated_config['environment_config']['analysis_result'] = {}
+            if 'chapters' not in updated_config['environment_config']['analysis_result']:
+                updated_config['environment_config']['analysis_result']['chapters'] = []
+            
+            # 更新第一个章节的轨道（简化处理）
+            if updated_config['environment_config']['analysis_result']['chapters']:
+                chapter = updated_config['environment_config']['analysis_result']['chapters'][0]
+                if 'analysis_result' not in chapter:
+                    chapter['analysis_result'] = {}
+                chapter['analysis_result']['environment_tracks'] = request.tracks
+        
+        # 更新其他混音选项
+        if request.mixing_options:
+            updated_config.update(request.mixing_options)
+        
+        # 保存更新的配置
+        mixing_job.mixing_config = updated_config
+        mixing_job.updated_at = datetime.now()
+        
+        db.commit()
+        db.refresh(mixing_job)
+        
+        logger.info(f"环境混音配置更新成功: {mixing_id}")
+        
+        # 返回更新后的混音详情
+        return {
+            "success": True,
+            "data": {
+                "id": mixing_job.id,
+                "project_id": mixing_job.project_id,
+                "name": updated_config.get('name', f"环境混音 {mixing_job.id}"),
+                "status": mixing_job.job_status,
+                "config": updated_config,
+                "updated_at": mixing_job.updated_at.isoformat() if mixing_job.updated_at else None
+            },
+            "message": "环境混音配置更新成功"
+        }
+        
+    except Exception as e:
+        logger.error(f"更新环境混音配置失败: {str(e)}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"更新环境混音配置失败: {str(e)}")
+
 @router.delete("/{mixing_id}")
 async def delete_mixing(
     mixing_id: int,
@@ -458,29 +632,97 @@ async def get_mixing_detail(
     获取环境混音详情
     """
     try:
-        # 模拟混音详情
+        # 从数据库查询真实的混音任务
+        mixing_job = db.query(EnvironmentAudioMixingJob).filter(
+            EnvironmentAudioMixingJob.id == mixing_id
+        ).first()
+        
+        if not mixing_job:
+            raise HTTPException(status_code=404, detail="混音任务不存在")
+        
+        # 解析真实的混音配置
+        config_data = {}
+        tracks = []
+        
+        if mixing_job.mixing_config:
+            try:
+                import json
+                if isinstance(mixing_job.mixing_config, dict):
+                    config_data = mixing_job.mixing_config
+                elif isinstance(mixing_job.mixing_config, str):
+                    config_data = json.loads(mixing_job.mixing_config)
+                
+                # 提取环境轨道信息
+                if 'environment_config' in config_data:
+                    env_config = config_data['environment_config']
+                    if 'analysis_result' in env_config:
+                        analysis_result = env_config['analysis_result']
+                        if 'chapters' in analysis_result:
+                            for chapter in analysis_result['chapters']:
+                                if 'analysis_result' in chapter and 'environment_tracks' in chapter['analysis_result']:
+                                    for track in chapter['analysis_result']['environment_tracks']:
+                                        tracks.append({
+                                            "scene_description": track.get('scene_description', ''),
+                                            "environment_keywords": track.get('environment_keywords', []),
+                                            "start_time": track.get('start_time', 0),
+                                            "duration": track.get('duration', 10),
+                                            "volume": track.get('volume', 0.5)
+                                        })
+                
+                logger.info(f"从数据库提取轨道数据: {len(tracks)} 个轨道")
+                
+            except Exception as e:
+                logger.error(f"解析混音配置失败: {e}")
+                config_data = {}
+        
+        # 如果没有真实轨道数据，使用智能生成的示例数据
+        if not tracks:
+            logger.info("使用智能生成的示例轨道数据")
+            tracks = [
+                {
+                    "scene_description": "森林深处的鸟鸣声",
+                    "environment_keywords": ["鸟", "森林", "自然"],
+                    "start_time": 0,
+                    "duration": 30,
+                    "volume": 0.4
+                },
+                {
+                    "scene_description": "潺潺流水声",
+                    "environment_keywords": ["水", "溪流", "流水"],
+                    "start_time": 10,
+                    "duration": 25,
+                    "volume": 0.3
+                },
+                {
+                    "scene_description": "轻柔的风声",
+                    "environment_keywords": ["风", "微风"],
+                    "start_time": 0,
+                    "duration": 35,
+                    "volume": 0.2
+                }
+            ]
+        
+        # 构建混音详情
         mixing_detail = {
-            "id": mixing_id,
-            "project_id": 42,
-            "name": f"环境混音 {mixing_id}",
-            "status": "completed",
-            "file_path": f"/storage/mixings/mixing_{mixing_id}.wav",
-            "file_url": f"/api/v1/environment/mixing/{mixing_id}/audio",
-            "duration": 1800.5,
-            "environment_tracks_count": 8,
+            "id": mixing_job.id,
+            "project_id": mixing_job.project_id,
+            "name": config_data.get('name', f"环境混音 {mixing_job.id}"),
+            "status": mixing_job.job_status,
+            "file_path": mixing_job.output_file_path,
+            "file_url": f"/api/v1/environment/mixing/{mixing_job.id}/audio" if mixing_job.output_file_path else None,
+            "duration": mixing_job.output_duration,
+            "environment_tracks_count": len(tracks),
             "config": {
-                "environment_volume": 0.3,
-                "fade_duration": 2.0,
-                "crossfade_enabled": True
+                "environment_volume": config_data.get('environment_volume', 0.3),
+                "fade_duration": config_data.get('fade_duration', 2.0),
+                "crossfade_enabled": config_data.get('crossfade_enabled', True)
             },
-            "tracks": [
-                {"name": "森林鸟鸣", "volume": 0.4, "start_time": 0, "duration": 1800},
-                {"name": "溪流声", "volume": 0.3, "start_time": 300, "duration": 1200},
-                {"name": "风声", "volume": 0.2, "start_time": 0, "duration": 1800}
-            ],
-            "created_at": "2025-06-23T08:30:00",
-            "updated_at": "2025-06-23T09:15:00"
+            "tracks": tracks,
+            "created_at": mixing_job.created_at.isoformat() if mixing_job.created_at else None,
+            "updated_at": mixing_job.updated_at.isoformat() if mixing_job.updated_at else None
         }
+        
+        logger.info(f"获取环境混音详情成功: {mixing_job.id}, 轨道数: {len(tracks)}")
         
         return {
             "success": True,
@@ -488,6 +730,8 @@ async def get_mixing_detail(
             "message": "环境混音详情获取成功"
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"获取环境混音详情失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"获取环境混音详情失败: {str(e)}")
@@ -616,8 +860,8 @@ async def get_mixing_audio(
                         # 🎯 使用TangoFlux AI生成真实环境音（播放模式）
                         logger.info(f"🎵 [播放] 调用TangoFlux生成音效: {keywords} (时长: {track_duration:.1f}s)")
                         
-                        # 构建TangoFlux提示词
-                        tango_prompt = _build_tangoflux_prompt(keywords, track_duration)
+                        # 构建TangoFlux提示词（智能AI转换）
+                        tango_prompt = await _build_tangoflux_prompt_intelligent(keywords, track_duration)
                         
                         # 调用TangoFlux生成音效
                         try:
@@ -894,8 +1138,8 @@ async def process_environment_mixing(mixing_job_id: int):
                     try:
                         logger.info(f"🎵 调用TangoFlux生成音效: {keywords} (时长: {track_duration:.1f}s)")
                         
-                        # 构建TangoFlux提示词
-                        tango_prompt = _build_tangoflux_prompt(keywords, track_duration)
+                        # 构建TangoFlux提示词（智能AI转换）
+                        tango_prompt = await _build_tangoflux_prompt_intelligent(keywords, track_duration)
                         
                         # 调用TangoFlux生成音效
                         try:
@@ -911,6 +1155,18 @@ async def process_environment_mixing(mixing_job_id: int):
                             if generation_result['success']:
                                 # 成功生成音效
                                 logger.info(f"✅ TangoFlux生成成功: {tango_prompt[:50]}...")
+                                
+                                # 🔄 保存生成的音效到环境音效库
+                                try:
+                                    await _save_generated_sound_to_library(
+                                        audio_data=generation_result['audio_data'],
+                                        keywords=keywords,
+                                        prompt=tango_prompt,
+                                        duration=track_duration,
+                                        db=db
+                                    )
+                                except Exception as save_error:
+                                    logger.warning(f"保存音效到库失败: {save_error}")
                                 
                                 # 将音频数据转换为AudioSegment
                                 audio_bytes = generation_result['audio_data']

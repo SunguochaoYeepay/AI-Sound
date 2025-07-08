@@ -280,6 +280,14 @@
       @complete="handleMixingConfigComplete"
       @start-mixing="handleStartEnvironmentMixing"
     />
+
+    <!-- 环境混音编辑抽屉 -->
+    <EnvironmentMixingEditDrawer
+      :visible="showEditDrawer"
+      :mixing-id="editingMixingId"
+      @update:visible="showEditDrawer = $event"
+      @updated="handleMixingUpdated"
+    />
   </div>
 </template>
 
@@ -295,6 +303,7 @@ import {
 } from '@ant-design/icons-vue'
 
 import EnvironmentMixingAnalysisDrawer from '@/components/environment-mixing/EnvironmentMixingAnalysisDrawer.vue'
+import EnvironmentMixingEditDrawer from '@/components/environment-mixing/EnvironmentMixingEditDrawer.vue'
 import { getAudioService } from '@/utils/audioService'
 import api from '@/api'
 
@@ -308,6 +317,8 @@ const projects = ref([])
 
 // 抽屉状态
 const showEnvironmentConfigDrawer = ref(false)
+const showEditDrawer = ref(false)
+const editingMixingId = ref(null)
 
 // 统计数据
 const stats = reactive({
@@ -417,8 +428,9 @@ const downloadMixing = async (mixing) => {
 
 // 编辑混音
 const editMixing = (mixing) => {
-  // TODO: 实现编辑功能
-  message.info('编辑功能开发中')
+  editingMixingId.value = mixing.id
+  showEditDrawer.value = true
+  console.log('打开编辑抽屉:', mixing)
 }
 
 // 删除混音
@@ -470,6 +482,21 @@ const handleStartEnvironmentMixing = async (environmentConfig) => {
     console.error('启动环境混音失败:', error)
     message.error('启动环境混音失败: ' + (error.response?.data?.detail || error.message))
   }
+}
+
+// 处理混音更新
+const handleMixingUpdated = (updatedMixing) => {
+  message.success('环境混音配置更新成功')
+  
+  // 更新列表中的对应项目
+  const index = mixingResults.value.findIndex(m => m.id === updatedMixing.id)
+  if (index !== -1) {
+    mixingResults.value[index] = { ...mixingResults.value[index], ...updatedMixing }
+  }
+  
+  // 重新加载数据以确保一致性
+  loadMixingResults()
+  loadStats()
 }
 
 // 重置搜索

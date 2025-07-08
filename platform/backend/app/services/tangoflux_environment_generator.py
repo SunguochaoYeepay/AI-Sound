@@ -426,6 +426,53 @@ class TangoFluxEnvironmentGenerator:
         
         return saved_sounds
     
+    async def check_existing_environment_sound(self, 
+                                             keyword: str, 
+                                             db: Session,
+                                             duration_tolerance: float = 5.0) -> Optional[Any]:
+        """
+        检查音乐库中是否已存在相同的环境音
+        
+        Args:
+            keyword: 环境音关键词
+            db: 数据库会话
+            duration_tolerance: 时长容差（秒）
+            
+        Returns:
+            如果找到匹配的环境音则返回EnvironmentSound对象，否则返回None
+        """
+        try:
+            from app.models.environment_sound import EnvironmentSound
+            
+            # 查找包含该关键词的环境音
+            existing_sounds = db.query(EnvironmentSound).filter(
+                EnvironmentSound.is_active == True,
+                EnvironmentSound.generation_status == 'completed'
+            ).all()
+            
+            for sound in existing_sounds:
+                # 检查标签中是否包含该关键词
+                if sound.tags and keyword in sound.tags:
+                    logger.info(f"[REUSE_CHECK] 找到已存在的环境音: {sound.name} (ID: {sound.id})")
+                    return sound
+                
+                # 检查名称中是否包含关键词
+                if keyword in sound.name:
+                    logger.info(f"[REUSE_CHECK] 通过名称匹配找到环境音: {sound.name} (ID: {sound.id})")
+                    return sound
+                    
+                # 检查提示词中是否包含关键词
+                if sound.prompt and keyword in sound.prompt:
+                    logger.info(f"[REUSE_CHECK] 通过提示词匹配找到环境音: {sound.name} (ID: {sound.id})")
+                    return sound
+            
+            logger.info(f"[REUSE_CHECK] 未找到匹配的环境音: {keyword}")
+            return None
+            
+        except Exception as e:
+            logger.error(f"[REUSE_CHECK] 检查已存在环境音失败: {str(e)}")
+            return None
+    
     def get_task_status(self, task_id: str) -> Optional[Dict[str, Any]]:
         """获取任务状态"""
         task = self.active_tasks.get(task_id)

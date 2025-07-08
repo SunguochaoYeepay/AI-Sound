@@ -1127,7 +1127,10 @@ export const environmentMixingAPI = {
   getMixingConfig: (mixingId) => apiClient.get(`/environment/mixing/${mixingId}/config`),
 
   // 更新混音配置
-  updateMixingConfig: (mixingId, config) => apiClient.put(`/environment/mixing/${mixingId}/config`, config)
+  updateMixingConfig: (mixingId, config) => apiClient.put(`/environment/mixing/${mixingId}/config`, config),
+
+  // 更新环境混音
+  updateMixing: (mixingId, config) => apiClient.put(`/environment/mixing/${mixingId}`, config)
 }
 
 
@@ -1265,6 +1268,8 @@ const api = {
   startEnvironmentMixing: environmentMixingAPI.startMixing,
   downloadEnvironmentMixing: environmentMixingAPI.downloadMixing,
   deleteEnvironmentMixing: environmentMixingAPI.deleteMixing,
+  getEnvironmentMixingDetail: environmentMixingAPI.getMixingDetail,
+  updateEnvironmentMixing: environmentMixingAPI.updateMixing,
   ...musicGenerationAPI
 }
 

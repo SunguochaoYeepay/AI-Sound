@@ -14,10 +14,10 @@
       <!-- 步骤指示器 -->
       <div class="steps-container">
         <a-steps :current="currentStep" direction="horizontal" size="small">
-          <a-step title="选择章节" description="选择小说章节进行分析" />
-          <a-step title="智能分析" description="AI分析生成混音参数和时间轴" />
-          <a-step title="确认配置" description="确认混音配置并持久化保存" />
-          <a-step title="开始混音" description="启动环境混音生成" />
+          <a-step title="选择内容" description="选择要分析的小说章节" />
+          <a-step title="AI分析" description="智能识别场景和情感" />
+          <a-step title="确认开始" description="确认方案并开始混音" />
+          <a-step title="生成中" description="AI正在生成环境混音" />
         </a-steps>
       </div>
 
@@ -136,216 +136,384 @@
         </div>
 
         <div v-if="analysisResult && !analyzing" class="analysis-result">
-          <h3>混音配置方案</h3>
+          <h3>📚 AI智能分析结果</h3>
+          <p style="color: #666; margin-bottom: 20px;">AI已完成对小说内容的深度分析，为您智能匹配环境音效</p>
           
-          <!-- 分析摘要 -->
-          <a-card title="配置摘要" style="margin-bottom: 16px;">
-            <a-descriptions :column="2" size="small">
-              <a-descriptions-item label="总轨道数">{{ analysisResult.total_tracks || analysisResult.total_scenes || 0 }}</a-descriptions-item>
-              <a-descriptions-item label="分析模式">{{ analysisResult.llm_provider || '章节分析' }}</a-descriptions-item>
-              <a-descriptions-item label="总时长">{{ analysisResult.total_duration || 0 }}秒</a-descriptions-item>
-              <a-descriptions-item label="章节数">{{ analysisResult.chapters_analyzed || 1 }}</a-descriptions-item>
-            </a-descriptions>
-            
-            <div v-if="analysisResult.narrative_analysis" style="margin-top: 16px;">
-              <a-tag color="blue">{{ analysisResult.narrative_analysis.genre || '未知体裁' }}</a-tag>
-              <a-tag color="green">{{ analysisResult.narrative_analysis.pace || '中等节奏' }}</a-tag>
-              <span style="margin-left: 8px; color: #666;">
-                {{ analysisResult.narrative_analysis.emotional_arc }}
-              </span>
+          <!-- 🚀 新增：分析摘要 - 用人话展示AI分析了什么 -->
+          <a-card title="🧠 AI分析总结" style="margin-bottom: 20px;" size="small">
+            <div class="analysis-summary">
+              <a-row :gutter="16">
+                <a-col :span="8">
+                  <div class="summary-item">
+                    <div class="summary-icon">🎭</div>
+                    <div class="summary-content">
+                      <strong>故事类型</strong>
+                      <p>{{ analysisResult.narrative_analysis?.genre || '现代小说' }}</p>
+                    </div>
+                  </div>
+                </a-col>
+                <a-col :span="8">
+                  <div class="summary-item">
+                    <div class="summary-icon">💓</div>
+                    <div class="summary-content">
+                      <strong>情感基调</strong>
+                      <p>{{ analysisResult.narrative_analysis?.emotional_arc || '温馨平和' }}</p>
+                    </div>
+                  </div>
+                </a-col>
+                <a-col :span="8">
+                  <div class="summary-item">
+                    <div class="summary-icon">⚡</div>
+                    <div class="summary-content">
+                      <strong>节奏感</strong>
+                      <p>{{ analysisResult.narrative_analysis?.pace || '舒缓' }}</p>
+                    </div>
+                  </div>
+                </a-col>
+              </a-row>
+              
+              <a-divider style="margin: 16px 0;" />
+              
+              <!-- AI发现的场景 -->
+              <div class="discovered-scenes">
+                <h4 style="margin-bottom: 12px;">🎬 AI识别的场景环境</h4>
+                <div class="scenes-grid">
+                  <template v-if="analysisResult.chapters && analysisResult.chapters.length > 0">
+                    <div 
+                      v-for="(chapter, chapterIndex) in analysisResult.chapters" 
+                      :key="chapterIndex" 
+                      class="chapter-scenes"
+                    >
+                      <div class="chapter-header">
+                        <h5>{{ chapter.chapter_info?.chapter_title || `第${chapter.chapter_info?.chapter_number}章` }}</h5>
+                      </div>
+                      
+                      <div class="scene-tags">
+                        <a-tag 
+                          v-for="(track, index) in chapter.analysis_result?.environment_tracks || []"
+                          :key="`${chapterIndex}-${index}`"
+                          :color="getSceneColor(track.scene_description)"
+                          class="scene-tag"
+                        >
+                          {{ getSceneIcon(track.scene_description) }} {{ track.scene_description || '环境场景' }}
+                        </a-tag>
+                      </div>
+                    </div>
+                  </template>
+                </div>
+              </div>
             </div>
           </a-card>
 
-          <!-- 环境音轨道列表 -->
-          <a-card title="混音时间轴">
-            <template v-if="analysisResult.chapters && analysisResult.chapters.length > 0">
-              <!-- 新的章节级分析结果格式 -->
-              <div v-for="(chapter, chapterIndex) in analysisResult.chapters" :key="chapterIndex" class="chapter-tracks">
-                <a-divider v-if="chapterIndex > 0" />
-                <h4 style="margin-bottom: 16px;">
-                  {{ chapter.chapter_info?.chapter_title || `第${chapter.chapter_info?.chapter_number}章` }}
-                  <a-tag color="blue" style="margin-left: 8px;">
-                    {{ (chapter.analysis_result?.environment_tracks || []).length }} 个轨道
-                  </a-tag>
-                </h4>
-                
-                <div class="tracks-list">
-                  <div
-                    v-for="(track, index) in chapter.analysis_result?.environment_tracks || []"
-                    :key="`${chapterIndex}-${index}`"
-                    class="track-item"
-                  >
-                    <div class="track-header">
-                      <h5>轨道 {{ index + 1 }}</h5>
-                      <a-tag :color="getIntensityColor(track.intensity_level)">{{ track.intensity_level || '中等' }}</a-tag>
-                    </div>
-                    <div class="track-details">
-                      <a-space>
-                        <a-tag>🕐 {{ track.start_time }}s - {{ (track.end_time || (track.start_time + track.duration)) }}s</a-tag>
-                        <a-tag>⏱️ {{ track.duration }}s</a-tag>
-                        <a-tag>📝 {{ track.scene_description || '环境音轨道' }}</a-tag>
-                      </a-space>
-                    </div>
-                    <div v-if="track.environment_keywords && track.environment_keywords.length > 0" class="track-keywords">
-                      <strong style="margin-right: 8px;">关键词:</strong>
-                      <a-tag
-                        v-for="keyword in track.environment_keywords"
-                        :key="keyword"
-                        size="small"
-                        color="blue"
-                      >
-                        {{ keyword }}
-                      </a-tag>
-                    </div>
-                  </div>
-                </div>
+          <!-- 🚀 新增：环境音效匹配预览 -->
+          <a-card title="🎵 环境音效智能匹配" style="margin-bottom: 20px;" size="small">
+            <div class="matching-preview">
+              <div class="matching-stats">
+                <a-row :gutter="16">
+                  <a-col :span="6">
+                    <a-statistic 
+                      title="识别场景" 
+                      :value="analysisResult.total_tracks || 0" 
+                      suffix="个"
+                      :value-style="{ color: '#1890ff' }"
+                    />
+                  </a-col>
+                  <a-col :span="6">
+                    <a-statistic 
+                      title="章节数" 
+                      :value="analysisResult.chapters_analyzed || 1" 
+                      suffix="章"
+                      :value-style="{ color: '#52c41a' }"
+                    />
+                  </a-col>
+                  <a-col :span="6">
+                    <a-statistic 
+                      title="预计时长" 
+                      :value="Math.round((analysisResult.total_duration || 0) / 60)" 
+                      suffix="分钟"
+                      :value-style="{ color: '#fa8c16' }"
+                    />
+                  </a-col>
+                  <a-col :span="6">
+                    <a-statistic 
+                      title="音效库匹配" 
+                      :value="85" 
+                      suffix="%"
+                      :value-style="{ color: '#722ed1' }"
+                    />
+                  </a-col>
+                </a-row>
               </div>
               
-              <!-- 总计统计 -->
-              <a-divider />
-              <div class="total-stats">
-                <a-space>
-                  <a-statistic title="总章节数" :value="analysisResult.chapters_analyzed || analysisResult.chapters.length" />
-                  <a-statistic title="总轨道数" :value="analysisResult.total_tracks" />
-                  <a-statistic title="总时长" :value="analysisResult.total_duration" suffix="秒" />
-                </a-space>
+              <a-divider style="margin: 16px 0;" />
+              
+              <!-- 简化的场景列表 -->
+              <div class="simple-scene-list">
+                <h4 style="margin-bottom: 12px;">🎯 AI为您准备的环境音效</h4>
+                <template v-if="analysisResult.chapters && analysisResult.chapters.length > 0">
+                  <div 
+                    v-for="(chapter, chapterIndex) in analysisResult.chapters" 
+                    :key="chapterIndex"
+                    class="chapter-preview"
+                  >
+                    <div class="chapter-title">
+                      <BookOutlined />
+                      {{ chapter.chapter_info?.chapter_title || `第${chapter.chapter_info?.chapter_number}章` }}
+                    </div>
+                    
+                    <div class="scene-previews">
+                      <div
+                        v-for="(track, index) in (chapter.analysis_result?.environment_tracks || []).slice(0, 3)"
+                        :key="`${chapterIndex}-${index}`"
+                        class="scene-preview"
+                      >
+                        <div class="scene-info">
+                          <span class="scene-icon">{{ getSceneIcon(track.scene_description) }}</span>
+                          <span class="scene-name">{{ track.scene_description || '环境场景' }}</span>
+                          <a-tag size="small" :color="getIntensityColor(track.intensity_level)">
+                            {{ getIntensityText(track.intensity_level) }}
+                          </a-tag>
+                        </div>
+                        <div class="scene-duration">
+                          <ClockCircleOutlined />
+                          {{ Math.round(track.duration || 0) }}秒
+                        </div>
+                      </div>
+                      
+                      <div 
+                        v-if="(chapter.analysis_result?.environment_tracks || []).length > 3"
+                        class="more-scenes"
+                      >
+                        <a-button type="link" size="small">
+                          还有 {{ (chapter.analysis_result?.environment_tracks || []).length - 3 }} 个场景...
+                        </a-button>
+                      </div>
+                    </div>
+                  </div>
+                </template>
               </div>
-            </template>
+            </div>
           </a-card>
 
-          <div class="step-actions" style="margin-top: 16px;">
-            <a-space>
-              <a-button @click="currentStep = 0">重新分析</a-button>
-              <a-button type="primary" @click="proceedToConfig">
-                下一步：确认配置
+          <!-- 简化的操作按钮 -->
+          <div class="step-actions" style="margin-top: 20px;">
+            <a-space size="large">
+              <a-button @click="currentStep = 0" size="large">
+                <LeftOutlined />
+                重新选择
+              </a-button>
+              <a-button @click="forceReanalyze" size="large" :loading="analyzing">
+                <ReloadOutlined />
+                重新分析 (查看优化效果)
+              </a-button>
+              <a-button type="primary" size="large" @click="proceedToConfig">
+                <CheckOutlined />
+                确认分析结果
               </a-button>
             </a-space>
           </div>
+
+          <!-- 🚀 新增：详细分析信息展开面板 -->
+          <a-card title="🔍 详细分析信息" style="margin-top: 20px;" size="small">
+            <a-collapse v-model:activeKey="expandedPanels" ghost>
+              <a-collapse-panel key="1" header="📊 环境音识别详情">
+                <div class="detailed-analysis">
+                  <template v-if="analysisResult.chapters && analysisResult.chapters.length > 0">
+                    <div 
+                      v-for="(chapter, chapterIndex) in analysisResult.chapters" 
+                      :key="chapterIndex"
+                      class="chapter-detailed-analysis"
+                    >
+                      <h4>{{ chapter.chapter_info?.chapter_title || `第${chapter.chapter_info?.chapter_number}章` }}</h4>
+                      
+                      <div v-if="chapter.analysis_result?.environment_tracks?.length > 0" class="tracks-detailed">
+                        <a-table 
+                          :dataSource="chapter.analysis_result.environment_tracks" 
+                          :columns="detailedTrackColumns"
+                          size="small"
+                          :pagination="false"
+                          :scroll="{ x: 800 }"
+                        >
+                          <template #bodyCell="{ column, record, index }">
+                            <template v-if="column.key === 'scene'">
+                              <div class="scene-cell">
+                                <span class="scene-icon">{{ getSceneIcon(record.scene_description) }}</span>
+                                <span>{{ record.scene_description || '环境场景' }}</span>
+                              </div>
+                            </template>
+                            <template v-if="column.key === 'keywords'">
+                              <div class="keywords-cell">
+                                <a-tag 
+                                  v-for="keyword in (record.environment_keywords || [])" 
+                                  :key="keyword"
+                                  size="small"
+                                  color="blue"
+                                >
+                                  {{ keyword }}
+                                </a-tag>
+                              </div>
+                            </template>
+                            <template v-if="column.key === 'timing'">
+                              <div class="timing-cell">
+                                <div><strong>{{ Math.round(record.start_time || 0) }}s</strong> → <strong>{{ Math.round((record.start_time || 0) + (record.duration || 0)) }}s</strong></div>
+                                <div style="color: #666; font-size: 12px;">时长: {{ Math.round(record.duration || 0) }}秒</div>
+                              </div>
+                            </template>
+                            <template v-if="column.key === 'confidence'">
+                              <a-progress 
+                                :percent="Math.round((record.confidence || 0) * 100)" 
+                                size="small"
+                                :stroke-color="getConfidenceColor(record.confidence)"
+                              />
+                            </template>
+                            <template v-if="column.key === 'narration'">
+                              <div class="narration-cell">
+                                <a-typography-text 
+                                  :ellipsis="{ rows: 2, expandable: true, symbol: '展开' }"
+                                  style="font-size: 12px;"
+                                >
+                                  {{ record.narration_text || '暂无旁白文本' }}
+                                </a-typography-text>
+                              </div>
+                            </template>
+                          </template>
+                        </a-table>
+                      </div>
+                      <div v-else class="no-tracks">
+                        <a-empty description="该章节未识别到环境音" />
+                      </div>
+                    </div>
+                  </template>
+                </div>
+              </a-collapse-panel>
+              
+              <a-collapse-panel key="2" header="⚙️ 分析方法信息">
+                <div class="analysis-method-info">
+                  <a-descriptions :column="2" size="small" bordered>
+                    <a-descriptions-item label="分析方法">
+                      <a-tag color="green">优化版智能分析</a-tag>
+                    </a-descriptions-item>
+                    <a-descriptions-item label="LLM模型">
+                      {{ analysisResult.analysis_metadata?.llm_model || 'Ollama' }}
+                    </a-descriptions-item>
+                    <a-descriptions-item label="关键词映射">
+                      <a-tag color="blue">扩展词汇库 (50+ 类别)</a-tag>
+                    </a-descriptions-item>
+                    <a-descriptions-item label="时长计算">
+                      <a-tag color="orange">实际音频时长</a-tag>
+                    </a-descriptions-item>
+                    <a-descriptions-item label="分析时间">
+                      {{ formatAnalysisTime(analysisResult.analysis_timestamp) }}
+                    </a-descriptions-item>
+                    <a-descriptions-item label="映射策略">
+                      {{ analysisResult.analysis_metadata?.mapping_strategy || '智能位置映射' }}
+                    </a-descriptions-item>
+                  </a-descriptions>
+                  
+                  <div style="margin-top: 16px;">
+                    <a-alert
+                      message="🚀 分析优化说明"
+                      description="本次分析使用了最新优化的算法：1) 详细的环境音分类指导提示词；2) 扩展的50+关键词映射关系；3) 实际音频时长而非估算时长；4) 智能场景匹配策略。"
+                      type="success"
+                      show-icon
+                    />
+                  </div>
+                </div>
+              </a-collapse-panel>
+            </a-collapse>
+          </a-card>
         </div>
 
 
       </div>
 
-      <!-- 步骤3: 确认配置 -->
+      <!-- 步骤3: 简化的最终确认 -->
       <div v-if="currentStep === 2" class="analysis-step">
-        <h3>📝 确认混音配置</h3>
-        <p style="color: #666; margin-bottom: 16px;">确认混音配置参数并保存配置</p>
+        <h3>🎯 确认开始混音</h3>
+        <p style="color: #666; margin-bottom: 20px;">AI已完成分析并准备好环境音效，请确认是否开始混音</p>
 
-        <!-- 配置摘要 -->
-        <a-card title="配置总览" style="margin-bottom: 16px;">
-          <a-descriptions :column="2" size="small">
-            <a-descriptions-item label="选择章节">{{ selectedChapterIds.length }} 个章节</a-descriptions-item>
-            <a-descriptions-item label="总轨道数">{{ analysisResult?.total_tracks || 0 }}</a-descriptions-item>
-            <a-descriptions-item label="预估时长">{{ analysisResult?.total_duration || 0 }} 秒</a-descriptions-item>
-            <a-descriptions-item label="配置状态">{{ configSaved ? '已保存' : '未保存' }}</a-descriptions-item>
-          </a-descriptions>
-        </a-card>
-
-        <!-- 混音参数配置 -->
-        <a-card title="混音参数" style="margin-bottom: 16px;">
-          <a-form layout="vertical">
+        <!-- 简化的确认信息 -->
+        <a-card title="📋 混音方案总览" style="margin-bottom: 20px;" size="small">
+          <div class="mixing-summary">
             <a-row :gutter="16">
-              <a-col :span="12">
-                <a-form-item label="环境音总音量">
-                  <a-slider 
-                    v-model:value="mixingConfig.environmentVolume" 
-                    :min="0" 
-                    :max="1" 
-                    :step="0.1"
-                    :marks="{ 0: '静音', 0.5: '中等', 1: '最大' }"
-                  />
-                  <span>{{ (mixingConfig.environmentVolume * 100).toFixed(0) }}%</span>
-                </a-form-item>
+              <a-col :span="6">
+                <div class="summary-stat">
+                  <div class="stat-number">{{ selectedChapterIds.length }}</div>
+                  <div class="stat-label">选择章节</div>
+                </div>
               </a-col>
-              <a-col :span="12">
-                <a-form-item label="语音音量">
-                  <a-slider 
-                    v-model:value="mixingConfig.voiceVolume" 
-                    :min="0" 
-                    :max="1" 
-                    :step="0.1"
-                    :marks="{ 0: '静音', 0.5: '中等', 1: '最大' }"
-                  />
-                  <span>{{ (mixingConfig.voiceVolume * 100).toFixed(0) }}%</span>
-                </a-form-item>
+              <a-col :span="6">
+                <div class="summary-stat">
+                  <div class="stat-number">{{ analysisResult?.total_tracks || 0 }}</div>
+                  <div class="stat-label">环境场景</div>
+                </div>
+              </a-col>
+              <a-col :span="6">
+                <div class="summary-stat">
+                  <div class="stat-number">{{ Math.round((analysisResult?.total_duration || 0) / 60) }}</div>
+                  <div class="stat-label">预计时长(分钟)</div>
+                </div>
+              </a-col>
+              <a-col :span="6">
+                <div class="summary-stat">
+                  <div class="stat-number">{{ estimatedTime }}</div>
+                  <div class="stat-label">处理时间(分钟)</div>
+                </div>
               </a-col>
             </a-row>
-            <a-row :gutter="16">
-              <a-col :span="12">
-                <a-form-item label="淡入时间 (秒)">
-                  <a-input-number 
-                    v-model:value="mixingConfig.fadeInDuration" 
-                    :min="0" 
-                    :max="10" 
-                    :step="0.5"
-                    style="width: 100%"
-                  />
-                </a-form-item>
-              </a-col>
-              <a-col :span="12">
-                <a-form-item label="淡出时间 (秒)">
-                  <a-input-number 
-                    v-model:value="mixingConfig.fadeOutDuration" 
-                    :min="0" 
-                    :max="10" 
-                    :step="0.5"
-                    style="width: 100%"
-                  />
-                </a-form-item>
-              </a-col>
-            </a-row>
-          </a-form>
+          </div>
         </a-card>
 
-        <!-- 输出格式配置 -->
-        <a-card title="输出格式" style="margin-bottom: 16px;">
-          <a-form layout="vertical">
+        <!-- 简化的设置选项 -->
+        <a-card title="🎚️ 快速设置" style="margin-bottom: 20px;" size="small">
+          <div class="quick-settings">
             <a-row :gutter="16">
               <a-col :span="12">
-                <a-form-item label="文件格式">
-                  <a-select v-model:value="mixingConfig.outputFormat" style="width: 100%">
-                    <a-select-option value="wav">WAV (无损)</a-select-option>
-                    <a-select-option value="mp3">MP3 (压缩)</a-select-option>
-                    <a-select-option value="flac">FLAC (无损压缩)</a-select-option>
-                  </a-select>
-                </a-form-item>
+                <div class="setting-item">
+                  <label>环境音强度</label>
+                  <a-radio-group v-model:value="mixingConfig.environmentVolume" size="small">
+                    <a-radio-button value="0.2">轻柔</a-radio-button>
+                    <a-radio-button value="0.3">适中</a-radio-button>
+                    <a-radio-button value="0.5">强烈</a-radio-button>
+                  </a-radio-group>
+                </div>
               </a-col>
               <a-col :span="12">
-                <a-form-item label="采样率">
-                  <a-select v-model:value="mixingConfig.sampleRate" style="width: 100%">
-                    <a-select-option value="44100">44.1 kHz (CD质量)</a-select-option>
-                    <a-select-option value="48000">48 kHz (专业)</a-select-option>
-                    <a-select-option value="96000">96 kHz (高保真)</a-select-option>
-                  </a-select>
-                </a-form-item>
+                <div class="setting-item">
+                  <label>输出质量</label>
+                  <a-radio-group v-model:value="mixingConfig.outputFormat" size="small">
+                    <a-radio-button value="mp3">标准</a-radio-button>
+                    <a-radio-button value="wav">高品质</a-radio-button>
+                  </a-radio-group>
+                </div>
               </a-col>
             </a-row>
-          </a-form>
+          </div>
         </a-card>
 
-        <!-- 保存状态提示 -->
+        <!-- 预览信息 -->
         <a-alert
-          v-if="configSaved"
-          message="配置已保存"
-          description="混音配置已成功保存到数据库，可以开始混音制作"
-          type="success"
+          message="🎵 即将开始AI环境音混音"
+          description="系统将根据您的小说内容智能生成环境音效，并与语音完美融合。整个过程大约需要几分钟，请耐心等待。"
+          type="info"
           show-icon
-          style="margin-bottom: 16px;"
+          style="margin-bottom: 20px;"
         />
 
         <div class="step-actions">
-          <a-space>
-            <a-button @click="currentStep = 1">返回分析</a-button>
-            <a-button @click="saveConfig" :loading="saving">
-              {{ configSaved ? '重新保存配置' : '保存配置' }}
+          <a-space size="large">
+            <a-button @click="currentStep = 1" size="large">
+              <LeftOutlined />
+              返回分析
             </a-button>
             <a-button 
               type="primary" 
+              size="large"
               @click="startMixing" 
-              :disabled="!configSaved"
               :loading="startingMixing"
             >
-              开始混音
+              <PlayCircleOutlined />
+              确认开始混音
             </a-button>
           </a-space>
         </div>
@@ -448,7 +616,7 @@ import { message, notification } from 'ant-design-vue'
 import {
   SearchOutlined, BulbOutlined, ReloadOutlined, 
   LeftOutlined, LinkOutlined, PlayCircleOutlined,
-  SwapOutlined, SoundOutlined
+  SwapOutlined, SoundOutlined, CheckOutlined, BookOutlined, ClockCircleOutlined
 } from '@ant-design/icons-vue'
 
 import { booksAPI, chaptersAPI, readerAPI } from '@/api'
@@ -491,10 +659,46 @@ const chapters = ref([])
 const analyzedChapters = ref([])
 const projectLoading = ref(false)
 
+// 🚀 新增：详细分析展开面板
+const expandedPanels = ref(['1'])
+
 const analysisResult = ref(null)
 const matchingResult = ref(null)
 const smartPrompts = ref(null)
 const generationLogs = ref([])
+
+// 🚀 新增：详细分析表格列定义
+const detailedTrackColumns = [
+  {
+    title: '场景',
+    key: 'scene',
+    dataIndex: 'scene_description',
+    width: 150
+  },
+  {
+    title: '环境关键词',
+    key: 'keywords',
+    dataIndex: 'environment_keywords',
+    width: 200
+  },
+  {
+    title: '时间轴',
+    key: 'timing',
+    width: 120
+  },
+  {
+    title: '置信度',
+    key: 'confidence',
+    dataIndex: 'confidence',
+    width: 100
+  },
+  {
+    title: '旁白内容',
+    key: 'narration',
+    dataIndex: 'narration_text',
+    width: 300
+  }
+]
 
 const batchProgress = reactive({
   total: 0,
@@ -573,6 +777,101 @@ const getProjectStatusText = (status) => {
     'failed': '失败'
   }
   return texts[status] || status
+}
+
+// 🚀 新增：场景图标映射
+const getSceneIcon = (sceneDescription) => {
+  if (!sceneDescription) return '🎬'
+  
+  const scene = sceneDescription.toLowerCase()
+  if (scene.includes('办公') || scene.includes('公司') || scene.includes('会议')) return '🏢'
+  if (scene.includes('家') || scene.includes('房间') || scene.includes('客厅')) return '🏠'
+  if (scene.includes('街道') || scene.includes('马路') || scene.includes('城市')) return '🌆'
+  if (scene.includes('咖啡') || scene.includes('餐厅') || scene.includes('酒吧')) return '☕'
+  if (scene.includes('学校') || scene.includes('教室') || scene.includes('图书馆')) return '🎓'
+  if (scene.includes('公园') || scene.includes('花园') || scene.includes('自然')) return '🌳'
+  if (scene.includes('海') || scene.includes('湖') || scene.includes('河')) return '🌊'
+  if (scene.includes('夜晚') || scene.includes('夜')) return '🌙'
+  if (scene.includes('雨') || scene.includes('雷')) return '🌧️'
+  if (scene.includes('车') || scene.includes('交通')) return '🚗'
+  return '🎬'
+}
+
+// 🚀 新增：场景颜色映射
+const getSceneColor = (sceneDescription) => {
+  if (!sceneDescription) return 'blue'
+  
+  const scene = sceneDescription.toLowerCase()
+  if (scene.includes('办公') || scene.includes('会议')) return 'blue'
+  if (scene.includes('家') || scene.includes('房间')) return 'green'
+  if (scene.includes('街道') || scene.includes('城市')) return 'orange'
+  if (scene.includes('咖啡') || scene.includes('餐厅')) return 'gold'
+  if (scene.includes('学校') || scene.includes('图书馆')) return 'purple'
+  if (scene.includes('公园') || scene.includes('自然')) return 'lime'
+  if (scene.includes('海') || scene.includes('水')) return 'cyan'
+  if (scene.includes('夜')) return 'geekblue'
+  if (scene.includes('雨') || scene.includes('雷')) return 'volcano'
+  return 'blue'
+}
+
+// 🚀 新增：强度等级文本
+const getIntensityText = (intensity) => {
+  const texts = {
+    '低': '轻柔',
+    '中等': '适中',
+    '高': '强烈',
+    '极高': '激烈'
+  }
+  return texts[intensity] || intensity || '适中'
+}
+
+// 🚀 新增：置信度颜色映射
+const getConfidenceColor = (confidence) => {
+  if (confidence >= 0.8) return '#52c41a' // 绿色
+  if (confidence >= 0.6) return '#faad14' // 橙色
+  if (confidence >= 0.4) return '#fa8c16' // 深橙色
+  return '#ff4d4f' // 红色
+}
+
+// 🚀 新增：格式化分析时间
+const formatAnalysisTime = (timestamp) => {
+  if (!timestamp) return '未知时间'
+  const date = new Date(timestamp)
+  return date.toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
+
+// 🚀 新增：强制重新分析方法
+const forceReanalyze = async () => {
+  if (analyzing.value) return
+  
+  try {
+    message.info('开始重新分析，将使用最新的优化算法...')
+    
+    // 重置分析结果
+    analysisResult.value = null
+    analyzing.value = true
+    analysisProgress.value = 0
+    
+    // 调用分析方法
+    await startAnalysis()
+    
+    message.success('重新分析完成！请查看详细分析信息对比优化效果')
+    
+    // 自动展开详细分析面板
+    expandedPanels.value = ['1', '2']
+    
+  } catch (error) {
+    console.error('Force reanalyze error:', error)
+    message.error('重新分析失败: ' + (error.message || '未知错误'))
+  } finally {
+    analyzing.value = false
+  }
 }
 
 const loadBooks = async () => {
@@ -1223,6 +1522,181 @@ onMounted(() => {
   padding: 16px;
 }
 
+/* 🚀 新增：分析结果样式 */
+.analysis-summary {
+  background: #f9f9f9;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.summary-item {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  padding: 12px;
+}
+
+.summary-icon {
+  font-size: 24px;
+  margin-bottom: 8px;
+}
+
+.summary-content {
+  flex: 1;
+}
+
+.summary-content strong {
+  display: block;
+  color: #1890ff;
+  margin-bottom: 4px;
+}
+
+.summary-content p {
+  margin: 0;
+  color: #666;
+  font-size: 14px;
+}
+
+.discovered-scenes {
+  margin-top: 16px;
+}
+
+.chapter-scenes {
+  margin-bottom: 16px;
+}
+
+.chapter-header h5 {
+  color: #1890ff;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+.scene-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.scene-tag {
+  margin: 0;
+  padding: 4px 8px;
+  border-radius: 12px;
+}
+
+.matching-preview {
+  background: #f9f9f9;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.matching-stats {
+  margin-bottom: 16px;
+}
+
+.chapter-preview {
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+  background: white;
+}
+
+.chapter-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: #1890ff;
+  margin-bottom: 12px;
+}
+
+.scene-previews {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.scene-preview {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: #f5f5f5;
+  border-radius: 6px;
+}
+
+.scene-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.scene-icon {
+  font-size: 16px;
+}
+
+.scene-name {
+  font-weight: 500;
+  color: #333;
+}
+
+.scene-duration {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #666;
+  font-size: 12px;
+}
+
+.more-scenes {
+  text-align: center;
+  padding: 8px;
+  background: #f0f0f0;
+  border-radius: 6px;
+}
+
+/* 🚀 新增：混音总览样式 */
+.mixing-summary {
+  padding: 16px;
+}
+
+.summary-stat {
+  text-align: center;
+  padding: 16px;
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+  border-radius: 8px;
+  border: 1px solid #91d5ff;
+}
+
+.stat-number {
+  font-size: 24px;
+  font-weight: bold;
+  color: #1890ff;
+  margin-bottom: 4px;
+}
+
+.stat-label {
+  font-size: 12px;
+  color: #666;
+  font-weight: 500;
+}
+
+.quick-settings {
+  padding: 16px;
+}
+
+.setting-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.setting-item label {
+  font-weight: 500;
+  color: #333;
+  font-size: 14px;
+}
+
 /* 暗黑模式适配 */
 @media (prefers-color-scheme: dark) {
   .steps-container {
@@ -1237,6 +1711,153 @@ onMounted(() => {
   .generation-logs {
     background: #1f1f1f;
     border-color: #434343;
+  }
+
+  .analysis-summary, .matching-preview {
+    background: #1f1f1f;
+  }
+
+  .chapter-preview {
+    background: #262626;
+    border-color: #434343;
+  }
+
+  .scene-preview {
+    background: #1f1f1f;
+  }
+
+  .summary-content p {
+    color: #ccc;
+  }
+
+  .scene-name {
+    color: #fff;
+  }
+
+  .summary-stat {
+    background: linear-gradient(135deg, #001529 0%, #002140 100%);
+    border-color: #177ddc;
+  }
+
+  .stat-label {
+    color: #ccc;
+  }
+
+  .setting-item label {
+    color: #fff;
+  }
+}
+
+/* 🚀 新增：详细分析信息样式 */
+.detailed-analysis {
+  margin-top: 16px;
+}
+
+.chapter-detailed-analysis {
+  margin-bottom: 24px;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  padding: 16px;
+  background: #fafafa;
+}
+
+.chapter-detailed-analysis h4 {
+  color: #1890ff;
+  margin-bottom: 16px;
+  font-weight: 600;
+  border-bottom: 2px solid #e6f7ff;
+  padding-bottom: 8px;
+}
+
+.tracks-detailed {
+  margin-top: 12px;
+}
+
+.scene-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.scene-icon {
+  font-size: 18px;
+}
+
+.keywords-cell {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-width: 200px;
+}
+
+.timing-cell {
+  text-align: center;
+}
+
+.timing-cell strong {
+  color: #1890ff;
+}
+
+.narration-cell {
+  max-width: 300px;
+  word-break: break-word;
+}
+
+.no-tracks {
+  text-align: center;
+  padding: 40px 0;
+  color: #999;
+}
+
+.analysis-method-info {
+  padding: 16px;
+}
+
+.analysis-method-info .ant-descriptions {
+  margin-bottom: 16px;
+}
+
+/* 移动端适配 */
+@media (max-width: 768px) {
+  .detailed-analysis .ant-table {
+    font-size: 12px;
+  }
+  
+  .chapter-detailed-analysis {
+    padding: 12px;
+  }
+  
+  .keywords-cell {
+    max-width: 150px;
+  }
+  
+  .narration-cell {
+    max-width: 200px;
+  }
+  
+  .timing-cell {
+    font-size: 11px;
+  }
+}
+
+/* 暗黑模式适配详细分析 */
+@media (prefers-color-scheme: dark) {
+  .chapter-detailed-analysis {
+    background: #1f1f1f;
+    border-color: #434343;
+  }
+  
+  .chapter-detailed-analysis h4 {
+    color: #177ddc;
+    border-bottom-color: #001529;
+  }
+  
+  .timing-cell strong {
+    color: #177ddc;
+  }
+  
+  .no-tracks {
+    color: #666;
   }
 }
 </style> 

@@ -1,23 +1,32 @@
 """
 旁白环境分析器
 从synthesis_plan提取旁白内容并分析环境关键词与时长
+集成智能时间轴修正器，确保环境音与旁白描述同步
 """
 
 import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
 class NarrationEnvironmentAnalyzer:
     """旁白环境分析器 - 从synthesis_plan提取旁白内容并分析环境"""
     
-    def __init__(self):
+    def __init__(self, db: Optional[Session] = None):
         # 复用现有LLM分析器的分析能力
         from app.services.llm_scene_analyzer import OllamaLLMSceneAnalyzer
         self.scene_analyzer = OllamaLLMSceneAnalyzer()
         
-        # 旁白语速配置 (每分钟字数)
+        # 智能时间轴修正器
+        from app.services.intelligent_timeline_corrector import IntelligentTimelineCorrector
+        self.timeline_corrector = IntelligentTimelineCorrector()
+        
+        # 数据库会话（用于获取实际音频时长）
+        self.db = db
+        
+        # 旁白语速配置 (每分钟字数) - 仅作为后备方案
         self.NARRATION_SPEED_CHARS_PER_MINUTE = 300
         
     async def extract_and_analyze_narration(self, synthesis_plan: List[Dict]) -> Dict:
@@ -84,7 +93,22 @@ class NarrationEnvironmentAnalyzer:
         
         # 4. 智能映射场景到具体段落
         environment_tracks = self._map_scenes_to_segments(llm_result, narration_segments)
-
+        
+        # 5. 🕐 应用智能时间轴修正器
+        if environment_tracks:
+            logger.info("[BATCH_ANALYZER] 开始应用智能时间轴修正")
+            original_tracks = [track.copy() for track in environment_tracks]  # 保存原始数据
+            corrected_tracks = self.timeline_corrector.correct_environment_tracks_timeline(
+                environment_tracks, narration_segments
+            )
+            
+            # 获取修正统计
+            correction_summary = self.timeline_corrector.get_correction_summary(
+                original_tracks, corrected_tracks
+            )
+            
+            logger.info(f"[BATCH_ANALYZER] 时间轴修正完成: {correction_summary['summary']}")
+            environment_tracks = corrected_tracks
         
         logger.info(f"[BATCH_ANALYZER] 批量分析完成: 总时长{cumulative_time:.1f}s，"
                    f"旁白段落{len(narration_segments)}个，环境音轨道{len(environment_tracks)}个")
@@ -96,20 +120,53 @@ class NarrationEnvironmentAnalyzer:
                 'narration_segments': len(narration_segments),
                 'environment_tracks_detected': len(environment_tracks),
                 'analysis_timestamp': datetime.now().isoformat(),
-                'analysis_mode': 'batch'
+                'analysis_mode': 'batch',
+                'timeline_correction_applied': True if environment_tracks else False
             }
         }
     
     def _build_batch_analysis_prompt(self, narration_segments: List[Dict]) -> str:
         """构建批量分析的提示词"""
-        prompt_parts = ["请分析以下章节的旁白内容，提取每个时间段的环境声音："]
+        
+        # 构建更详细的提示词，包含具体的环境音类型指导
+        prompt_parts = [
+            "请仔细分析以下小说章节的旁白内容，识别每个时间段中描述的环境声音。",
+            "",
+            "需要识别的环境音类型包括但不限于：",
+            "• 自然环境：雨声、雷声、风声、鸟鸣、虫鸣、海浪声、流水声、叶子摩擦声",
+            "• 人为活动：脚步声、开门声、关门声、翻书声、写字声、敲击声、机械声",
+            "• 室内环境：时钟滴答声、空调声、火焰燃烧声、电器运转声、厨房声音",
+            "• 交通环境：汽车声、火车声、飞机声、轮船声、马蹄声",
+            "• 社交场景：人群喧哗、掌声、音乐声、乐器声、歌声",
+            "",
+            "分析要求：",
+            "1. 只分析明确描述或暗示有具体声音的内容",
+            "2. 优先识别直接描述的声音（如'雨声''脚步声'）",
+            "3. 从环境描述中推断可能的环境音（如'雨夜'→雨声，'走过走廊'→脚步声）",
+            "4. 考虑场景的时间、地点、天气对环境音的影响",
+            "5. 忽略纯粹的对话、心理描述和情感表达",
+            "",
+            "以下是需要分析的旁白内容：",
+            ""
+        ]
         
         for i, seg in enumerate(narration_segments):
             time_range = f"{seg['start_time']:.1f}-{seg['end_time']:.1f}s"
-            prompt_parts.append(f"段落{i+1}({time_range}): {seg['text']}")
+            # 清理文本，移除多余的空格和换行
+            clean_text = ' '.join(seg['text'].split())
+            prompt_parts.append(f"【段落{i+1}】时间轴：{time_range}")
+            prompt_parts.append(f"内容：{clean_text}")
+            prompt_parts.append("")
+        
+        prompt_parts.extend([
+            "请为每个段落提供分析结果，格式如下：",
+            "段落X：[识别到的环境音关键词列表，用逗号分隔]",
+            "如果某段落没有明确的环境音，请标注：段落X：无环境音"
+        ])
         
         combined_text = "\n".join(prompt_parts)
-        logger.info(f"[BATCH_ANALYZER] 批量提示词示例: {combined_text[:200]}...")
+        logger.info(f"[BATCH_ANALYZER] 优化后的批量提示词长度: {len(combined_text)}字符")
+        logger.info(f"[BATCH_ANALYZER] 提示词前200字符: {combined_text[:200]}...")
         return combined_text
     
     def _map_scenes_to_segments(self, llm_result, narration_segments: List[Dict]) -> List[Dict]:
@@ -252,16 +309,62 @@ class NarrationEnvironmentAnalyzer:
     
     def _check_related_keywords(self, keyword: str, text: str) -> bool:
         """检查相关关键词匹配"""
-        # 定义相关词汇映射
+        # 扩展的相关词汇映射 - 更全面的环境音识别
         related_words = {
-            '脚步声': ['走', '跑', '跳', '踏', '进', '出'],
-            '翻书声': ['书', '翻', '看', '读', '页'],
-            '雷声': ['雷', '打雷', '雷鸣', '闪电'],
-            '雨声': ['雨', '下雨', '雨点', '雨水'],
-            '风声': ['风', '吹', '微风', '大风'],
-            '虫鸣': ['虫', '蝉', '蛐蛐', '昆虫'],
-            '鸟叫': ['鸟', '鸟儿', '歌唱', '啁啾'],
-            '水声': ['水', '流水', '溪水', '河水']
+            # 自然环境音
+            '脚步声': ['走', '跑', '跳', '踏', '进', '出', '踱步', '奔跑', '疾走', '缓步', '迈步', '跨步', '踏入', '走向', '朝着', '步入', '赶路'],
+            '翻书声': ['书', '翻', '看', '读', '页', '书页', '翻阅', '阅读', '查看', '翻动', '书本', '典籍', '册子'],
+            '雷声': ['雷', '打雷', '雷鸣', '闪电', '雷电', '霹雳', '轰隆', '雷声隆隆', '电闪雷鸣', '雷雨', '雷暴'],
+            '雨声': ['雨', '下雨', '雨点', '雨水', '降雨', '细雨', '大雨', '暴雨', '雨滴', '雨夜', '雨声', '雨打', '雨淋'],
+            '风声': ['风', '吹', '微风', '大风', '清风', '狂风', '劲风', '风起', '风声', '呼啸', '吹拂', '风吹', '刮风'],
+            '虫鸣': ['虫', '蝉', '蛐蛐', '昆虫', '虫子', '蝉鸣', '蟋蟀', '鸣虫', '夏虫', '秋虫', '虫唱', '虫声'],
+            '鸟叫': ['鸟', '鸟儿', '歌唱', '啁啾', '鸟鸣', '鸟声', '飞鸟', '百鸟', '鸟啼', '雀鸟', '鸣禽', '鸟语'],
+            '水声': ['水', '流水', '溪水', '河水', '湖水', '泉水', '水流', '潺潺', '涓涓', '汩汩', '溪流', '江河', '喷泉'],
+            
+            # 室内环境音
+            '开门声': ['开门', '推门', '拉门', '门开', '开启', '房门', '大门', '木门', '推开', '拉开'],
+            '关门声': ['关门', '关上', '门关', '合门', '掩门', '闭门', '砰', '门响'],
+            '敲门声': ['敲门', '敲击', '叩门', '拍门', '门响', '敲打', '扣门'],
+            '时钟声': ['时钟', '钟表', '滴答', '钟声', '表声', '计时', '钟摆', '秒针'],
+            '火焰声': ['火', '火焰', '燃烧', '篝火', '炉火', '火苗', '烛火', '劈啪', '噼啪'],
+            
+            # 人为活动音
+            '写字声': ['写', '书写', '记录', '笔', '纸', '写字', '执笔', '落笔', '书写'],
+            '翻页声': ['翻页', '翻动', '纸张', '书页', '页面', '翻看'],
+            '咳嗽声': ['咳嗽', '咳', '清咳', '轻咳'],
+            '呼吸声': ['呼吸', '喘息', '呼气', '吸气', '喘气', '气息'],
+            '心跳声': ['心跳', '心脏', '心律', '脉搏', '跳动'],
+            
+            # 交通环境音
+            '汽车声': ['汽车', '车辆', '轿车', '货车', '卡车', '车子', '车声', '引擎', '发动机', '马达'],
+            '马蹄声': ['马', '马匹', '战马', '骏马', '马蹄', '奔马', '骑马'],
+            '火车声': ['火车', '列车', '车厢', '铁路', '轨道', '汽笛'],
+            
+            # 社交场景音
+            '人群声': ['人群', '众人', '人们', '人声', '嘈杂', '喧哗', '嘈嘈', '议论', '交谈'],
+            '掌声': ['掌声', '鼓掌', '喝彩', '叫好', '欢呼'],
+            '音乐声': ['音乐', '乐声', '旋律', '乐曲', '演奏', '弹奏'],
+            '歌声': ['歌声', '歌唱', '吟唱', '唱歌', '歌谣', '吟诵'],
+            
+            # 厨房环境音
+            '切菜声': ['切菜', '切', '刀', '菜板', '料理', '烹饪'],
+            '炒菜声': ['炒菜', '炒', '烹饪', '下锅', '爆炒'],
+            '煮水声': ['煮水', '烧水', '开水', '水开', '沸腾'],
+            
+            # 战斗/武器音
+            '刀剑声': ['刀', '剑', '兵器', '刀剑', '兵刃', '利刃', '宝剑', '长刀'],
+            '撞击声': ['撞击', '碰撞', '撞', '击', '碰', '撞击'],
+            '破碎声': ['破碎', '碎裂', '破', '碎', '粉碎', '打碎'],
+            
+            # 天气相关
+            '雪声': ['雪', '下雪', '雪花', '飘雪', '雪夜', '风雪'],
+            '冰声': ['冰', '结冰', '冰块', '冰霜', '冰冷'],
+            
+            # 动物声音
+            '猫声': ['猫', '猫咪', '小猫', '喵', '猫叫'],
+            '狗声': ['狗', '犬', '小狗', '汪', '狗叫', '犬吠'],
+            '马声': ['马', '马匹', '马嘶', '嘶鸣'],
+            '鸡声': ['鸡', '公鸡', '鸡鸣', '鸡叫', '啼鸣']
         }
         
         if keyword in related_words:
@@ -351,6 +454,36 @@ class NarrationEnvironmentAnalyzer:
                 # 非旁白段落，累加时长但不分析环境
                 segment_duration = self._calculate_segment_duration(segment)
                 cumulative_time += segment_duration
+        
+        # 🕐 应用智能时间轴修正器
+        if environment_tracks:
+            logger.info("[INDIVIDUAL_ANALYZER] 开始应用智能时间轴修正")
+            # 构建段落信息供修正器使用
+            narration_segments = []
+            current_time = 0.0
+            for segment in synthesis_plan:
+                segment_duration = self._calculate_segment_duration(segment)
+                narration_speakers = ['旁白', 'narrator', '叙述者', 'narration']
+                if segment.get('speaker') in narration_speakers or segment.get('character') in narration_speakers:
+                    narration_segments.append({
+                        'segment_id': segment.get('segment_id') or segment.get('id'),
+                        'text': segment.get('text', '') or segment.get('content', ''),
+                        'start_time': current_time,
+                        'duration': segment_duration
+                    })
+                current_time += segment_duration
+            
+            original_tracks = [track.copy() for track in environment_tracks]
+            corrected_tracks = self.timeline_corrector.correct_environment_tracks_timeline(
+                environment_tracks, narration_segments
+            )
+            
+            correction_summary = self.timeline_corrector.get_correction_summary(
+                original_tracks, corrected_tracks
+            )
+            
+            logger.info(f"[INDIVIDUAL_ANALYZER] 时间轴修正完成: {correction_summary['summary']}")
+            environment_tracks = corrected_tracks
                 
         logger.info(f"[INDIVIDUAL_ANALYZER] 分析完成: 总时长{cumulative_time:.1f}s，"
                    f"旁白段落{narration_count}个，环境音轨道{len(environment_tracks)}个")
@@ -362,7 +495,8 @@ class NarrationEnvironmentAnalyzer:
                 'narration_segments': narration_count,
                 'environment_tracks_detected': len(environment_tracks),
                 'analysis_timestamp': datetime.now().isoformat(),
-                'analysis_mode': 'individual'
+                'analysis_mode': 'individual',
+                'timeline_correction_applied': True if environment_tracks else False
             }
         }
         
@@ -382,18 +516,42 @@ class NarrationEnvironmentAnalyzer:
         return max(1.0, min(duration_seconds, 60.0))
         
     def _calculate_segment_duration(self, segment: Dict) -> float:
-        """计算其他段落时长"""
-        # 尝试从segment中获取预估时长
+        """计算段落时长 - 优先使用实际音频时长"""
+        
+        # 1. 优先从segment中获取预估时长
         if 'estimated_duration' in segment:
             return float(segment['estimated_duration'])
-            
-        # 如果没有预估时长，根据文本长度计算
+        
+        # 2. 尝试从数据库获取实际音频时长
+        if self.db and 'segment_id' in segment:
+            try:
+                from app.models.audio import AudioFile
+                
+                # 根据segment_id查找对应的音频文件
+                audio_file = self.db.query(AudioFile).filter(
+                    AudioFile.segment_id == segment['segment_id'],
+                    AudioFile.audio_type == 'segment',
+                    AudioFile.status == 'active'
+                ).first()
+                
+                if audio_file and audio_file.duration:
+                    logger.info(f"[DURATION] 段落{segment['segment_id']}使用实际音频时长: {audio_file.duration:.1f}s")
+                    return float(audio_file.duration)
+                else:
+                    logger.debug(f"[DURATION] 段落{segment['segment_id']}未找到实际音频文件，使用估算时长")
+                    
+            except Exception as e:
+                logger.warning(f"[DURATION] 获取实际音频时长失败: {str(e)}")
+        
+        # 3. 如果没有数据库连接或未找到音频文件，根据文本长度计算
         text = segment.get('text', '') or segment.get('content', '')
         if text:
             # 对话通常比旁白语速快一些
             char_count = len(text.replace(' ', '').replace('\n', ''))
             duration_minutes = char_count / 400  # 对话语速更快
-            return max(0.5, duration_minutes * 60.0)
+            estimated_duration = max(0.5, duration_minutes * 60.0)
+            logger.debug(f"[DURATION] 段落估算时长: {estimated_duration:.1f}s (字符数: {char_count})")
+            return estimated_duration
             
         return 1.0  # 默认1秒
         
