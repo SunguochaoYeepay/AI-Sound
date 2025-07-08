@@ -34,15 +34,7 @@ async def save_upload_file(
                 保存结果字典，包含成功状态和文件信息
         """
         try:
-                # 读取文件内容
-                content = await file.read()
-                
-                # 检查文件大小
-                file_size_mb = len(content) / (1024 * 1024)
-                if file_size_mb > max_size_mb:
-                        raise ValueError(f"文件大小超过限制的{max_size_mb}MB")
-                
-                # 检查文件扩展名
+                # 检查文件扩展名（在读取内容之前）
                 if allowed_extensions:
                         file_ext = os.path.splitext(file.filename)[1].lower()
                         if file_ext not in allowed_extensions:
@@ -56,9 +48,35 @@ async def save_upload_file(
                 # 确保目录存在
                 os.makedirs(upload_dir, exist_ok=True)
                 
-                # 保存文件
+                # 分块读取文件并写入，避免内存溢出
+                max_size_bytes = max_size_mb * 1024 * 1024
+                total_size = 0
+                
                 with open(file_path, 'wb') as f:
-                        f.write(content)
+                        while True:
+                                chunk = await file.read(8192)  # 8KB chunks
+                                if not chunk:
+                                        break
+                                
+                                total_size += len(chunk)
+                                if total_size > max_size_bytes:
+                                        # 删除部分写入的文件
+                                        f.close()
+                                        os.remove(file_path)
+                                        raise ValueError(f"文件大小超过限制的{max_size_mb}MB")
+                                
+                                f.write(chunk)
+                
+                file_size_mb = total_size / (1024 * 1024)
+                
+                return {
+                        "success": True,
+                        "filename": unique_filename,
+                        "original_name": file.filename,
+                        "file_path": file_path,
+                        "file_size_mb": round(file_size_mb, 2),
+                        "content_type": file.content_type
+                }
                 
                 return {
                         "success": True,

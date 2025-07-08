@@ -40,7 +40,7 @@ class Settings:
     # 应用配置
     DEBUG: bool = os.getenv("DEBUG", "True").lower() == "true"
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
-    SECRET_KEY: str = os.getenv("SECRET_KEY", "ai-sound-secret-key-change-in-production")
+    SECRET_KEY: Optional[str] = os.getenv("SECRET_KEY")
     
     # 文件存储配置
     STORAGE_PATH: str = os.getenv("STORAGE_PATH", "storage")
@@ -58,6 +58,12 @@ class Settings:
     
     def __post_init__(self):
         """配置验证和后处理"""
+        # 验证SECRET_KEY
+        if not self.SECRET_KEY:
+            raise ValueError("SECRET_KEY environment variable must be set in production")
+        if len(self.SECRET_KEY) < 32:
+            raise ValueError("SECRET_KEY must be at least 32 characters long")
+        
         # 创建必要的目录
         os.makedirs(self.STORAGE_PATH, exist_ok=True)
         os.makedirs(f"{self.STORAGE_PATH}/audio", exist_ok=True)

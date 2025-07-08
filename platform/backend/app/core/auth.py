@@ -42,8 +42,10 @@ class AuthManager:
     """认证管理器"""
     
     def __init__(self):
-        # 使用默认secret key，生产环境应该从环境变量获取
-        self.secret_key = getattr(settings, 'SECRET_KEY', 'ai-sound-dev-secret-key-2024')
+        # 从环境变量获取secret key，生产环境必须设置
+        self.secret_key = settings.SECRET_KEY
+        if not self.secret_key:
+            raise ValueError("SECRET_KEY must be set in environment variables")
         self.algorithm = "HS256"
         self.access_token_expire_minutes = 30
         self.refresh_token_expire_days = 7

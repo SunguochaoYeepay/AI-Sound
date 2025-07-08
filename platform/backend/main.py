@@ -229,11 +229,18 @@ app = FastAPI(
 )
 
 # 添加中间件
+# 从环境变量获取允许的源，生产环境必须设置
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:8000").split(",")
+if os.getenv("ENVIRONMENT", "development") == "production":
+    if "*" in allowed_origins:
+        logger.warning("⚠️ 生产环境中不应使用通配符 '*' 作为允许的源")
+        allowed_origins = [origin for origin in allowed_origins if origin != "*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 生产环境应该限制具体域名
+    allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
