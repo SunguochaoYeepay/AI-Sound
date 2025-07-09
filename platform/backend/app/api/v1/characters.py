@@ -255,8 +255,8 @@ async def check_character_exists(
     用于智能角色发现功能，避免重复创建角色
     """
     try:
-        existing_character = db.query(VoiceProfile).filter(
-            VoiceProfile.name == name
+        existing_character = db.query(Character).filter(
+            Character.name == name
         ).first()
         
         if existing_character:
@@ -267,7 +267,7 @@ async def check_character_exists(
                     "config": {
                         "id": existing_character.id,
                         "name": existing_character.name,
-                        "type": existing_character.type,
+                        "voice_type": existing_character.voice_type,
                         "description": existing_character.description,
                         "usage_count": existing_character.usage_count,
                         "quality_score": existing_character.quality_score,
@@ -293,52 +293,52 @@ async def check_character_exists(
         raise HTTPException(status_code=500, detail=f"检查失败: {str(e)}")
 
 @router.get("/{voice_id}")
-async def get_voice_profile(
+async def get_character_detail(
     voice_id: int,
     db: Session = Depends(get_db)
 ):
-    """获取声音档案详情"""
+    """获取角色详情"""
     try:
-        voice = db.query(VoiceProfile).filter(VoiceProfile.id == voice_id).first()
-        if not voice:
-            raise HTTPException(status_code=404, detail="声音档案不存在")
+        character = db.query(Character).filter(Character.id == voice_id).first()
+        if not character:
+            raise HTTPException(status_code=404, detail="角色不存在")
         
-        voice_data = voice.to_dict()
+        character_data = character.to_dict()
         
         # 强制修正字段名，确保返回正确的URL格式（如果to_dict()没有正确工作）
-        if 'reference_audio_path' in voice_data:
+        if 'reference_audio_path' in character_data:
             # 将原始路径转换为URL
-            if voice_data['reference_audio_path']:
-                filename = os.path.basename(voice_data['reference_audio_path'])
+            if character_data['reference_audio_path']:
+                filename = os.path.basename(character_data['reference_audio_path'])
                 # 临时修复：如果是test角色且文件不存在，使用实际存在的文件
-                if voice.name == 'test' and not os.path.exists(f"data/voice_profiles/{filename}"):
+                if character.name == 'test' and not os.path.exists(f"data/voice_profiles/{filename}"):
                     filename = "test_abf44e80bb084a3d984d8072907ae6dc.wav"
-                voice_data['referenceAudioUrl'] = f"/voice_profiles/{filename}"
-            del voice_data['reference_audio_path']
+                character_data['referenceAudioUrl'] = f"/voice_profiles/{filename}"
+            del character_data['reference_audio_path']
         
-        if 'latent_file_path' in voice_data:
-            if voice_data['latent_file_path']:
-                filename = os.path.basename(voice_data['latent_file_path'])
-                voice_data['latentFileUrl'] = f"/voice_profiles/{filename}"
-            del voice_data['latent_file_path']
+        if 'latent_file_path' in character_data:
+            if character_data['latent_file_path']:
+                filename = os.path.basename(character_data['latent_file_path'])
+                character_data['latentFileUrl'] = f"/voice_profiles/{filename}"
+            del character_data['latent_file_path']
         
-        if 'sample_audio_path' in voice_data:
-            if voice_data['sample_audio_path']:
-                filename = os.path.basename(voice_data['sample_audio_path'])
-                voice_data['sampleAudioUrl'] = f"/voice_profiles/{filename}"
-            del voice_data['sample_audio_path']
+        if 'sample_audio_path' in character_data:
+            if character_data['sample_audio_path']:
+                filename = os.path.basename(character_data['sample_audio_path'])
+                character_data['sampleAudioUrl'] = f"/voice_profiles/{filename}"
+            del character_data['sample_audio_path']
         
         # 添加音频时长信息
-        if voice.reference_audio_path and os.path.exists(voice.reference_audio_path):
+        if character.reference_audio_path and os.path.exists(character.reference_audio_path):
             try:
-                duration = get_audio_duration(voice.reference_audio_path)
-                voice_data['audioDuration'] = duration
+                duration = get_audio_duration(character.reference_audio_path)
+                character_data['audioDuration'] = duration
             except:
                 pass
         
         return {
             "success": True,
-            "data": voice_data
+            "data": character_data
         }
         
     except HTTPException:
@@ -872,61 +872,62 @@ async def update_voice_profile(
         raise HTTPException(status_code=500, detail=f"更新失败: {str(e)}")
 
 @router.delete("/{voice_id}")
-async def delete_voice_profile(
+async def delete_character(
     voice_id: int,
     force: bool = Query(False, description="强制删除"),
     db: Session = Depends(get_db)
 ):
-    """删除声音档案"""
+    """删除角色"""
     try:
-        voice = db.query(VoiceProfile).filter(VoiceProfile.id == voice_id).first()
-        if not voice:
-            raise HTTPException(status_code=404, detail="声音档案不存在")
+        # 使用Character模型而不是VoiceProfile
+        character = db.query(Character).filter(Character.id == voice_id).first()
+        if not character:
+            raise HTTPException(status_code=404, detail="角色不存在")
         
         # 检查是否正在使用
-        if not force and voice.usage_count > 0:
+        if not force and character.usage_count and character.usage_count > 0:
             raise HTTPException(
                 status_code=400, 
-                detail=f"角色正在使用中(使用次数: {voice.usage_count})，请使用强制删除"
+                detail=f"角色正在使用中(使用次数: {character.usage_count})，请使用强制删除"
             )
         
         # 删除关联文件
         files_to_delete = [
-            voice.reference_audio_path,
-            voice.latent_file_path,
-            getattr(voice, 'sample_audio_path', None)
+            character.reference_audio_path,
+            character.latent_file_path
         ]
         
         for file_path in files_to_delete:
             if file_path and os.path.exists(file_path):
                 try:
                     os.remove(file_path)
+                    logger.info(f"成功删除文件: {file_path}")
                 except Exception as e:
                     logger.warning(f"删除文件失败: {file_path}, {str(e)}")
         
         # 删除数据库记录
-        voice_name = voice.name
-        db.delete(voice)
+        character_name = character.name
+        db.delete(character)
         db.commit()
         
         # 记录系统日志
         await log_system_event(
             db=db,
             level="info",
-            message=f"删除声音档案: {voice_name}",
+            message=f"删除角色: {character_name}",
             module="characters",
-            details={"voice_id": voice_id, "force": force}
+            details={"character_id": voice_id, "force": force}
         )
         
         return {
             "success": True,
-            "message": "声音档案删除成功"
+            "message": "角色删除成功"
         }
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"删除声音档案失败: {str(e)}")
+        logger.error(f"删除角色失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"删除失败: {str(e)}")
 
 @router.post("/{voice_id}/test")

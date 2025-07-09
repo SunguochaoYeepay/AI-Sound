@@ -2213,7 +2213,7 @@ const createCharacters = async () => {
       const response = await charactersAPI.batchCreateCharacters({
         characters: charactersData,
         book_id: smartDiscovery.selectedBook.id,
-        chapter_id: smartDiscovery.selectedChapters.length > 0 ? smartDiscovery.selectedChapters[0] : null
+        chapter_id: smartDiscovery.selectedChapters.length > 0 ? smartDiscovery.selectedChapters[0].id : null
       })
       
       if (response.data && response.data.success) {
