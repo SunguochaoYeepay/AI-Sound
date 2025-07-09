@@ -649,35 +649,28 @@ const initWebSocket = () => {
     
     websocket.onopen = () => {
       websocketStatus.value = 'connected'
-      console.log('🟢 WebSocket连接成功，订阅合成进度主题')
+      console.log('✅ WebSocket连接已建立')
       
       // 订阅合成进度主题
-      const subscribeMsg = {
-        type: 'subscribe',
-        topic: `synthesis_${projectId}`
-      }
-      console.log('📡 准备发送订阅消息:', subscribeMsg)
-      
-      try {
-        websocket.send(JSON.stringify(subscribeMsg))
-        console.log('✅ 订阅消息发送成功')
-      } catch (error) {
-        console.error('❌ 发送订阅消息失败:', error)
-        websocketStatus.value = 'error'
-        return
-      }
-      
-      // 🔧 设置订阅超时检查
-      const subscribeTimeout = setTimeout(() => {
-        if (websocketStatus.value === 'connected') {
-          console.log('⏰ 订阅超时检查 - WebSocket仍连接，但可能订阅未确认')
-          console.log('🔍 当前WebSocket状态:', {
-            status: websocketStatus.value,
-            readyState: websocket.readyState,
-            topic: `synthesis_${projectId}`
-          })
+      const projectId = route.params.projectId
+      if (projectId) {
+        const subscribeMsg = {
+          type: 'subscribe',
+          topic: `synthesis_${projectId}`
         }
-      }, 5000)
+        console.log('📡 发送订阅消息:', subscribeMsg)
+        websocket.send(JSON.stringify(subscribeMsg))
+        
+        // 添加订阅确认机制
+        setTimeout(() => {
+          console.log('🔍 检查订阅状态，topic:', `synthesis_${projectId}`)
+          // 可以再次发送订阅以确保成功
+          if (websocket.readyState === WebSocket.OPEN) {
+            websocket.send(JSON.stringify(subscribeMsg))
+            console.log('📡 再次确认订阅')
+          }
+        }, 1000)
+      }
     }
     
     websocket.onmessage = (event) => {
@@ -855,6 +848,14 @@ const handleStartSynthesis = async () => {
         console.log('🔄 合成开始，重新确认订阅:', subscribeMsg)
         try {
           websocket.send(JSON.stringify(subscribeMsg))
+          
+          // 延迟再次订阅，确保成功
+          setTimeout(() => {
+            if (websocket.readyState === WebSocket.OPEN) {
+              websocket.send(JSON.stringify(subscribeMsg))
+              console.log('📡 第二次订阅确认')
+            }
+          }, 500)
         } catch (error) {
           console.error('❌ 重新订阅失败:', error)
         }
