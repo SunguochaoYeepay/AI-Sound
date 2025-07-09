@@ -401,6 +401,9 @@ async def update_preparation_result(
         if not chapter:
             raise HTTPException(status_code=404, detail="章节不存在")
         
+        # 🔥 新增：获取书籍ID用于后续角色语音同步
+        book_id = chapter.book_id
+        
         # 尝试找到现有的分析结果
         try:
             from app.models import AnalysisResult
@@ -430,14 +433,45 @@ async def update_preparation_result(
             latest_result.updated_at = func.now()
             
             # 如果有角色数据，更新detected_characters
+            updated_characters = []
             if 'synthesis_json' in update_data and 'characters' in update_data['synthesis_json']:
                 characters = update_data['synthesis_json']['characters']
                 character_names = [char.get('name', '') for char in characters if char.get('name')]
                 latest_result.detected_characters = character_names
+                updated_characters = characters
             
             db.commit()
             
-            logger.info(f"已更新章节 {chapter_id} 的智能准备结果")
+            # 🔥 新增：自动触发角色语音配置同步
+            # 提取角色语音映射并同步到所有相关章节的synthesis_plan
+            updated_chapters_count = 0
+            try:
+                if updated_characters:
+                    # 构建角色语音映射
+                    character_voice_mappings = {}
+                    for char in updated_characters:
+                        if char.get('voice_id') and char.get('name'):
+                            character_voice_mappings[char['name']] = str(char['voice_id'])
+                    
+                    logger.info(f"🔄 [自动同步] 从编辑结果中提取到角色映射: {character_voice_mappings}")
+                    
+                    if character_voice_mappings:
+                        # 导入同步函数
+                        from ..books import _sync_character_voice_to_synthesis_plans
+                        
+                        # 同步角色语音配置到相关章节
+                        updated_chapters_count = await _sync_character_voice_to_synthesis_plans(
+                            book_id, character_voice_mappings, db
+                        )
+                        
+                        logger.info(f"✅ [自动同步] 成功同步角色配置到 {updated_chapters_count} 个章节")
+                        
+            except Exception as sync_error:
+                logger.warning(f"⚠️ [自动同步] 角色语音配置同步失败: {str(sync_error)}")
+                # 同步失败不影响主要的保存功能
+                updated_chapters_count = 0
+            
+            logger.info(f"已更新章节 {chapter_id} 的智能准备结果，同步了 {updated_chapters_count} 个章节")
             
             return {
                 "success": True,
@@ -445,9 +479,10 @@ async def update_preparation_result(
                     "result_id": latest_result.id,
                     "updated_at": latest_result.updated_at.isoformat(),
                     "characters_count": len(latest_result.detected_characters) if latest_result.detected_characters else 0,
-                    "segments_count": len(update_data.get('synthesis_json', {}).get('synthesis_plan', []))
+                    "segments_count": len(update_data.get('synthesis_json', {}).get('synthesis_plan', [])),
+                    "synced_chapters": updated_chapters_count  # 🔥 新增：返回同步的章节数量
                 },
-                "message": "智能准备结果更新成功"
+                "message": f"智能准备结果更新成功，已自动同步 {updated_chapters_count} 个章节的角色配置"
             }
             
         except ImportError:

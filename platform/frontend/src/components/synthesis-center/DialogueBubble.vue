@@ -4,24 +4,17 @@
     :class="[getCharacterClass(displaySpeaker), { 'has-audio': isCompleted }]"
   >
     <div class="bubble-header">
+      <!-- 段落号 - 更明显 -->
+      <div class="segment-number">{{ segmentIndex }}</div>
+      
       <!-- 角色信息展示 -->
       <div class="speaker-info">
         <div class="speaker-avatar" :style="{ background: characterInfo?.color || '#8b5cf6' }">
           <img v-if="characterInfo?.avatarUrl" :src="characterInfo.avatarUrl" :alt="displaySpeaker" class="avatar-image" />
           <span v-else>{{ displaySpeaker.charAt(0) }}</span>
         </div>
-        <div class="speaker-details">
-          <span class="speaker-name">{{ displaySpeaker }}</span>
-          <div class="speaker-status">
-            <a-tag v-if="characterInfo" :color="getCharacterStatusColor()" size="small">
-              {{ getCharacterStatusText() }}
-            </a-tag>
-            <a-tag v-else color="orange" size="small">未配置</a-tag>
-          </div>
-        </div>
+        <span class="speaker-name">{{ displaySpeaker }}</span>
       </div>
-      
-      <span class="segment-index">#{{ segmentIndex }}</span>
       
       <!-- 段落状态和播放按钮 -->
       <div class="segment-controls">
@@ -134,21 +127,18 @@ const statusText = computed(() => {
   return '待处理'
 })
 
-// 加载角色信息
+// 加载角色信息（仅用于头像和颜色）
 const loadCharacterInfo = async () => {
   if (!displaySpeaker.value || displaySpeaker.value === '旁白' || displaySpeaker.value === '叙述者') {
     return // 旁白角色不需要加载信息
   }
   
   try {
-    console.log(`🔍 开始加载角色信息: ${displaySpeaker.value}`)
     const response = await charactersAPI.getCharacters({
       search: displaySpeaker.value,
       page: 1,
       page_size: 10
     })
-    
-    console.log(`📡 角色API响应:`, response.data)
     
     if (response.data?.success && response.data.data?.length > 0) {
       // 查找完全匹配的角色
@@ -159,62 +149,17 @@ const loadCharacterInfo = async () => {
       
       if (matchedCharacter) {
         characterInfo.value = {
-          id: matchedCharacter.id,
-          name: matchedCharacter.name,
-          description: matchedCharacter.description,
-          type: matchedCharacter.voice_type,
-          status: matchedCharacter.status,
           color: matchedCharacter.color,
-          avatarUrl: matchedCharacter.avatarUrl,
-          quality: matchedCharacter.quality_score,
-          usageCount: matchedCharacter.usage_count,
-          is_voice_configured: matchedCharacter.is_voice_configured,
-          referenceAudioUrl: matchedCharacter.referenceAudioUrl
+          avatarUrl: matchedCharacter.avatarUrl
         }
-        
-        // 🔧 临时调试：输出角色信息
-        console.log(`🎭 角色 ${displaySpeaker.value} 加载成功:`, {
-          status: matchedCharacter.status,
-          is_voice_configured: matchedCharacter.is_voice_configured,
-          referenceAudioUrl: matchedCharacter.referenceAudioUrl,
-          reference_audio_path: matchedCharacter.reference_audio_path
-        })
-      } else {
-        console.warn(`⚠️ 未找到角色: ${displaySpeaker.value}`)
       }
-    } else {
-      console.warn(`❌ 角色API调用失败: ${displaySpeaker.value}`, response.data)
     }
   } catch (error) {
     console.error('加载角色信息失败:', error)
   }
 }
 
-// 获取角色状态颜色
-const getCharacterStatusColor = () => {
-  if (!characterInfo.value) return 'default'
-  
-  if (characterInfo.value.is_voice_configured && (characterInfo.value.status === 'active' || characterInfo.value.status === 'configured')) {
-    return 'green' // 已配置且可用
-  } else if (characterInfo.value.status === 'active' || characterInfo.value.status === 'configured') {
-    return 'orange' // 可用但需配置音频
-  } else {
-    return 'red' // 未激活
-  }
-}
 
-// 获取角色状态文本
-const getCharacterStatusText = () => {
-  if (!characterInfo.value) return '未知'
-  
-  if (characterInfo.value.is_voice_configured && (characterInfo.value.status === 'active' || characterInfo.value.status === 'configured')) {
-    return '已配置'
-  } else if (characterInfo.value.status === 'active' || characterInfo.value.status === 'configured') {
-    return '需配置音频'
-  } else {
-    return '未激活'
-  }
-}
 
 // 组件挂载时加载角色信息
 onMounted(() => {
@@ -244,11 +189,27 @@ onMounted(() => {
   font-size: 12px;
 }
 
+.segment-number {
+  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+  color: white;
+  font-weight: 700;
+  font-size: 14px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 12px;
+  flex-shrink: 0;
+  box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);
+}
+
 .speaker-info {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-right: 12px;
+  margin-right: auto;
 }
 
 .speaker-avatar {
@@ -271,30 +232,11 @@ onMounted(() => {
   object-fit: cover;
 }
 
-.speaker-details {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
 .speaker-name {
   font-weight: 600;
   color: #334155;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.2;
-}
-
-.speaker-status {
-  display: flex;
-  align-items: center;
-}
-
-.segment-index {
-  color: #64748b;
-  font-size: 11px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  margin-right: 8px;
 }
 
 .segment-controls {
@@ -507,9 +449,9 @@ onMounted(() => {
   color: #fff !important;
 }
 
-[data-theme="dark"] .segment-index {
-  color: #8c8c8c !important;
-  background: #434343 !important;
+[data-theme="dark"] .segment-number {
+  background: linear-gradient(135deg, #4338ca, #3730a3) !important;
+  box-shadow: 0 2px 4px rgba(67, 56, 202, 0.4) !important;
 }
 
 [data-theme="dark"] .play-segment-btn {

@@ -122,23 +122,7 @@
               </div>
             </div>
             
-            <!-- 角色配置状态提示 -->
-            <div v-if="hasUnconfiguredCharacters(chapterResult)" class="character-config-notice">
-              <a-alert 
-                message="部分角色需要配置音频文件" 
-                description="检测到一些角色尚未配置音频文件，请前往角色管理页面完成配置以获得最佳合成效果。" 
-                type="warning" 
-                show-icon 
-                :closable="false"
-                style="margin-bottom: 16px;"
-              >
-                <template #action>
-                  <a-button size="small" type="link" @click="goToCharacterManagement">
-                    去配置
-                  </a-button>
-                </template>
-              </a-alert>
-            </div>
+           
             
             <!-- 对话气泡 -->
             <div class="dialogue-bubbles">

@@ -16,7 +16,6 @@
           type="primary" 
           @click="handleSave" 
           :loading="saving"
-          :disabled="!hasChanges"
         >
           💾 保存修改
         </a-button>
@@ -84,6 +83,10 @@
                   </div>
                   <div class="character-info">
                     <div class="character-name">
+                      <!-- 🔥 角色重要性标识 -->
+                      <span class="character-rank-badge" v-if="getCharacterRank(character, index)">
+                        {{ getCharacterRank(character, index) }}
+                      </span>
                       {{ character.name }}
                       <!-- 角色配置状态标签 -->
                       <a-tag v-if="character.exists_in_library" :color="getCharacterStatusColor(character)" size="small">
@@ -92,8 +95,14 @@
                       <a-tag v-else color="orange" size="small">未配置</a-tag>
                     </div>
                     <div class="character-count">
-                      <a-tag color="blue">{{ character.count || 0 }}次</a-tag>
+                      <a-tag :color="getCountTagColor(character, index)">
+                        第{{ index + 1 }}位 · {{ character.count || 0 }}次
+                      </a-tag>
                       <span class="character-type">{{ getCharacterTypeText(character.voice_type) }}</span>
+                      <!-- 🔥 角色占比显示 -->
+                      <span class="character-percentage">
+                        ({{ getCharacterPercentage(character) }}%)
+                      </span>
                     </div>
                     <!-- 角色详细信息 -->
                     <div v-if="character.exists_in_library" class="character-details">
@@ -152,24 +161,65 @@
                     </div>
                   </div>
                   
-                  <!-- 角色不存在于角色库中 -->
+                  <!-- 角色不存在于角色库中 - 提供角色选择功能 -->
                   <div v-else class="voice-not-in-library">
-                    <a-tag color="red">
-                      <template #icon>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 13.59L15.59 17 12 13.41 8.41 17 7 15.59 10.59 12 7 8.41 8.41 7 12 10.59 15.59 7 17 8.41 13.41 12 17 15.59z"/>
-                        </svg>
-                      </template>
-                      角色未创建
-                    </a-tag>
-                    <a-button 
-                      type="link" 
-                      size="small"
-                      @click="goToCharacterCreation(character)"
-                      title="前往角色管理页面创建角色"
-                    >
-                      去创建
-                    </a-button>
+                    <div class="voice-selection-area">
+                      <div class="selection-label">
+                        <a-tag color="orange">
+                          <template #icon>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/>
+                            </svg>
+                          </template>
+                          选择角色配音
+                        </a-tag>
+                      </div>
+                      
+                      <div class="character-selector">
+                        <a-select
+                          v-model:value="character.selected_character_id"
+                          placeholder="选择现有角色"
+                          style="width: 200px; margin-top: 8px;"
+                          @change="onCharacterSelected(character, $event)"
+                          allowClear
+                          show-search
+                          :filter-option="filterCharacterOption"
+                        >
+                          <a-select-option 
+                            v-for="libChar in availableCharacters" 
+                            :key="libChar.id"
+                            :value="libChar.id"
+                            :title="libChar.description"
+                          >
+                            <div class="character-option">
+                              <span class="char-name">{{ libChar.name }}</span>
+                              <a-tag v-if="libChar.is_voice_configured" color="green" size="small">已配音</a-tag>
+                              <a-tag v-else color="orange" size="small">未配音</a-tag>
+                            </div>
+                          </a-select-option>
+                        </a-select>
+                        
+                        <a-button 
+                          type="link" 
+                          size="small"
+                          @click="goToCharacterCreation(character)"
+                          title="前往角色管理页面创建新角色"
+                          style="margin-left: 8px;"
+                        >
+                          创建新角色
+                        </a-button>
+                      </div>
+                      
+                      <!-- 显示选择的角色信息 -->
+                      <div v-if="character.selected_character_info" class="selected-character-info" style="margin-top: 8px;">
+                        <a-tag color="blue">
+                          已选择: {{ character.selected_character_info.name }}
+                        </a-tag>
+                        <a-tag v-if="character.selected_character_info.is_voice_configured" color="green">
+                          ✓ 有音频配置
+                        </a-tag>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -317,6 +367,9 @@ const hasChanges = ref(false)
 const editableCharacters = ref([])
 const editableSegments = ref([])
 
+// 🔧 角色选择相关数据
+const availableCharacters = ref([]) // 角色库中的所有角色
+
 // 音频服务实例（保留用于其他功能）
 const audioService = getAudioService()
 
@@ -399,6 +452,9 @@ const initEditableData = () => {
         character.count++
       }
     })
+    
+    // 🔥 按出现次数重新排序，让主角排在前面
+    editableCharacters.value.sort((a, b) => b.count - a.count)
   } else {
     // 从synthesis_plan中提取角色（fallback方案）
     console.log('[EditableAnalysisDrawer] characters字段为空，从synthesis_plan提取角色')
@@ -486,6 +542,9 @@ const loadCharacterLibraryInfo = async () => {
     
     if (response.data?.success && response.data.data?.length > 0) {
       const characterLibrary = response.data.data
+      
+      // 🔧 保存角色库数据供选择使用
+      availableCharacters.value = characterLibrary.filter(char => char.status === 'active')
       
       // 为每个角色匹配角色库中的信息
       editableCharacters.value.forEach(character => {
@@ -600,6 +659,64 @@ const goToCharacterCreation = (character) => {
   message.info(`请在角色管理页面创建角色 ${character.name}`)
 }
 
+// 🔧 角色选择处理函数
+const onCharacterSelected = async (character, selectedCharacterId) => {
+  if (!selectedCharacterId) {
+    // 清除选择
+    character.selected_character_id = null
+    character.selected_character_info = null
+    return
+  }
+  
+  try {
+    // 从角色库中找到选中的角色
+    const selectedCharacter = availableCharacters.value.find(char => char.id === selectedCharacterId)
+    if (!selectedCharacter) {
+      message.error('选择的角色不存在')
+      return
+    }
+    
+    console.log('[EditableAnalysisDrawer] 角色选择:', {
+      originalCharacter: character.name,
+      selectedCharacter: selectedCharacter.name,
+      selectedCharacterId
+    })
+    
+    // 更新角色配置
+    character.selected_character_id = selectedCharacterId
+    character.selected_character_info = selectedCharacter
+    
+    // 🔥 重要：更新角色的语音配置
+    character.voice_id = selectedCharacter.id.toString()
+    character.voice_name = selectedCharacter.name
+    character.voice_type = selectedCharacter.voice_type || 'neutral'
+    character.exists_in_library = true
+    character.is_voice_configured = selectedCharacter.is_voice_configured
+    character.referenceAudioUrl = selectedCharacter.referenceAudioUrl
+    
+    // 🔥 同步到所有相关的synthesis_plan段落
+    editableSegments.value.forEach(segment => {
+      if (segment.speaker === character.name) {
+        segment.voice_id = selectedCharacter.id.toString()
+        segment.voice_name = selectedCharacter.name
+      }
+    })
+    
+    markChanged()
+    message.success(`已为 ${character.name} 配置角色 ${selectedCharacter.name}`)
+    
+  } catch (error) {
+    console.error('[EditableAnalysisDrawer] 角色选择失败:', error)
+    message.error('角色选择失败')
+  }
+}
+
+// 🔧 搜索过滤函数
+const filterCharacterOption = (input, option) => {
+  const characterName = option.children?.[0]?.children || ''
+  return characterName.toLowerCase().includes(input.toLowerCase())
+}
+
 // 测试声音
 const testVoice = async (character) => {
   if (!character.referenceAudioUrl) {
@@ -690,7 +807,12 @@ const handleSave = async () => {
     // 调用保存API
     const response = await booksAPI.updatePreparationResult(props.chapterId, updatedData)
     if (response.data && response.data.success) {
-      message.success('保存成功')
+      const syncedChapters = response.data.data?.synced_chapters || 0
+      if (syncedChapters > 0) {
+        message.success(`保存成功！已自动同步 ${syncedChapters} 个章节的角色配置`)
+      } else {
+        message.success('保存成功！角色配置已更新')
+      }
       hasChanges.value = false
       originalData.value = JSON.parse(JSON.stringify(updatedData))
       analysisData.value = updatedData
@@ -700,7 +822,11 @@ const handleSave = async () => {
     }
   } catch (error) {
     console.error('保存失败:', error)
-    message.error('保存失败')
+    if (error.response?.data?.detail) {
+      message.error(`保存失败: ${error.response.data.detail}`)
+    } else {
+      message.error('保存失败，请稍后重试')
+    }
   } finally {
     saving.value = false
   }
@@ -795,6 +921,57 @@ const getDialogueRatio = () => {
   return Math.round((dialogueCount / editableSegments.value.length) * 100)
 }
 
+// 🔥 新增：获取角色重要性标识
+const getCharacterRank = (character, index) => {
+  const count = character.count || 0
+  const totalSegments = editableSegments.value.length
+  
+  // 排除旁白角色的排名显示
+  if (character.name === '旁白' || character.name === '系统旁白') {
+    return ''
+  }
+  
+  if (index === 0 && count > 0) {
+    return '👑' // 主角
+  } else if (index === 1 && count > totalSegments * 0.1) {
+    return '⭐' // 重要配角
+  } else if (index <= 3 && count > totalSegments * 0.05) {
+    return '✨' // 配角
+  }
+  
+  return ''
+}
+
+// 🔥 新增：根据排名获取标签颜色
+const getCountTagColor = (character, index) => {
+  const count = character.count || 0
+  const totalSegments = editableSegments.value.length
+  
+  if (character.name === '旁白' || character.name === '系统旁白') {
+    return 'purple' // 旁白用紫色
+  }
+  
+  if (index === 0 && count > 0) {
+    return 'red' // 主角用红色
+  } else if (index === 1 && count > totalSegments * 0.1) {
+    return 'orange' // 重要配角用橙色
+  } else if (index <= 3 && count > totalSegments * 0.05) {
+    return 'blue' // 配角用蓝色
+  } else {
+    return 'default' // 其他角色用默认色
+  }
+}
+
+// 🔥 新增：计算角色出现百分比
+const getCharacterPercentage = (character) => {
+  const count = character.count || 0
+  const totalSegments = editableSegments.value.length
+  
+  if (totalSegments === 0) return 0
+  
+  return Math.round((count / totalSegments) * 100)
+}
+
 
 </script>
 
@@ -842,6 +1019,28 @@ const getDialogueRatio = () => {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+/* 🔥 角色重要性标识样式 */
+.character-rank-badge {
+  font-size: 16px;
+  margin-right: 6px;
+  display: inline-block;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+  100% { transform: scale(1); }
+}
+
+/* 角色占比显示样式 */
+.character-percentage {
+  color: #666;
+  font-size: 12px;
+  margin-left: 8px;
+  font-weight: normal;
 }
 
 /* 角色显示样式 */
@@ -1113,6 +1312,59 @@ const getDialogueRatio = () => {
   gap: 4px;
 }
 
+/* 🔧 角色选择区域样式 */
+.voice-selection-area {
+  padding: 8px 0;
+}
+
+.selection-label {
+  margin-bottom: 8px;
+}
+
+.character-selector {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.character-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 8px;
+}
+
+.char-name {
+  font-weight: 500;
+  flex: 1;
+}
+
+.selected-character-info {
+  padding: 8px 12px;
+  background: #f0f7ff;
+  border: 1px solid #91caff;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 角色选择下拉框样式增强 */
+.ant-select-dropdown .character-option {
+  padding: 4px 8px;
+}
+
+.ant-select-dropdown .char-name {
+  color: #333;
+}
+
+.ant-select-dropdown .ant-tag {
+  margin: 0;
+  font-size: 10px;
+}
+
 /* 暗黑模式适配 */
 [data-theme="dark"] .analysis-content {
   background: transparent !important;
@@ -1200,5 +1452,19 @@ const getDialogueRatio = () => {
 
 [data-theme="dark"] .voice-id {
   color: #8c8c8c !important;
+}
+
+/* 🔧 暗黑模式下的角色选择样式 */
+[data-theme="dark"] .selected-character-info {
+  background: #1a1a1a !important;
+  border-color: #434343 !important;
+}
+
+[data-theme="dark"] .char-name {
+  color: #fff !important;
+}
+
+[data-theme="dark"] .ant-select-dropdown .char-name {
+  color: #fff !important;
 }
 </style> 
