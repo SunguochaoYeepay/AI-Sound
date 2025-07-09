@@ -31,6 +31,9 @@ class Book(BaseModel):
     # 新增：角色汇总字段，存储整本书的角色信息汇总
     character_summary = Column(JSON, comment="角色汇总信息: {characters: [], voice_mappings: {}, last_updated: ''}")
     
+    # 添加反向关联
+    characters = relationship("Character", back_populates="book")
+    
     # 关系
     chapters = relationship("BookChapter", back_populates="book", cascade="all, delete-orphan")
     projects = relationship("NovelProject", back_populates="book", cascade="all, delete-orphan")
