@@ -614,8 +614,10 @@ async def delete_voice_profile(
         if voice.latent_file_path and os.path.exists(voice.latent_file_path):
             files_to_delete.append(voice.latent_file_path)
         
-        if voice.sample_audio_path and os.path.exists(voice.sample_audio_path):
-            files_to_delete.append(voice.sample_audio_path)
+        # 使用getattr安全地访问sample_audio_path字段
+        sample_audio_path = getattr(voice, 'sample_audio_path', None)
+        if sample_audio_path and os.path.exists(sample_audio_path):
+            files_to_delete.append(sample_audio_path)
         
         # 删除数据库记录
         db.delete(voice)
@@ -758,9 +760,10 @@ async def evaluate_voice_quality(
         quality_score = voice.quality_score
         
         # 如果有样本音频，重新评估
-        if voice.sample_audio_path and os.path.exists(voice.sample_audio_path):
+        sample_audio_path = getattr(voice, 'sample_audio_path', None)
+        if sample_audio_path and os.path.exists(sample_audio_path):
             # 简化质量评估 - 基于文件大小
-            file_size = os.path.getsize(voice.sample_audio_path)
+            file_size = os.path.getsize(sample_audio_path)
             if file_size > 50000:  # 50KB以上
                 quality_score = 3.0
             if file_size > 100000:  # 100KB以上
@@ -857,7 +860,7 @@ async def batch_operations(
                     files_to_delete = [
                         voice.reference_audio_path,
                         voice.latent_file_path,
-                        voice.sample_audio_path
+                        getattr(voice, 'sample_audio_path', None)
                     ]
                     
                     db.delete(voice)

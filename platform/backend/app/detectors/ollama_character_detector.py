@@ -16,13 +16,158 @@ logger = logging.getLogger(__name__)
 class OllamaCharacterDetector:
     """基于Ollama的角色检测器"""
     
-    def __init__(self, model_name: str = "qwen2.5:14b", ollama_url: str = None):
+    def __init__(self, model_name: str = "qwen2.5:7b", ollama_url: str = None):
         self.model_name = model_name
         self.api_url = ollama_url or "http://localhost:11434/api/generate"
         self.logger = logging.getLogger(__name__)
 
+    def _smart_chunk_text(self, text: str, max_chunk_size: int = 3000) -> List[Dict]:
+        """🚀 智能分块：按段落和句子边界分块，避免截断"""
+        import re
+        
+        # 如果文本较短，不需要分块
+        if len(text) <= max_chunk_size:
+            return [{"chunk_id": 0, "text": text, "start_pos": 0, "end_pos": len(text)}]
+        
+        logger.info(f"文本过长({len(text)}字符)，开始智能分块(最大{max_chunk_size}字符/块)")
+        
+        chunks = []
+        chunk_id = 0
+        
+        # 首先按双换行符分段
+        paragraphs = text.split('\n\n')
+        current_chunk = ""
+        current_start = 0
+        
+        for para in paragraphs:
+            para = para.strip()
+            if not para:
+                continue
+                
+            # 如果加入当前段落后超过限制，先保存当前块
+            if len(current_chunk) + len(para) > max_chunk_size and current_chunk:
+                # 保存当前块
+                chunks.append({
+                    "chunk_id": chunk_id,
+                    "text": current_chunk.strip(),
+                    "start_pos": current_start,
+                    "end_pos": current_start + len(current_chunk)
+                })
+                chunk_id += 1
+                current_start += len(current_chunk)
+                current_chunk = para + "\n\n"
+            else:
+                current_chunk += para + "\n\n"
+        
+        # 保存最后一个块
+        if current_chunk.strip():
+            chunks.append({
+                "chunk_id": chunk_id,
+                "text": current_chunk.strip(),
+                "start_pos": current_start,
+                "end_pos": current_start + len(current_chunk)
+            })
+        
+        # 如果某个块仍然过大，按句子进一步分块
+        final_chunks = []
+        for chunk in chunks:
+            if len(chunk["text"]) > max_chunk_size:
+                sub_chunks = self._split_by_sentences(chunk["text"], max_chunk_size, chunk["start_pos"])
+                final_chunks.extend(sub_chunks)
+            else:
+                final_chunks.append(chunk)
+        
+        logger.info(f"智能分块完成：{len(text)}字符 → {len(final_chunks)}块，平均{len(text)//len(final_chunks)}字符/块")
+        return final_chunks
+    
+    def _split_by_sentences(self, text: str, max_size: int, start_offset: int = 0) -> List[Dict]:
+        """按句子边界进一步分块"""
+        import re
+        
+        # 按句号、问号、感叹号分句
+        sentences = re.split(r'([。！？][""]?)', text)
+        chunks = []
+        chunk_id = len(chunks)
+        current_chunk = ""
+        current_start = start_offset
+        
+        i = 0
+        while i < len(sentences):
+            sentence = sentences[i]
+            # 如果是标点符号，与前一句合并
+            if i + 1 < len(sentences) and sentences[i + 1] in ['。', '！', '？', '"', '"']:
+                sentence += sentences[i + 1]
+                i += 2
+            else:
+                i += 1
+            
+            if len(current_chunk) + len(sentence) > max_size and current_chunk:
+                chunks.append({
+                    "chunk_id": chunk_id,
+                    "text": current_chunk.strip(),
+                    "start_pos": current_start,
+                    "end_pos": current_start + len(current_chunk)
+                })
+                chunk_id += 1
+                current_start += len(current_chunk)
+                current_chunk = sentence
+            else:
+                current_chunk += sentence
+        
+        # 保存最后一个块
+        if current_chunk.strip():
+            chunks.append({
+                "chunk_id": chunk_id,
+                "text": current_chunk.strip(),
+                "start_pos": current_start,
+                "end_pos": current_start + len(current_chunk)
+            })
+        
+        return chunks
+    
+    def _merge_chunk_results(self, chunk_results: List[Dict]) -> Dict:
+        """🔗 合并分块分析结果"""
+        merged_segments = []
+        merged_characters = {}
+        total_order = 0
+        
+        for chunk_result in chunk_results:
+            chunk_id = chunk_result.get("chunk_id", 0)
+            
+            # 合并segments，调整order
+            for segment in chunk_result.get("segments", []):
+                segment["order"] = total_order
+                segment["chunk_id"] = chunk_id  # 标记来源块
+                merged_segments.append(segment)
+                total_order += 1
+            
+            # 合并characters，按名字去重
+            for char in chunk_result.get("characters", []):
+                char_name = char["name"]
+                if char_name in merged_characters:
+                    # 合并频次和置信度
+                    existing = merged_characters[char_name]
+                    existing["frequency"] += char.get("frequency", 1)
+                    existing["confidence"] = max(existing["confidence"], char.get("confidence", 0.5))
+                    # 保留更详细的描述
+                    if len(char.get("personality_description", "")) > len(existing.get("personality_description", "")):
+                        existing["personality_description"] = char["personality_description"]
+                else:
+                    merged_characters[char_name] = char
+        
+        # 转换为列表并按频次排序
+        characters_list = list(merged_characters.values())
+        characters_list.sort(key=lambda x: x.get("frequency", 0), reverse=True)
+        
+        logger.info(f"分块结果合并完成：{len(merged_segments)}个段落，{len(characters_list)}个角色")
+        
+        return {
+            "segments": merged_segments,
+            "characters": characters_list
+        }
+    
     async def analyze_text(self, text: str, chapter_info: dict) -> dict:
-        """使用Ollama分析文本中的角色 - 直接AI分析，简单高效"""
+        """使用Ollama分析文本中的角色 - 支持智能分块处理"""
         # 🔧 使用统一的WebSocket管理器
         try:
             from app.websocket.manager import websocket_manager
@@ -52,100 +197,156 @@ class OllamaCharacterDetector:
             # 发送开始分析进度
             await send_analysis_progress(session_id, 10, f"开始分析章节: {chapter_info['chapter_title']}")
             
-            # 1. 直接调用Ollama进行全文分析（包括角色识别和文本分段）
-            await send_analysis_progress(session_id, 30, "正在调用AI模型进行角色识别...")
+            # 🚀 智能分块处理：长文本自动分块
+            text_length = len(text)
+            chunk_threshold = 4000  # 超过4000字符启用分块
             
-            # 🔥 修复：增加重试机制，最多重试3次
-            max_retries = 3
-            response = None
-            
-            for attempt in range(max_retries):
-                try:
-                    prompt = self._build_comprehensive_analysis_prompt(text)
-                    response = self._call_ollama(prompt)
+            if text_length > chunk_threshold:
+                logger.info(f"文本长度{text_length}字符，启用智能分块处理")
+                await send_analysis_progress(session_id, 20, f"文本较长({text_length}字符)，启用智能分块处理...")
+                
+                # 智能分块
+                chunks = self._smart_chunk_text(text, max_chunk_size=3000)
+                await send_analysis_progress(session_id, 30, f"已分为{len(chunks)}个块，开始逐块分析...")
+                
+                # 逐块分析
+                chunk_results = []
+                progress_step = 50 / len(chunks)  # 50%的进度用于分块分析
+                
+                for i, chunk in enumerate(chunks):
+                    chunk_progress = 30 + int(i * progress_step)
+                    await send_analysis_progress(session_id, chunk_progress, f"分析第{i+1}/{len(chunks)}块...")
                     
-                    if response:
-                        break
-                    else:
-                        logger.warning(f"第{attempt + 1}次尝试失败，Ollama返回空响应")
-                        if attempt < max_retries - 1:
-                            await send_analysis_progress(session_id, 30 + attempt * 10, f"重试中... ({attempt + 1}/{max_retries})")
-                            time.sleep(2)  # 等待2秒后重试
-                        
-                except Exception as e:
-                    logger.error(f"第{attempt + 1}次尝试异常: {str(e)}")
-                    if attempt < max_retries - 1:
-                        await send_analysis_progress(session_id, 30 + attempt * 10, f"重试中... ({attempt + 1}/{max_retries})")
-                        time.sleep(2)  # 等待2秒后重试
-                    else:
-                        raise e
+                    chunk_result = await self._analyze_single_chunk(chunk["text"], chunk["chunk_id"])
+                    chunk_result["chunk_id"] = chunk["chunk_id"]
+                    chunk_results.append(chunk_result)
+                
+                await send_analysis_progress(session_id, 80, "正在合并分块分析结果...")
+                
+                # 合并分块结果
+                result = self._merge_chunk_results(chunk_results)
+                
+                # 完整性校验（基于原文）
+                completeness_valid = self._validate_completeness(text, result['segments'])
+                
+                analysis_method = f"ollama_ai_chunked_{len(chunks)}_blocks"
+                
+            else:
+                logger.info(f"文本长度{text_length}字符，使用单次分析")
+                await send_analysis_progress(session_id, 30, "正在调用AI模型进行角色识别...")
+                
+                # 直接单次分析
+                result = await self._analyze_single_text(text)
+                completeness_valid = self._validate_completeness(text, result['segments'])
+                analysis_method = "ollama_ai_single"
+                chunks = []  # 单次分析时为空列表
             
             processing_time = time.time() - start_time
             
-            if response:
-                await send_analysis_progress(session_id, 80, "正在解析AI分析结果...")
-                
-                # 解析Ollama返回的完整结果
-                result = self._parse_comprehensive_response(response)
-                
-                # 🔥 修复：增加内容完整性校验
-                completeness_valid = self._validate_completeness(text, result['segments'])
-                if not completeness_valid:
-                    logger.warning("内容完整性校验失败，尝试重新分析")
-                    await send_analysis_progress(session_id, 85, "内容完整性校验失败，重新分析中...")
-                    
-                    # 如果完整性校验失败，尝试使用更详细的提示词重新分析
-                    detailed_prompt = self._build_detailed_analysis_prompt(text)
-                    retry_response = self._call_ollama(detailed_prompt)
-                    
-                    if retry_response:
-                        retry_result = self._parse_comprehensive_response(retry_response)
-                        retry_completeness = self._validate_completeness(text, retry_result['segments'])
-                        
-                        if retry_completeness:
-                            result = retry_result
-                            logger.info("重新分析成功，内容完整性校验通过")
-                            await send_analysis_progress(session_id, 95, "重新分析成功")
-                        else:
-                            logger.warning("重新分析仍未通过完整性校验，使用原结果并记录警告")
-                            await send_analysis_progress(session_id, 95, "分析完成，但存在内容完整性警告")
-                
-                await send_analysis_progress(session_id, 100, f"分析完成，识别到{len(result['characters'])}个角色")
-                
-                # 智能分析阶段：返回所有识别到的角色（不过滤已存在的）
-                all_characters = result['characters']
-                
-                return {
-                    "chapter_id": chapter_info['chapter_id'],
-                    "chapter_title": chapter_info['chapter_title'],
-                    "chapter_number": chapter_info['chapter_number'],
-                    "detected_characters": all_characters,  # 返回所有角色
-                    "segments": result['segments'],
-                    "processing_stats": {
-                        "total_segments": len(result['segments']),
-                        "dialogue_segments": len([s for s in result['segments'] if s['text_type'] == 'dialogue']),
-                        "narration_segments": len([s for s in result['segments'] if s['text_type'] == 'narration']),
-                        "characters_found": len(result['characters']),
-                        "new_characters_found": len(result['characters']),
-                        "analysis_method": "ollama_ai_primary",
-                        "processing_time": round(processing_time, 2),
-                        "text_length": len(text),
-                        "ai_model": self.model_name,
-                        "completeness_validated": completeness_valid,  # 🔥 新增：完整性校验结果
-                        "retry_count": max_retries - (3 if response else 0)  # 🔥 新增：重试次数记录
-                    }
+            await send_analysis_progress(session_id, 100, f"分析完成，识别到{len(result['characters'])}个角色")
+            
+            # 智能分析阶段：返回所有识别到的角色（不过滤已存在的）
+            all_characters = result['characters']
+            
+            return {
+                "chapter_id": chapter_info['chapter_id'],
+                "chapter_title": chapter_info['chapter_title'],
+                "chapter_number": chapter_info['chapter_number'],
+                "detected_characters": all_characters,  # 返回所有角色
+                "segments": result['segments'],
+                "processing_stats": {
+                    "total_segments": len(result['segments']),
+                    "dialogue_segments": len([s for s in result['segments'] if s['text_type'] == 'dialogue']),
+                    "narration_segments": len([s for s in result['segments'] if s['text_type'] == 'narration']),
+                    "characters_found": len(result['characters']),
+                    "new_characters_found": len(result['characters']),
+                    "analysis_method": analysis_method,
+                    "processing_time": round(processing_time, 2),
+                    "text_length": len(text),
+                    "ai_model": self.model_name,
+                    "completeness_validated": completeness_valid,  # 🔥 新增：完整性校验结果
+                    "chunk_count": len(chunks) if text_length > chunk_threshold else 1  # 🔥 新增：分块数量
                 }
-            else:
-                # Ollama调用失败，直接抛出错误
-                logger.error("❌ Ollama API调用失败，没有返回有效响应")
-                await send_analysis_progress(session_id, 0, "AI分析失败")
-                raise Exception("Ollama API调用失败，没有返回有效响应")
+            }
                 
         except Exception as e:
             processing_time = time.time() - start_time
             logger.error(f"❌ Ollama角色分析异常失败: {str(e)}")
             await send_analysis_progress(session_id, 0, f"AI分析失败: {str(e)}")
             raise Exception(f"Ollama角色分析失败: {str(e)}")
+    
+    async def _analyze_single_text(self, text: str) -> Dict:
+        """单次分析文本（不分块）"""
+        max_retries = 3
+        response = None
+        
+        for attempt in range(max_retries):
+            try:
+                prompt = self._build_comprehensive_analysis_prompt(text)
+                response = self._call_ollama(prompt)
+                
+                if response:
+                    break
+                else:
+                    logger.warning(f"第{attempt + 1}次尝试失败，Ollama返回空响应")
+                    if attempt < max_retries - 1:
+                        time.sleep(2)  # 等待2秒后重试
+                    
+            except Exception as e:
+                logger.error(f"第{attempt + 1}次尝试异常: {str(e)}")
+                if attempt < max_retries - 1:
+                    time.sleep(2)  # 等待2秒后重试
+                else:
+                    raise e
+        
+        if response:
+            # 解析Ollama返回的完整结果
+            result = self._parse_comprehensive_response(response)
+            
+            # 🔥 修复：增加内容完整性校验和重试
+            completeness_valid = self._validate_completeness(text, result['segments'])
+            if not completeness_valid:
+                logger.warning("内容完整性校验失败，尝试重新分析")
+                
+                # 如果完整性校验失败，尝试使用更详细的提示词重新分析
+                detailed_prompt = self._build_detailed_analysis_prompt(text)
+                retry_response = self._call_ollama(detailed_prompt)
+                
+                if retry_response:
+                    retry_result = self._parse_comprehensive_response(retry_response)
+                    retry_completeness = self._validate_completeness(text, retry_result['segments'])
+                    
+                    if retry_completeness:
+                        result = retry_result
+                        logger.info("重新分析成功，内容完整性校验通过")
+                    else:
+                        logger.warning("重新分析仍未通过完整性校验，使用原结果并记录警告")
+            
+            return result
+        else:
+            # Ollama调用失败，直接抛出错误
+            logger.error("❌ Ollama API调用失败，没有返回有效响应")
+            raise Exception("Ollama API调用失败，没有返回有效响应")
+    
+    async def _analyze_single_chunk(self, chunk_text: str, chunk_id: int) -> Dict:
+        """分析单个分块"""
+        logger.info(f"开始分析第{chunk_id}块，长度{len(chunk_text)}字符")
+        
+        try:
+            prompt = self._build_comprehensive_analysis_prompt(chunk_text)
+            response = self._call_ollama(prompt)
+            
+            if response:
+                result = self._parse_comprehensive_response(response)
+                logger.info(f"第{chunk_id}块分析完成：{len(result.get('segments', []))}段落，{len(result.get('characters', []))}个角色")
+                return result
+            else:
+                logger.warning(f"第{chunk_id}块分析失败，返回空结果")
+                return {"segments": [], "characters": []}
+                
+        except Exception as e:
+            logger.error(f"第{chunk_id}块分析异常: {str(e)}")
+            return {"segments": [], "characters": []}
     
     def _validate_completeness(self, original_text: str, segments: List[Dict]) -> bool:
         """🔥 新增：校验分析结果的完整性"""
@@ -161,8 +362,8 @@ class OllamaCharacterDetector:
             
             logger.info(f"内容完整性校验: 原文{original_chars}字符，分析结果{segment_chars}字符，完整度{completeness_ratio:.2%}")
             
-            # 如果差异超过15%，认为不完整
-            if completeness_ratio < 0.85:
+            # 如果差异超过25%，认为不完整 (针对7B模型优化)
+            if completeness_ratio < 0.75:
                 logger.warning(f"内容完整性校验失败: 完整度仅{completeness_ratio:.2%}，可能有内容丢失")
                 return False
             

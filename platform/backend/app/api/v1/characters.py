@@ -123,46 +123,48 @@ async def get_characters(
     sort_order: str = Query("desc", description="排序方向"),
     tags: str = Query("", description="标签过滤(逗号分隔)"),
     status: str = Query("", description="状态过滤"),
+    book_id: int = Query(None, description="书籍ID筛选"),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
-    """获取声音角色列表"""
+    """获取角色列表"""
     try:
-        # 构建查询
-        query = db.query(VoiceProfile)
+        # 统一使用角色查询
+        query = db.query(Character)
         
         # 搜索过滤
         if search:
             search_pattern = f"%{search}%"
             query = query.filter(
                 or_(
-                    VoiceProfile.name.like(search_pattern),
-                    VoiceProfile.description.like(search_pattern)
+                    Character.name.like(search_pattern),
+                    Character.description.like(search_pattern)
                 )
             )
         
         # 声音类型过滤
-        if voice_type and voice_type in ['male', 'female', 'child']:
-            query = query.filter(VoiceProfile.type == voice_type)
+        if voice_type and voice_type in ['male', 'female', 'child', 'elder', 'custom']:
+            query = query.filter(Character.voice_type == voice_type)
         
         # 质量分过滤
         if quality_min > 0:
-            query = query.filter(VoiceProfile.quality_score >= quality_min)
+            query = query.filter(Character.quality_score >= quality_min)
         
         # 状态过滤
         if status:
-            query = query.filter(VoiceProfile.status == status)
-        else:
-            # 默认只显示激活的声音
-            query = query.filter(VoiceProfile.status == 'active')
+            query = query.filter(Character.status == status)
+        
+        # 书籍过滤
+        if book_id:
+            query = query.filter(Character.book_id == book_id)
         
         # 标签过滤
         if tags:
             tag_list = [tag.strip() for tag in tags.split(',') if tag.strip()]
             for tag in tag_list:
-                query = query.filter(VoiceProfile.tags.like(f'%"{tag}"%'))
+                query = query.filter(Character.tags.like(f'%"{tag}"%'))
         
         # 排序
-        sort_field = getattr(VoiceProfile, sort_by, VoiceProfile.created_at)
+        sort_field = getattr(Character, sort_by, Character.created_at)
         if sort_order == "asc":
             query = query.order_by(asc(sort_field))
         else:
@@ -173,72 +175,48 @@ async def get_characters(
         
         # 分页
         offset = (page - 1) * page_size
-        voices = query.offset(offset).limit(page_size).all()
+        characters = query.offset(offset).limit(page_size).all()
         
         # 转换为字典格式
-        voice_list = []
-        for voice in voices:
-            voice_data = voice.to_dict()
-            
-            # 强制修正字段名，确保返回正确的URL格式（如果to_dict()没有正确工作）
-            if 'reference_audio_path' in voice_data:
-                # 将原始路径转换为URL
-                if voice_data['reference_audio_path']:
-                    filename = os.path.basename(voice_data['reference_audio_path'])
-                    # 临时修复：如果是test角色且文件不存在，使用实际存在的文件
-                    if voice.name == 'test' and not os.path.exists(f"data/voice_profiles/{filename}"):
-                        filename = "test_abf44e80bb084a3d984d8072907ae6dc.wav"
-                    voice_data['referenceAudioUrl'] = f"/voice_profiles/{filename}"
-                del voice_data['reference_audio_path']
-            
-            if 'latent_file_path' in voice_data:
-                if voice_data['latent_file_path']:
-                    filename = os.path.basename(voice_data['latent_file_path'])
-                    voice_data['latentFileUrl'] = f"/voice_profiles/{filename}"
-                del voice_data['latent_file_path']
-            
-            if 'sample_audio_path' in voice_data:
-                if voice_data['sample_audio_path']:
-                    filename = os.path.basename(voice_data['sample_audio_path'])
-                    voice_data['sampleAudioUrl'] = f"/voice_profiles/{filename}"
-                del voice_data['sample_audio_path']
-            
-            # 添加音频时长信息
-            if voice.reference_audio_path and os.path.exists(voice.reference_audio_path):
-                try:
-                    duration = get_audio_duration(voice.reference_audio_path)
-                    voice_data['audioDuration'] = duration
-                except:
-                    # 如果获取时长失败，不影响其他数据
-                    pass
-            
-            voice_list.append(voice_data)
+        character_list = []
+        for character in characters:
+            character_data = character.to_dict()
+            character_list.append(character_data)
         
-        # 分页信息
-        total_pages = (total + page_size - 1) // page_size
+        # 计算统计信息
+        stats = {
+            'total_count': total,
+            'configured_count': db.query(Character).filter(Character.status == 'configured').count(),
+            'unconfigured_count': db.query(Character).filter(Character.status == 'unconfigured').count(),
+            'average_quality': db.query(func.avg(Character.quality_score)).scalar() or 0
+        }
         
         return {
             "success": True,
-            "data": voice_list,
+            "data": character_list,
             "pagination": {
                 "page": page,
-                "pageSize": page_size,
+                "page_size": page_size,
                 "total": total,
-                "totalPages": total_pages,
-                "hasMore": page < total_pages
+                "pages": (total + page_size - 1) // page_size
             },
+            "stats": stats,
             "filters": {
                 "search": search,
-                "voiceType": voice_type,
-                "qualityMin": quality_min,
-                "tags": tags,
-                "status": status
+                "voice_type": voice_type,
+                "quality_min": quality_min,
+                "status": status,
+                "book_id": book_id,
+                "tags": tags
             }
         }
         
     except Exception as e:
-        logger.error(f"获取声音档案列表失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"获取列表失败: {str(e)}")
+        logger.error(f"获取角色列表失败: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"获取角色列表失败: {str(e)}"
+        )
 
 @router.get("/statistics")
 async def get_voice_statistics(
@@ -500,6 +478,277 @@ async def create_voice_profile(
         logger.error(f"创建声音档案失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"创建失败: {str(e)}")
 
+@router.post("/character")
+async def create_character_with_voice(
+    name: str = Form(...),
+    description: str = Form(""),
+    voice_type: str = Form(...),
+    book_id: int = Form(None),
+    reference_audio: UploadFile = File(None),
+    latent_file: UploadFile = File(None),
+    tags: str = Form(""),
+    color: str = Form("#8b5cf6"),
+    parameters: str = Form("{}"),
+    db: Session = Depends(get_db)
+):
+    """创建带声音配置的角色"""
+    try:
+        # 验证输入
+        if not name or len(name.strip()) == 0:
+            raise HTTPException(status_code=400, detail="角色名称不能为空")
+        
+        if voice_type not in ['male', 'female', 'child', 'elder', 'custom']:
+            raise HTTPException(status_code=400, detail="声音类型必须是 male、female、child、elder 或 custom")
+        
+        # 检查名称是否已存在（在同一本书中）
+        query = db.query(Character).filter(Character.name == name)
+        if book_id:
+            query = query.filter(Character.book_id == book_id)
+        existing_character = query.first()
+        
+        if existing_character:
+            raise HTTPException(status_code=400, detail="角色名称已存在")
+        
+        # 验证书籍是否存在
+        if book_id:
+            from app.models.book import Book
+            book = db.query(Book).filter(Book.id == book_id).first()
+            if not book:
+                raise HTTPException(status_code=400, detail="所选书籍不存在")
+        
+        # 处理参考音频文件
+        ref_audio_path = None
+        if reference_audio and reference_audio.filename:
+            if not reference_audio.content_type or not reference_audio.content_type.startswith('audio/'):
+                raise HTTPException(status_code=400, detail="参考音频必须是音频文件格式")
+            
+            audio_content = await reference_audio.read()
+            if len(audio_content) > 100 * 1024 * 1024:  # 100MB限制
+                raise HTTPException(status_code=400, detail="音频文件大小不能超过100MB")
+            
+            file_ext = os.path.splitext(reference_audio.filename)[1].lower()
+            if file_ext not in ['.wav', '.mp3', '.flac', '.m4a', '.ogg']:
+                raise HTTPException(status_code=400, detail="不支持的音频格式")
+            
+            ref_filename = f"{name}_{uuid.uuid4().hex}{file_ext}"
+            ref_audio_path = os.path.join(VOICE_PROFILES_DIR, ref_filename)
+            
+            os.makedirs(VOICE_PROFILES_DIR, exist_ok=True)
+            with open(ref_audio_path, 'wb') as f:
+                f.write(audio_content)
+        
+        # 处理latent文件
+        latent_path = None
+        if latent_file and latent_file.filename:
+            if not latent_file.filename.endswith('.npy'):
+                raise HTTPException(status_code=400, detail="Latent文件必须是.npy格式")
+            
+            latent_content = await latent_file.read()
+            if len(latent_content) > 50 * 1024 * 1024:  # 50MB限制
+                raise HTTPException(status_code=400, detail="Latent文件大小不能超过50MB")
+            
+            latent_filename = f"{name}_{uuid.uuid4().hex}.npy"
+            latent_path = os.path.join(VOICE_PROFILES_DIR, latent_filename)
+            
+            with open(latent_path, 'wb') as f:
+                f.write(latent_content)
+        
+        # 解析参数
+        try:
+            params = json.loads(parameters) if parameters else {}
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=400, detail="参数格式错误")
+        
+        # 解析标签
+        try:
+            tag_list = json.loads(tags) if tags else []
+        except json.JSONDecodeError:
+            tag_list = []
+        
+        # 创建角色
+        character = Character(
+            name=name,
+            description=description,
+            book_id=book_id,
+            voice_type=voice_type,
+            color=color,
+            reference_audio_path=normalize_path(ref_audio_path),
+            latent_file_path=normalize_path(latent_path),
+            voice_parameters=json.dumps(params),
+            tags=json.dumps(tag_list),
+            status='configured' if ref_audio_path else 'unconfigured',
+            quality_score=3.0,
+            usage_count=0
+        )
+        
+        db.add(character)
+        db.commit()
+        db.refresh(character)
+        
+        # 记录日志
+        await log_system_event(
+            db=db,
+            level="info",
+            message=f"创建角色: {name}",
+            module="characters",
+            details={"character_id": character.id, "book_id": book_id}
+        )
+        
+        return {
+            "success": True,
+            "message": "角色创建成功",
+            "data": character.to_dict()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"创建角色失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"创建失败: {str(e)}")
+
+@router.put("/character/{character_id}")
+async def update_character_with_voice(
+    character_id: int,
+    name: str = Form(...),
+    description: str = Form(""),
+    voice_type: str = Form(...),
+    book_id: int = Form(None),
+    reference_audio: UploadFile = File(None),
+    latent_file: UploadFile = File(None),
+    tags: str = Form(""),
+    color: str = Form("#8b5cf6"),
+    parameters: str = Form("{}"),
+    db: Session = Depends(get_db)
+):
+    """更新角色和声音配置"""
+    try:
+        character = db.query(Character).filter(Character.id == character_id).first()
+        if not character:
+            raise HTTPException(status_code=404, detail="角色不存在")
+        
+        # 验证输入
+        if not name or len(name.strip()) == 0:
+            raise HTTPException(status_code=400, detail="角色名称不能为空")
+        
+        if voice_type not in ['male', 'female', 'child', 'elder', 'custom']:
+            raise HTTPException(status_code=400, detail="声音类型必须是 male、female、child、elder 或 custom")
+        
+        # 检查名称冲突
+        query = db.query(Character).filter(
+            Character.name == name,
+            Character.id != character_id
+        )
+        if book_id:
+            query = query.filter(Character.book_id == book_id)
+        existing_character = query.first()
+        
+        if existing_character:
+            raise HTTPException(status_code=400, detail="角色名称已存在")
+        
+        # 验证书籍
+        if book_id:
+            from app.models.book import Book
+            book = db.query(Book).filter(Book.id == book_id).first()
+            if not book:
+                raise HTTPException(status_code=400, detail="所选书籍不存在")
+        
+        # 处理新的音频文件
+        if reference_audio and reference_audio.filename:
+            # 删除旧文件
+            if character.reference_audio_path and os.path.exists(character.reference_audio_path):
+                try:
+                    os.remove(character.reference_audio_path)
+                except:
+                    pass
+            
+            # 保存新文件
+            audio_content = await reference_audio.read()
+            if len(audio_content) > 100 * 1024 * 1024:
+                raise HTTPException(status_code=400, detail="音频文件大小不能超过100MB")
+            
+            file_ext = os.path.splitext(reference_audio.filename)[1].lower()
+            if file_ext not in ['.wav', '.mp3', '.flac', '.m4a', '.ogg']:
+                raise HTTPException(status_code=400, detail="不支持的音频格式")
+            
+            ref_filename = f"{name}_{uuid.uuid4().hex}{file_ext}"
+            ref_audio_path = os.path.join(VOICE_PROFILES_DIR, ref_filename)
+            
+            os.makedirs(VOICE_PROFILES_DIR, exist_ok=True)
+            with open(ref_audio_path, 'wb') as f:
+                f.write(audio_content)
+            
+            character.reference_audio_path = normalize_path(ref_audio_path)
+        
+        # 处理新的latent文件
+        if latent_file and latent_file.filename:
+            # 删除旧文件
+            if character.latent_file_path and os.path.exists(character.latent_file_path):
+                try:
+                    os.remove(character.latent_file_path)
+                except:
+                    pass
+            
+            latent_content = await latent_file.read()
+            if len(latent_content) > 50 * 1024 * 1024:
+                raise HTTPException(status_code=400, detail="Latent文件大小不能超过50MB")
+            
+            if not latent_file.filename.endswith('.npy'):
+                raise HTTPException(status_code=400, detail="Latent文件必须是.npy格式")
+            
+            latent_filename = f"{name}_{uuid.uuid4().hex}.npy"
+            latent_path = os.path.join(VOICE_PROFILES_DIR, latent_filename)
+            
+            with open(latent_path, 'wb') as f:
+                f.write(latent_content)
+            
+            character.latent_file_path = normalize_path(latent_path)
+        
+        # 解析参数和标签
+        try:
+            params = json.loads(parameters) if parameters else {}
+            tag_list = json.loads(tags) if tags else []
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=400, detail="参数或标签格式错误")
+        
+        # 更新角色信息
+        character.name = name
+        character.description = description
+        character.book_id = book_id
+        character.voice_type = voice_type
+        character.color = color
+        character.voice_parameters = json.dumps(params)
+        character.tags = json.dumps(tag_list)
+        
+        # 更新状态
+        if character.reference_audio_path:
+            character.status = 'configured'
+        
+        character.updated_at = datetime.utcnow()
+        
+        db.commit()
+        db.refresh(character)
+        
+        # 记录日志
+        await log_system_event(
+            db=db,
+            level="info",
+            message=f"更新角色: {name}",
+            module="characters",
+            details={"character_id": character_id, "book_id": book_id}
+        )
+        
+        return {
+            "success": True,
+            "message": "角色更新成功",
+            "data": character.to_dict()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"更新角色失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"更新失败: {str(e)}")
+
 @router.put("/{voice_id}")
 async def update_voice_profile(
     voice_id: int,
@@ -638,14 +887,14 @@ async def delete_voice_profile(
         if not force and voice.usage_count > 0:
             raise HTTPException(
                 status_code=400, 
-                detail=f"声音正在使用中(使用次数: {voice.usage_count})，请使用强制删除"
+                detail=f"角色正在使用中(使用次数: {voice.usage_count})，请使用强制删除"
             )
         
         # 删除关联文件
         files_to_delete = [
             voice.reference_audio_path,
             voice.latent_file_path,
-            voice.sample_audio_path
+            getattr(voice, 'sample_audio_path', None)
         ]
         
         for file_path in files_to_delete:
@@ -898,7 +1147,7 @@ async def batch_operations(
                     files_to_delete = [
                         voice.reference_audio_path,
                         voice.latent_file_path,
-                        voice.sample_audio_path
+                        getattr(voice, 'sample_audio_path', None)
                     ]
                     
                     db.delete(voice)
@@ -1257,6 +1506,318 @@ async def sync_characters(
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"同步失败: {str(e)}")
+
+@router.post("/create-character")
+async def create_character(
+    name: str = Form(..., description="角色名称"),
+    description: str = Form("", description="角色描述"),
+    book_id: int = Form(..., description="所属书籍ID"),
+    chapter_id: int = Form(None, description="首次出现章节ID"),
+    voice_profile: str = Form("", description="语音配置"),
+    voice_config: str = Form("{}", description="语音参数配置"),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """创建新角色"""
+    try:
+        # 检查角色名称是否已存在于同一本书中
+        existing = db.query(Character).filter(
+            Character.name == name,
+            Character.book_id == book_id
+        ).first()
+        
+        if existing:
+            return {
+                "success": False,
+                "message": f"角色'{name}'在该书籍中已存在"
+            }
+        
+        # 验证书籍是否存在
+        from app.models.book import Book
+        book = db.query(Book).filter(Book.id == book_id).first()
+        if not book:
+            return {
+                "success": False,
+                "message": f"书籍ID {book_id} 不存在"
+            }
+        
+        # 创建新角色
+        new_character = Character(
+            name=name,
+            description=description,
+            book_id=book_id,
+            chapter_id=chapter_id,
+            voice_profile=voice_profile,
+            voice_config=voice_config
+        )
+        
+        db.add(new_character)
+        db.commit()
+        db.refresh(new_character)
+        
+        logger.info(f"角色创建成功: {name} (书籍: {book.title})")
+        
+        return {
+            "success": True,
+            "message": f"角色'{name}'创建成功",
+            "data": {
+                "id": new_character.id,
+                "name": new_character.name,
+                "book_id": new_character.book_id,
+                "book_title": book.title
+            }
+        }
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"创建角色失败: {str(e)}")
+        return {
+            "success": False,
+            "message": f"创建角色失败: {str(e)}"
+        }
+
+@router.post("/batch-create-characters")
+async def batch_create_characters(
+    characters_data: str = Form(..., description="角色数据JSON"),
+    book_id: int = Form(..., description="所属书籍ID"),
+    chapter_id: int = Form(None, description="章节ID"),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """批量创建角色（用于智能分析后）"""
+    try:
+        # 解析角色数据
+        import json
+        characters = json.loads(characters_data)
+        
+        # 验证书籍是否存在
+        from app.models.book import Book
+        book = db.query(Book).filter(Book.id == book_id).first()
+        if not book:
+            return {
+                "success": False,
+                "message": f"书籍ID {book_id} 不存在"
+            }
+        
+        created_characters = []
+        skipped_characters = []
+        
+        for char_data in characters:
+            name = char_data.get('name', '').strip()
+            if not name:
+                continue
+                
+            # 检查是否已存在
+            existing = db.query(Character).filter(
+                Character.name == name,
+                Character.book_id == book_id
+            ).first()
+            
+            if existing:
+                skipped_characters.append({
+                    "name": name,
+                    "reason": "已存在"
+                })
+                continue
+            
+            # 创建新角色（使用新的Character模型字段）
+            description = char_data.get('description', char_data.get('personality_description', ''))
+            gender = char_data.get('gender', '')
+            personality = char_data.get('personality', '')
+            
+            # 根据性别设置默认声音类型
+            voice_type = 'custom'
+            if gender and gender.lower() in ['男', 'male', '男性']:
+                voice_type = 'male'
+            elif gender and gender.lower() in ['女', 'female', '女性']:
+                voice_type = 'female'
+            elif gender and gender.lower() in ['儿童', 'child', '童']:
+                voice_type = 'child'
+            
+            # 构建声音参数
+            voice_params = {
+                "time_step": 20,
+                "p_weight": 1.0,
+                "t_weight": 1.0,
+                "gender": gender,
+                "personality": personality,
+                "confidence": char_data.get('confidence', 0.5)
+            }
+            
+            # 构建标签
+            tags = []
+            if gender:
+                tags.append(gender)
+            if personality:
+                tags.append(personality)
+            
+            new_character = Character(
+                name=name,
+                description=description,
+                book_id=book_id,
+                chapter_id=chapter_id,
+                voice_type=voice_type,
+                color='#8b5cf6',
+                voice_parameters=json.dumps(voice_params, ensure_ascii=False),
+                tags=json.dumps(tags, ensure_ascii=False),
+                status='unconfigured',  # 新创建的角色默认未配置
+                quality_score=3.0,
+                usage_count=0
+            )
+            
+            db.add(new_character)
+            created_characters.append({
+                "name": name,
+                "description": new_character.description,
+                "voice_type": voice_type,
+                "gender": gender,
+                "personality": personality,
+                "status": "unconfigured"
+            })
+        
+        db.commit()
+        
+        # 更新书籍的角色汇总
+        if created_characters:
+            character_list = [{"name": char["name"], "description": char["description"]} for char in created_characters]
+            book.update_character_summary(character_list, chapter_id)
+            db.commit()
+        
+        logger.info(f"批量创建角色完成: {len(created_characters)}个成功, {len(skipped_characters)}个跳过 (书籍: {book.title})")
+        
+        return {
+            "success": True,
+            "message": f"批量创建完成：{len(created_characters)}个角色创建成功",
+            "data": {
+                "created": created_characters,
+                "skipped": skipped_characters,
+                "book_id": book_id,
+                "book_title": book.title,
+                "total_created": len(created_characters),
+                "total_skipped": len(skipped_characters)
+            }
+        }
+        
+    except json.JSONDecodeError:
+        return {
+            "success": False,
+            "message": "角色数据格式错误"
+        }
+    except Exception as e:
+        db.rollback()
+        logger.error(f"批量创建角色失败: {str(e)}")
+        return {
+            "success": False,
+            "message": f"批量创建角色失败: {str(e)}"
+        }
+
+# 角色管理相关函数
+async def get_character_list(
+    db: Session, 
+    page: int, 
+    page_size: int, 
+    search: str, 
+    book_id: int, 
+    sort_by: str, 
+    sort_order: str
+) -> Dict[str, Any]:
+    """获取角色列表（Character模型）"""
+    try:
+        from app.models.book import Book
+        
+        # 构建基础查询，包含书籍信息
+        query = db.query(Character).join(Book, Character.book_id == Book.id, isouter=True)
+        
+        # 书籍筛选
+        if book_id:
+            query = query.filter(Character.book_id == book_id)
+        
+        # 搜索过滤
+        if search:
+            search_pattern = f"%{search}%"
+            query = query.filter(
+                or_(
+                    Character.name.like(search_pattern),
+                    Character.description.like(search_pattern),
+                    Book.title.like(search_pattern)
+                )
+            )
+        
+        # 排序
+        if sort_by == "book_title":
+            sort_field = Book.title
+        else:
+            sort_field = getattr(Character, sort_by, Character.created_at)
+        
+        if sort_order == "asc":
+            query = query.order_by(asc(sort_field))
+        else:
+            query = query.order_by(desc(sort_field))
+        
+        # 统计总数
+        total = query.count()
+        
+        # 分页
+        offset = (page - 1) * page_size
+        characters = query.offset(offset).limit(page_size).all()
+        
+        # 转换为字典格式，包含书籍信息
+        character_list = []
+        for character in characters:
+            character_data = {
+                "id": character.id,
+                "name": character.name,
+                "description": character.description or "",
+                "voice_profile": character.voice_profile,
+                "voice_config": character.voice_config,
+                "book_id": character.book_id,
+                "chapter_id": character.chapter_id,
+                "created_at": character.created_at.isoformat() if character.created_at else None,
+                "updated_at": character.updated_at.isoformat() if character.updated_at else None,
+                
+                # 添加书籍信息
+                "book": {
+                    "id": character.book.id if character.book else None,
+                    "title": character.book.title if character.book else "未知书籍",
+                    "author": character.book.author if character.book else "",
+                } if character.book else None
+            }
+            character_list.append(character_data)
+        
+        # 获取书籍统计信息
+        book_stats = db.query(
+            Book.id,
+            Book.title,
+            func.count(Character.id).label('character_count')
+        ).outerjoin(Character).group_by(Book.id, Book.title).all()
+        
+        books_summary = [
+            {
+                "book_id": stat.id,
+                "book_title": stat.title,
+                "character_count": stat.character_count
+            }
+            for stat in book_stats if stat.character_count > 0
+        ]
+        
+        return {
+            "success": True,
+            "data": {
+                "items": character_list,
+                "total": total,
+                "page": page,
+                "page_size": page_size,
+                "total_pages": (total + page_size - 1) // page_size,
+                "books_summary": books_summary,  # 书籍汇总信息
+                "management_type": "character"
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"获取角色列表失败: {str(e)}")
+        return {
+            "success": False,
+            "message": f"获取角色列表失败: {str(e)}",
+            "data": {"items": [], "total": 0}
+        }
 
 def calculate_similarity(str1: str, str2: str) -> float:
     """

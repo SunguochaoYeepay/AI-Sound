@@ -19,7 +19,7 @@
             </template>
             智能发现
           </a-button>
-          <a-button type="primary" size="large" @click="addNewVoice">
+          <a-button type="primary" size="large" @click="addNewCharacter">
             <template #icon>
               <PlusOutlined />
             </template>
@@ -39,7 +39,7 @@
         </div>
         <div class="stat-content">
           <div class="stat-value">{{ voiceLibrary.length }}</div>
-          <div class="stat-label">声音样本总数</div>
+          <div class="stat-label">角色总数</div>
         </div>
       </div>
 
@@ -50,8 +50,8 @@
           </svg>
         </div>
         <div class="stat-content">
-          <div class="stat-value">{{ highQualityCount }}</div>
-          <div class="stat-label">高质量样本</div>
+          <div class="stat-value">{{ configuredCount }}</div>
+          <div class="stat-label">已配置声音</div>
         </div>
       </div>
 
@@ -86,28 +86,35 @@
       <div class="filter-controls">
         <a-input-search
           v-model:value="searchQuery"
-          placeholder="搜索声音样本..."
+          placeholder="搜索角色..."
           style="width: 300px;"
           size="large"
           @search="handleSearch"
         />
         
         <a-select
-          v-model:value="qualityFilter"
-          placeholder="质量筛选"
-          style="width: 120px;"
+          v-model:value="selectedBookId"
+          placeholder="选择书籍"
+          style="width: 200px;"
           size="large"
-          @change="handleFilterChange"
+          @change="handleBookChange"
+          :loading="booksLoading"
+          show-search
+          allow-clear
         >
-          <a-select-option value="">全部</a-select-option>
-          <a-select-option value="high">高质量</a-select-option>
-          <a-select-option value="medium">中等质量</a-select-option>
-          <a-select-option value="low">低质量</a-select-option>
+          <a-select-option value="">全部书籍</a-select-option>
+          <a-select-option 
+            v-for="book in availableBooks" 
+            :key="book.id" 
+            :value="book.id"
+          >
+            {{ book.title }} ({{ book.character_count || 0 }}个角色)
+          </a-select-option>
         </a-select>
-
+        
         <a-select
           v-model:value="typeFilter"
-          placeholder="类型筛选"
+          placeholder="声音类型"
           style="width: 120px;"
           size="large"
           @change="handleFilterChange"
@@ -116,6 +123,21 @@
           <a-select-option value="male">男声</a-select-option>
           <a-select-option value="female">女声</a-select-option>
           <a-select-option value="child">童声</a-select-option>
+          <a-select-option value="elder">老人声</a-select-option>
+          <a-select-option value="custom">自定义</a-select-option>
+        </a-select>
+
+        <a-select
+          v-model:value="statusFilter"
+          placeholder="配置状态"
+          style="width: 120px;"
+          size="large"
+          @change="handleFilterChange"
+        >
+          <a-select-option value="">全部状态</a-select-option>
+          <a-select-option value="configured">已配置</a-select-option>
+          <a-select-option value="unconfigured">未配置</a-select-option>
+          <a-select-option value="training">训练中</a-select-option>
         </a-select>
       </div>
 
@@ -145,6 +167,7 @@
           class="voice-card"
           @click="selectVoice(voice)"
           :class="{ 'selected': selectedVoice?.id === voice.id }"
+          :data-character="voice.isCharacter"
         >
           <div class="voice-avatar">
             <div class="avatar-icon" :style="{ background: voice.color }">
@@ -159,19 +182,48 @@
             <h3 class="voice-name">{{ voice.name }}</h3>
             <p class="voice-desc">{{ voice.description }}</p>
             
+            <!-- 角色模式：显示书籍信息 -->
+            <div v-if="managementType === 'character' && voice.book" class="book-info">
+              <div class="book-badge">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/>
+                </svg>
+                <span>{{ voice.book.title }}</span>
+              </div>
+            </div>
+            
             <div class="voice-meta">
-              <div class="meta-item">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-                </svg>
-                <span>{{ (voice.quality || 0).toFixed(1) }}</span>
-              </div>
-              <div class="meta-item">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
-                </svg>
-                <span>{{ voice.usageCount }}</span>
-              </div>
+              <!-- 声音样本模式：显示质量和使用次数 -->
+              <template v-if="managementType === 'voice'">
+                <div class="meta-item">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                  </svg>
+                  <span>{{ (voice.quality || 0).toFixed(1) }}</span>
+                </div>
+                <div class="meta-item">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                  </svg>
+                  <span>{{ voice.usageCount }}</span>
+                </div>
+              </template>
+              
+              <!-- 角色模式：显示配置状态 -->
+              <template v-else>
+                <div class="meta-item">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                  </svg>
+                  <span>{{ voice.status === 'configured' ? '已配置' : '待配置' }}</span>
+                </div>
+                <div class="meta-item">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M9 11H7v3h2v-3zm4 0h-2v3h2v-3zm4 0h-2v3h2v-3zm2-7h-1V2h-2v2H8V2H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H5V9h14v11z"/>
+                  </svg>
+                  <span>{{ voice.createdAt }}</span>
+                </div>
+              </template>
             </div>
           </div>
 
@@ -197,7 +249,7 @@
                   <a-menu-item key="duplicate" @click="duplicateVoice(voice)">复制</a-menu-item>
                   <a-menu-item key="export" @click="exportVoice(voice)">导出</a-menu-item>
                   <a-menu-divider />
-                  <a-menu-item key="delete" @click="deleteVoice(voice)" style="color: #ef4444;">删除</a-menu-item>
+                  <a-menu-item key="delete" @click="confirmDeleteCharacter(voice)" style="color: #ef4444;">删除</a-menu-item>
                 </a-menu>
               </template>
             </a-dropdown>
@@ -254,7 +306,7 @@
                     </svg>
                   </template>
                 </a-button>
-                <a-button type="text" size="small" danger @click.stop="deleteVoice(record)">
+                <a-button type="text" size="small" danger @click.stop="confirmDeleteCharacter(record)">
                   <template #icon>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
                       <path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z"/>
@@ -354,16 +406,16 @@
           <div style="display: flex; gap: 12px; margin-top: 12px;">
             <a-button @click="editVoice(selectedVoice)" style="flex: 1;">编辑</a-button>
             <a-button @click="duplicateVoice(selectedVoice)" style="flex: 1;">复制</a-button>
-            <a-button danger @click="deleteVoice(selectedVoice)" style="flex: 1;">删除</a-button>
+            <a-button danger @click="confirmDeleteCharacter(selectedVoice)" style="flex: 1;">删除</a-button>
           </div>
         </div>
       </div>
     </a-drawer>
 
-    <!-- 新增/编辑声音抽屉 -->
+    <!-- 新增/编辑角色抽屉 -->
     <a-drawer
       v-model:open="showEditModal"
-      :title="editingVoice.id ? '编辑声音' : '新增声音'"
+      :title="editingVoice.id ? '编辑角色' : '新增角色'"
       width="600"
       placement="right"
       :maskClosable="false"
@@ -383,24 +435,55 @@
         layout="vertical"
         class="voice-edit-form"
       >
-        <a-form-item label="声音名称" name="name" required>
-          <a-input v-model:value="editingVoice.name" placeholder="请输入声音名称" />
+        <!-- 角色基本信息 -->
+        <a-divider orientation="left">角色基本信息</a-divider>
+        
+        <a-form-item label="角色名称" name="name" required>
+          <a-input v-model:value="editingVoice.name" placeholder="请输入角色名称" />
         </a-form-item>
 
+        <a-form-item label="角色描述" name="description">
+          <a-textarea 
+            v-model:value="editingVoice.description" 
+            placeholder="请输入角色描述信息（性格、特点等）"
+            :rows="3"
+          />
+        </a-form-item>
+
+        <a-form-item label="所属书籍" name="book_id">
+          <a-select
+            v-model:value="editingVoice.book_id"
+            placeholder="选择角色所属的书籍（可选）"
+            style="width: 100%;"
+            :loading="booksLoading"
+            show-search
+            allow-clear
+            :filter-option="false"
+            @search="handleBookSearch"
+            @focus="loadBooksForEdit"
+          >
+            <a-select-option value="">不关联书籍</a-select-option>
+            <a-select-option 
+              v-for="book in availableBooks" 
+              :key="book.id" 
+              :value="book.id"
+            >
+              {{ book.title }}
+            </a-select-option>
+          </a-select>
+        </a-form-item>
+
+        <!-- 声音配置 -->
+        <a-divider orientation="left">声音配置</a-divider>
+        
         <a-form-item label="声音类型" name="type" required>
           <a-select v-model:value="editingVoice.type" placeholder="选择声音类型">
             <a-select-option value="male">男声</a-select-option>
             <a-select-option value="female">女声</a-select-option>
             <a-select-option value="child">童声</a-select-option>
+            <a-select-option value="elder">老人声</a-select-option>
+            <a-select-option value="custom">自定义</a-select-option>
           </a-select>
-        </a-form-item>
-
-        <a-form-item label="声音描述" name="description">
-          <a-textarea 
-            v-model:value="editingVoice.description" 
-            placeholder="请输入声音描述信息"
-            :rows="3"
-          />
         </a-form-item>
 
         <!-- 当前文件显示样式 -->
@@ -500,7 +583,7 @@
           </div>
         </a-form-item>
 
-        <a-divider>技术参数</a-divider>
+        <a-divider orientation="left">技术参数</a-divider>
 
         <a-form-item label="Time Step">
           <a-slider
@@ -1058,10 +1141,10 @@
 </template>
 
 <script setup>
-import { ref, computed, reactive, onMounted, watch, nextTick } from 'vue'
+import { ref, computed, reactive, onMounted, watch, nextTick, h } from 'vue'
 import { useRouter } from 'vue-router'
-import { message } from 'ant-design-vue'
-import { charactersAPI } from '@/api'
+import { message, Modal } from 'ant-design-vue'
+import { charactersAPI, booksAPI } from '@/api'
 import { API_BASE_URL } from '@/api/config'
 import { bookAPI, chapterAPI } from '../api/v2.js'
 import { playCustomAudio } from '@/utils/audioService'
@@ -1083,6 +1166,12 @@ const showEditModal = ref(false)
 const showSmartDiscoveryModal = ref(false)
 const showUploadModal = ref(false)
 
+// 书籍筛选
+const selectedBookId = ref('')
+const availableBooks = ref([])
+const booksLoading = ref(false)
+const statusFilter = ref('')
+
 // 智能发现相关状态
 const discoveryStep = ref(0)
 const discoverySteps = ref([
@@ -1094,9 +1183,7 @@ const discoverySteps = ref([
 ])
 
 // 书籍选择
-const availableBooks = ref([])
 const selectedBook = ref(null)
-const loadingBooks = ref(false)
 
 // 章节选择
 const availableChapters = ref([])
@@ -1198,51 +1285,142 @@ const tableColumns = [
   }
 ]
 
-// 从后端API加载声音库数据
+// 从后端API加载角色数据
 const loadVoiceLibrary = async () => {
   try {
     loading.value = true
-    const response = await charactersAPI.getCharacters()
+    
+    // 构建API参数
+    const apiParams = {
+      page: 1,
+      page_size: 100
+    }
+    
+    // 添加筛选条件
+    if (searchQuery.value) apiParams.search = searchQuery.value
+    if (typeFilter.value) apiParams.voice_type = typeFilter.value
+    if (statusFilter.value) apiParams.status = statusFilter.value
+    if (selectedBookId.value) apiParams.book_id = selectedBookId.value
+    
+    const response = await charactersAPI.getCharacters(apiParams)
     
     // axios响应的实际数据在response.data中
     const responseData = response.data
     
     if (responseData && responseData.success) {
-      // 转换后端数据格式到前端格式
-      voiceLibrary.value = responseData.data.map(voice => ({
-        id: voice.id,
-        name: voice.name,
-        description: voice.description || '暂无描述',
-        type: voice.type || 'female',
-          quality: typeof voice.quality === 'number' ? voice.quality : 3.0,
-        status: voice.status || 'active',
-        color: voice.color || '#06b6d4',
-          usageCount: typeof voice.usageCount === 'number' ? voice.usageCount : 0,
-        audioUrl: voice.sampleAudioUrl || voice.referenceAudioUrl || '',
-        referenceAudioUrl: voice.referenceAudioUrl || '',
-        sampleAudioUrl: voice.sampleAudioUrl || '',
-        latentFileUrl: voice.latentFileUrl || '',
-        createdAt: voice.createdAt ? voice.createdAt.split('T')[0] : '',
-        lastUsed: voice.lastUsed ? voice.lastUsed.split('T')[0] : '',
-        params: voice.params || {
-          timeStep: 20,
-          pWeight: 1.0,
-          tWeight: 1.0
-        }
+      const data = responseData.data
+      
+      // 统一处理角色数据
+      voiceLibrary.value = data.map(character => ({
+        id: character.id,
+        name: character.name,
+        description: character.description || '暂无描述',
+        type: character.voice_type || 'custom',
+        quality: character.quality_score || 0,
+        status: character.status || 'unconfigured',
+        color: character.color || '#8b5cf6',
+        usageCount: character.usage_count || 0,
+        audioUrl: character.referenceAudioUrl || '',
+        referenceAudioUrl: character.referenceAudioUrl || '',
+        latentFileUrl: character.latentFileUrl || '',
+        book: character.book,
+        book_id: character.book_id,
+        chapter_id: character.chapter_id,
+        voice_parameters: character.voice_parameters || {
+          time_step: 20,
+          p_weight: 1.0,
+          t_weight: 1.0
+        },
+        tags: character.tags || [],
+        createdAt: character.created_at ? character.created_at.split('T')[0] : '',
+        isCharacter: true,
+        is_voice_configured: character.is_voice_configured || false
       }))
     } else {
       const errorMsg = responseData?.message || '未知错误'
-      message.error('加载声音库失败：' + errorMsg)
+      message.error('加载数据失败：' + errorMsg)
       voiceLibrary.value = []
     }
   } catch (error) {
-    console.error('加载声音库错误:', error)
+    console.error('加载数据错误:', error)
     const errorMsg = error.response?.data?.message || error.message || '网络连接错误'
-    message.error('加载声音库失败：' + errorMsg)
+    message.error('加载数据失败：' + errorMsg)
     voiceLibrary.value = []
   } finally {
     loading.value = false
   }
+}
+
+// 页面初始化时加载书籍列表
+onMounted(async () => {
+  await loadAvailableBooks()
+  await loadVoiceLibrary()
+})
+
+// 加载可用书籍列表
+const loadAvailableBooks = async () => {
+  if (availableBooks.value.length > 0) return // 已加载过，直接返回
+  
+  try {
+    booksLoading.value = true
+    const response = await bookAPI.getBooks({
+      page: 1,
+      page_size: 100
+    })
+    
+    if (response.success) {
+      let books = []
+      if (response.data) {
+        if (Array.isArray(response.data)) {
+          books = response.data
+        } else if (response.data.items) {
+          books = response.data.items
+        } else if (response.data.data) {
+          books = response.data.data
+        }
+      }
+      
+      availableBooks.value = books.map(book => ({
+        id: book.id,
+        title: book.title,
+        author: book.author || '',
+        character_count: 0 // 初始值，会在加载角色数据时更新
+      }))
+    } else {
+      message.error('加载书籍列表失败: ' + (response.message || '未知错误'))
+    }
+  } catch (error) {
+    console.error('加载书籍列表失败:', error)
+    message.error('加载书籍列表失败: ' + (error.message || '网络错误'))
+  } finally {
+    booksLoading.value = false
+  }
+}
+
+// 更新书籍的角色数量
+const updateBooksWithCharacterCount = (booksSummary) => {
+  booksSummary.forEach(summary => {
+    const book = availableBooks.value.find(b => b.id === summary.book_id)
+    if (book) {
+      book.character_count = summary.character_count
+    }
+  })
+}
+
+// 书籍选择变化处理
+const handleBookChange = async (bookId) => {
+  selectedBookId.value = bookId
+  await loadVoiceLibrary()
+}
+
+// 搜索处理（兼容新的管理模式）
+const handleSearch = async () => {
+  await loadVoiceLibrary()
+}
+
+// 筛选变化处理（兼容新的管理模式）
+const handleFilterChange = async () => {
+  await loadVoiceLibrary()
 }
 
 // 保存声音到后端
@@ -1259,6 +1437,11 @@ const saveVoiceToBackend = async (voiceData) => {
     formData.append('color', voiceData.color || '#06b6d4')
     formData.append('parameters', JSON.stringify(voiceData.params || {}))
     formData.append('tags', '') // 暂时为空，后续可添加标签功能
+    
+    // 添加书籍关联
+    if (voiceData.book_id) {
+      formData.append('book_id', voiceData.book_id)
+    }
     
     // 调试：打印FormData内容
     console.log('[DEBUG] FormData内容:')
@@ -1309,10 +1492,10 @@ const saveVoiceToBackend = async (voiceData) => {
   }
 }
 
-// 删除声音
-const deleteVoiceFromBackend = async (voiceId) => {
+// 删除角色
+const deleteVoiceFromBackend = async (voiceId, force = false) => {
   try {
-    const response = await charactersAPI.deleteCharacter(voiceId)
+          const response = await charactersAPI.deleteCharacter(voiceId, force)
     // 修正：axios响应的实际数据在response.data中
     const responseData = response.data
     if (responseData && responseData.success) {
@@ -1325,7 +1508,7 @@ const deleteVoiceFromBackend = async (voiceId) => {
       return false
     }
   } catch (error) {
-    console.error('删除声音错误:', error)
+    console.error('删除角色错误:', error)
     const errorMsg = error.response?.data?.detail || error.response?.data?.message || error.message || '网络连接错误'
     message.error('删除失败：' + errorMsg)
     return false
@@ -1363,8 +1546,8 @@ const filteredVoices = computed(() => {
   return voices
 })
 
-const highQualityCount = computed(() => 
-  voiceLibrary.value.filter(v => typeof v.quality === 'number' && v.quality >= 4.0).length
+const configuredCount = computed(() => 
+  voiceLibrary.value.filter(character => character.status === 'configured').length
 )
 
 const todayUsage = computed(() => 
@@ -1399,15 +1582,6 @@ const updateConfigCheckState = () => {
   
   configCheckAll.value = checkedCount === totalCount
   configIndeterminate.value = checkedCount > 0 && checkedCount < totalCount
-}
-
-// 方法
-const handleSearch = (value) => {
-  searchQuery.value = value
-}
-
-const handleFilterChange = () => {
-  // 过滤逻辑已在计算属性中处理
 }
 
 const selectVoice = (voice) => {
@@ -1450,6 +1624,7 @@ const editVoice = (voice) => {
     name: voice.name,
     description: voice.description,
     type: voice.type,
+    book_id: voice.book_id || '',
     quality: voice.quality,
     status: voice.status,
     color: voice.color,
@@ -1464,12 +1639,13 @@ const editVoice = (voice) => {
   showEditModal.value = true
 }
 
-const addNewVoice = () => {
+const addNewCharacter = () => {
   editingVoice.value = {
     id: null,
     name: '',
     description: '',
     type: '',
+    book_id: '',
     quality: 3.0,
     status: 'active',
     color: '#06b6d4',
@@ -1496,7 +1672,7 @@ const saveVoice = async () => {
     
     if (success) {
       showEditModal.value = false
-      message.success(editingVoice.value.id ? '声音更新成功' : '声音创建成功')
+      message.success(editingVoice.value.id ? '角色更新成功' : '角色创建成功')
       // 数据已在saveVoiceToBackend中重新加载
     }
   } catch (error) {
@@ -1563,6 +1739,46 @@ const formatFileSize = (bytes) => {
   const sizes = ['Bytes', 'KB', 'MB', 'GB']
   const i = Math.floor(Math.log(bytes) / Math.log(k))
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+}
+
+// 为编辑界面加载书籍列表
+const loadBooksForEdit = async () => {
+  if (availableBooks.value.length > 0) return // 已加载过
+  
+  booksLoading.value = true
+  try {
+    const response = await booksAPI.getBooks({
+      page: 1,
+      page_size: 100
+    })
+    
+    // 处理响应数据
+    const responseData = response.data
+    if (responseData && responseData.success) {
+      let books = []
+      if (responseData.data) {
+        if (Array.isArray(responseData.data)) {
+          books = responseData.data
+        } else if (responseData.data.items) {
+          books = responseData.data.items
+        } else if (responseData.data.data) {
+          books = responseData.data.data
+        }
+      }
+      
+      availableBooks.value = books
+    }
+  } catch (error) {
+    console.error('加载书籍列表失败:', error)
+  } finally {
+    booksLoading.value = false
+  }
+}
+
+// 书籍搜索
+const handleBookSearch = (searchValue) => {
+  // 可以在这里实现实时搜索功能
+  console.log('搜索书籍:', searchValue)
 }
 
 const beforeImportUpload = (file) => {
@@ -1963,76 +2179,83 @@ const onCheckAllConfigs = (e) => {
   updateConfigCheckState()
 }
 
-// 创建角色
+// 创建角色（智能发现后）
 const createCharacters = async () => {
   try {
     creatingCharacters.value = true
+    
+    // 检查是否选择了书籍
+    if (!smartDiscovery.selectedBook) {
+      message.error('请先选择书籍')
+      return
+    }
     
     const charactersToCreate = newCharacters.value.filter(char => 
       selectedConfigs.value.includes(char.name)
     )
     
-    createdCharacters.value = []
-    
-    for (const character of charactersToCreate) {
-      try {
-        // 构建FormData，包含文件
-        const formData = new FormData()
-        formData.append('name', character.config.name)
-        formData.append('description', character.config.description || '')
-        formData.append('voice_type', character.config.gender)
-        formData.append('color', character.config.color || '#06b6d4')
-        formData.append('parameters', JSON.stringify(character.recommended_config.recommended_tts_params || {}))
-        
-        // 根据是否有文件决定状态
-        const hasAudioFile = character.config.audioFileInfo && character.config.audioFileInfo.file
-        const hasLatentFile = character.config.latentFileInfo && character.config.latentFileInfo.file
-        
-        formData.append('status', hasAudioFile ? 'active' : 'inactive')
-        
-        // 添加音频文件
-        if (hasAudioFile) {
-          formData.append('reference_audio', character.config.audioFileInfo.file)
-        }
-        
-        // 添加Latent文件
-        if (hasLatentFile) {
-          formData.append('latent_file', character.config.latentFileInfo.file)
-        }
-        
-        // 调用API创建角色
-        const response = await charactersAPI.createCharacter(formData)
-        
-        if (response.data && response.data.success) {
-          const newCharacter = response.data.data
-          createdCharacters.value.push({
-            id: newCharacter.id,
-            name: newCharacter.name,
-            description: newCharacter.description,
-            type: newCharacter.type,
-            color: newCharacter.color,
-            status: newCharacter.status,
-            hasAudio: hasAudioFile,
-            hasLatent: hasLatentFile
-          })
-        }
-      } catch (error) {
-        console.error(`创建角色 ${character.name} 失败:`, error)
-        message.error(`创建角色 ${character.name} 失败`)
-      }
+    if (charactersToCreate.length === 0) {
+      message.warning('请选择要创建的角色')
+      return
     }
     
-    if (createdCharacters.value.length > 0) {
-      message.success(`成功创建 ${createdCharacters.value.length} 个角色`)
-      nextStep() // 进入完成步骤
+    try {
+      // 构建角色数据，格式化为后端期望的格式
+      const charactersData = charactersToCreate.map(character => ({
+        name: character.name,
+        description: character.config?.description || character.personality_description || '',
+        gender: character.gender || character.config?.gender || '',
+        personality: character.personality || character.config?.personality || '',
+        confidence: character.confidence || 0.5
+      }))
       
-      // 重新加载角色库
-      await loadVoiceLibrary()
+      // 使用新的批量创建API
+      const response = await charactersAPI.batchCreateCharacters({
+        characters: charactersData,
+        book_id: smartDiscovery.selectedBook.id,
+        chapter_id: smartDiscovery.selectedChapters.length > 0 ? smartDiscovery.selectedChapters[0] : null
+      })
+      
+      if (response.data && response.data.success) {
+        const result = response.data.data
+        
+        // 更新创建结果
+        createdCharacters.value = result.created.map(char => ({
+          name: char.name,
+          description: char.description,
+          book_title: result.book_title,
+          status: 'created'
+        }))
+        
+        // 显示创建结果
+        if (result.total_created > 0) {
+          message.success(`成功创建 ${result.total_created} 个角色到《${result.book_title}》`)
+        }
+        
+        if (result.total_skipped > 0) {
+          message.warning(`跳过 ${result.total_skipped} 个已存在的角色`)
+        }
+        
+        nextStep() // 进入完成步骤
+        
+        // 如果当前是角色管理模式，重新加载数据
+        if (managementType.value === 'character') {
+          await loadVoiceLibrary()
+        }
+        
+      } else {
+        message.error('批量创建角色失败: ' + (response.data?.message || '未知错误'))
+      }
+      
+    } catch (error) {
+      console.error('批量创建角色失败:', error)
+      const errorMsg = error.response?.data?.message || error.message || '网络错误'
+      message.error('批量创建角色失败: ' + errorMsg)
     }
     
   } catch (error) {
-    console.error('批量创建角色失败:', error)
-    message.error('批量创建角色失败')
+    console.error('创建角色过程失败:', error)
+    message.error('创建角色失败')
   } finally {
     creatingCharacters.value = false
   }
@@ -2113,15 +2336,65 @@ const exportVoice = (voice) => {
   message.success(`导出声音：${voice.name}`)
 }
 
-const deleteVoice = async (voice) => {
+// 确认删除角色
+const confirmDeleteCharacter = (character) => {
+  // 创建一个响应式的状态来管理强制删除选项
+  let forceDelete = false
+  
+  Modal.confirm({
+    title: '删除角色',
+    content: h('div', [
+      h('p', `确定要删除角色"${character.name}"吗？此操作不可恢复。`),
+      h('div', { style: 'margin: 16px 0 8px 0;' }, [
+        h('p', { style: 'margin: 0 0 8px 0; color: #fa8c16; font-weight: 500;' }, '⚠️ 删除提示'),
+        h('p', { style: 'margin: 0; font-size: 13px; color: #8c8c8c;' }, '如果角色已被项目使用或包含声音文件，可能需要强制删除')
+      ]),
+      h('div', { style: 'margin: 12px 0;' }, [
+        h('label', { style: 'display: flex; align-items: center; gap: 8px; cursor: pointer;' }, [
+          h('input', {
+            type: 'checkbox',
+            onChange: (e) => {
+              forceDelete = e.target.checked
+            }
+          }),
+          h('span', { style: 'color: #ff4d4f; font-weight: 500;' }, '强制删除（包括关联的声音文件和项目引用）')
+        ])
+      ])
+    ]),
+    okText: '删除',
+    okType: 'danger',
+    cancelText: '取消',
+    onOk: () => deleteCharacter(character, forceDelete)
+  })
+}
+
+// 删除角色
+const deleteCharacter = async (character, force = false) => {
   try {
-    const success = await deleteVoiceFromBackend(voice.id)
-    if (success && selectedVoice.value?.id === voice.id) {
-      showDetailDrawer.value = false
-      selectedVoice.value = null
+    console.log('删除角色:', character.id, '强制删除:', force)
+    const success = await deleteVoiceFromBackend(character.id, force)
+    if (success) {
+      message.success('角色删除成功')
+      loadVoiceLibrary()
+      if (selectedVoice.value?.id === character.id) {
+        showDetailDrawer.value = false
+        selectedVoice.value = null
+      }
     }
   } catch (error) {
-    console.error('删除声音失败:', error)
+    console.error('删除角色失败:', error)
+    
+    // 如果是需要强制删除的错误，给出友好提示
+    if (error.response?.data?.message?.includes('请使用强制删除')) {
+      Modal.warning({
+        title: '删除失败',
+        content: '角色包含关联数据，请勾选"强制删除"选项后重试',
+        okText: '知道了'
+      })
+    } else {
+      const errorMsg = error.response?.data?.message || error.message || '删除失败'
+      message.error('删除失败: ' + errorMsg)
+    }
   }
 }
 
@@ -2219,10 +2492,9 @@ const smartDiscovery = reactive({
 })
 
 // 书籍和章节数据
-const booksData = ref([])
-const chaptersData = ref([])
-const booksLoading = ref(false)
-const chaptersLoading = ref(false)
+  const booksData = ref([])
+  const chaptersData = ref([])
+  const chaptersLoading = ref(false)
 
 // 智能发现功能
 const openSmartDiscovery = async () => {
@@ -3512,5 +3784,89 @@ const goBack = () => {
 
 [data-theme="dark"] .empty-state svg {
   fill: #434343 !important;
+}
+
+/* 书籍信息样式 */
+.book-info {
+  margin: 8px 0;
+}
+
+.book-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background: #f3f4f6;
+  border: 1px solid #d1d5db;
+  border-radius: 12px;
+  font-size: 11px;
+  color: #6b7280;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.book-badge svg {
+  flex-shrink: 0;
+  fill: #9ca3af;
+}
+
+.book-badge span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 角色管理模式的卡片样式调整 */
+.voice-card[data-character="true"] {
+  border-left: 4px solid #8b5cf6;
+}
+
+.voice-card[data-character="true"] .voice-avatar .avatar-icon {
+  background: #8b5cf6 !important;
+}
+
+/* 管理类型选择器样式 */
+.filter-controls .ant-select:first-child {
+  border: 2px solid #06b6d4;
+  border-radius: 8px;
+}
+
+.filter-controls .ant-select:first-child .ant-select-selector {
+  border: none;
+  font-weight: 500;
+  color: #06b6d4;
+}
+
+/* 角色配置状态样式 */
+.meta-item span[data-status="configured"] {
+  color: #10b981;
+}
+
+.meta-item span[data-status="unconfigured"] {
+  color: #f59e0b;
+}
+
+/* 书籍选择器样式 */
+.filter-controls .ant-select[data-book-selector] .ant-select-selector {
+  border-color: #8b5cf6;
+}
+
+/* 暗黑模式适配 */
+[data-theme="dark"] .book-badge {
+  background: #374151 !important;
+  border-color: #6b7280 !important;
+  color: #d1d5db !important;
+}
+
+[data-theme="dark"] .book-badge svg {
+  fill: #9ca3af !important;
+}
+
+[data-theme="dark"] .voice-card[data-character="true"] {
+  border-left-color: #a855f7 !important;
+}
+
+[data-theme="dark"] .voice-card[data-character="true"] .voice-avatar .avatar-icon {
+  background: #a855f7 !important;
 }
 </style>

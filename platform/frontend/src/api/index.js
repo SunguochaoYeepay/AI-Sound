@@ -78,11 +78,46 @@ export const charactersAPI = {
     if (params.search) queryParams.append('search', params.search)
     if (params.voice_type) queryParams.append('voice_type', params.voice_type)
     if (params.quality_filter) queryParams.append('quality_filter', params.quality_filter)
+    if (params.book_id) queryParams.append('book_id', params.book_id)
+    if (params.management_type) queryParams.append('management_type', params.management_type)
+    if (params.page) queryParams.append('page', params.page)
+    if (params.page_size) queryParams.append('page_size', params.page_size)
     
     const queryString = queryParams.toString()
     const url = queryString ? `/characters?${queryString}` : '/characters'
     console.log('[API请求] GET', url, params)
     return apiClient.get(url)
+  },
+
+  // 创建角色（Character模型）
+  createCharacterRecord: (data) => {
+    const formData = new FormData()
+    formData.append('name', data.name)
+    formData.append('description', data.description || '')
+    formData.append('book_id', data.book_id)
+    if (data.chapter_id) formData.append('chapter_id', data.chapter_id)
+    if (data.voice_profile) formData.append('voice_profile', data.voice_profile)
+    if (data.voice_config) formData.append('voice_config', data.voice_config)
+    
+    return apiClient.post('/characters/create-character', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    })
+  },
+
+  // 批量创建角色（智能分析后）
+  batchCreateCharacters: (data) => {
+    const formData = new FormData()
+    formData.append('characters_data', JSON.stringify(data.characters))
+    formData.append('book_id', data.book_id)
+    if (data.chapter_id) formData.append('chapter_id', data.chapter_id)
+    
+    return apiClient.post('/characters/batch-create-characters', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    })
   },
 
   // 获取声音档案列表
@@ -100,21 +135,24 @@ export const charactersAPI = {
   },
   
   // 创建角色
-  createCharacter: (data) => apiClient.post('/characters', data, {
+  createCharacter: (data) => apiClient.post('/characters/character', data, {
     headers: {
       'Content-Type': 'multipart/form-data'
     }
   }),
   
   // 更新角色
-  updateCharacter: (id, data) => apiClient.put(`/characters/${id}`, data, {
+  updateCharacter: (id, data) => apiClient.put(`/characters/character/${id}`, data, {
     headers: {
       'Content-Type': 'multipart/form-data'
     }
   }),
   
   // 删除角色
-  deleteCharacter: (id) => apiClient.delete(`/characters/${id}`),
+  deleteCharacter: (id, force = false) => {
+    const url = force ? `/characters/${id}?force=true` : `/characters/${id}`
+    return apiClient.delete(url)
+  },
   
   // 获取单个声音档案
   getVoiceProfile: (id) => apiClient.get(`/characters/${id}`),
