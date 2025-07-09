@@ -974,6 +974,14 @@ onMounted(() => {
   color: #434343 !important;
 }
 
+[data-theme="dark"] .dialogue-list {
+  background: #1f1f1f !important;
+}
+
+[data-theme="dark"] .dialogue-bubbles {
+  background: transparent !important;
+}
+
 /* 移动端响应式设计 */
 @media (max-width: 768px) {
   .content-preview {

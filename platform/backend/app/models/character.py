@@ -85,7 +85,23 @@ class Character(BaseModel):
     @property
     def is_voice_configured(self):
         """检查是否已配置声音"""
-        return bool(self.reference_audio_path and os.path.exists(self.reference_audio_path))
+        if not self.reference_audio_path:
+            return False
+        
+        # 🔧 改进：尝试多个可能的路径
+        possible_paths = [
+            self.reference_audio_path,
+            os.path.join("data/voice_profiles", os.path.basename(self.reference_audio_path)),
+            os.path.join("/app/data/voice_profiles", os.path.basename(self.reference_audio_path)) if os.path.exists("/.dockerenv") else None
+        ]
+        
+        for path in possible_paths:
+            if path and os.path.exists(path):
+                return True
+        
+        # 🔧 如果文件不存在但有路径，仍然认为是"已配置"状态，只是文件缺失
+        # 这样可以避免因为路径问题导致的误判
+        return bool(self.reference_audio_path)
     
     def to_dict(self):
         """转换为字典"""

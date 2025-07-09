@@ -141,11 +141,14 @@ const loadCharacterInfo = async () => {
   }
   
   try {
+    console.log(`🔍 开始加载角色信息: ${displaySpeaker.value}`)
     const response = await charactersAPI.getCharacters({
       search: displaySpeaker.value,
       page: 1,
       page_size: 10
     })
+    
+    console.log(`📡 角色API响应:`, response.data)
     
     if (response.data?.success && response.data.data?.length > 0) {
       // 查找完全匹配的角色
@@ -168,7 +171,19 @@ const loadCharacterInfo = async () => {
           is_voice_configured: matchedCharacter.is_voice_configured,
           referenceAudioUrl: matchedCharacter.referenceAudioUrl
         }
+        
+        // 🔧 临时调试：输出角色信息
+        console.log(`🎭 角色 ${displaySpeaker.value} 加载成功:`, {
+          status: matchedCharacter.status,
+          is_voice_configured: matchedCharacter.is_voice_configured,
+          referenceAudioUrl: matchedCharacter.referenceAudioUrl,
+          reference_audio_path: matchedCharacter.reference_audio_path
+        })
+      } else {
+        console.warn(`⚠️ 未找到角色: ${displaySpeaker.value}`)
       }
+    } else {
+      console.warn(`❌ 角色API调用失败: ${displaySpeaker.value}`, response.data)
     }
   } catch (error) {
     console.error('加载角色信息失败:', error)
@@ -179,9 +194,9 @@ const loadCharacterInfo = async () => {
 const getCharacterStatusColor = () => {
   if (!characterInfo.value) return 'default'
   
-  if (characterInfo.value.is_voice_configured && characterInfo.value.status === 'active') {
+  if (characterInfo.value.is_voice_configured && (characterInfo.value.status === 'active' || characterInfo.value.status === 'configured')) {
     return 'green' // 已配置且可用
-  } else if (characterInfo.value.status === 'active') {
+  } else if (characterInfo.value.status === 'active' || characterInfo.value.status === 'configured') {
     return 'orange' // 可用但需配置音频
   } else {
     return 'red' // 未激活
@@ -192,9 +207,9 @@ const getCharacterStatusColor = () => {
 const getCharacterStatusText = () => {
   if (!characterInfo.value) return '未知'
   
-  if (characterInfo.value.is_voice_configured && characterInfo.value.status === 'active') {
+  if (characterInfo.value.is_voice_configured && (characterInfo.value.status === 'active' || characterInfo.value.status === 'configured')) {
     return '已配置'
-  } else if (characterInfo.value.status === 'active') {
+  } else if (characterInfo.value.status === 'active' || characterInfo.value.status === 'configured') {
     return '需配置音频'
   } else {
     return '未激活'
@@ -209,7 +224,6 @@ onMounted(() => {
 
 <style scoped>
 .dialogue-bubble {
-  background: #f8fafc;
   border: 1px solid #e2e8f0;
   border-radius: 8px;
   padding: 12px;
@@ -278,7 +292,6 @@ onMounted(() => {
 .segment-index {
   color: #64748b;
   font-size: 11px;
-  background: #e2e8f0;
   padding: 2px 6px;
   border-radius: 4px;
   margin-right: 8px;
@@ -333,12 +346,10 @@ onMounted(() => {
 
 /* 角色样式 */
 .dialogue-bubble.narrator {
-  background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
   border-left: 3px solid #64748b;
 }
 
 .dialogue-bubble.character {
-  background: linear-gradient(135deg, #fefce8 0%, #fef3c7 100%);
   border-left: 3px solid #f59e0b;
 }
 
@@ -488,7 +499,7 @@ onMounted(() => {
 }
 
 [data-theme="dark"] .dialogue-bubble.character {
-  background: linear-gradient(135deg, #451a03 0%, #78350f 100%) !important;
+  background: linear-gradient(135deg, #fefce8 0%, #fef3c7 100%) !important;
   border-color: #f59e0b !important;
 }
 
