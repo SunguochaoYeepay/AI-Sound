@@ -1,5 +1,52 @@
 # AI-Sound 变更记录
 
+## [最新版本] - 2025-01-09
+
+### 🔧 修复 - 角色模型导入和数据库关联问题
+
+修复了角色模型的数据库关联问题，确保角色与书籍章节的正确关联。
+
+#### 🎯 问题根源分析
+
+1. **模块导入错误**
+   - 错误导入：`from app.models.database import Base` ❌
+   - 正确导入：`from app.models.base import Base` ✅
+
+2. **外键引用错误**
+   - 错误引用：`ForeignKey("chapters.id")` ❌
+   - 正确引用：`ForeignKey("book_chapters.id")` ✅
+
+#### 🔧 修复方案
+
+1. **修正模型导入**
+```python
+# 修正Base类导入
+from app.models.base import Base
+```
+
+2. **修正外键关联**
+```python
+# 修正外键和关系定义
+chapter_id = Column(Integer, ForeignKey("book_chapters.id", ondelete="SET NULL"), nullable=True)
+chapter = relationship("BookChapter", back_populates="characters")
+```
+
+#### 📊 修复效果
+
+- ✅ 后端服务成功启动
+- ✅ 数据库表结构正确创建
+- ✅ 角色与书籍章节正确关联
+
+#### 🔨 技术细节
+
+- **修改文件**:
+  - `platform/backend/app/models/character.py`
+  - `platform/backend/app/api/v1/characters.py`
+
+- **数据库关系**:
+  - Character -> Book (多对一)
+  - Character -> BookChapter (多对一)
+
 ## [最新版本] - 2025-01-05
 
 ### 🔥 重大修复 - 环境混音音频生成核心问题

@@ -19,6 +19,12 @@ from uuid import uuid4
 from app.database import get_db
 from app.models import VoiceProfile, SystemLog, UsageStats
 from app.utils import log_system_event, get_audio_duration, update_usage_stats, validate_audio_file
+from app.models.character import Character
+from app.schemas.character import CharacterCreate, CharacterUpdate, CharacterResponse, CharacterMatchResult
+from app.services.character_service import CharacterService
+from app.core.auth import get_current_user
+from app.models.auth import User
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/characters", tags=["Characters"])
@@ -88,6 +94,23 @@ def fix_voice_file_path(voice_profile):
             error_msg += f"等共{len(available_files)}个文件"
     
     return None, error_msg
+
+class CharacterMatchRequest(BaseModel):
+    book_id: int
+    chapter_id: int
+
+class CharacterMatchResponse(BaseModel):
+    matched_characters: List[CharacterMatchResult]
+    unmatched_characters: List[dict]
+    total_count: int
+    matched_count: int
+
+class ApplyMatchesRequest(BaseModel):
+    matches: List[dict]
+
+class CharacterSyncRequest(BaseModel):
+    book_id: int
+    chapter_id: int
 
 @router.get("")
 async def get_characters(
@@ -1168,6 +1191,72 @@ async def search_similar_characters(
     except Exception as e:
         logger.error(f"搜索相似角色失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"搜索失败: {str(e)}")
+
+@router.post("/match", response_model=CharacterMatchResponse)
+async def match_characters(
+    request: CharacterMatchRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    根据书籍和章节匹配角色配置
+    """
+    try:
+        character_service = CharacterService(db)
+        result = character_service.match_characters_by_chapter(
+            request.book_id, 
+            request.chapter_id
+        )
+        
+        return CharacterMatchResponse(
+            matched_characters=result['matched'],
+            unmatched_characters=result['unmatched'],
+            total_count=result['total_count'],
+            matched_count=result['matched_count']
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"匹配失败: {str(e)}")
+
+@router.post("/apply-matches")
+async def apply_matches(
+    request: ApplyMatchesRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    应用匹配结果
+    """
+    try:
+        character_service = CharacterService(db)
+        result = character_service.apply_character_matches(request.matches)
+        
+        return {
+            "success": True,
+            "applied_count": result['applied_count'],
+            "message": f"成功应用 {result['applied_count']} 个角色配置"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"应用匹配失败: {str(e)}")
+
+@router.post("/sync")
+async def sync_characters(
+    request: CharacterSyncRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    同步角色记录与分析结果
+    """
+    try:
+        character_service = CharacterService(db)
+        result = character_service.sync_characters_with_analysis(
+            request.book_id,
+            request.chapter_id
+        )
+        
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"同步失败: {str(e)}")
 
 def calculate_similarity(str1: str, str2: str) -> float:
     """

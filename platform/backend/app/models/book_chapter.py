@@ -37,6 +37,7 @@ class BookChapter(Base):
     book = relationship("Book", back_populates="chapters")
     analysis_results = relationship("AnalysisResult", back_populates="chapter", cascade="all, delete-orphan")
     synthesis_tasks = relationship("SynthesisTask", back_populates="chapter")
+    characters = relationship("Character", back_populates="chapter")  # 添加与 Character 的反向关系
     
     # 索引
     __table_args__ = (
