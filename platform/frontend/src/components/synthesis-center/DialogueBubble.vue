@@ -4,7 +4,23 @@
     :class="[getCharacterClass(displaySpeaker), { 'has-audio': isCompleted }]"
   >
     <div class="bubble-header">
-      <span class="speaker-name">{{ displaySpeaker }}</span>
+      <!-- 角色信息展示 -->
+      <div class="speaker-info">
+        <div class="speaker-avatar" :style="{ background: characterInfo?.color || '#8b5cf6' }">
+          <img v-if="characterInfo?.avatarUrl" :src="characterInfo.avatarUrl" :alt="displaySpeaker" class="avatar-image" />
+          <span v-else>{{ displaySpeaker.charAt(0) }}</span>
+        </div>
+        <div class="speaker-details">
+          <span class="speaker-name">{{ displaySpeaker }}</span>
+          <div class="speaker-status">
+            <a-tag v-if="characterInfo" :color="getCharacterStatusColor()" size="small">
+              {{ getCharacterStatusText() }}
+            </a-tag>
+            <a-tag v-else color="orange" size="small">未配置</a-tag>
+          </div>
+        </div>
+      </div>
+      
       <span class="segment-index">#{{ segmentIndex }}</span>
       
       <!-- 段落状态和播放按钮 -->
@@ -43,7 +59,8 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, onMounted } from 'vue'
+import { charactersAPI } from '@/api/index.js'
 
 const props = defineProps({
   segment: {
@@ -77,6 +94,9 @@ const props = defineProps({
 })
 
 defineEmits(['playSegment'])
+
+// 角色信息
+const characterInfo = ref(null)
 
 // 🔧 修复：智能处理空的speaker字段
 const displaySpeaker = computed(() => {
@@ -113,6 +133,78 @@ const statusText = computed(() => {
   if (props.currentSegment === props.segmentIndex) return '处理中'
   return '待处理'
 })
+
+// 加载角色信息
+const loadCharacterInfo = async () => {
+  if (!displaySpeaker.value || displaySpeaker.value === '旁白' || displaySpeaker.value === '叙述者') {
+    return // 旁白角色不需要加载信息
+  }
+  
+  try {
+    const response = await charactersAPI.getCharacters({
+      search: displaySpeaker.value,
+      page: 1,
+      page_size: 10
+    })
+    
+    if (response.data?.success && response.data.data?.length > 0) {
+      // 查找完全匹配的角色
+      const matchedCharacter = response.data.data.find(char => 
+        char.name === displaySpeaker.value || 
+        char.name.toLowerCase() === displaySpeaker.value.toLowerCase()
+      )
+      
+      if (matchedCharacter) {
+        characterInfo.value = {
+          id: matchedCharacter.id,
+          name: matchedCharacter.name,
+          description: matchedCharacter.description,
+          type: matchedCharacter.voice_type,
+          status: matchedCharacter.status,
+          color: matchedCharacter.color,
+          avatarUrl: matchedCharacter.avatarUrl,
+          quality: matchedCharacter.quality_score,
+          usageCount: matchedCharacter.usage_count,
+          is_voice_configured: matchedCharacter.is_voice_configured,
+          referenceAudioUrl: matchedCharacter.referenceAudioUrl
+        }
+      }
+    }
+  } catch (error) {
+    console.error('加载角色信息失败:', error)
+  }
+}
+
+// 获取角色状态颜色
+const getCharacterStatusColor = () => {
+  if (!characterInfo.value) return 'default'
+  
+  if (characterInfo.value.is_voice_configured && characterInfo.value.status === 'active') {
+    return 'green' // 已配置且可用
+  } else if (characterInfo.value.status === 'active') {
+    return 'orange' // 可用但需配置音频
+  } else {
+    return 'red' // 未激活
+  }
+}
+
+// 获取角色状态文本
+const getCharacterStatusText = () => {
+  if (!characterInfo.value) return '未知'
+  
+  if (characterInfo.value.is_voice_configured && characterInfo.value.status === 'active') {
+    return '已配置'
+  } else if (characterInfo.value.status === 'active') {
+    return '需配置音频'
+  } else {
+    return '未激活'
+  }
+}
+
+// 组件挂载时加载角色信息
+onMounted(() => {
+  loadCharacterInfo()
+})
 </script>
 
 <style scoped>
@@ -138,10 +230,49 @@ const statusText = computed(() => {
   font-size: 12px;
 }
 
+.speaker-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: 12px;
+}
+
+.speaker-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: 600;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.speaker-avatar .avatar-image {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.speaker-details {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 .speaker-name {
   font-weight: 600;
   color: #334155;
-  margin-right: 8px;
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.speaker-status {
+  display: flex;
+  align-items: center;
 }
 
 .segment-index {

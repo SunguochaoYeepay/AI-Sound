@@ -13,7 +13,7 @@
           </p>
         </div>
         <div class="action-section">
-          <a-button type="primary" size="large" @click="() => showSmartDiscoveryModal = true" ghost>
+          <a-button type="primary" size="large" @click="startSmartDiscovery" ghost>
             <template #icon>
               <SearchOutlined />
             </template>
@@ -170,8 +170,9 @@
           :data-character="voice.isCharacter"
         >
           <div class="voice-avatar">
-            <div class="avatar-icon" :style="{ background: voice.color }">
-              {{ voice.name.charAt(0) }}
+            <div class="avatar-icon" :style="{ background: voice.avatarUrl ? 'transparent' : voice.color }">
+              <img v-if="voice.avatarUrl" :src="voice.avatarUrl" :alt="voice.name" class="avatar-image" />
+              <span v-else>{{ voice.name.charAt(0) }}</span>
             </div>
             <div class="voice-status" :class="voice.status">
               <div class="status-dot"></div>
@@ -270,8 +271,9 @@
           <template #bodyCell="{ column, record }">
             <template v-if="column.key === 'name'">
               <div style="display: flex; align-items: center; gap: 12px;">
-                <div class="table-avatar" :style="{ background: record.color }">
-                  {{ record.name.charAt(0) }}
+                <div class="table-avatar" :style="{ background: record.avatarUrl ? 'transparent' : record.color }">
+                  <img v-if="record.avatarUrl" :src="record.avatarUrl" :alt="record.name" class="avatar-image" />
+                  <span v-else>{{ record.name.charAt(0) }}</span>
                 </div>
                 <div>
                   <div style="font-weight: 500;">{{ record.name }}</div>
@@ -330,8 +332,9 @@
     >
       <div v-if="selectedVoice" class="voice-detail">
         <div class="detail-header">
-          <div class="detail-avatar" :style="{ background: selectedVoice.color }">
-            {{ selectedVoice.name.charAt(0) }}
+          <div class="detail-avatar" :style="{ background: selectedVoice.avatarUrl ? 'transparent' : selectedVoice.color }">
+            <img v-if="selectedVoice.avatarUrl" :src="selectedVoice.avatarUrl" :alt="selectedVoice.name" class="avatar-image" />
+            <span v-else>{{ selectedVoice.name.charAt(0) }}</span>
           </div>
           <div class="detail-info">
             <h2>{{ selectedVoice.name }}</h2>
@@ -368,15 +371,15 @@
           <div class="params-list">
             <div class="param-row">
               <span class="param-label">Time Step:</span>
-              <span class="param-value">{{ selectedVoice.params.timeStep }}</span>
+              <span class="param-value">{{ selectedVoice.params?.timeStep || 'N/A' }}</span>
             </div>
             <div class="param-row">
               <span class="param-label">智能权重 (p_w):</span>
-              <span class="param-value">{{ selectedVoice.params.pWeight }}</span>
+              <span class="param-value">{{ selectedVoice.params?.pWeight || 'N/A' }}</span>
             </div>
             <div class="param-row">
               <span class="param-label">相似度权重 (t_w):</span>
-              <span class="param-value">{{ selectedVoice.params.tWeight }}</span>
+              <span class="param-value">{{ selectedVoice.params?.tWeight || 'N/A' }}</span>
             </div>
           </div>
         </div>
@@ -386,15 +389,15 @@
           <div class="stats-list">
             <div class="stat-row">
               <span class="stat-label">使用次数:</span>
-              <span class="stat-value">{{ selectedVoice.usageCount }}</span>
+              <span class="stat-value">{{ selectedVoice.usageCount || 0 }}</span>
             </div>
             <div class="stat-row">
               <span class="stat-label">创建时间:</span>
-              <span class="stat-value">{{ selectedVoice.createdAt }}</span>
+              <span class="stat-value">{{ selectedVoice.createdAt || 'N/A' }}</span>
             </div>
             <div class="stat-row">
               <span class="stat-label">最后使用:</span>
-              <span class="stat-value">{{ selectedVoice.lastUsed }}</span>
+              <span class="stat-value">{{ selectedVoice.lastUsed || 'N/A' }}</span>
             </div>
           </div>
         </div>
@@ -440,6 +443,58 @@
         
         <a-form-item label="角色名称" name="name" required>
           <a-input v-model:value="editingVoice.name" placeholder="请输入角色名称" />
+        </a-form-item>
+
+        <a-form-item label="角色头像" name="avatar">
+          <div class="avatar-upload-section">
+            <!-- 当前头像预览 -->
+            <div class="current-avatar-preview">
+              <div v-if="editingVoice.avatarUrl || editingVoice.avatarPreview" class="avatar-preview">
+                <img 
+                  :src="editingVoice.avatarPreview || editingVoice.avatarUrl" 
+                  alt="角色头像" 
+                  class="avatar-image"
+                />
+              </div>
+              <div v-else class="avatar-placeholder" :style="{ background: editingVoice.color || '#8b5cf6' }">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="white">
+                  <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                </svg>
+              </div>
+            </div>
+            
+            <!-- 头像上传 -->
+            <a-upload
+              v-model:fileList="editingVoice.avatarFileList"
+              :multiple="false"
+              :before-upload="beforeAvatarUpload"
+              @change="handleAvatarChange"
+              accept=".jpg,.jpeg,.png,.gif,.webp"
+              :show-upload-list="false"
+              class="avatar-upload"
+            >
+              <a-button size="small" type="primary">
+                <template #icon>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                  </svg>
+                </template>
+                {{ editingVoice.avatarUrl ? '更换头像' : '上传头像' }}
+              </a-button>
+            </a-upload>
+            
+            <!-- 移除头像按钮 -->
+            <a-button 
+              v-if="editingVoice.avatarUrl || editingVoice.avatarPreview" 
+              size="small" 
+              danger 
+              type="text"
+              @click="removeAvatar"
+            >
+              移除头像
+            </a-button>
+          </div>
+          <div class="upload-tips">支持 JPG、PNG、GIF、WebP 格式，最大10MB</div>
         </a-form-item>
 
         <a-form-item label="角色描述" name="description">
@@ -808,20 +863,35 @@
                     :key="character.name"
                     class="character-preview-item"
                   >
-                    <div class="character-avatar" :style="{ background: character.recommended_config.color }">
-                      {{ character.name.charAt(0) }}
+                    <!-- 🔧 修改：支持显示角色库中的头像 -->
+                    <div class="character-avatar" :style="{ background: character.avatarUrl ? 'transparent' : character.recommended_config.color }">
+                      <img v-if="character.avatarUrl" :src="character.avatarUrl" :alt="character.name" class="avatar-image" />
+                      <span v-else>{{ character.name.charAt(0) }}</span>
                     </div>
                     <div class="character-info">
-                      <div class="character-name">{{ character.name }}</div>
+                      <div class="character-name">
+                        {{ character.name }}
+                        <!-- 🔧 添加：显示角色来源信息 -->
+                        <a-tooltip v-if="character.exists_in_library" title="此角色已存在于角色库中">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="#1890ff" style="margin-left: 4px;">
+                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                          </svg>
+                        </a-tooltip>
+                      </div>
                       <div class="character-meta">
                         {{ character.recommended_config.gender === 'male' ? '男性' : '女性' }} | 
                         {{ character.recommended_config.personality_description }} |
                         出现 {{ character.frequency }} 次
+                        <!-- 🔧 添加：显示角色库中的额外信息 -->
+                        <span v-if="character.exists_in_library && character.existing_config">
+                          | 质量评分: {{ character.existing_config.quality || 'N/A' }}
+                          | 使用: {{ character.existing_config.usageCount || 0 }}次
+                        </span>
                       </div>
                     </div>
                     <div class="character-status">
                       <a-tag v-if="character.is_main_character" color="blue">主要角色</a-tag>
-                      <a-tag v-if="character.exists_in_library" color="orange">已存在</a-tag>
+                      <a-tag v-if="character.exists_in_library" color="green">已配置</a-tag>
                     </div>
                   </div>
                 </div>
@@ -871,22 +941,25 @@
                     >
                       <div class="config-card">
                         <div class="config-header">
-                          <div class="character-avatar" :style="{ background: character.recommended_config.color }">
-                            {{ character.name.charAt(0) }}
+                          <!-- 🔧 修改：在配置阶段也显示角色库中的头像 -->
+                          <div class="character-avatar" :style="{ background: character.avatarUrl ? 'transparent' : character.recommended_config.color }">
+                            <img v-if="character.avatarUrl" :src="character.avatarUrl" :alt="character.name" class="avatar-image" />
+                            <span v-else>{{ character.name.charAt(0) }}</span>
                           </div>
                           <div class="character-basic">
                             <h4>
                               {{ character.name }}
-                              <a-tag v-if="character.exists_in_library" color="orange" size="small">已存在</a-tag>
+                              <a-tag v-if="character.exists_in_library" color="green" size="small">已配置</a-tag>
                             </h4>
-                            <p>{{ character.recommended_config.description }}</p>
+                            <!-- 🔧 修改：优先显示角色库中的描述 -->
+                            <p>{{ character.existing_config?.description || character.recommended_config.description }}</p>
                           </div>
                         </div>
                         
                         <div class="config-details">
                           <div v-if="character.exists_in_library" class="existing-character-info">
                             <a-alert 
-                              message="角色已存在于角色库中" 
+                              message="角色已存在于角色库中，无需重复创建" 
                               type="info" 
                               show-icon 
                               :closable="false"
@@ -895,15 +968,47 @@
                             <div class="existing-config-display">
                               <a-descriptions :column="2" size="small">
                                 <a-descriptions-item label="性别">
-                                  {{ character.existing_config?.type === 'male' ? '男性' : '女性' }}
+                                  {{ character.existing_config?.type === 'male' ? '男性' : character.existing_config?.type === 'female' ? '女性' : '未设置' }}
                                 </a-descriptions-item>
                                 <a-descriptions-item label="状态">
                                   <a-tag :color="character.existing_config?.status === 'active' ? 'green' : 'orange'">
                                     {{ character.existing_config?.status === 'active' ? '可用' : '需配置' }}
                                   </a-tag>
                                 </a-descriptions-item>
+                                <a-descriptions-item label="质量评分">
+                                  <a-rate :value="character.existing_config?.quality || 0" disabled allow-half size="small" />
+                                  <span style="margin-left: 8px;">{{ character.existing_config?.quality || 0 }} 星</span>
+                                </a-descriptions-item>
+                                <a-descriptions-item label="使用次数">
+                                  {{ character.existing_config?.usageCount || 0 }} 次
+                                </a-descriptions-item>
                                 <a-descriptions-item label="描述" :span="2">
                                   {{ character.existing_config?.description || '暂无描述' }}
+                                </a-descriptions-item>
+                                <a-descriptions-item label="音频配置" :span="2">
+                                  <div v-if="character.existing_config?.is_voice_configured || character.existing_config?.audioFile">
+                                    <a-tag color="green">
+                                      <template #icon>
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                                          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                                        </svg>
+                                      </template>
+                                      已配置音频文件
+                                    </a-tag>
+                                  </div>
+                                  <div v-else>
+                                    <a-tag color="orange">
+                                      <template #icon>
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                                          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/>
+                                        </svg>
+                                      </template>
+                                      需要配置音频文件
+                                    </a-tag>
+                                    <p style="margin-top: 8px; color: #666; font-size: 12px;">
+                                      请前往角色管理页面为该角色配置音频文件
+                                    </p>
+                                  </div>
                                 </a-descriptions-item>
                               </a-descriptions>
                             </div>
@@ -967,58 +1072,19 @@
                               />
                             </a-form-item>
                             
-                            <!-- 音频文件上传 -->
-                            <a-row :gutter="16">
-                              <a-col :span="12">
-                                <a-form-item label="参考音频">
-                                  <a-upload
-                                    v-model:file-list="character.config.audioFileList"
-                                    :before-upload="beforeAudioUpload"
-                                    :max-count="1"
-                                    accept=".wav,.mp3,.m4a,.flac"
-                                    @change="(info) => handleConfigAudioChange(info, character)"
-                                  >
-                                    <a-button size="small" type="dashed">
-                                      <template #icon>
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                                          <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
-                                          <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
-                                        </svg>
-                                      </template>
-                                      选择音频
-                                    </a-button>
-                                  </a-upload>
-                                  <div v-if="character.config.audioFileInfo" class="file-info-mini">
-                                    <span class="file-name-mini">{{ character.config.audioFileInfo.name }}</span>
-                                    <span class="file-size-mini">{{ character.config.audioFileInfo.size }}</span>
-                                  </div>
-                                </a-form-item>
-                              </a-col>
-                              <a-col :span="12">
-                                <a-form-item label="Latent文件 (.npy)">
-                                  <a-upload
-                                    v-model:file-list="character.config.latentFileList"
-                                    :before-upload="beforeLatentUpload"
-                                    :max-count="1"
-                                    accept=".npy"
-                                    @change="(info) => handleConfigLatentChange(info, character)"
-                                  >
-                                    <a-button size="small" type="dashed">
-                                      <template #icon>
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z"/>
-            </svg>
-                                      </template>
-                                      选择文件
-                                    </a-button>
-                                  </a-upload>
-                                  <div v-if="character.config.latentFileInfo" class="file-info-mini">
-                                    <span class="file-name-mini">{{ character.config.latentFileInfo.name }}</span>
-                                    <span class="file-size-mini">{{ character.config.latentFileInfo.size }}</span>
-          </div>
-                                </a-form-item>
-                              </a-col>
-                            </a-row>
+                            <!-- 音频配置提示 -->
+                            <a-form-item label="音频配置">
+                              <a-alert 
+                                message="角色创建后，请在角色管理页面配置音频文件" 
+                                type="info" 
+                                show-icon 
+                                :closable="false"
+                                style="margin-bottom: 0;"
+                              />
+                              <p style="margin-top: 8px; color: #666; font-size: 12px;">
+                                音频文件配置包括：参考音频文件(.wav/.mp3/.m4a/.flac)和对应的Latent特征文件(.npy)
+                              </p>
+                            </a-form-item>
                           </a-form>
                         </div>
                       </div>
@@ -1323,6 +1389,7 @@ const loadVoiceLibrary = async () => {
         audioUrl: character.referenceAudioUrl || '',
         referenceAudioUrl: character.referenceAudioUrl || '',
         latentFileUrl: character.latentFileUrl || '',
+        avatarUrl: character.avatarUrl || null, // 🔧 修复：添加头像URL映射
         book: character.book,
         book_id: character.book_id,
         chapter_id: character.chapter_id,
@@ -1330,6 +1397,11 @@ const loadVoiceLibrary = async () => {
           time_step: 20,
           p_weight: 1.0,
           t_weight: 1.0
+        },
+        params: character.voice_parameters || { // 🔧 修复：添加params别名以兼容模板
+          timeStep: character.voice_parameters?.time_step || 20,
+          pWeight: character.voice_parameters?.p_weight || 1.0,
+          tWeight: character.voice_parameters?.t_weight || 1.0
         },
         tags: character.tags || [],
         createdAt: character.created_at ? character.created_at.split('T')[0] : '',
@@ -1441,6 +1513,11 @@ const saveVoiceToBackend = async (voiceData) => {
     // 添加书籍关联
     if (voiceData.book_id) {
       formData.append('book_id', voiceData.book_id)
+    }
+    
+    // 添加头像文件（如果有新上传的）
+    if (voiceData.avatarFile) {
+      formData.append('avatar', voiceData.avatarFile)
     }
     
     // 调试：打印FormData内容
@@ -1585,7 +1662,18 @@ const updateConfigCheckState = () => {
 }
 
 const selectVoice = (voice) => {
-  selectedVoice.value = voice
+  // 🔧 修复：确保voice对象具有完整的属性结构
+  selectedVoice.value = {
+    ...voice,
+    params: voice.params || {
+      timeStep: 20,
+      pWeight: 1.0,
+      tWeight: 1.0
+    },
+    usageCount: voice.usageCount || 0,
+    createdAt: voice.createdAt || 'N/A',
+    lastUsed: voice.lastUsed || 'N/A'
+  }
   showDetailDrawer.value = true
 }
 
@@ -1628,6 +1716,10 @@ const editVoice = (voice) => {
     quality: voice.quality,
     status: voice.status,
     color: voice.color,
+    avatarUrl: voice.avatarUrl,
+    avatarPreview: null,
+    avatarFile: null,
+    avatarFileList: [],
     referenceAudioUrl: voice.audioUrl || voice.referenceAudioUrl,
     latentFileUrl: voice.latentFileUrl,
     audioFileList: [],
@@ -1649,6 +1741,10 @@ const addNewCharacter = () => {
     quality: 3.0,
     status: 'active',
     color: '#06b6d4',
+    avatarUrl: null,
+    avatarPreview: null,
+    avatarFile: null,
+    avatarFileList: [],
     audioFileList: [],
     latentFileList: [],
     audioFileInfo: null,
@@ -1719,6 +1815,48 @@ const beforeLatentUpload = (file) => {
   }
   
   return false // 阻止自动上传
+}
+
+const beforeAvatarUpload = (file) => {
+  const isValidFormat = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'].includes(file.type)
+  if (!isValidFormat) {
+    message.error('请上传 JPG、PNG、GIF 或 WebP 格式的图片！')
+    return false
+  }
+  
+  const isLt10M = file.size / 1024 / 1024 < 10
+  if (!isLt10M) {
+    message.error('头像文件大小不能超过 10MB！')
+    return false
+  }
+  
+  return false // 阻止自动上传
+}
+
+const handleAvatarChange = (info) => {
+  if (info.fileList.length > 0) {
+    const file = info.fileList[0].originFileObj
+    
+    // 创建预览URL
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      editingVoice.value.avatarPreview = e.target.result
+    }
+    reader.readAsDataURL(file)
+    
+    // 保存文件信息
+    editingVoice.value.avatarFile = file
+  } else {
+    editingVoice.value.avatarPreview = null
+    editingVoice.value.avatarFile = null
+  }
+}
+
+const removeAvatar = () => {
+  editingVoice.value.avatarPreview = null
+  editingVoice.value.avatarFile = null
+  editingVoice.value.avatarFileList = []
+  editingVoice.value.removeAvatar = true // 标记需要删除头像
 }
 
 const handleEditLatentChange = (info) => {
@@ -2116,25 +2254,78 @@ const processAnalysisResult = async (analysisData) => {
   smartDiscovery.discoveredCharacters = characters
 }
 
-// 检查角色是否已存在
+// 开始智能发现
+const startSmartDiscovery = async () => {
+  try {
+    // 确保角色库数据已加载
+    await loadVoiceLibrary()
+    
+    // 重置智能发现状态
+    discoveryStep.value = 0
+    smartDiscovery.selectedBook = null
+    smartDiscovery.selectedChapters = []
+    smartDiscovery.discoveredCharacters = []
+    smartDiscovery.analysisComplete = false
+    smartDiscovery.analysisProgress = 0
+    
+    // 打开智能发现模态框
+    showSmartDiscoveryModal.value = true
+    
+    // 加载书籍列表
+    await loadBooks()
+  } catch (error) {
+    console.error('启动智能发现失败:', error)
+    message.error('启动智能发现失败，请重试')
+  }
+}
+
+// 检查角色是否已存在并获取完整信息
 const checkCharacterExistence = async () => {
   for (const character of smartDiscovery.discoveredCharacters) {
     try {
-      // 调用检查API
-      const response = await fetch(`/api/v1/characters/check-exists?name=${encodeURIComponent(character.name)}`)
-      const result = await response.json()
+      // 🔧 修改：从角色库中查找匹配的角色信息
+      const matchedCharacter = voiceLibrary.value.find(voice => 
+        voice.name === character.name || 
+        voice.name.toLowerCase() === character.name.toLowerCase()
+      )
       
-      if (result.success) {
-        character.exists_in_library = result.data?.exists || false
-        if (character.exists_in_library && result.data?.config) {
-          character.existing_config = result.data.config
+      if (matchedCharacter) {
+        // 角色已存在，使用角色库中的完整信息
+        character.exists_in_library = true
+        character.existing_config = {
+          id: matchedCharacter.id,
+          name: matchedCharacter.name,
+          description: matchedCharacter.description,
+          type: matchedCharacter.type,
+          status: matchedCharacter.status,
+          color: matchedCharacter.color,
+          avatarUrl: matchedCharacter.avatarUrl, // 🎯 关键：获取头像URL
+          quality: matchedCharacter.quality,
+          usageCount: matchedCharacter.usageCount,
+          audioUrl: matchedCharacter.audioUrl,
+          audioFile: matchedCharacter.referenceAudioUrl || matchedCharacter.audioUrl, // 检查是否有音频文件
+          params: matchedCharacter.params,
+          is_voice_configured: matchedCharacter.is_voice_configured // 音频配置状态
+        }
+        
+        // 🔧 更新角色展示信息，优先使用角色库中的信息
+        if (matchedCharacter.avatarUrl) {
+          character.avatarUrl = matchedCharacter.avatarUrl
+        }
+        if (matchedCharacter.color) {
+          character.recommended_config.color = matchedCharacter.color
         }
       } else {
+        // 角色不存在，保持原有的推荐配置
         character.exists_in_library = false
+        character.existing_config = null
+        character.avatarUrl = null
       }
     } catch (error) {
       console.error(`检查角色 ${character.name} 失败:`, error)
       character.exists_in_library = false
+      character.existing_config = null
+      character.avatarUrl = null
     }
   }
 }
@@ -2508,8 +2699,11 @@ const openSmartDiscovery = async () => {
   smartDiscovery.configuredCharacters = []
   smartDiscovery.creationResults = []
   
-  // 加载书籍列表
-  await loadBooks()
+  // 🔧 修改：同时加载书籍列表和角色库数据
+  await Promise.all([
+    loadBooks(),
+    loadVoiceLibrary() // 确保角色库数据可用于匹配
+  ])
 }
 
 // 选择章节
@@ -2673,6 +2867,14 @@ const goBack = () => {
   color: white;
   font-size: 24px;
   font-weight: 600;
+  overflow: hidden;
+}
+
+.avatar-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
 }
 
 .voice-status {
@@ -2745,6 +2947,7 @@ const goBack = () => {
   color: white;
   font-weight: 600;
   font-size: 16px;
+  overflow: hidden;
 }
 
 .voice-detail {
@@ -2769,6 +2972,7 @@ const goBack = () => {
   color: white;
   font-size: 32px;
   font-weight: 600;
+  overflow: hidden;
 }
 
 .detail-info {
@@ -2813,6 +3017,47 @@ const goBack = () => {
 .param-label, .stat-label {
   color: #6b7280;
   font-size: 14px;
+}
+
+/* 头像上传样式 */
+.avatar-upload-section {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.current-avatar-preview {
+  flex-shrink: 0;
+}
+
+.avatar-preview {
+  width: 80px;
+  height: 80px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 2px solid #e5e7eb;
+}
+
+.avatar-preview .avatar-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.avatar-placeholder {
+  width: 80px;
+  height: 80px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px dashed #d1d5db;
+}
+
+.upload-tips {
+  font-size: 12px;
+  color: #6b7280;
+  margin-top: 8px;
 }
 
 .param-value, .stat-value {

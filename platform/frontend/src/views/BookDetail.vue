@@ -203,8 +203,8 @@
                   <!-- 角色汇总头部 -->
                   <div class="character-header">
                     <div class="header-info">
-                      <h3>角色配置管理</h3>
-                      <p>统一配置书籍中所有检测到的角色语音，避免重复设置</p>
+                      <h3>角色信息概览</h3>
+                      <p>查看书籍中检测到的所有角色信息和配置状态</p>
                     </div>
                     <div class="header-actions">
                       <a-space>
@@ -214,8 +214,8 @@
                         <a-button @click="rebuildCharacterSummary" :loading="rebuildingCharacters">
                           🔧 重建汇总
                         </a-button>
-                        <a-button type="primary" @click="saveAllCharacterMappings" :loading="savingCharacters">
-                          💾 保存所有配置
+                        <a-button type="primary" @click="goToCharacterManagement">
+                          🎭 管理角色
                         </a-button>
                       </a-space>
                     </div>

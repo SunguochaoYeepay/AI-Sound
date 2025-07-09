@@ -250,6 +250,7 @@ if log_config.API_LOG_ENABLED:
 app.mount("/api/v1/audio", StaticFiles(directory="data/audio"), name="audio")
 app.mount("/api/v1/uploads", StaticFiles(directory="data/uploads"), name="uploads")
 app.mount("/api/v1/voice_profiles", StaticFiles(directory="data/voice_profiles"), name="voice_profiles")
+app.mount("/api/v1/avatars", StaticFiles(directory="data/avatars"), name="avatars")
 app.mount("/api/v1/environment_sounds", StaticFiles(directory="data/environment_sounds"), name="environment_sounds")
 app.mount("/api/v1/outputs", StaticFiles(directory="data/outputs"), name="outputs")
 

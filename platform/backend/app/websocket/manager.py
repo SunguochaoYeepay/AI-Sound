@@ -212,7 +212,7 @@ class WebSocketManager:
     async def publish_to_topic(self, topic: str, message: Dict[str, Any]):
         """发布消息到主题"""
         if topic not in self.subscriptions:
-            logger.warning(f"⚠️ 主题无订阅者: {topic}")
+            logger.debug(f"🔇 主题无订阅者: {topic}")
             return 0
         
         subscribers = list(self.subscriptions[topic])

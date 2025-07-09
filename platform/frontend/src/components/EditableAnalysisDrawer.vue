@@ -77,55 +77,99 @@
                 class="character-edit-item"
               >
                 <div class="character-header">
-                  <div class="character-icon">
-                    {{ getCharacterIcon(character.name) }}
+                  <!-- 角色头像 -->
+                  <div class="character-avatar" :style="{ background: character.color || '#8b5cf6' }">
+                    <img v-if="character.avatarUrl" :src="character.avatarUrl" :alt="character.name" class="avatar-image" />
+                    <span v-else>{{ getCharacterIcon(character.name) }}</span>
                   </div>
                   <div class="character-info">
-                    <div class="character-name">{{ character.name }}</div>
+                    <div class="character-name">
+                      {{ character.name }}
+                      <!-- 角色配置状态标签 -->
+                      <a-tag v-if="character.exists_in_library" :color="getCharacterStatusColor(character)" size="small">
+                        {{ getCharacterStatusText(character) }}
+                      </a-tag>
+                      <a-tag v-else color="orange" size="small">未配置</a-tag>
+                    </div>
                     <div class="character-count">
                       <a-tag color="blue">{{ character.count || 0 }}次</a-tag>
                       <span class="character-type">{{ getCharacterTypeText(character.voice_type) }}</span>
                     </div>
+                    <!-- 角色详细信息 -->
+                    <div v-if="character.exists_in_library" class="character-details">
+                      <div class="character-description">{{ character.description || '暂无描述' }}</div>
+                      <div class="character-quality">
+                        <span>质量: </span>
+                        <a-rate :value="character.quality || 0" disabled allow-half size="small" />
+                        <span class="quality-text">{{ character.quality || 0 }} 星</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
                 
-                <!-- 声音分配区域 -->
+                <!-- 音频配置状态区域 -->
                 <div class="voice-assignment">
-                  <div class="voice-label">分配声音：</div>
-                  <a-select
-                    v-model:value="character.voice_id"
-                    placeholder="选择声音"
-                    style="width: 200px;"
-                    @change="(value) => onVoiceAssign(character, value)"
-                    allowClear
-                    showSearch
-                    :filterOption="filterVoiceOption"
-                    optionFilterProp="children"
-                  >
-                    <a-select-option value="">未分配</a-select-option>
-                    <a-select-option 
-                      v-for="voice in availableVoices" 
-                      :key="voice.id"
-                      :value="voice.id"
-                      :title="`${voice.name} - ${getVoiceTypeLabel(voice.type)} - ${voice.description || '暂无描述'}`"
-                    >
-                      {{ voice.name }} ({{ getVoiceTypeLabel(voice.type) }})
-                    </a-select-option>
-                  </a-select>
+                  <div class="voice-label">音频配置状态：</div>
                   
-                  <div class="voice-status" v-if="character.voice_id">
-                    <a-tag color="green">{{ character.voice_name || '已分配' }}</a-tag>
+                  <!-- 角色存在于角色库中 -->
+                  <div v-if="character.exists_in_library" class="voice-config-status">
+                    <div v-if="character.is_voice_configured" class="voice-configured">
+                      <a-tag color="green">
+                        <template #icon>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                          </svg>
+                        </template>
+                        已配置音频文件
+                      </a-tag>
+                      <a-button 
+                        v-if="character.referenceAudioUrl"
+                        type="link" 
+                        size="small"
+                        @click="testVoice(character)"
+                        title="试听角色音频"
+                      >
+                        🔊 试听
+                      </a-button>
+                    </div>
+                    <div v-else class="voice-not-configured">
+                      <a-tag color="orange">
+                        <template #icon>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/>
+                          </svg>
+                        </template>
+                        需要配置音频文件
+                      </a-tag>
+                      <a-button 
+                        type="link" 
+                        size="small"
+                        @click="goToCharacterConfig(character)"
+                        title="前往角色管理页面配置音频"
+                      >
+                        去配置
+                      </a-button>
+                    </div>
+                  </div>
+                  
+                  <!-- 角色不存在于角色库中 -->
+                  <div v-else class="voice-not-in-library">
+                    <a-tag color="red">
+                      <template #icon>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 13.59L15.59 17 12 13.41 8.41 17 7 15.59 10.59 12 7 8.41 8.41 7 12 10.59 15.59 7 17 8.41 13.41 12 17 15.59z"/>
+                        </svg>
+                      </template>
+                      角色未创建
+                    </a-tag>
                     <a-button 
                       type="link" 
                       size="small"
-                      @click="testVoice(character)"
-                      title="测试声音效果"
+                      @click="goToCharacterCreation(character)"
+                      title="前往角色管理页面创建角色"
                     >
-                      🔊 试听
+                      去创建
                     </a-button>
-                  </div>
-                  <div class="voice-status" v-else>
-                    <a-tag color="orange">未分配声音</a-tag>
                   </div>
                 </div>
               </div>
@@ -237,6 +281,7 @@
 <script setup>
 import { ref, computed, watch, reactive, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
+import { useRouter } from 'vue-router'
 import { booksAPI } from '@/api'
 import { charactersAPI } from '@/api'
 import { getAudioService } from '@/utils/audioService'
@@ -256,6 +301,9 @@ const props = defineProps({
 // Emits
 const emit = defineEmits(['update:visible', 'saved'])
 
+// Router
+const router = useRouter()
+
 // 响应式数据
 const loading = ref(false)
 const saving = ref(false)
@@ -269,10 +317,7 @@ const hasChanges = ref(false)
 const editableCharacters = ref([])
 const editableSegments = ref([])
 
-// 新增：可用声音列表
-const availableVoices = ref([])
-
-// 音频服务实例
+// 音频服务实例（保留用于其他功能）
 const audioService = getAudioService()
 
 // 计算属性
@@ -284,7 +329,6 @@ const processingInfo = computed(() => {
 watch(() => props.visible, (newVal) => {
   if (newVal && props.chapterId) {
     loadAnalysisData()
-    loadAvailableVoices()
   }
 })
 
@@ -295,29 +339,7 @@ watch(() => props.chapterId, (newVal) => {
   }
 })
 
-// 监听visible变化，加载声音库
-watch(() => props.visible, (newVal) => {
-  if (newVal) {
-    loadVoiceLibrary()
-  }
-})
 
-// 加载声音库
-const loadVoiceLibrary = async () => {
-  try {
-    const response = await charactersAPI.getVoiceProfiles()
-    if (response.data && response.data.success) {
-      availableVoices.value = response.data.data || []
-      console.log('[EditableAnalysisDrawer] 加载声音库:', availableVoices.value.length, '个声音')
-    } else {
-      console.warn('[EditableAnalysisDrawer] 声音库加载失败:', response.data)
-      availableVoices.value = []
-    }
-  } catch (error) {
-    console.error('[EditableAnalysisDrawer] 声音库加载错误:', error)
-    availableVoices.value = []
-  }
-}
 
 // 加载分析数据
 const loadAnalysisData = async () => {
@@ -431,6 +453,9 @@ const initEditableData = () => {
     })
   }
   
+  // 🔧 加载角色库信息，匹配角色详细信息
+  loadCharacterLibraryInfo()
+  
   // 初始化片段数据 - 保持完整的原始结构
   editableSegments.value = (synthesisJson.synthesis_plan || []).map(segment => ({
     segment_id: segment.segment_id || 0,
@@ -449,6 +474,75 @@ const initEditableData = () => {
     editableCharacters: JSON.stringify(editableCharacters.value, null, 2),
     editableSegments: JSON.stringify(editableSegments.value.slice(0, 5), null, 2) // 只显示前5个片段
   })
+}
+
+// 🔧 加载角色库信息，匹配角色详细信息
+const loadCharacterLibraryInfo = async () => {
+  try {
+    const response = await charactersAPI.getCharacters({
+      page: 1,
+      page_size: 100
+    })
+    
+    if (response.data?.success && response.data.data?.length > 0) {
+      const characterLibrary = response.data.data
+      
+      // 为每个角色匹配角色库中的信息
+      editableCharacters.value.forEach(character => {
+        const matchedCharacter = characterLibrary.find(libChar => 
+          libChar.name === character.name || 
+          libChar.name.toLowerCase() === character.name.toLowerCase()
+        )
+        
+        if (matchedCharacter) {
+          // 角色存在于角色库中，更新详细信息
+          character.exists_in_library = true
+          character.id = matchedCharacter.id
+          character.description = matchedCharacter.description
+          character.status = matchedCharacter.status
+          character.color = matchedCharacter.color
+          character.avatarUrl = matchedCharacter.avatarUrl
+          character.quality = matchedCharacter.quality_score
+          character.usageCount = matchedCharacter.usage_count
+          character.is_voice_configured = matchedCharacter.is_voice_configured
+          character.referenceAudioUrl = matchedCharacter.referenceAudioUrl
+        } else {
+          // 角色不存在于角色库中
+          character.exists_in_library = false
+        }
+      })
+      
+      console.log('[EditableAnalysisDrawer] 角色库信息匹配完成:', editableCharacters.value)
+    }
+  } catch (error) {
+    console.error('[EditableAnalysisDrawer] 加载角色库信息失败:', error)
+  }
+}
+
+// 🔧 获取角色状态颜色
+const getCharacterStatusColor = (character) => {
+  if (!character.exists_in_library) return 'default'
+  
+  if (character.is_voice_configured && character.status === 'active') {
+    return 'green' // 已配置且可用
+  } else if (character.status === 'active') {
+    return 'orange' // 可用但需配置音频
+  } else {
+    return 'red' // 未激活
+  }
+}
+
+// 🔧 获取角色状态文本
+const getCharacterStatusText = (character) => {
+  if (!character.exists_in_library) return '未知'
+  
+  if (character.is_voice_configured && character.status === 'active') {
+    return '已配置'
+  } else if (character.status === 'active') {
+    return '需配置音频'
+  } else {
+    return '未激活'
+  }
 }
 
 // 标记已修改
@@ -486,158 +580,62 @@ const removeCharacter = (index) => {
 
 
 
-// 声音分配
-const onVoiceAssign = (character, voiceId) => {
-  console.log('[EditableAnalysisDrawer] 分配声音:', character.name, '→', voiceId)
-  
-  if (voiceId) {
-    const voice = availableVoices.value.find(v => v.id == voiceId)
-    if (voice) {
-      character.voice_id = voiceId
-      character.voice_name = voice.name
-      console.log('[EditableAnalysisDrawer] 声音分配成功:', character.name, '→', voice.name)
-      
-      // 同步更新synthesis_plan中对应的segments
-      editableSegments.value.forEach(segment => {
-        if (segment.speaker === character.name) {
-          segment.voice_id = voiceId
-          segment.voice_name = voice.name
-        }
-      })
-    }
-  } else {
-    character.voice_id = ''
-    character.voice_name = '未分配'
-    console.log('[EditableAnalysisDrawer] 取消声音分配:', character.name)
-    
-    // 同步更新synthesis_plan中对应的segments
-    editableSegments.value.forEach(segment => {
-      if (segment.speaker === character.name) {
-        segment.voice_id = ''
-        segment.voice_name = '未分配'
-      }
-    })
-  }
-  
-  markChanged()
+// 跳转到角色配置
+const goToCharacterConfig = (character) => {
+  // 跳转到角色管理页面并定位到该角色
+  router.push({
+    name: 'Characters',
+    query: { highlight: character.name }
+  })
+  message.info(`请在角色管理页面为 ${character.name} 配置音频文件`)
+}
+
+// 跳转到角色创建
+const goToCharacterCreation = (character) => {
+  // 跳转到角色管理页面并预填角色名称
+  router.push({
+    name: 'Characters',
+    query: { create: character.name }
+  })
+  message.info(`请在角色管理页面创建角色 ${character.name}`)
 }
 
 // 测试声音
 const testVoice = async (character) => {
-  if (!character.voice_id) {
-    message.warning('请先分配声音')
+  if (!character.referenceAudioUrl) {
+    message.warning('该角色暂无音频文件可试听')
     return
   }
   
   try {
-    const testText = `你好，我是${character.name}，这是声音测试。`
-    console.log('[EditableAnalysisDrawer] 测试声音:', character.name, testText)
+    console.log('[EditableAnalysisDrawer] 播放角色音频:', character.name, character.referenceAudioUrl)
     
-    const response = await charactersAPI.testVoiceSynthesis(character.voice_id, {
-      text: testText,
-      time_step: 20,
-      p_weight: 1.0,
-      t_weight: 1.0
+    // 直接播放角色的参考音频文件
+    const audio = new Audio(character.referenceAudioUrl)
+    audio.play()
+    message.info(`正在播放角色 ${character.name} 的音频...`)
+    
+    // 监听播放事件
+    audio.addEventListener('loadstart', () => {
+      console.log('[EditableAnalysisDrawer] 音频开始加载')
     })
     
-    if (response.data && response.data.success) {
-      console.log('[EditableAnalysisDrawer] API响应完整数据:', response.data)
-      console.log('[EditableAnalysisDrawer] 音频URL详细检查:', {
-        audio_url: response.data.audio_url,
-        audioUrl: response.data.audioUrl, 
-        keys: Object.keys(response.data)
-      })
-      // 🔧 修复：使用正确的字段名
-      let audioUrl = response.data.audioUrl || response.data.audio_url
-      
-      // 🔧 修复音频URL路径：仅处理需要修复的相对路径
-      if (audioUrl) {
-        // 只处理以 /audio/ 开头的相对路径，避免重复替换已有 /api/v1/ 前缀的URL
-        if (audioUrl.startsWith('/audio/')) {
-          // 处理相对路径：/audio/ → /api/v1/audio/
-          audioUrl = audioUrl.replace('/audio/', '/api/v1/audio/')
-          console.log('[EditableAnalysisDrawer] 相对路径URL已修复:', audioUrl)
-        } else if (audioUrl.includes('/audio/') && !audioUrl.includes('/api/v1/audio/')) {
-          // 只处理不包含 /api/v1/audio/ 但包含 /audio/ 的URL，避免重复替换
-          audioUrl = audioUrl.replace('/audio/', '/api/v1/audio/')
-          console.log('[EditableAnalysisDrawer] 完整URL路径已修复:', audioUrl)
-        }
-        // 如果URL已经包含 /api/v1/audio/，则不做任何修改
-        if (audioUrl.includes('/api/v1/audio/')) {
-          console.log('[EditableAnalysisDrawer] URL已正确，无需修复:', audioUrl)
-        }
-      }
-      
-      console.log('[EditableAnalysisDrawer] 准备播放音频:', {
-        audioUrl: audioUrl,
-        title: `${character.name} - 声音试听`,
-        audioService: audioService
-      })
-      
-      if (!audioUrl) {
-        console.error('[EditableAnalysisDrawer] 音频URL为空!')
-        message.error('获取音频URL失败')
-        return
-      }
-      
-      // 🔍 测试音频URL是否可以直接访问
-      console.log('[EditableAnalysisDrawer] 测试音频URL直接访问...')
-      try {
-        const testResponse = await fetch(audioUrl, { 
-          method: 'HEAD',
-          mode: 'cors'
-        })
-        console.log('[EditableAnalysisDrawer] URL访问测试结果:', {
-          status: testResponse.status,
-          headers: Object.fromEntries(testResponse.headers.entries()),
-          url: audioUrl
-        })
-      } catch (fetchError) {
-        console.error('[EditableAnalysisDrawer] URL访问测试失败:', fetchError)
-      }
-      
-      try {
-        await audioService.playCustomAudio(audioUrl, `${character.name} - 声音试听`, {
-          voiceId: character.voice_id,
-          voiceName: character.name,
-          testText
-        })
-        console.log('[EditableAnalysisDrawer] playCustomAudio 调用成功')
-        message.success(`正在播放${character.name}的声音测试`)
-      } catch (playError) {
-        console.error('[EditableAnalysisDrawer] playCustomAudio 调用失败:', playError)
-        message.error('播放音频失败')
-      }
-    } else {
-      message.error('声音测试失败')
-    }
+    audio.addEventListener('canplay', () => {
+      console.log('[EditableAnalysisDrawer] 音频可以播放')
+    })
+    
+    audio.addEventListener('error', (e) => {
+      console.error('[EditableAnalysisDrawer] 音频播放错误:', e)
+      message.error('音频播放失败')
+    })
+    
   } catch (error) {
-    console.error('[EditableAnalysisDrawer] 声音测试错误:', error)
-    message.error('声音测试失败')
+    console.error('[EditableAnalysisDrawer] 播放音频失败:', error)
+    message.error('播放音频失败')
   }
 }
 
-// 声音搜索过滤
-const filterVoiceOption = (input, option) => {
-  if (!input) return true
-  
-  const searchText = input.toLowerCase()
-  
-  // 获取对应的声音数据
-  const voice = availableVoices.value.find(v => v.id == option.value)
-  if (!voice) return false
-  
-  // 多维度搜索：名称、类型、描述
-  const searchFields = [
-    voice.name || '',
-    voice.type || '',
-    getVoiceTypeLabel(voice.type) || '',
-    voice.description || '',
-    voice.tags ? voice.tags.join(' ') : ''
-  ].join(' ').toLowerCase()
-  
-  return searchFields.includes(searchText)
-}
+
 
 
 
@@ -747,68 +745,7 @@ const getJsonPreview = () => {
   return JSON.stringify(previewData, null, 2)
 }
 
-// 新增：加载可用声音列表
-const loadAvailableVoices = async () => {
-  try {
-    const response = await charactersAPI.getVoiceProfiles({ status: 'active' })
-    if (response.data.success) {
-      availableVoices.value = response.data.data
-      console.log('加载了可用声音:', availableVoices.value.length, '个')
-    }
-  } catch (error) {
-    console.error('加载声音列表失败:', error)
-    // 如果API调用失败，使用默认的声音列表
-    availableVoices.value = [
-      { id: '1', name: '孙悟空声音', type: 'male' },
-      { id: '2', name: '唐僧声音', type: 'male' },
-      { id: '3', name: '白骨精声音', type: 'female' },
-      { id: '4', name: '玉皇大帝声音', type: 'male' },
-      { id: '5', name: '如来佛祖声音', type: 'male' },
-      { id: '6', name: '太上老君声音', type: 'male' },
-      { id: '7', name: '系统旁白', type: 'narrator' },
-      { id: '8', name: '女性旁白', type: 'female' },
-      { id: '9', name: '男性旁白', type: 'male' }
-    ]
-  }
-}
 
-// 新增：获取声音类型标签
-const getVoiceTypeLabel = (type) => {
-  const labels = {
-    'male': '男声',
-    'female': '女声',
-    'child': '童声',
-    'neutral': '中性',
-    'narrator': '旁白'
-  }
-  return labels[type] || type
-}
-
-// 新增：获取声音类型颜色
-const getVoiceTypeColor = (type) => {
-  const colors = {
-    'male': 'blue',
-    'female': 'pink',
-    'child': 'orange',
-    'neutral': 'purple',
-    'narrator': 'green'
-  }
-  return colors[type] || 'default'
-}
-
-// 新增：处理声音选择变化
-const handleVoiceChange = (character, voiceId) => {
-  const selectedVoice = availableVoices.value.find(voice => voice.id === voiceId)
-  if (selectedVoice) {
-    character.voice_id = voiceId
-    character.voice_name = selectedVoice.name
-    character.voice_type = selectedVoice.type
-  } else {
-    character.voice_id = ''
-    character.voice_name = ''
-  }
-  markChanged()
-}
 
 // 新增：获取角色图标
 const getCharacterIcon = (characterName) => {
@@ -858,10 +795,7 @@ const getDialogueRatio = () => {
   return Math.round((dialogueCount / editableSegments.value.length) * 100)
 }
 
-onMounted(() => {
-  // 加载可用声音列表
-  loadAvailableVoices()
-})
+
 </script>
 
 <style scoped>
@@ -957,6 +891,27 @@ onMounted(() => {
   border-bottom: 1px solid #e8e8e8;
 }
 
+.character-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: 600;
+  font-size: 16px;
+  flex-shrink: 0;
+  margin-right: 12px;
+}
+
+.character-avatar .avatar-image {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
 .character-icon {
   font-size: 24px;
   margin-right: 12px;
@@ -971,6 +926,10 @@ onMounted(() => {
   font-weight: 500;
   color: #1f2937;
   margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .character-count {
@@ -982,6 +941,31 @@ onMounted(() => {
 .character-type {
   font-size: 12px;
   color: #666;
+}
+
+.character-details {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.character-description {
+  font-size: 12px;
+  color: #666;
+  margin-bottom: 6px;
+  line-height: 1.4;
+}
+
+.character-quality {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #666;
+}
+
+.quality-text {
+  margin-left: 4px;
 }
 
 .characters-stats {
@@ -1059,7 +1043,7 @@ onMounted(() => {
   min-height: 300px;
 }
 
-/* 声音分配样式 */
+/* 音频配置状态样式 */
 .voice-assignment {
   border-top: 1px solid #e8e8e8;
   padding-top: 12px;
@@ -1073,11 +1057,36 @@ onMounted(() => {
   font-weight: 500;
 }
 
-.voice-status {
-  margin-top: 8px;
+.voice-config-status {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.voice-configured,
+.voice-not-configured,
+.voice-not-in-library {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.voice-configured .ant-tag {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.voice-not-configured .ant-tag {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.voice-not-in-library .ant-tag {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 /* 声音选择样式 */

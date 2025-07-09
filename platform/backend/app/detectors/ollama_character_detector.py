@@ -148,10 +148,33 @@ class OllamaCharacterDetector:
                     # 合并频次和置信度
                     existing = merged_characters[char_name]
                     existing["frequency"] += char.get("frequency", 1)
-                    existing["confidence"] = max(existing["confidence"], char.get("confidence", 0.5))
+                    
+                    # 🔧 修复：正确获取confidence字段
+                    char_confidence = char.get("confidence", 0.5)
+                    if char_confidence is None:
+                        # 尝试从character_trait中获取
+                        char_trait = char.get("character_trait", {})
+                        char_confidence = char_trait.get("confidence", 0.5)
+                    
+                    existing_confidence = existing.get("confidence", 0.5)
+                    if existing_confidence is None:
+                        existing_trait = existing.get("character_trait", {})
+                        existing_confidence = existing_trait.get("confidence", 0.5)
+                    
+                    # 设置更高的置信度
+                    if "character_trait" in existing:
+                        existing["character_trait"]["confidence"] = max(existing_confidence, char_confidence)
+                    else:
+                        existing["confidence"] = max(existing_confidence, char_confidence)
+                    
                     # 保留更详细的描述
-                    if len(char.get("personality_description", "")) > len(existing.get("personality_description", "")):
-                        existing["personality_description"] = char["personality_description"]
+                    char_desc = char.get("personality_description", "")
+                    existing_desc = existing.get("personality_description", "")
+                    if len(char_desc) > len(existing_desc):
+                        existing["personality_description"] = char_desc
+                        # 同时更新recommended_config中的描述
+                        if "recommended_config" in existing:
+                            existing["recommended_config"]["personality_description"] = char_desc
                 else:
                     merged_characters[char_name] = char
         

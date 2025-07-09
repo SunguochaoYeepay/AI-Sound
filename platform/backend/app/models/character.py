@@ -19,7 +19,8 @@ class Character(BaseModel):
     voice_type = Column(String(50), default="custom", comment="声音类型: male, female, child, elder, custom")
     color = Column(String(20), default="#8b5cf6", comment="显示颜色")
     
-    # 音频文件路径
+    # 文件路径
+    avatar_path = Column(String(500), comment="头像图片路径")
     reference_audio_path = Column(String(500), comment="参考音频路径")
     latent_file_path = Column(String(500), comment="latent文件路径")
     
@@ -93,7 +94,13 @@ class Character(BaseModel):
         result['tags'] = self.get_tags()
         result['is_voice_configured'] = self.is_voice_configured
         
-        # 生成音频文件URL
+        # 生成文件URL
+        if self.avatar_path:
+            filename = os.path.basename(self.avatar_path)
+            result['avatarUrl'] = f"/api/v1/avatars/{filename}"
+        else:
+            result['avatarUrl'] = None
+            
         if self.reference_audio_path:
             filename = os.path.basename(self.reference_audio_path)
             result['referenceAudioUrl'] = f"/voice_profiles/{filename}"

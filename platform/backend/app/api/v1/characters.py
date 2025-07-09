@@ -38,6 +38,7 @@ if os.path.exists("/.dockerenv") or os.environ.get("DOCKER_ENV") == "true":
 else:
     # 本地开发环境 - 使用相对于backend目录的路径
     VOICE_PROFILES_DIR = "data/voice_profiles"
+    AVATARS_DIR = "data/avatars"
     AUDIO_DIR = os.getenv("AUDIO_DIR", "data/audio")
 
 # 确保路径使用正斜杠（用于URL）
@@ -484,6 +485,7 @@ async def create_character_with_voice(
     description: str = Form(""),
     voice_type: str = Form(...),
     book_id: int = Form(None),
+    avatar: UploadFile = File(None),
     reference_audio: UploadFile = File(None),
     latent_file: UploadFile = File(None),
     tags: str = Form(""),
@@ -515,6 +517,27 @@ async def create_character_with_voice(
             book = db.query(Book).filter(Book.id == book_id).first()
             if not book:
                 raise HTTPException(status_code=400, detail="所选书籍不存在")
+        
+        # 处理头像文件
+        avatar_path = None
+        if avatar and avatar.filename:
+            if not avatar.content_type or not avatar.content_type.startswith('image/'):
+                raise HTTPException(status_code=400, detail="头像必须是图片文件格式")
+            
+            avatar_content = await avatar.read()
+            if len(avatar_content) > 10 * 1024 * 1024:  # 10MB限制
+                raise HTTPException(status_code=400, detail="头像文件大小不能超过10MB")
+            
+            file_ext = os.path.splitext(avatar.filename)[1].lower()
+            if file_ext not in ['.jpg', '.jpeg', '.png', '.gif', '.webp']:
+                raise HTTPException(status_code=400, detail="不支持的图片格式，支持jpg、png、gif、webp")
+            
+            avatar_filename = f"{name}_{uuid.uuid4().hex}{file_ext}"
+            avatar_path = os.path.join(AVATARS_DIR, avatar_filename)
+            
+            os.makedirs(AVATARS_DIR, exist_ok=True)
+            with open(avatar_path, 'wb') as f:
+                f.write(avatar_content)
         
         # 处理参考音频文件
         ref_audio_path = None
@@ -572,6 +595,7 @@ async def create_character_with_voice(
             book_id=book_id,
             voice_type=voice_type,
             color=color,
+            avatar_path=normalize_path(avatar_path),
             reference_audio_path=normalize_path(ref_audio_path),
             latent_file_path=normalize_path(latent_path),
             voice_parameters=json.dumps(params),
@@ -613,6 +637,7 @@ async def update_character_with_voice(
     description: str = Form(""),
     voice_type: str = Form(...),
     book_id: int = Form(None),
+    avatar: UploadFile = File(None),
     reference_audio: UploadFile = File(None),
     latent_file: UploadFile = File(None),
     tags: str = Form(""),
@@ -651,6 +676,36 @@ async def update_character_with_voice(
             book = db.query(Book).filter(Book.id == book_id).first()
             if not book:
                 raise HTTPException(status_code=400, detail="所选书籍不存在")
+        
+        # 处理新的头像文件
+        if avatar and avatar.filename:
+            # 删除旧头像文件
+            if character.avatar_path and os.path.exists(character.avatar_path):
+                try:
+                    os.remove(character.avatar_path)
+                except:
+                    pass
+            
+            # 保存新头像文件
+            if not avatar.content_type or not avatar.content_type.startswith('image/'):
+                raise HTTPException(status_code=400, detail="头像必须是图片文件格式")
+            
+            avatar_content = await avatar.read()
+            if len(avatar_content) > 10 * 1024 * 1024:  # 10MB限制
+                raise HTTPException(status_code=400, detail="头像文件大小不能超过10MB")
+            
+            file_ext = os.path.splitext(avatar.filename)[1].lower()
+            if file_ext not in ['.jpg', '.jpeg', '.png', '.gif', '.webp']:
+                raise HTTPException(status_code=400, detail="不支持的图片格式，支持jpg、png、gif、webp")
+            
+            avatar_filename = f"{name}_{uuid.uuid4().hex}{file_ext}"
+            avatar_path = os.path.join(AVATARS_DIR, avatar_filename)
+            
+            os.makedirs(AVATARS_DIR, exist_ok=True)
+            with open(avatar_path, 'wb') as f:
+                f.write(avatar_content)
+            
+            character.avatar_path = normalize_path(avatar_path)
         
         # 处理新的音频文件
         if reference_audio and reference_audio.filename:

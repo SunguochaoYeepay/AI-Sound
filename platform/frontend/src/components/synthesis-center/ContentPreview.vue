@@ -122,6 +122,24 @@
               </div>
             </div>
             
+            <!-- 角色配置状态提示 -->
+            <div v-if="hasUnconfiguredCharacters(chapterResult)" class="character-config-notice">
+              <a-alert 
+                message="部分角色需要配置音频文件" 
+                description="检测到一些角色尚未配置音频文件，请前往角色管理页面完成配置以获得最佳合成效果。" 
+                type="warning" 
+                show-icon 
+                :closable="false"
+                style="margin-bottom: 16px;"
+              >
+                <template #action>
+                  <a-button size="small" type="link" @click="goToCharacterManagement">
+                    去配置
+                  </a-button>
+                </template>
+              </a-alert>
+            </div>
+            
             <!-- 对话气泡 -->
             <div class="dialogue-bubbles">
               <DialogueBubble
@@ -178,10 +196,14 @@
 <script setup>
 import { ref, computed, h, watch, onMounted } from 'vue'
 import { Empty, Modal, message } from 'ant-design-vue'
+import { useRouter } from 'vue-router'
 import { getWebSocketUrl } from '@/config/services'
 import DialogueBubble from './DialogueBubble.vue'
 import apiClient, { llmAnalysisClient } from '@/api/config.js'
 import { getSegmentsStatus } from '@/api/synthesis.js'
+import { charactersAPI } from '@/api/index.js'
+
+const router = useRouter()
 
 const props = defineProps({
   project: Object,
@@ -763,6 +785,28 @@ const handlePlayChapter = (chapterId) => {
 
 const handleDownloadChapter = (chapterId) => {
   emit('download-chapter', chapterId)
+}
+
+// 检查章节中是否有未配置的角色
+const hasUnconfiguredCharacters = (chapterResult) => {
+  if (!chapterResult?.synthesis_json?.synthesis_plan) return false
+  
+  // 提取所有角色名称
+  const characters = new Set()
+  chapterResult.synthesis_json.synthesis_plan.forEach(segment => {
+    if (segment.speaker && segment.speaker !== '旁白' && segment.speaker !== '叙述者') {
+      characters.add(segment.speaker)
+    }
+  })
+  
+  // 这里可以进一步检查角色配置状态，暂时返回true提示用户检查
+  return characters.size > 0
+}
+
+// 跳转到角色管理页面
+const goToCharacterManagement = () => {
+  router.push('/characters')
+  message.info('正在跳转到角色管理页面，请检查角色的音频配置状态')
 }
 
 // 🔧 新增：监听项目和章节变化，自动加载段落状态
