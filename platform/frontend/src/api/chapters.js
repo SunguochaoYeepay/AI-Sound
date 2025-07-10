@@ -1,9 +1,9 @@
-import request from '@/utils/request'
+import apiClient from './config'
 
 export default {
   // 获取章节列表
   getChapters(params) {
-    return request({
+    return apiClient({
       url: '/api/v1/chapters',
       method: 'get',
       params
@@ -16,7 +16,7 @@ export default {
     for (const key in data) {
       formData.append(key, data[key])
     }
-    return request({
+    return apiClient({
       url: '/api/v1/chapters',
       method: 'post',
       data: formData
@@ -34,7 +34,7 @@ export default {
       formData.append('batch_size', data.batch_size)
     }
     
-    return request({
+    return apiClient({
       url: '/api/v1/chapters/batch',
       method: 'post',
       data: {
@@ -53,7 +53,7 @@ export default {
     for (const key in data) {
       formData.append(key, data[key])
     }
-    return request({
+    return apiClient({
       url: `/api/v1/chapters/${chapterId}`,
       method: 'patch',
       data: formData
@@ -62,10 +62,38 @@ export default {
 
   // 删除章节
   deleteChapter(chapterId, force = false) {
-    return request({
+    return apiClient({
       url: `/api/v1/chapters/${chapterId}`,
       method: 'delete',
       params: { force }
+    })
+  },
+
+  // 获取章节分析结果
+  getChapterAnalysisResult(chapterId) {
+    return apiClient({
+      url: `/content-preparation/result/${chapterId}`,
+      method: 'get'
+    }).then(response => {
+      if (response.data) {
+        return {
+          success: true,
+          data: response.data,
+          message: response.data.message || '获取分析结果成功'
+        }
+      }
+      return {
+        success: false,
+        data: null,
+        message: '获取分析结果失败'
+      }
+    }).catch(error => {
+      console.error('获取分析结果失败:', error)
+      return {
+        success: false,
+        data: null,
+        message: error.response?.data?.message || '获取分析结果失败'
+      }
     })
   }
 } 

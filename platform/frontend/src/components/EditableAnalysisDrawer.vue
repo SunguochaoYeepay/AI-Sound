@@ -304,13 +304,7 @@
         <!-- JSON数据 Tab -->
         <a-tab-pane tab="🔧 JSON数据" key="json">
           <div class="json-editor">
-            <a-alert
-              message="JSON数据预览"
-              description="这里显示当前编辑的结果的JSON格式，保存后将更新到数据库"
-              type="info"
-              show-icon
-              style="margin-bottom: 16px;"
-            />
+           
             <a-textarea
               :value="getJsonPreview()"
               :rows="25"
