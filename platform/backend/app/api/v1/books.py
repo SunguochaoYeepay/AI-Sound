@@ -959,15 +959,35 @@ async def _sync_character_voice_to_synthesis_plans(
                     continue
                 plan_updated = False
                 
-                # 🔥 获取voice_id到voice_name的映射
+                # 🔥 修复：优先从角色配音库获取voice_name，然后才从VoiceProfile获取
                 voice_id_to_name = {}
+                
+                # 🔥 修复：从角色配音库获取映射（不限制状态）
+                try:
+                    from ...models import Character
+                    characters = db.query(Character).filter(
+                        Character.book_id == book_id
+                    ).all()
+                    for char in characters:
+                        voice_id_to_name[str(char.id)] = char.name
+                    logger.info(f"📚 [角色配音库] 加载了 {len(voice_id_to_name)} 个角色配音库映射")
+                    logger.info(f"📚 [角色配音库] 角色状态分布: {[(char.name, char.status) for char in characters]}")
+                except Exception as e:
+                    logger.warning(f"获取角色配音库失败: {str(e)}")
+                
+                # 2. 然后从VoiceProfile获取剩余映射（作为后备）
                 try:
                     from ...models import VoiceProfile
                     voices = db.query(VoiceProfile).filter(VoiceProfile.status == 'active').all()
-                    voice_id_to_name = {str(v.id): v.name for v in voices}
-                    logger.info(f"📋 [语音映射] 加载了 {len(voice_id_to_name)} 个语音档案")
+                    for v in voices:
+                        # 只有角色配音库中没有的才使用VoiceProfile
+                        if str(v.id) not in voice_id_to_name:
+                            voice_id_to_name[str(v.id)] = v.name
+                    logger.info(f"📋 [语音档案] 补充了 {len([v for v in voices if str(v.id) not in voice_id_to_name])} 个语音档案映射")
                 except Exception as e:
                     logger.warning(f"获取语音档案失败: {str(e)}")
+                
+                logger.info(f"🎯 [总映射] 共加载了 {len(voice_id_to_name)} 个voice_id到voice_name的映射")
                 
                 # 遍历每个段落，更新匹配角色的voice_id和voice_name
                 for segment in segments:

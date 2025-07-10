@@ -8,6 +8,7 @@ import re
 import json
 import logging
 import hashlib
+import os
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from sqlalchemy.orm import Session
@@ -119,6 +120,8 @@ class ContentPreparationService:
                 logger.warning("❌ 旁白角色未分配voice_id，需要用户手动分配")
             
             # 8. 转换为合成格式（应用TTS优化配置）
+            # 设置当前章节ID，用于关联角色配音库
+            self.current_chapter_id = chapter_id
             synthesis_json = await self._adapt_to_synthesis_format(
                 analysis_result, 
                 voice_mapping,
@@ -661,6 +664,38 @@ class ContentPreparationService:
         
         logger.info(f"🔄 开始转换为合成格式，共 {len(segments)} 个segment")
         
+        # 🔥 关键修复：关联角色配音库
+        # 获取当前章节所属的书籍，并查找角色配音库中的角色
+        chapter_id = getattr(self, 'current_chapter_id', None)
+        book_id = None
+        character_library = {}
+        
+        logger.info(f"🔥🔥🔥 [DEBUG] 开始角色配音库关联检查，章节ID: {chapter_id}")
+        
+        if chapter_id:
+            try:
+                from ..models import BookChapter, Character
+                chapter = self.db.query(BookChapter).filter(BookChapter.id == chapter_id).first()
+                if chapter:
+                    book_id = chapter.book_id
+                    logger.info(f"🔥🔥🔥 [DEBUG] 找到章节{chapter_id}，书籍ID: {book_id}")
+                    
+                    # 获取该书籍的所有角色配音库角色
+                    library_characters = self.db.query(Character).filter(Character.book_id == book_id).all()
+                    character_library = {char.name: char for char in library_characters}
+                    
+                    logger.info(f"🔥🔥🔥 [DEBUG] 📚 [角色配音库关联] 书籍{book_id}共有{len(character_library)}个角色配音库角色: {list(character_library.keys())}")
+                    for name, char in character_library.items():
+                        logger.info(f"🔥🔥🔥 [DEBUG] 角色配音库角色: {name} -> ID={char.id}, 配置状态={char.is_voice_configured}")
+                else:
+                    logger.warning(f"🔥🔥🔥 [DEBUG] 章节{chapter_id}不存在")
+            except Exception as e:
+                logger.error(f"🔥🔥🔥 [DEBUG] 获取角色配音库失败: {str(e)}")
+                import traceback
+                logger.error(f"🔥🔥🔥 [DEBUG] 异常堆栈: {traceback.format_exc()}")
+        else:
+            logger.warning(f"🔥🔥🔥 [DEBUG] current_chapter_id 为空，无法关联角色配音库")
+        
         # 🤖 新增：AI二次分析处理未知角色
         segments = await self._ai_reanalyze_unknown_segments(segments, detected_characters)
         
@@ -678,24 +713,33 @@ class ContentPreparationService:
                 speaker = '旁白'
                 logger.info(f"🔧 空speaker自动设为旁白: {text_content[:30]}...")
             
-            # 获取voice配置
-            voice_id = voice_mapping.get(speaker, None)
+            # 🔥 优化：直接从角色配音库获取ID，简化逻辑
+            voice_id = None
             voice_name = "未分配"
             
-            if voice_id:
-                # 从数据库获取voice_name
-                try:
-                    from ..models import VoiceProfile
-                    voice_profile = self.db.query(VoiceProfile).filter(VoiceProfile.id == voice_id).first()
-                    if voice_profile:
-                        voice_name = voice_profile.name
-                    else:
-                        voice_name = f"Voice_{voice_id}"
-                except Exception as e:
-                    logger.warning(f"获取voice_name失败: {str(e)}")
-                    voice_name = f"Voice_{voice_id}"
+            # 1. 优先从角色配音库获取ID（无论是否配置语音）
+            if speaker in character_library:
+                library_char = character_library[speaker]
+                voice_id = library_char.id  # 直接使用Character的ID
+                voice_name = library_char.name
+                logger.info(f"✅ [角色配音库] 角色'{speaker}'直接使用配音库ID: {voice_id}")
             else:
-                logger.warning(f"⚠️ 角色'{speaker}'没有voice_id映射，需要用户手动分配")
+                # 2. 如果角色配音库没有，再检查传统映射（应该很少见）
+                if voice_mapping.get(speaker):
+                    voice_id = voice_mapping.get(speaker)
+                    try:
+                        from ..models import VoiceProfile
+                        voice_profile = self.db.query(VoiceProfile).filter(VoiceProfile.id == voice_id).first()
+                        if voice_profile:
+                            voice_name = voice_profile.name
+                        else:
+                            voice_name = f"Voice_{voice_id}"
+                        logger.info(f"📢 [传统映射] 角色'{speaker}'使用传统映射: voice_id={voice_id}")
+                    except Exception as e:
+                        logger.warning(f"获取传统voice_name失败: {str(e)}")
+                        voice_name = f"Voice_{voice_id}"
+                else:
+                    logger.warning(f"⚠️ 角色'{speaker}'既不在角色配音库中，也没有传统映射，需要用户手动分配")
             
             # 🔥 TTS优化：根据模式调整参数
             tts_params = self._get_optimized_tts_params(speaker, tts_optimization_mode, segment)
@@ -712,37 +756,82 @@ class ContentPreparationService:
                 **tts_params
             })
         
-        # 构建角色信息
+        # 🔥 关键修复：构建角色信息时优先使用角色配音库数据
         characters = []
+        character_library_mappings = {}  # 用于收集角色配音库的映射
+        
         for character in detected_characters:
             char_name = character.get('name', '')
             if not char_name:
                 continue
-                
-            voice_id = voice_mapping.get(char_name)
-            voice_name = "未分配"
             
-            if voice_id:
-                try:
-                    from ..models import VoiceProfile
-                    voice_profile = self.db.query(VoiceProfile).filter(VoiceProfile.id == voice_id).first()
-                    if voice_profile:
-                        voice_name = voice_profile.name
-                    else:
+            voice_id = None
+            voice_name = "未分配"
+            voice_type = "neutral"
+            
+            # 🔥 优化：直接从角色配音库获取完整信息并写入JSON
+            if char_name in character_library:
+                library_char = character_library[char_name]
+                # 🔥 关键优化：无论是否配置语音，都使用角色配音库的ID
+                voice_id = library_char.id
+                voice_name = library_char.name
+                voice_type = library_char.voice_type or "neutral"
+                character_library_mappings[char_name] = str(library_char.id)
+                logger.info(f"✅ [角色配音库] 角色'{char_name}'直接使用配音库ID: {library_char.id}")
+            else:
+                # 如果角色配音库没有，使用传统映射（但这种情况应该很少）
+                if voice_mapping.get(char_name):
+                    voice_id = voice_mapping.get(char_name)
+                    try:
+                        from ..models import VoiceProfile
+                        voice_profile = self.db.query(VoiceProfile).filter(VoiceProfile.id == voice_id).first()
+                        if voice_profile:
+                            voice_name = voice_profile.name
+                        else:
+                            voice_name = f"Voice_{voice_id}"
+                    except Exception as e:
                         voice_name = f"Voice_{voice_id}"
-                except Exception as e:
-                    voice_name = f"Voice_{voice_id}"
+                logger.warning(f"⚠️ [传统映射] 角色'{char_name}'不在角色配音库中，使用传统映射: voice_id={voice_id}")
             
             # 计算角色在合成计划中的出现次数
             char_count = len([s for s in synthesis_plan if s.get('speaker') == char_name])
+            
+            # 🔥 新增：从角色配音库获取完整信息（包括头像）
+            avatar_url = None
+            if char_name in character_library:
+                library_char = character_library[char_name]
+                if library_char.avatar_path:
+                    filename = os.path.basename(library_char.avatar_path)
+                    avatar_url = f"/api/v1/avatars/{filename}"
             
             characters.append({
                 "name": char_name,
                 "voice_id": voice_id if voice_id else "",
                 "voice_name": voice_name,
-                "voice_type": character.get('recommended_config', {}).get('voice_type', 'neutral'),
-                "count": char_count
+                "voice_type": voice_type,
+                "count": char_count,
+                "in_character_library": char_name in character_library,  # 标记是否在角色配音库中
+                "is_voice_configured": char_name in character_library and character_library[char_name].is_voice_configured,  # 从角色配音库判断
+                "avatarUrl": avatar_url  # 🔥 新增：头像URL
             })
+        
+        # 🔥 关键修复：如果使用了角色配音库，同步更新书籍的voice_mappings
+        if character_library_mappings and chapter_id:
+            try:
+                from ..models import BookChapter, Book
+                chapter = self.db.query(BookChapter).filter(BookChapter.id == chapter_id).first()
+                if chapter:
+                    book = self.db.query(Book).filter(Book.id == chapter.book_id).first()
+                    if book:
+                        logger.info(f"🔄 [角色配音库同步] 更新书籍{book.id}的voice_mappings: {character_library_mappings}")
+                        # 更新书籍的voice_mappings
+                        for char_name, voice_id in character_library_mappings.items():
+                            book.set_character_voice_mapping(char_name, voice_id)
+                        self.db.commit()
+                        logger.info(f"✅ [角色配音库同步] 成功更新书籍voice_mappings")
+            except Exception as e:
+                logger.error(f"❌ [角色配音库同步] 更新书籍voice_mappings失败: {str(e)}")
+                # 不影响主流程，继续执行
         
         # 完全匹配现有系统格式
         return {
@@ -751,7 +840,8 @@ class ContentPreparationService:
                 "analysis_time": datetime.now().isoformat(),
                 "total_segments": len(synthesis_plan),
                 "ai_model": "optimized-smart-analysis",
-                "detected_characters": len(characters)
+                "detected_characters": len(characters),
+                "character_library_linked": len(character_library) > 0  # 标记是否关联了角色配音库
             },
             "synthesis_plan": synthesis_plan,
             "characters": characters

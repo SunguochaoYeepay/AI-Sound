@@ -284,9 +284,35 @@ const refreshAnalysis = (chapter) => {
   // Removed as per edit hint
 }
 
-const saveAnalysis = (data) => {
-  console.log('保存分析数据:', selectedChapter.value, data)
-  // 这里可以实现分析数据保存功能
+const saveAnalysis = async (data) => {
+  if (!selectedChapter.value?.id) {
+    message.error('请先选择章节')
+    return
+  }
+  
+  try {
+    console.log('保存分析数据:', selectedChapter.value, data)
+    
+    // 调用API保存分析数据
+    const response = await booksAPI.updatePreparationResult(selectedChapter.value.id, data)
+    
+    if (response.data && response.data.success) {
+      message.success('分析数据保存成功')
+      
+      // 如果同步了其他章节，显示提示
+      if (response.data.data?.synced_chapters > 0) {
+        message.info(`已同步角色配置到 ${response.data.data.synced_chapters} 个章节`)
+      }
+      
+      // 重新加载章节准备状态
+      await loadAllChapterPreparationStatus()
+    } else {
+      message.error(response.data?.message || '保存失败')
+    }
+  } catch (error) {
+    console.error('保存分析数据失败:', error)
+    message.error('保存分析数据失败')
+  }
 }
 </script>
 

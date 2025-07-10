@@ -23,11 +23,11 @@
             <a-button type="primary" @click="$emit('editBook')">
               ✏️ 编辑
             </a-button>
-            <a-button @click="$emit('createProject')" :disabled="!book.content">
+            <!-- <a-button @click="$emit('createProject')" :disabled="!book.content">
               🎯 创建项目
-            </a-button>
+            </a-button> -->
             <a-button @click="$emit('openCharacterManagement')">
-              🎭 角色管理
+              🎭 全书角色管理
             </a-button>
           </a-space>
         </div>

@@ -10,7 +10,7 @@ from typing import Optional, Dict, Any
 import logging
 
 from app.database import get_db
-from app.models import BookChapter
+from app.models import BookChapter, Book
 from app.services.content_preparation_service import ContentPreparationService
 
 router = APIRouter(prefix="/content-preparation")
@@ -245,10 +245,29 @@ async def get_preparation_result(
                         
                         # 强制同步角色配置到synthesis_plan
                         if 'synthesis_plan' in synthesis_plan and voice_mappings:
-                            # 获取voice_id到voice_name的映射
-                            from app.models import VoiceProfile
-                            voices = db.query(VoiceProfile).filter(VoiceProfile.status == 'active').all()
-                            voice_id_to_name = {str(v.id): v.name for v in voices}
+                            # 🔥 修复：优先从角色配音库获取voice_name，然后才从VoiceProfile获取
+                            voice_id_to_name = {}
+                            
+                            # 1. 先从角色配音库获取映射
+                            try:
+                                from app.models import Character
+                                characters = db.query(Character).filter(Character.book_id == book.id).all()
+                                for char in characters:
+                                    voice_id_to_name[str(char.id)] = char.name
+                                logger.info(f"📚 [缓存同步] 从角色配音库获取映射: {voice_id_to_name}")
+                            except Exception as e:
+                                logger.warning(f"获取角色配音库映射失败: {str(e)}")
+                            
+                            # 2. 再从VoiceProfile获取剩余的映射
+                            try:
+                                from app.models import VoiceProfile
+                                voices = db.query(VoiceProfile).filter(VoiceProfile.status == 'active').all()
+                                for v in voices:
+                                    if str(v.id) not in voice_id_to_name:  # 只添加角色配音库中没有的
+                                        voice_id_to_name[str(v.id)] = v.name
+                                logger.info(f"🎙️ [缓存同步] 添加VoiceProfile映射，总映射数: {len(voice_id_to_name)}")
+                            except Exception as e:
+                                logger.warning(f"获取VoiceProfile映射失败: {str(e)}")
                             
                             # 更新每个segment的voice配置（使用智能匹配）
                             segments = synthesis_plan['synthesis_plan']
@@ -295,7 +314,7 @@ async def get_preparation_result(
                                 char_name = character.get('name', '')
                                 if char_name in voice_mappings:
                                     new_voice_id = voice_mappings[char_name]
-                                    new_voice_name = voice_id_to_name.get(str(new_voice_id), f"Voice_{new_voice_id}")
+                                    new_voice_name = voice_id_to_name.get(str(new_voice_id), char_name)  # 🔥 修复：如果找不到映射，使用角色名本身
                                     character['voice_id'] = new_voice_id
                                     character['voice_name'] = new_voice_name
                                     logger.info(f"✅ [角色同步] {char_name}: voice_id={new_voice_id}, voice_name={new_voice_name}")
@@ -441,6 +460,25 @@ async def update_preparation_result(
                 updated_characters = characters
             
             db.commit()
+            
+            # 🔥 关键修复：更新书籍角色汇总
+            # 当用户手动编辑章节分析数据时，需要同步更新书籍的角色汇总
+            try:
+                if updated_characters:
+                    logger.info(f"🔄 [更新书籍角色汇总] 章节 {chapter_id} 的角色数据已更新，同步到书籍汇总")
+                    
+                    # 更新书籍角色汇总
+                    book = db.query(Book).filter(Book.id == book_id).first()
+                    if book:
+                        book.update_character_summary(updated_characters, chapter_id)
+                        db.commit()
+                        logger.info(f"✅ [更新书籍角色汇总] 成功更新书籍 {book_id} 的角色汇总")
+                    else:
+                        logger.warning(f"⚠️ [更新书籍角色汇总] 未找到书籍 {book_id}")
+                        
+            except Exception as summary_error:
+                logger.warning(f"⚠️ [更新书籍角色汇总] 更新失败: {str(summary_error)}")
+                # 汇总更新失败不影响主要的保存功能
             
             # 🔥 新增：自动触发角色语音配置同步
             # 提取角色语音映射并同步到所有相关章节的synthesis_plan

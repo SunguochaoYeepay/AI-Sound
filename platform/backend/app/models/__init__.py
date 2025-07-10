@@ -11,6 +11,7 @@ from .analysis_result import AnalysisResult
 from .analysis_session import AnalysisSession
 from .novel_project import NovelProject
 from .voice import VoiceProfile
+from .character import Character
 
 from .system import SystemLog, UsageStats, UserPreset
 from .environment_sound import (
@@ -49,6 +50,7 @@ __all__ = [
     'AudioFile',
     'NovelProject',
     'VoiceProfile',
+    'Character',
     'AnalysisSession',
     'AnalysisResult',
     'SystemLog',

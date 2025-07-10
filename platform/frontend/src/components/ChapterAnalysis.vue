@@ -9,45 +9,32 @@
 
     <!-- 有分析数据 -->
     <div v-else-if="analysisData" class="analysis-content">
-      <!-- 工具栏 -->
-      <div class="analysis-toolbar">
-        <div class="toolbar-right">
-          <a-space>
-            <a-button 
-              type="primary"
-              @click="$emit('refresh')" 
-              size="small" 
-              :loading="preparingChapter"
-              :disabled="isPreparationDisabled"
-            >
-              🤖 智能准备
-            </a-button>
-            <a-button 
-              type="primary" 
-              @click="saveChanges" 
-              size="small" 
-              :loading="saving" 
-              :disabled="!hasChanges"
-            >
-              💾 保存修改
-            </a-button>
-          </a-space>
-        </div>
-        <!-- <div class="toolbar-right">
-          <a-space>
-            <a-tag color="green">
-              {{ processingInfo.total_segments || editableSegments.length }} 个片段
-            </a-tag>
-            <a-tag color="blue">
-              {{ processingInfo.characters_found || editableCharacters.length }} 个角色
-            </a-tag>
-          </a-space>
-        </div> -->
-      </div>
-
       <!-- 分析结果tabs -->
       <div class="analysis-tabs">
         <a-tabs v-model:activeKey="activeSubTab" type="card">
+          <template #rightExtra>
+            <a-space>
+              <a-button 
+                type="primary"
+                @click="$emit('refresh')" 
+                size="small" 
+                :loading="preparingChapter"
+                :disabled="isPreparationDisabled"
+              >
+                🤖 智能准备
+              </a-button>
+              <a-button 
+                type="primary" 
+                @click="saveChanges" 
+                size="small" 
+                :loading="saving" 
+                :disabled="!hasChanges"
+              >
+                💾 保存修改
+              </a-button>
+            </a-space>
+          </template>
+
           <!-- 合成片段tab -->
           <a-tab-pane key="segments" tab="📝 合成片段">
             <div class="segments-view">
@@ -68,6 +55,10 @@
                   v-for="(segment, index) in editableSegments" 
                   :key="index"
                   class="segment-item"
+                  :class="{ 
+                    'segment-highlighted': highlightedCharacter && segment.speaker === highlightedCharacter,
+                    'segment-dimmed': highlightedCharacter && segment.speaker !== highlightedCharacter
+                  }"
                 >
                   <div class="segment-header">
                     <span class="segment-index">#{{ index + 1 }}</span>
@@ -93,6 +84,12 @@
                     >
                       {{ segment.speaker }}
                     </a-tag>
+                    <span 
+                      v-if="highlightedCharacter && segment.speaker === highlightedCharacter"
+                      class="highlight-indicator"
+                    >
+                      🔍
+                    </span>
                   </div>
                   <div class="segment-content">
                     <a-textarea
@@ -100,7 +97,6 @@
                       placeholder="文本内容"
                       :rows="2"
                       @change="markChanged"
-                      :readonly="true"
                     />
                   </div>
                 </div>
@@ -112,8 +108,14 @@
           <a-tab-pane key="json" tab="🔧 JSON数据">
             <div class="json-view">
               <div class="json-header">
-                
                 <a-space>
+                  <a-button 
+                    size="small" 
+                    @click="toggleJsonEditMode"
+                    :type="jsonEditMode ? 'primary' : 'default'"
+                  >
+                    {{ jsonEditMode ? '📖 预览模式' : '✏️ 编辑模式' }}
+                  </a-button>
                   <a-button size="small" @click="copyJson">
                     📋 复制JSON
                   </a-button>
@@ -123,11 +125,31 @@
                   <a-button size="small" @click="downloadJson">
                     💾 下载JSON
                   </a-button>
+                  <a-button 
+                    v-if="jsonEditMode"
+                    size="small" 
+                    @click="saveJsonChanges"
+                    type="primary"
+                    :disabled="!hasJsonChanges"
+                  >
+                    💾 保存JSON
+                  </a-button>
                 </a-space>
               </div>
               
               <div class="json-editor">
+                <!-- 编辑模式 -->
                 <a-textarea
+                  v-if="jsonEditMode"
+                  v-model:value="editableJsonText"
+                  :rows="25"
+                  class="json-display editable"
+                  placeholder="编辑JSON数据..."
+                  @change="markJsonChanged"
+                />
+                <!-- 预览模式 -->
+                <a-textarea
+                  v-else
                   :value="getJsonPreview()"
                   :rows="25"
                   readonly
@@ -151,28 +173,92 @@
                 <div 
                   v-for="(character, index) in editableCharacters" 
                   :key="index"
-                  class="character-item"
+                  class="character-card"
                 >
-                  <div class="character-info">
-                    <div class="character-avatar" :style="{ background: getCharacterColor(character.name) }">
-                      <span>{{ getCharacterIcon(character.name) }}</span>
+                  <!-- 角色头像和基本信息 -->
+                  <div class="character-header">
+                    <div class="character-avatar">
+                      <a-avatar 
+                        :size="48" 
+                        :src="getCharacterAvatar(character)"
+                        :style="{ backgroundColor: getCharacterColor(character.name) }"
+                      >
+                        {{ getCharacterInitial(character.name) }}
+                      </a-avatar>
                     </div>
-                    <div class="character-details">
+                    
+                    <div class="character-info">
                       <div class="character-name">
-                        {{ character.name }}
+                        <span class="name-text">{{ character.name }}</span>
+                        <span class="character-rank">
+                          {{ getCharacterRank(character, index) }}
+                        </span>
+                      </div>
+                      <div class="character-tags">
                         <a-tag :color="getCharacterTypeColor(character.voice_type)" size="small">
                           {{ getCharacterTypeText(character.voice_type) }}
                         </a-tag>
-                      </div>
-                      <div class="character-count">
-                        <a-tag color="blue">
-                          第{{ index + 1 }}位 · {{ character.count || 0 }}次
+                        <a-tag color="blue" size="small">
+                          第{{ index + 1 }}位
                         </a-tag>
-                        <span class="character-percentage">
-                          ({{ getCharacterPercentage(character) }}%)
-                        </span>
+                        <a-tag :color="getCharacterStatusColor(character)" size="small">
+                          {{ getCharacterStatusText(character) }}
+                        </a-tag>
+                        <a-tag v-if="character.in_character_library" color="green" size="small">
+                          📚 配音库
+                        </a-tag>
+                        <a-tag v-else color="orange" size="small">
+                          ❓ 待添加
+                        </a-tag>
                       </div>
                     </div>
+                  </div>
+                  
+                  <!-- 角色统计信息 -->
+                  <div class="character-stats-detail">
+                    <a-row :gutter="8">
+                      <a-col :span="12">
+                        <a-statistic 
+                          title="出现次数" 
+                          :value="character.count || 0" 
+                          :value-style="{ fontSize: '16px', color: '#1890ff' }"
+                        />
+                      </a-col>
+                      <a-col :span="12">
+                        <a-statistic 
+                          title="占比" 
+                          :value="getCharacterPercentage(character)" 
+                          suffix="%" 
+                          :value-style="{ fontSize: '16px', color: '#52c41a' }"
+                        />
+                      </a-col>
+                    </a-row>
+                  </div>
+                  
+                  <!-- 角色操作按钮 -->
+                  <div class="character-actions">
+                    <a-space>
+                      <a-button 
+                        size="small"
+                        @click="highlightCharacterSegments(character.name)"
+                        :type="highlightedCharacter === character.name ? 'primary' : 'default'"
+                      >
+                        {{ highlightedCharacter === character.name ? '🔍 取消高亮' : '🔍 高亮片段' }}
+                      </a-button>
+                      <a-button 
+                        size="small"
+                        @click="exportCharacterSegments(character.name)"
+                      >
+                        📋 导出片段
+                      </a-button>
+                      <a-button 
+                        size="small"
+                        @click="testCharacterVoice(character.name)"
+                        :loading="testingVoice === character.name"
+                      >
+                        🔊 试听
+                      </a-button>
+                    </a-space>
                   </div>
                 </div>
               </div>
@@ -198,6 +284,8 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
 import { message } from 'ant-design-vue'
+import { useAudioPlayerStore } from '@/stores/audioPlayer'
+import { charactersAPI } from '@/api'
 
 const props = defineProps({
   chapter: {
@@ -224,9 +312,15 @@ const props = defineProps({
 
 const emit = defineEmits(['refresh', 'save'])
 
+const audioStore = useAudioPlayerStore()
+
 const activeSubTab = ref('segments')
 const saving = ref(false)
 const hasChanges = ref(false)
+const highlightedCharacter = ref(null)
+const testingVoice = ref(null)
+const jsonEditMode = ref(false)
+const editableJsonText = ref('')
 
 // 可编辑的数据
 const editableCharacters = ref([])
@@ -245,87 +339,42 @@ const isPreparationDisabled = computed(() => {
      props.preparationStatus?.synthesis_status === 'processing')
 })
 
-// 初始化可编辑数据
-const initEditableData = () => {
+// 🔥 简化：初始化可编辑数据，直接使用JSON中的角色信息
+const initEditableData = async () => {
+  if (!props.analysisData?.synthesis_json) {
+    console.warn('[角色分析] 没有有效的分析结果数据')
+    return
+  }
+
+  const synthesisJson = props.analysisData.synthesis_json
+
   try {
-    const synthesisJson = props.analysisData?.synthesis_json
-    if (!synthesisJson) {
-      console.log('没有synthesis_json数据')
-      editableCharacters.value = []
-      editableSegments.value = []
-      return
-    }
+    // 🔥 优化：直接使用JSON中的角色信息，不需要额外加载
+    console.log('[角色分析] 直接使用JSON中的角色信息')
+    editableCharacters.value = [...(synthesisJson.characters || [])]
     
-    console.log('synthesis_json结构:', synthesisJson)
-    console.log('characters数据:', synthesisJson.characters)
-    console.log('synthesis_plan数据:', synthesisJson.synthesis_plan)
+    // 对角色按出现次数排序
+    editableCharacters.value.sort((a, b) => (b.count || 0) - (a.count || 0))
     
-    // 初始化角色数据
-    if (synthesisJson.characters && Array.isArray(synthesisJson.characters)) {
-      editableCharacters.value = synthesisJson.characters.map(char => ({
-        name: char?.name || '未知角色',
-        voice_type: char?.voice_type || 'neutral',
-        count: 0
-      }))
-      
-      // 统计角色使用次数
-      const segments = Array.isArray(synthesisJson.synthesis_plan) ? synthesisJson.synthesis_plan : []
-      segments.forEach(segment => {
-        if (!segment?.speaker) return
-        const character = editableCharacters.value.find(c => c.name === segment.speaker)
-        if (character) {
-          character.count = (character.count || 0) + 1
-        }
-      })
-      
-      // 按使用次数排序
-      editableCharacters.value.sort((a, b) => (b.count || 0) - (a.count || 0))
-    } else {
-      // 从片段中提取角色
-      const segments = Array.isArray(synthesisJson.synthesis_plan) ? synthesisJson.synthesis_plan : []
-      console.log('从片段中提取角色，segments:', segments)
-      const speakerMap = new Map()
-      
-      segments.forEach(segment => {
-        if (!segment?.speaker) return
-        const speaker = segment.speaker
-        if (!speakerMap.has(speaker)) {
-          speakerMap.set(speaker, {
-            name: speaker,
-            voice_type: speaker === '旁白' ? 'narrator' : 'neutral',
-            count: 0
-          })
-        }
-        const character = speakerMap.get(speaker)
-        character.count = (character.count || 0) + 1
-      })
-      
-      editableCharacters.value = Array.from(speakerMap.values())
-        .sort((a, b) => (b.count || 0) - (a.count || 0))
-    }
+    console.log('[角色分析] 角色信息:', editableCharacters.value)
+
+    // 初始化可编辑的合成计划
+    editableSegments.value = [...(synthesisJson.synthesis_plan || [])]
     
-    // 初始化片段数据
-    editableSegments.value = (Array.isArray(synthesisJson.synthesis_plan) ? synthesisJson.synthesis_plan : [])
-      .filter(segment => segment && typeof segment === 'object') // 过滤掉无效片段
-      .map(segment => ({
-        segment_id: segment.segment_id || 0,
-        speaker: segment.speaker || '',
-        text: segment.text || '',
-        voice_id: segment.voice_id || '',
-        voice_name: segment.voice_name || ''
-      }))
-      
-    console.log('处理后的角色数据:', editableCharacters.value)
-    console.log('处理后的片段数据:', editableSegments.value)
+    // 保存原始数据用于比较变化
+    originalData.value = JSON.parse(JSON.stringify({
+      characters: editableCharacters.value,
+      segments: editableSegments.value
+    }))
+
+    console.log('[角色分析] 数据初始化完成')
   } catch (error) {
-    console.error('初始化可编辑数据失败:', error)
-    message.error('初始化可编辑数据失败')
-    editableCharacters.value = []
-    editableSegments.value = []
+    console.error('[角色分析] 初始化数据失败:', error)
+    message.error('初始化角色分析数据失败')
   }
 }
 
-// 监听分析数据变化
+// 🔥 简化：监听分析数据变化
 watch(() => props.analysisData, (newData) => {
   try {
     if (newData?.synthesis_json) {
@@ -497,20 +546,279 @@ const getCharacterPercentage = (character) => {
   if (total === 0) return 0
   return Math.round((character.count / total) * 100)
 }
+
+// 🔥 修复：获取角色头像，需要从角色配音库API获取avatarUrl
+const getCharacterAvatar = (character) => {
+  // 由于JSON中没有直接包含avatarUrl，需要从角色配音库获取
+  // 这里先返回null，等待后续从角色配音库API获取完整信息
+  return character?.avatarUrl || null
+}
+
+// 获取角色首字母
+const getCharacterInitial = (name) => {
+  if (!name) return '?'
+  if (name.includes('旁白')) return '📖'
+  return name.charAt(0)
+}
+
+// 获取角色排名标识
+const getCharacterRank = (character, index) => {
+  if (index === 0) return '👑主角'
+  if (index === 1) return '⭐重要配角'
+  if (index <= 3) return '✨一般配角'
+  if (character.name.includes('旁白')) return '📖旁白'
+  return '👤其他'
+}
+
+// 获取性别颜色
+const getGenderColor = (gender) => {
+  const colors = {
+    '男': 'blue',
+    '女': 'pink',
+    '男性': 'blue',
+    '女性': 'pink',
+    'male': 'blue',
+    'female': 'pink'
+  }
+  return colors[gender] || 'default'
+}
+
+// 🔥 简化：直接从角色信息获取状态颜色
+const getCharacterStatusColor = (character) => {
+  if (!character?.in_character_library) return 'orange' // 不在角色配音库中
+  if (character?.is_voice_configured) return 'green' // 已配置语音
+  return 'blue' // 在配音库但未配置语音
+}
+
+// 🔥 简化：直接从角色信息获取状态文本
+const getCharacterStatusText = (character) => {
+  if (!character?.in_character_library) return '未在配音库'
+  if (character?.is_voice_configured) return '✅ 已配置语音'
+  return '🔧 在配音库中'
+}
+
+// 高亮角色片段
+const highlightCharacterSegments = (characterName) => {
+  if (highlightedCharacter.value === characterName) {
+    highlightedCharacter.value = null
+    message.info('取消高亮')
+  } else {
+    highlightedCharacter.value = characterName
+    message.info(`高亮角色"${characterName}"的片段`)
+    // 切换到片段tab
+    activeSubTab.value = 'segments'
+  }
+}
+
+// 导出角色片段
+const exportCharacterSegments = (characterName) => {
+  const characterSegments = editableSegments.value
+    .filter(segment => segment.speaker === characterName)
+    .map((segment, index) => `${index + 1}. ${segment.text}`)
+    .join('\n\n')
+  
+  if (characterSegments) {
+    const blob = new Blob([`角色"${characterName}"的片段：\n\n${characterSegments}`], 
+      { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `第${props.chapter?.number}章_${characterName}_片段.txt`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+    message.success(`角色"${characterName}"的片段导出成功`)
+  } else {
+    message.warning(`角色"${characterName}"没有片段`)
+  }
+}
+
+// 测试角色声音
+const testCharacterVoice = async (characterName) => {
+  testingVoice.value = characterName
+  try {
+    // 获取角色的示例文本
+    const characterSegments = editableSegments.value.filter(segment => segment.speaker === characterName)
+    const sampleText = characterSegments.length > 0 
+      ? characterSegments[0].text.slice(0, 50) + '...'
+      : `你好，我是${characterName}。这是一段声音测试。`
+    
+    console.log(`[ChapterAnalysis] 测试角色声音: ${characterName}`)
+    console.log(`[ChapterAnalysis] 示例文本: ${sampleText}`)
+    
+    // 🔥 简化：直接使用角色信息中的voice_id
+    const character = editableCharacters.value.find(c => c.name === characterName)
+    const voiceId = character?.voice_id
+    
+    if (voiceId && character?.is_voice_configured) {
+      try {
+        console.log(`[试听] 使用角色配音库ID ${voiceId} 进行试听`)
+        const response = await charactersAPI.testVoiceSynthesis(voiceId, {
+          text: sampleText
+        })
+        
+        if (response.data && response.data.success && response.data.audioUrl) {
+          // 使用音频播放器播放
+          const audioInfo = {
+            id: `character_test_${characterName}_${Date.now()}`,
+            title: `${characterName} - 声音试听`,
+            url: response.data.audioUrl,
+            type: 'character_test',
+            metadata: {
+              characterName,
+              sampleText,
+              voiceId: voiceId,
+              isFromCharacterLibrary: character?.in_character_library,
+              characterLibraryId: character?.voice_id
+            }
+          }
+          
+          await audioStore.playAudio(audioInfo)
+          message.success(`正在播放角色"${characterName}"的声音`)
+        } else {
+          message.error(response.data?.message || '生成试听音频失败')
+        }
+      } catch (apiError) {
+        console.error('[ChapterAnalysis] API测试失败:', apiError)
+        // 回退到简单播放
+        await playSimpleVoiceTest(characterName, sampleText)
+      }
+    } else {
+      // 方式2: 简单的声音测试（使用浏览器TTS）
+      await playSimpleVoiceTest(characterName, sampleText)
+    }
+  } catch (error) {
+    console.error('[ChapterAnalysis] 测试角色声音失败:', error)
+    message.error('声音测试失败')
+  } finally {
+    testingVoice.value = null
+  }
+}
+
+// 简单的声音测试（使用浏览器TTS）
+const playSimpleVoiceTest = async (characterName, text) => {
+  try {
+    if ('speechSynthesis' in window) {
+      // 停止当前播放
+      window.speechSynthesis.cancel()
+      
+      const utterance = new SpeechSynthesisUtterance(text)
+      
+      // 根据角色名称选择合适的声音
+      const voices = window.speechSynthesis.getVoices()
+      if (voices.length > 0) {
+        // 尝试为不同角色选择不同的声音
+        if (characterName.includes('女') || characterName.includes('小') || characterName.includes('妹')) {
+          const femaleVoice = voices.find(voice => voice.name.includes('Female') || voice.name.includes('女'))
+          if (femaleVoice) utterance.voice = femaleVoice
+        } else if (characterName.includes('男') || characterName.includes('先生')) {
+          const maleVoice = voices.find(voice => voice.name.includes('Male') || voice.name.includes('男'))
+          if (maleVoice) utterance.voice = maleVoice
+        }
+      }
+      
+      utterance.rate = 0.9
+      utterance.pitch = 1.0
+      utterance.volume = 0.8
+      
+      utterance.onstart = () => {
+        console.log(`[ChapterAnalysis] 开始播放: ${characterName}`)
+      }
+      
+      utterance.onend = () => {
+        console.log(`[ChapterAnalysis] 播放完成: ${characterName}`)
+      }
+      
+      utterance.onerror = (error) => {
+        console.error('[ChapterAnalysis] 播放错误:', error)
+        message.error('声音播放失败')
+      }
+      
+      window.speechSynthesis.speak(utterance)
+      message.info(`正在播放角色"${characterName}"的声音（浏览器TTS）`)
+    } else {
+      message.warning('您的浏览器不支持语音合成功能')
+    }
+  } catch (error) {
+    console.error('[ChapterAnalysis] 简单声音测试失败:', error)
+    message.error('声音测试失败')
+  }
+}
+
+// JSON编辑模式切换
+const toggleJsonEditMode = () => {
+  jsonEditMode.value = !jsonEditMode.value
+  if (jsonEditMode.value) {
+    editableJsonText.value = getJsonPreview()
+  }
+}
+
+// 标记JSON为已修改
+const markJsonChanged = () => {
+  // 在编辑模式下，每次文本变化都视为修改
+  // 在预览模式下，只有保存按钮点击时才视为修改
+  if (jsonEditMode.value) {
+    hasChanges.value = true
+  }
+}
+
+// 保存JSON修改
+const saveJsonChanges = async () => {
+  if (!jsonEditMode.value) return
+  if (!hasJsonChanges.value) return
+  
+  try {
+    // 验证JSON格式
+    const parsedJson = JSON.parse(editableJsonText.value)
+    
+    // 更新可编辑数据
+    if (parsedJson.characters && Array.isArray(parsedJson.characters)) {
+      editableCharacters.value = parsedJson.characters
+    }
+    if (parsedJson.synthesis_plan && Array.isArray(parsedJson.synthesis_plan)) {
+      editableSegments.value = parsedJson.synthesis_plan
+    }
+    
+    // 标记为已修改
+    hasChanges.value = true
+    message.success('JSON数据已应用到编辑器')
+    
+    // 切换回预览模式
+    jsonEditMode.value = false
+    
+  } catch (error) {
+    console.error('JSON格式错误:', error)
+    message.error('JSON格式错误，请检查语法')
+  }
+}
+
+// 判断JSON是否有变化
+const hasJsonChanges = computed(() => {
+  if (!jsonEditMode.value) return false
+  try {
+    // 尝试解析JSON来验证格式
+    JSON.parse(editableJsonText.value)
+    return editableJsonText.value !== getJsonPreview()
+  } catch {
+    return true // 如果JSON格式错误，也认为有变化
+  }
+})
 </script>
 
 <style scoped>
 .chapter-analysis {
+  height: 100%;
   display: flex;
   flex-direction: column;
-  height: 100%;
+  overflow: hidden;
 }
 
 .loading-wrapper {
+  flex: 1;
   display: flex;
-  justify-content: center;
   align-items: center;
-  height: 100%;
+  justify-content: center;
 }
 
 .analysis-content {
@@ -530,16 +838,39 @@ const getCharacterPercentage = (character) => {
 .analysis-tabs {
   flex: 1;
   overflow: hidden;
-}
-
-.analysis-tabs :deep(.ant-tabs-content-holder) {
-  height: calc(100vh - 400px);
-  overflow: hidden;
-}
-
-.analysis-tabs :deep(.ant-tabs-tabpane) {
-  height: 100%;
-  overflow-y: auto;
+  
+  :deep(.ant-tabs) {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+  
+  :deep(.ant-tabs-nav) {
+    margin: 0;
+    padding: 8px 12px;
+    background: var(--component-background);
+    border-bottom: 1px solid var(--border-color-base);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    
+    &::before {
+      display: none;
+    }
+    
+    .ant-tabs-nav-wrap {
+      flex: 1;
+    }
+    
+    .ant-tabs-extra-content {
+      margin-left: 16px;
+    }
+  }
+  
+  :deep(.ant-tabs-content-holder) {
+    flex: 1;
+    overflow: auto;
+  }
 }
 
 .segments-view {
@@ -572,10 +903,21 @@ const getCharacterPercentage = (character) => {
 }
 
 .segment-item {
-  background: #f8fafc;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
   padding: 12px;
+}
+
+.segment-item.segment-highlighted {
+  background-color: #e0f2fe; /* 高亮背景色 */
+  border-color: #90cdf4; /* 高亮边框色 */
+  box-shadow: 0 0 8px rgba(139, 92, 246, 0.2); /* 高亮阴影 */
+}
+
+.segment-item.segment-dimmed {
+  opacity: 0.6; /* 半透明效果 */
+  background-color: #f0f2f5; /* 暗化背景色 */
+  border-color: #e5e7eb; /* 暗化边框色 */
 }
 
 .segment-header {
@@ -591,6 +933,18 @@ const getCharacterPercentage = (character) => {
   min-width: 40px;
 }
 
+.highlight-indicator {
+  margin-left: auto;
+  color: #8b5cf6;
+  font-size: 16px;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
 .segment-content {
   margin-top: 8px;
 }
@@ -603,6 +957,8 @@ const getCharacterPercentage = (character) => {
 
 .json-header {
   margin-bottom: 16px;
+  padding: 8px 0;
+  border-bottom: 1px solid #f0f0f0;
 }
 
 .json-editor {
@@ -618,6 +974,17 @@ const getCharacterPercentage = (character) => {
   border-radius: 6px;
   resize: none;
   height: 100%;
+}
+
+.json-display.editable {
+  border-color: #40a9ff;
+  box-shadow: 0 0 0 2px rgba(64, 169, 255, 0.2);
+  background-color: #fafafa;
+}
+
+.json-display.editable:focus {
+  border-color: #40a9ff;
+  box-shadow: 0 0 0 2px rgba(64, 169, 255, 0.3);
 }
 
 .characters-view {
@@ -649,22 +1016,24 @@ const getCharacterPercentage = (character) => {
   gap: 16px;
 }
 
-.character-item {
-  background: #f8fafc;
+.character-card {
   border: 1px solid #e5e7eb;
   border-radius: 8px;
   padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
-.character-info {
+.character-header {
   display: flex;
   align-items: center;
   gap: 12px;
 }
 
 .character-avatar {
-  width: 40px;
-  height: 40px;
+  width: 48px;
+  height: 48px;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -674,28 +1043,42 @@ const getCharacterPercentage = (character) => {
   font-size: 16px;
 }
 
-.character-details {
+.character-info {
   flex: 1;
 }
 
 .character-name {
   font-weight: 600;
   color: #1f2937;
-  margin-bottom: 4px;
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.character-count {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.name-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 150px;
 }
 
-.character-percentage {
+.character-rank {
   font-size: 12px;
   color: #6b7280;
+}
+
+.character-tags {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.character-stats-detail {
+  margin-top: 8px;
+}
+
+.character-actions {
+  margin-top: 12px;
 }
 
 .no-analysis {

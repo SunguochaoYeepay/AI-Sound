@@ -1,7 +1,7 @@
 <template>
   <a-drawer
     :open="visible"
-    title="🎭 角色管理"
+    title="🎭 段落角色"
     placement="right"
     :width="800"
     @close="handleClose"
@@ -89,7 +89,7 @@
                 </div>
                 <div class="character-tags">
                   <a-tag v-if="character.gender" size="small" :color="getGenderColor(character.gender)">
-                    {{ character.gender }}
+                    {{ getGenderText(character.gender) }}
                   </a-tag>
                   <a-tag :color="getCharacterStatusColor(character.name)" size="small">
                     {{ getCharacterStatusText(character.name) }}
@@ -204,6 +204,7 @@ import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { booksAPI, charactersAPI } from '../api'
+import { useAudioPlayerStore } from '@/stores/audioPlayer'
 
 const props = defineProps({
   visible: {
@@ -219,6 +220,7 @@ const props = defineProps({
 const emit = defineEmits(['update:visible'])
 
 const router = useRouter()
+const audioStore = useAudioPlayerStore()
 
 // 响应式数据
 const loadingCharacters = ref(false)
@@ -350,7 +352,13 @@ const goToCharacterManagement = () => {
 }
 
 const getCharacterAvatar = (name) => {
-  // 返回角色头像URL，如果没有则返回null
+  // 从角色配音库获取头像URL
+  const libraryChar = getCharacterFromLibrary(name)
+  if (libraryChar && libraryChar.avatar_path) {
+    // 生成头像URL
+    const filename = libraryChar.avatar_path.split('/').pop()
+    return `/api/v1/avatars/${filename}`
+  }
   return null
 }
 
@@ -375,10 +383,28 @@ const getCharacterRank = (character, index) => {
 const getGenderColor = (gender) => {
   const colors = {
     '男': 'blue',
-    '女': 'pink',
-    '未知': 'default'
+    'male': 'blue',
+    '女': 'pink', 
+    'female': 'pink',
+    '未知': 'default',
+    'unknown': 'default',
+    'neutral': 'purple'
   }
   return colors[gender] || 'default'
+}
+
+const getGenderText = (gender) => {
+  const genderMap = {
+    'male': '男',
+    'female': '女',
+    'neutral': '中性',
+    'unknown': '未知',
+    '男': '男',
+    '女': '女',
+    '中性': '中性',
+    '未知': '未知'
+  }
+  return genderMap[gender] || gender || '未知'
 }
 
 const getCharacterStatusColor = (name) => {
@@ -440,7 +466,8 @@ const testCharacterVoice = async (name) => {
   try {
     const libraryChar = getCharacterFromLibrary(name)
     if (!libraryChar) {
-      message.error('角色不存在于角色库中')
+      // 如果角色不在库中，使用浏览器TTS进行简单试听
+      await playSimpleVoiceTest(name)
       return
     }
     
@@ -448,17 +475,80 @@ const testCharacterVoice = async (name) => {
       text: '这是一个声音测试，用于验证角色的声音效果。'
     })
     
-    if (response.data && response.data.success) {
-      message.success(`${name}的声音测试完成`)
-      // 这里可以播放返回的音频
+    if (response.data && response.data.success && response.data.audioUrl) {
+      // 使用音频播放器播放
+      const audioInfo = {
+        id: `character_test_${name}_${Date.now()}`,
+        title: `${name} - 声音试听`,
+        url: response.data.audioUrl,
+        type: 'character_test',
+        metadata: {
+          characterName: name,
+          voiceId: libraryChar.id
+        }
+      }
+      
+      await audioStore.playAudio(audioInfo)
+      message.success(`正在播放角色"${name}"的声音`)
     } else {
-      message.error(response.data?.message || '声音测试失败')
+      message.error(response.data?.message || '生成试听音频失败')
     }
   } catch (error) {
     console.error('声音测试失败:', error)
     message.error('声音测试失败')
   } finally {
     testingVoice.value = null
+  }
+}
+
+// 简单的声音测试（使用浏览器TTS）
+const playSimpleVoiceTest = async (characterName) => {
+  try {
+    if ('speechSynthesis' in window) {
+      // 停止当前播放
+      window.speechSynthesis.cancel()
+      
+      const text = `你好，我是${characterName}。这是一段声音测试。`
+      const utterance = new SpeechSynthesisUtterance(text)
+      
+      // 根据角色名称选择合适的声音
+      const voices = window.speechSynthesis.getVoices()
+      if (voices.length > 0) {
+        // 尝试为不同角色选择不同的声音
+        if (characterName.includes('女') || characterName.includes('小') || characterName.includes('妹')) {
+          const femaleVoice = voices.find(voice => voice.name.includes('Female') || voice.name.includes('女'))
+          if (femaleVoice) utterance.voice = femaleVoice
+        } else if (characterName.includes('男') || characterName.includes('先生')) {
+          const maleVoice = voices.find(voice => voice.name.includes('Male') || voice.name.includes('男'))
+          if (maleVoice) utterance.voice = maleVoice
+        }
+      }
+      
+      utterance.rate = 0.9
+      utterance.pitch = 1.0
+      utterance.volume = 0.8
+      
+      utterance.onstart = () => {
+        console.log(`[CharacterManagement] 开始播放: ${characterName}`)
+      }
+      
+      utterance.onend = () => {
+        console.log(`[CharacterManagement] 播放完成: ${characterName}`)
+      }
+      
+      utterance.onerror = (error) => {
+        console.error('[CharacterManagement] 播放错误:', error)
+        message.error('声音播放失败')
+      }
+      
+      window.speechSynthesis.speak(utterance)
+      message.info(`正在播放角色"${characterName}"的声音（浏览器TTS）`)
+    } else {
+      message.warning('您的浏览器不支持语音合成功能')
+    }
+  } catch (error) {
+    console.error('[CharacterManagement] 简单声音测试失败:', error)
+    message.error('声音测试失败')
   }
 }
 </script>
@@ -505,7 +595,6 @@ const testCharacterVoice = async (name) => {
 }
 
 .character-card {
-  background: #ffffff;
   border: 1px solid #e5e7eb;
   border-radius: 12px;
   padding: 16px;
