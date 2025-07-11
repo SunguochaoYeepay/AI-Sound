@@ -293,14 +293,14 @@ async def check_character_exists(
         logger.error(f"检查角色存在性失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"检查失败: {str(e)}")
 
-@router.get("/{voice_id}")
+@router.get("/{character_id}")
 async def get_character_detail(
-    voice_id: int,
+    character_id: int,
     db: Session = Depends(get_db)
 ):
     """获取角色详情"""
     try:
-        character = db.query(Character).filter(Character.id == voice_id).first()
+        character = db.query(Character).filter(Character.id == character_id).first()
         if not character:
             raise HTTPException(status_code=404, detail="角色不存在")
         
@@ -971,7 +971,7 @@ async def delete_character(
             level="info",
             message=f"删除角色: {character_name}",
             module="characters",
-            details={"character_id": voice_id, "force": force}
+            details={"voice_id": voice_id, "force": force}  # 🔥 修复：正确使用voice_id而不是character_id
         )
         
         return {
@@ -995,16 +995,68 @@ async def test_voice_synthesis(
     t_weight: float = Form(3.0),
     db: Session = Depends(get_db)
 ):
-    """测试声音合成"""
+    """测试声音合成 - 智能支持角色配音库和VoiceProfile两种数据源"""
     try:
-        voice_profile = db.query(VoiceProfile).filter(VoiceProfile.id == voice_id).first()
-        if not voice_profile:
-            raise HTTPException(status_code=404, detail="声音档案不存在")
+        # 🔥 修复：优先查询角色配音库，回退到VoiceProfile
+        voice_config = None
+        data_source = None
         
-        # 检查并修复音频文件路径
-        fixed_audio_path, error_msg = fix_voice_file_path(voice_profile)
-        if not fixed_audio_path:
-            raise HTTPException(status_code=400, detail=error_msg or "声音文件不存在，请重新上传")
+        logger.info(f"🔍 [试听] 开始查找voice_id={voice_id}的配置")
+        
+        # 1. 优先从角色配音库获取配置
+        character = db.query(Character).filter(
+            Character.id == voice_id,
+            Character.status.in_(['active', 'configured'])
+        ).first()
+        
+        if character:
+            logger.info(f"🎭 [试听] 在角色配音库中找到: {character.name} (ID: {character.id}, 状态: {character.status})")
+            voice_config = {
+                'id': character.id,
+                'name': character.name,
+                'reference_audio_path': character.reference_audio_path,
+                'latent_file_path': character.latent_file_path,
+                'voice_type': character.voice_type
+            }
+            data_source = 'character'
+        else:
+            logger.info(f"🎭 [试听] 在角色配音库中未找到voice_id={voice_id}的配置")
+        
+        # 2. 如果角色配音库没有找到或未配置，尝试VoiceProfile
+        if not voice_config:
+            voice_profile = db.query(VoiceProfile).filter(VoiceProfile.id == voice_id).first()
+            if voice_profile:
+                logger.info(f"🎤 [试听] 在VoiceProfile中找到: {voice_profile.name} (ID: {voice_profile.id}, 类型: {voice_profile.type})")
+                voice_config = {
+                    'id': voice_profile.id,
+                    'name': voice_profile.name,
+                    'reference_audio_path': voice_profile.reference_audio_path,
+                    'latent_file_path': voice_profile.latent_file_path,
+                    'voice_type': voice_profile.type
+                }
+                data_source = 'voice_profile'
+            else:
+                logger.info(f"🎤 [试听] 在VoiceProfile中也未找到voice_id={voice_id}的配置")
+        
+        # 3. 如果都没有找到，返回错误
+        if not voice_config:
+            raise HTTPException(status_code=404, detail=f"未找到ID为{voice_id}的声音配置")
+        
+        # 验证声音文件
+        if not voice_config['reference_audio_path']:
+            raise HTTPException(status_code=400, detail="声音文件路径为空，请重新上传")
+        
+        # 检查并修复音频文件路径（兼容两种数据源）
+        if data_source == 'character':
+            # Character的路径已经是标准化的
+            fixed_audio_path = voice_config['reference_audio_path']
+            if not os.path.exists(fixed_audio_path):
+                raise HTTPException(status_code=400, detail=f"声音文件不存在: {fixed_audio_path}")
+        else:
+            # VoiceProfile使用原有的修复逻辑
+            fixed_audio_path, error_msg = fix_voice_file_path(voice_profile)
+            if not fixed_audio_path:
+                raise HTTPException(status_code=400, detail=error_msg or "声音文件不存在，请重新上传")
         
         # 生成唯一的音频文件名
         audio_id = f"test_{voice_id}_{uuid4().hex[:32]}"
@@ -1021,8 +1073,8 @@ async def test_voice_synthesis(
         
         # 修复latent文件路径
         latent_path = None
-        if voice_profile.latent_file_path:
-            latent_normalized = normalize_path(voice_profile.latent_file_path)
+        if voice_config['latent_file_path']:
+            latent_normalized = normalize_path(voice_config['latent_file_path'])
             if not os.path.isabs(latent_normalized):
                 if os.path.exists("/.dockerenv"):
                     latent_path = f"/app/{latent_normalized}"
@@ -1032,11 +1084,21 @@ async def test_voice_synthesis(
                 latent_path = latent_normalized
         
         # 调试日志：确认文件路径
-        logger.info(f"[TTS Test] 声音档案: {voice_profile.name}")
-        logger.info(f"[TTS Test] 原始参考音频: {voice_profile.reference_audio_path}")
-        logger.info(f"[TTS Test] 修复后参考音频: {fixed_audio_path}")
-        logger.info(f"[TTS Test] Latent文件: {latent_path}")
-        logger.info(f"[TTS Test] 输出路径: {output_path}")
+        logger.info(f"🎭 [TTS Test] 声音配置: {voice_config['name']} ({data_source})")
+        logger.info(f"🎭 [TTS Test] 原始参考音频: {voice_config['reference_audio_path']}")
+        logger.info(f"🎭 [TTS Test] 修复后参考音频: {fixed_audio_path}")
+        logger.info(f"🎭 [TTS Test] Latent文件: {latent_path}")
+        logger.info(f"🎭 [TTS Test] 输出路径: {output_path}")
+        
+        # 🔥 重要：验证音频文件是否真的存在
+        if os.path.exists(fixed_audio_path):
+            file_size = os.path.getsize(fixed_audio_path)
+            logger.info(f"🎭 [TTS Test] ✅ 音频文件存在，大小: {file_size} 字节")
+        else:
+            logger.error(f"🎭 [TTS Test] ❌ 音频文件不存在: {fixed_audio_path}")
+            
+        # 🔥 重要：记录最终使用的配置
+        logger.info(f"🎭 [TTS Test] 最终使用配置: 数据源={data_source}, 角色名={voice_config['name']}, 声音类型={voice_config['voice_type']}")
         
         # 创建TTS请求
         tts_request = TTSRequest(
@@ -1060,10 +1122,11 @@ async def test_voice_synthesis(
             await log_system_event(
                 db=db,
                 level="info",
-                message=f"声音测试成功: {voice_profile.name}",
+                message=f"声音测试成功: {voice_config['name']} ({data_source})",
                 module="characters",
                 details={
                     "voice_id": voice_id,
+                    "data_source": data_source,
                     "text": text,
                     "processing_time": response.processing_time
                 }

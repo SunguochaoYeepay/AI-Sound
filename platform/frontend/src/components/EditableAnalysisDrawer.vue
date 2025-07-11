@@ -432,10 +432,14 @@ const initEditableData = () => {
     console.log('[EditableAnalysisDrawer] 使用characters字段的角色配置')
     editableCharacters.value = synthesisJson.characters.map(char => ({
       name: char.name || char.character_name || '未知角色',
+      character_id: char.character_id || null,  // 🔥 修复：正确处理character_id字段
       voice_id: char.voice_id || '',
       voice_name: char.voice_name || '未分配',
       voice_type: char.voice_type || char.type || 'neutral',
-      count: 0 // 后续会统计使用次数
+      count: 0, // 后续会统计使用次数
+      in_character_library: char.in_character_library || false,  // 🔥 新增：是否在角色配音库中
+      is_voice_configured: char.is_voice_configured || false,     // 🔥 新增：是否配置了声音
+      avatarUrl: char.avatarUrl || null                          // 🔥 新增：头像URL
     }))
     
     // 统计每个角色在synthesis_plan中的使用次数
@@ -511,6 +515,7 @@ const initEditableData = () => {
     segment_id: segment.segment_id || 0,
     speaker: segment.speaker || '',
     text: segment.text || '',
+    character_id: segment.character_id || null,  // 🔥 修复：正确处理character_id字段
     voice_id: segment.voice_id || '',
     voice_name: segment.voice_name || '',
     parameters: segment.parameters || {

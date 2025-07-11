@@ -408,17 +408,29 @@ const initEditableData = async () => {
   const synthesisJson = props.analysisData.synthesis_json
 
   try {
-    // 🔥 优化：直接使用JSON中的角色信息，不需要额外加载
+    // 🔥 优化：直接使用JSON中的角色信息，确保包含所有必要字段
     console.log('[角色分析] 直接使用JSON中的角色信息')
-    editableCharacters.value = [...(synthesisJson.characters || [])]
+    editableCharacters.value = (synthesisJson.characters || []).map(char => ({
+      ...char,
+      character_id: char.character_id || null,  // 🔥 修复：确保character_id字段存在
+      voice_id: char.voice_id || '',
+      in_character_library: char.in_character_library || false,
+      is_voice_configured: char.is_voice_configured || false,
+      avatarUrl: char.avatarUrl || null
+    }))
     
     // 对角色按出现次数排序
     editableCharacters.value.sort((a, b) => (b.count || 0) - (a.count || 0))
     
     console.log('[角色分析] 角色信息:', editableCharacters.value)
 
-    // 初始化可编辑的合成计划
-    editableSegments.value = [...(synthesisJson.synthesis_plan || [])]
+    // 初始化可编辑的合成计划，确保包含所有必要字段
+    editableSegments.value = (synthesisJson.synthesis_plan || []).map(segment => ({
+      ...segment,
+      character_id: segment.character_id || null,  // 🔥 修复：确保character_id字段存在
+      voice_id: segment.voice_id || '',
+      voice_name: segment.voice_name || '未分配'
+    }))
     
     // 保存原始数据用于比较变化
     originalData.value = JSON.parse(JSON.stringify({
@@ -714,117 +726,126 @@ const exportCharacterSegments = (characterName) => {
   }
 }
 
-// 测试角色声音
+// 测试角色声音 - 简单直接，没配置就报错
 const testCharacterVoice = async (characterName) => {
   testingVoice.value = characterName
   try {
-    // 获取角色的示例文本
-    const characterSegments = editableSegments.value.filter(segment => segment.speaker === characterName)
-    const sampleText = characterSegments.length > 0 
-      ? characterSegments[0].text.slice(0, 50) + '...'
-      : `你好，我是${characterName}。这是一段声音测试。`
+    console.log(`[试听] 开始测试角色: ${characterName}`)
     
-    console.log(`[ChapterAnalysis] 测试角色声音: ${characterName}`)
-    console.log(`[ChapterAnalysis] 示例文本: ${sampleText}`)
-    
-    // 🔥 简化：直接使用角色信息中的voice_id
+    // 获取角色信息
     const character = editableCharacters.value.find(c => c.name === characterName)
-    const voiceId = character?.voice_id
+    const characterSegment = editableSegments.value.find(s => s.speaker === characterName)
     
-    if (voiceId && character?.is_voice_configured) {
+    if (!character) {
+      message.error(`未找到角色"${characterName}"的配置信息`)
+      return
+    }
+    
+    console.log(`[试听] 角色信息:`, {
+      name: character.name,
+      character_id: character.character_id,
+      voice_id: character.voice_id,
+      in_character_library: character.in_character_library,
+      is_voice_configured: character.is_voice_configured
+    })
+    
+    // 检查角色配音库配置
+    if (character.character_id && character.in_character_library) {
+      if (!character.is_voice_configured) {
+        message.error(`角色"${characterName}"在配音库中但未配置音频文件，请前往角色管理页面上传音频`)
+        return
+      }
+      
+      console.log(`[试听] 使用角色配音库ID: ${character.character_id}`)
+      
+      // 获取示例文本
+      const sampleText = characterSegment?.text?.slice(0, 50) + '...' || `你好，我是${characterName}。`
+      
       try {
-        console.log(`[试听] 使用角色配音库ID ${voiceId} 进行试听`)
-        const response = await charactersAPI.testVoiceSynthesis(voiceId, {
+        const response = await charactersAPI.testVoiceSynthesis(character.character_id, {
           text: sampleText
         })
         
-        if (response.data && response.data.success && response.data.audioUrl) {
-          // 使用音频播放器播放
+        if (response.data?.success && response.data.audioUrl) {
           const audioInfo = {
             id: `character_test_${characterName}_${Date.now()}`,
-            title: `${characterName} - 声音试听`,
+            title: `${characterName} - 角色配音库试听`,
             url: response.data.audioUrl,
             type: 'character_test',
             metadata: {
               characterName,
-              sampleText,
-              voiceId: voiceId,
-              isFromCharacterLibrary: character?.in_character_library,
-              characterLibraryId: character?.voice_id
+              characterId: character.character_id,
+              source: 'character_library'
             }
           }
           
           await audioStore.playAudio(audioInfo)
-          message.success(`正在播放角色"${characterName}"的声音`)
+          message.success(`正在播放角色"${characterName}"的声音（来源：角色配音库）`)
+          return
         } else {
-          message.error(response.data?.message || '生成试听音频失败')
+          message.error(`角色配音库试听失败: ${response.data?.message || '未知错误'}`)
+          return
         }
-      } catch (apiError) {
-        console.error('[ChapterAnalysis] API测试失败:', apiError)
-        // 回退到简单播放
-        await playSimpleVoiceTest(characterName, sampleText)
+      } catch (error) {
+        console.error('[试听] 角色配音库API调用失败:', error)
+        message.error(`角色配音库试听失败: ${error.response?.data?.detail || error.message}`)
+        return
       }
-    } else {
-      // 方式2: 简单的声音测试（使用浏览器TTS）
-      await playSimpleVoiceTest(characterName, sampleText)
     }
+    
+    // 检查传统VoiceProfile配置
+    if (character.voice_id) {
+      console.log(`[试听] 使用传统VoiceProfile ID: ${character.voice_id}`)
+      
+      const sampleText = characterSegment?.text?.slice(0, 50) + '...' || `你好，我是${characterName}。`
+      
+      try {
+        const response = await charactersAPI.testVoiceSynthesis(character.voice_id, {
+          text: sampleText
+        })
+        
+        if (response.data?.success && response.data.audioUrl) {
+          const audioInfo = {
+            id: `character_test_${characterName}_${Date.now()}`,
+            title: `${characterName} - 传统语音档案试听`,
+            url: response.data.audioUrl,
+            type: 'character_test',
+            metadata: {
+              characterName,
+              voiceId: character.voice_id,
+              source: 'voice_profile'
+            }
+          }
+          
+          await audioStore.playAudio(audioInfo)
+          message.success(`正在播放角色"${characterName}"的声音（来源：传统语音档案）`)
+          return
+        } else {
+          message.error(`传统语音档案试听失败: ${response.data?.message || '未知错误'}`)
+          return
+        }
+      } catch (error) {
+        console.error('[试听] 传统语音档案API调用失败:', error)
+        message.error(`传统语音档案试听失败: ${error.response?.data?.detail || error.message}`)
+        return
+      }
+    }
+    
+    // 没有任何配置
+    console.log(`[试听] 角色"${characterName}"没有任何声音配置`)
+    message.error(`角色"${characterName}"未配置声音，请：
+1. 前往角色管理页面创建角色并上传音频文件
+2. 或在书籍角色管理中为该角色分配已有的声音配置`)
+    
   } catch (error) {
-    console.error('[ChapterAnalysis] 测试角色声音失败:', error)
-    message.error('声音测试失败')
+    console.error('[试听] 测试失败:', error)
+    message.error(`试听失败: ${error.message}`)
   } finally {
     testingVoice.value = null
   }
 }
 
-// 简单的声音测试（使用浏览器TTS）
-const playSimpleVoiceTest = async (characterName, text) => {
-  try {
-    if ('speechSynthesis' in window) {
-      // 停止当前播放
-      window.speechSynthesis.cancel()
-      
-      const utterance = new SpeechSynthesisUtterance(text)
-      
-      // 根据角色名称选择合适的声音
-      const voices = window.speechSynthesis.getVoices()
-      if (voices.length > 0) {
-        // 尝试为不同角色选择不同的声音
-        if (characterName.includes('女') || characterName.includes('小') || characterName.includes('妹')) {
-          const femaleVoice = voices.find(voice => voice.name.includes('Female') || voice.name.includes('女'))
-          if (femaleVoice) utterance.voice = femaleVoice
-        } else if (characterName.includes('男') || characterName.includes('先生')) {
-          const maleVoice = voices.find(voice => voice.name.includes('Male') || voice.name.includes('男'))
-          if (maleVoice) utterance.voice = maleVoice
-        }
-      }
-      
-      utterance.rate = 0.9
-      utterance.pitch = 1.0
-      utterance.volume = 0.8
-      
-      utterance.onstart = () => {
-        console.log(`[ChapterAnalysis] 开始播放: ${characterName}`)
-      }
-      
-      utterance.onend = () => {
-        console.log(`[ChapterAnalysis] 播放完成: ${characterName}`)
-      }
-      
-      utterance.onerror = (error) => {
-        console.error('[ChapterAnalysis] 播放错误:', error)
-        message.error('声音播放失败')
-      }
-      
-      window.speechSynthesis.speak(utterance)
-      message.info(`正在播放角色"${characterName}"的声音（浏览器TTS）`)
-    } else {
-      message.warning('您的浏览器不支持语音合成功能')
-    }
-  } catch (error) {
-    console.error('[ChapterAnalysis] 简单声音测试失败:', error)
-    message.error('声音测试失败')
-  }
-}
+
 
 // JSON编辑模式切换
 const toggleJsonEditMode = () => {

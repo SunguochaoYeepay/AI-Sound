@@ -1208,7 +1208,7 @@
 
 <script setup>
 import { ref, computed, reactive, onMounted, watch, nextTick, h } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { message, Modal } from 'ant-design-vue'
 import { charactersAPI, booksAPI } from '@/api'
 import { API_BASE_URL } from '@/api/config'
@@ -1218,6 +1218,7 @@ import { ArrowLeftOutlined, PlusOutlined, UserOutlined, SearchOutlined } from '@
 
 // 路由
 const router = useRouter()
+const route = useRoute()
 
 // 响应式数据
 const voiceLibrary = ref([])
@@ -1426,6 +1427,21 @@ const loadVoiceLibrary = async () => {
 // 页面初始化时加载书籍列表
 onMounted(async () => {
   await loadAvailableBooks()
+  
+  // 🔥 新增：检查URL参数，如果有书籍ID就自动设置过滤条件
+  
+  if (route.query.bookId) {
+    const bookId = parseInt(route.query.bookId)
+    if (!isNaN(bookId)) {
+      selectedBookId.value = bookId
+      
+      // 如果有书籍标题，显示提示信息
+      if (route.query.bookTitle) {
+        message.info(`已自动筛选书籍：${route.query.bookTitle}`)
+      }
+    }
+  }
+  
   await loadVoiceLibrary()
 })
 

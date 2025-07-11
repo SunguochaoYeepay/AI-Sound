@@ -65,11 +65,7 @@
       </a-result>
     </div>
 
-    <!-- 角色管理抽屉 -->
-    <CharacterManagement
-      v-model:visible="characterManagementVisible"
-      :book-id="book?.id"
-    />
+    <!-- 角色管理抽屉已移除，改为直接跳转到角色配音页面 -->
   </div>
 </template>
 
@@ -81,7 +77,7 @@ import { booksAPI } from '@/api'
 import BookHeaderCard from '@/components/BookHeaderCard.vue'
 import ChapterList from '@/components/ChapterList.vue'
 import ChapterDetail from '@/components/ChapterDetail.vue'
-import CharacterManagement from '@/components/CharacterManagement.vue'
+// 移除CharacterManagement组件引用，改为直接跳转到角色配音页面
 
 const router = useRouter()
 const route = useRoute()
@@ -91,7 +87,7 @@ const loading = ref(true)
 const detectingChapters = ref(false)
 const preparingChapters = ref(new Set())
 const chapterPreparationStatus = ref({})
-const characterManagementVisible = ref(false)
+// characterManagementVisible已移除，改为直接跳转
 
 const book = ref(null)
 const chapters = ref([])
@@ -267,7 +263,11 @@ const createProject = () => {
 }
 
 const openCharacterManagement = () => {
-  characterManagementVisible.value = true
+  // 直接跳转到角色配音页面，并带上书籍ID作为查询条件
+  router.push({
+    name: 'Characters',
+    query: { bookId: book.value?.id, bookTitle: book.value?.title }
+  })
 }
 
 const openCharacterConfig = (chapter) => {

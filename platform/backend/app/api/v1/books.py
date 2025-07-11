@@ -640,26 +640,112 @@ async def get_book_characters(
             raise HTTPException(status_code=404, detail="书籍不存在")
         
         character_summary = book.get_character_summary()
+        voice_mappings = character_summary.get('voice_mappings', {})
         
         # 🔧 添加调试信息
         logger.info(f"[调试] 获取书籍{book_id}角色汇总:")
-        logger.info(f"  character_summary原始类型: {type(book.character_summary)}")
-        logger.info(f"  character_summary原始数据: {book.character_summary}")
-        logger.info(f"  get_character_summary()返回类型: {type(character_summary)}")
-        logger.info(f"  get_character_summary()返回数据: {character_summary}")
-        logger.info(f"  voice_mappings: {character_summary.get('voice_mappings', {})}")
+        logger.info(f"  voice_mappings: {voice_mappings}")
+        
+        # 🔥 关键修复：将配音信息合并到角色对象中
+        enhanced_characters = []
+        raw_characters = character_summary.get('characters', [])
+        
+        # 加载角色配音库数据
+        character_library = {}
+        try:
+            from ..models import Character
+            library_chars = db.query(Character).filter(Character.book_id == book_id).all()
+            character_library = {char.name: char for char in library_chars}
+            logger.info(f"📚 [角色配音库] 加载了 {len(character_library)} 个角色")
+        except Exception as e:
+            logger.warning(f"加载角色配音库失败: {e}")
+        
+        # 加载VoiceProfile数据
+        voice_profiles = {}
+        try:
+            from ..models import VoiceProfile
+            profiles = db.query(VoiceProfile).filter(VoiceProfile.status == 'active').all()
+            voice_profiles = {profile.id: profile for profile in profiles}
+            logger.info(f"📋 [语音档案] 加载了 {len(voice_profiles)} 个语音档案")
+        except Exception as e:
+            logger.warning(f"加载语音档案失败: {e}")
+        
+        for character in raw_characters:
+            enhanced_char = dict(character)  # 复制原始角色数据
+            char_name = character.get('name', '')
+            
+            # 🔥 重要：从voice_mappings获取配音ID
+            voice_id_str = voice_mappings.get(char_name)
+            character_id = None
+            voice_id = None
+            voice_name = "未分配"
+            in_character_library = False
+            is_voice_configured = False
+            
+            if voice_id_str:
+                try:
+                    voice_id_int = int(voice_id_str)
+                    
+                    # 🔥 智能判断ID类型：优先检查角色配音库
+                    if char_name in character_library:
+                        library_char = character_library[char_name]
+                        if library_char.id == voice_id_int:
+                            # 匹配角色配音库
+                            character_id = library_char.id
+                            voice_name = library_char.name
+                            in_character_library = True
+                            is_voice_configured = library_char.status == 'configured'
+                            logger.info(f"🎭 [配音信息] {char_name} -> 角色配音库 ID:{character_id}")
+                        else:
+                            logger.warning(f"⚠️ [配音信息] {char_name} 在配音库中但ID不匹配: 库中ID={library_char.id}, 映射ID={voice_id_int}")
+                    
+                    # 如果不是角色配音库，检查VoiceProfile
+                    if not character_id and voice_id_int in voice_profiles:
+                        voice_profile = voice_profiles[voice_id_int]
+                        voice_id = voice_profile.id
+                        voice_name = voice_profile.name
+                        is_voice_configured = True
+                        logger.info(f"🎤 [配音信息] {char_name} -> VoiceProfile ID:{voice_id}")
+                    
+                    if not character_id and not voice_id:
+                        logger.warning(f"⚠️ [配音信息] {char_name} 的配音ID {voice_id_int} 无法找到对应配置")
+                        
+                except ValueError:
+                    logger.warning(f"⚠️ [配音信息] {char_name} 的配音ID格式错误: {voice_id_str}")
+            else:
+                # 检查是否在角色配音库中但未配音
+                if char_name in character_library:
+                    library_char = character_library[char_name]
+                    character_id = library_char.id
+                    voice_name = library_char.name
+                    in_character_library = True
+                    is_voice_configured = library_char.status == 'configured'
+                    logger.info(f"🎭 [配音信息] {char_name} -> 角色配音库 ID:{character_id} (未配置voice_mappings)")
+            
+            # 🔥 关键：添加配音相关字段到角色对象
+            enhanced_char.update({
+                'character_id': character_id,
+                'voice_id': voice_id,
+                'voice_name': voice_name,
+                'in_character_library': in_character_library,
+                'is_voice_configured': is_voice_configured
+            })
+            
+            enhanced_characters.append(enhanced_char)
+        
+        logger.info(f"✅ [数据增强] 成功增强 {len(enhanced_characters)} 个角色的配音信息")
         
         return {
             "success": True,
             "data": {
                 "book_id": book_id,
                 "book_title": book.title,
-                "characters": character_summary.get('characters', []),
-                "voice_mappings": character_summary.get('voice_mappings', {}),
+                "characters": enhanced_characters,  # 🔥 使用增强后的角色数据
+                "voice_mappings": voice_mappings,
                 "last_updated": character_summary.get('last_updated'),
                 "total_chapters_analyzed": character_summary.get('total_chapters_analyzed', 0),
-                "character_count": len(character_summary.get('characters', [])),
-                "configured_count": len(character_summary.get('voice_mappings', {}))
+                "character_count": len(enhanced_characters),
+                "configured_count": len([c for c in enhanced_characters if c.get('is_voice_configured')])
             }
         }
         
@@ -921,7 +1007,7 @@ async def _sync_character_voice_to_synthesis_plans(
     
     Args:
         book_id: 书籍ID
-        character_voice_mappings: 角色语音映射 {角色名: voice_id}
+        character_voice_mappings: 角色语音映射 {角色名: id_value}
         db: 数据库会话
     
     Returns:
@@ -931,54 +1017,61 @@ async def _sync_character_voice_to_synthesis_plans(
         # 🔥 增强调试：记录传入的映射信息
         logger.info(f"🚀 [开始同步] 书籍 {book_id}, 传入映射: {character_voice_mappings}")
         
-        # 🔥 修复：优先从角色配音库获取voice_name，然后才从VoiceProfile获取
-        voice_id_to_name = {}
-
-        # 🔥 CRITICAL FIX: 修复Character ID和VoiceProfile ID混乱的问题
-        # character_voice_mappings中的值是Character的ID，不是VoiceProfile的ID
-        # 需要正确建立映射关系
-
-        # 1. 首先从角色配音库获取Character ID到name的映射
-        character_id_to_name = {}
+        # 🔥 CRITICAL FIX: 根据传入ID的实际类型建立正确映射
+        # Step 1: 分析传入的ID，区分Character ID和VoiceProfile ID
+        character_mappings = {}  # {角色名: Character对象}
+        voice_profile_mappings = {}  # {角色名: VoiceProfile对象}
+        id_to_name_mapping = {}  # 用于日志显示
+        
+        # 加载角色配音库数据
         try:
             from ...models import Character
             characters = db.query(Character).filter(
                 Character.book_id == book_id
             ).all()
-            for char in characters:
-                character_id_to_name[str(char.id)] = char.name
-            logger.info(f"📚 [角色配音库] 加载了 {len(character_id_to_name)} 个角色配音库映射")
-            logger.info(f"📚 [角色配音库] 映射详情: {character_id_to_name}")
+            character_id_map = {char.id: char for char in characters}
+            logger.info(f"📚 [角色配音库] 加载了 {len(character_id_map)} 个角色配音库记录")
         except Exception as e:
             logger.warning(f"获取角色配音库失败: {str(e)}")
+            character_id_map = {}
 
-        # 2. 然后从VoiceProfile获取Voice ID到name的映射
-        voice_profile_id_to_name = {}
+        # 加载VoiceProfile数据  
         try:
             from ...models import VoiceProfile
             voices = db.query(VoiceProfile).filter(VoiceProfile.status == 'active').all()
-            for v in voices:
-                voice_profile_id_to_name[str(v.id)] = v.name
-            logger.info(f"📋 [语音档案] 加载了 {len(voice_profile_id_to_name)} 个语音档案映射")
-            logger.info(f"📋 [语音档案] 映射详情: {voice_profile_id_to_name}")
+            voice_profile_id_map = {voice.id: voice for voice in voices}
+            logger.info(f"📋 [语音档案] 加载了 {len(voice_profile_id_map)} 个语音档案记录")
         except Exception as e:
             logger.warning(f"获取语音档案失败: {str(e)}")
+            voice_profile_id_map = {}
 
-        # 3. 🔥 关键修复：建立正确的voice_id_to_name映射
-        # character_voice_mappings中的值是Character ID，需要映射到Character name
-        for character_name, character_id in character_voice_mappings.items():
-            voice_id_to_name[str(character_id)] = character_id_to_name.get(str(character_id), character_name)
-            logger.info(f"🎯 [映射建立] voice_id {character_id} -> voice_name '{voice_id_to_name[str(character_id)]}'")
+        # Step 2: 分析传入映射，判断每个ID的真实类型
+        for character_name, id_value in character_voice_mappings.items():
+            try:
+                id_int = int(id_value)
+                
+                # 优先检查是否为Character ID
+                if id_int in character_id_map:
+                    character_mappings[character_name] = character_id_map[id_int]
+                    id_to_name_mapping[str(id_int)] = f"{character_id_map[id_int].name}(角色配音库)"
+                    logger.info(f"🎭 [ID类型识别] 角色'{character_name}' -> Character ID {id_int} ({character_id_map[id_int].name})")
+                
+                # 如果不是Character ID，检查是否为VoiceProfile ID
+                elif id_int in voice_profile_id_map:
+                    voice_profile_mappings[character_name] = voice_profile_id_map[id_int]
+                    id_to_name_mapping[str(id_int)] = f"{voice_profile_id_map[id_int].name}(语音档案)"
+                    logger.info(f"🎤 [ID类型识别] 角色'{character_name}' -> VoiceProfile ID {id_int} ({voice_profile_id_map[id_int].name})")
+                
+                else:
+                    logger.warning(f"⚠️ [ID类型识别] 角色'{character_name}' -> ID {id_int} 在两个表中都不存在")
+                    id_to_name_mapping[str(id_int)] = f"ID_{id_int}(未知)"
+                    
+            except (ValueError, TypeError):
+                logger.warning(f"⚠️ [ID类型识别] 角色'{character_name}' -> 无效ID格式: {id_value}")
 
-        # 4. 对于其他voice_id，使用VoiceProfile映射作为后备
-        for voice_id, voice_name in voice_profile_id_to_name.items():
-            if voice_id not in voice_id_to_name:
-                voice_id_to_name[voice_id] = voice_name
-
-        logger.info(f"🎯 [总映射] 最终voice_id到voice_name映射: {voice_id_to_name}")
+        logger.info(f"🎯 [映射汇总] Character映射: {len(character_mappings)}, VoiceProfile映射: {len(voice_profile_mappings)}")
         
         # 获取这本书所有已完成分析的章节
-        # 注意：BookChapter, AnalysisResult 已在文件顶部导入
         chapters_with_analysis = db.query(BookChapter, AnalysisResult).join(
             AnalysisResult, BookChapter.id == AnalysisResult.chapter_id
         ).filter(
@@ -1013,75 +1106,101 @@ async def _sync_character_voice_to_synthesis_plans(
                     continue
                 plan_updated = False
                 
-                # 遍历每个段落，更新匹配角色的voice_id和voice_name
+                # 遍历每个段落，更新匹配角色的ID配置
                 for segment in segments:
                     speaker = segment.get('speaker', '')
                     
                     # 🔥 智能角色匹配：支持精确匹配和模糊匹配
-                    matched_voice_id = None
+                    matched_character = None
+                    matched_voice_profile = None
                     matched_character_name = None
                     
                     # 1. 精确匹配
-                    if speaker in character_voice_mappings:
-                        matched_voice_id = character_voice_mappings[speaker]
+                    if speaker in character_mappings:
+                        matched_character = character_mappings[speaker]
                         matched_character_name = speaker
-                        logger.info(f"🎯 [精确匹配] 角色 '{speaker}' 找到配置: voice_id={matched_voice_id}")
+                        logger.debug(f"🎯 [精确匹配-角色] 角色 '{speaker}' 找到Character配置: ID={matched_character.id}")
+                    elif speaker in voice_profile_mappings:
+                        matched_voice_profile = voice_profile_mappings[speaker]
+                        matched_character_name = speaker
+                        logger.debug(f"🎯 [精确匹配-语音] 角色 '{speaker}' 找到VoiceProfile配置: ID={matched_voice_profile.id}")
                     
                     # 2. 模糊匹配（如果精确匹配失败）
                     elif speaker:
-                        for config_name, voice_id in character_voice_mappings.items():
-                            # 检查是否为相似角色名（如"太监"和"太监假"）
+                        # 先在角色配音库中模糊匹配
+                        for config_name, character in character_mappings.items():
                             if (speaker in config_name) or (config_name in speaker):
-                                matched_voice_id = voice_id
+                                matched_character = character
                                 matched_character_name = config_name
-                                logger.info(f"🔍 [模糊匹配] 角色 '{speaker}' 匹配到配置角色 '{config_name}': voice_id={voice_id}")
+                                logger.debug(f"🔍 [模糊匹配-角色] 角色 '{speaker}' 匹配到配置角色 '{config_name}': Character ID={character.id}")
                                 break
                             
-                            # 检查去除常见后缀后是否匹配（如"太监假"→"太监"）
+                            # 检查去除常见后缀后是否匹配
                             clean_speaker = speaker.rstrip('假临时备用')
                             clean_config = config_name.rstrip('假临时备用')
                             if clean_speaker == clean_config and len(clean_speaker) > 1:
-                                matched_voice_id = voice_id
+                                matched_character = character
                                 matched_character_name = config_name
-                                logger.info(f"🧹 [后缀匹配] 角色 '{speaker}' 通过去除后缀匹配到 '{config_name}': voice_id={voice_id}")
+                                logger.debug(f"🧹 [后缀匹配-角色] 角色 '{speaker}' 通过去除后缀匹配到 '{config_name}': Character ID={character.id}")
                                 break
-                    
-                    # 🔥 新架构检查：如果segment已有character_id，跳过voice_id设置
-                    has_character_id = segment.get('character_id') is not None
-                    if has_character_id:
-                        logger.info(f"🔒 [新架构跳过] 角色 '{speaker}' 已有character_id={segment.get('character_id')}，跳过voice_id同步")
-                        continue
+                        
+                        # 如果角色配音库没找到，再在VoiceProfile中模糊匹配
+                        if not matched_character:
+                            for config_name, voice_profile in voice_profile_mappings.items():
+                                if (speaker in config_name) or (config_name in speaker):
+                                    matched_voice_profile = voice_profile
+                                    matched_character_name = config_name
+                                    logger.debug(f"🔍 [模糊匹配-语音] 角色 '{speaker}' 匹配到配置角色 '{config_name}': VoiceProfile ID={voice_profile.id}")
+                                    break
                     
                     # 检查这个角色是否找到了匹配的配置
-                    if matched_voice_id:
+                    if matched_character or matched_voice_profile:
+                        old_character_id = segment.get('character_id')
                         old_voice_id = segment.get('voice_id')
                         old_voice_name = segment.get('voice_name', '未分配')
-                        new_voice_id = matched_voice_id
                         
-                        # 🔥 关键修复：同时更新voice_name
-                        new_voice_name = voice_id_to_name.get(str(new_voice_id), f"Voice_{new_voice_id}")
-                        
-                        # 🔥 增强调试：记录同步过程（包含匹配信息）
-                        logger.info(f"📝 [同步调试] 章节 {chapter.id} 角色 '{speaker}' 匹配到配置角色 '{matched_character_name}': old_voice_id='{old_voice_id}', new_voice_id='{new_voice_id}', old_voice_name='{old_voice_name}', new_voice_name='{new_voice_name}'")
-                        
-                        # 🔥 关键修复：无论voice_id是否改变，都要确保voice_name正确
-                        voice_id_changed = str(old_voice_id) != str(new_voice_id)
-                        voice_name_wrong = old_voice_name != new_voice_name
-                        
-                        if voice_id_changed or voice_name_wrong:
-                            # 🔥 确保设置为正确的类型（根据原数据类型决定）
-                            if isinstance(old_voice_id, int) or (isinstance(old_voice_id, str) and old_voice_id.isdigit()):
-                                segment['voice_id'] = int(new_voice_id) if str(new_voice_id).isdigit() else new_voice_id
-                            else:
-                                segment['voice_id'] = str(new_voice_id)
+                        # 🚀 根据匹配类型设置正确的ID字段
+                        if matched_character:
+                            # 角色配音库：设置character_id，清除voice_id
+                            new_character_id = matched_character.id
+                            new_voice_name = matched_character.name
                             
-                            # 🔥 关键修复：同时更新voice_name
-                            segment['voice_name'] = new_voice_name
+                            # 检查是否需要更新
+                            character_id_changed = old_character_id != new_character_id
+                            voice_id_exists = old_voice_id is not None
+                            voice_name_wrong = old_voice_name != new_voice_name
                             
-                            plan_updated = True
-                            logger.info(f"✅ [传统同步] {speaker} (通过{matched_character_name}配置): voice_id {old_voice_id} → {segment['voice_id']}, voice_name '{old_voice_name}' → '{new_voice_name}'")
-                        else:
-                            logger.info(f"ℹ️ [跳过同步] 角色 '{speaker}' 配置已是最新: voice_id={old_voice_id}, voice_name={old_voice_name}")
+                            if character_id_changed or voice_id_exists or voice_name_wrong:
+                                segment['character_id'] = new_character_id
+                                segment['voice_name'] = new_voice_name
+                                
+                                # 🔥 关键：清除voice_id避免ID空间冲突
+                                if 'voice_id' in segment:
+                                    del segment['voice_id']
+                                
+                                plan_updated = True
+                                logger.info(f"✅ [角色同步] {speaker} (通过{matched_character_name}配置): character_id={new_character_id}, voice_name='{new_voice_name}' (清除voice_id)")
+                        
+                        elif matched_voice_profile:
+                            # VoiceProfile：设置voice_id，清除character_id  
+                            new_voice_id = matched_voice_profile.id
+                            new_voice_name = matched_voice_profile.name
+                            
+                            # 检查是否需要更新
+                            voice_id_changed = old_voice_id != new_voice_id
+                            character_id_exists = old_character_id is not None
+                            voice_name_wrong = old_voice_name != new_voice_name
+                            
+                            if voice_id_changed or character_id_exists or voice_name_wrong:
+                                segment['voice_id'] = new_voice_id
+                                segment['voice_name'] = new_voice_name
+                                
+                                # 🔥 关键：清除character_id避免ID空间冲突
+                                if 'character_id' in segment:
+                                    del segment['character_id']
+                                
+                                plan_updated = True
+                                logger.info(f"✅ [语音同步] {speaker} (通过{matched_character_name}配置): voice_id={new_voice_id}, voice_name='{new_voice_name}' (清除character_id)")
                 
                 # 如果有更新，保存到数据库
                 if plan_updated:
@@ -1103,21 +1222,22 @@ async def _sync_character_voice_to_synthesis_plans(
                         analysis.final_config = None
                         flag_modified(analysis, 'final_config')
                     
-                    analysis.updated_at = datetime.utcnow()
                     updated_count += 1
-                    logger.info(f"已更新章节 {chapter.id} ({chapter.chapter_title}) 的合成计划")
+                    logger.info(f"✅ [章节同步] 章节 {chapter.id} '{chapter.title}' 同步完成")
                 
             except Exception as e:
-                logger.error(f"更新章节 {chapter.id} 的synthesis_plan失败: {str(e)}")
+                logger.error(f"同步章节 {chapter.id} 失败: {str(e)}")
                 continue
         
-        # 批量提交数据库更改
-        if updated_count > 0:
-            db.commit()
-            logger.info(f"成功同步更新了 {updated_count} 个章节的synthesis_plan")
+        # 提交所有更改
+        db.commit()
+        logger.info(f"🎉 [同步完成] 书籍 {book_id} 共同步了 {updated_count} 个章节的synthesis_plan")
         
         return updated_count
         
     except Exception as e:
-        logger.error(f"同步角色语音配置到synthesis_plan失败: {str(e)}")
+        logger.error(f"同步角色语音配置失败: {str(e)}")
+        import traceback
+        logger.error(f"详细错误信息: {traceback.format_exc()}")
+        db.rollback()
         return 0 

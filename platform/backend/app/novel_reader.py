@@ -1135,17 +1135,45 @@ async def process_audio_generation_from_synthesis_plan(
                 
                 # 生成音频文件路径
                 safe_speaker = "".join(c for c in speaker if c.isalnum() or c in (' ', '-', '_')).rstrip()
-                audio_filename = f"segment_{segment_id:04d}_{safe_speaker}_{voice_id}.wav"
+                # 🔥 修复：根据实际使用的voice对象ID生成文件名，避免ID混用
+                voice_identifier = voice.id if hasattr(voice, 'id') else 'unknown'
+                audio_filename = f"segment_{segment_id:04d}_{safe_speaker}_{voice_identifier}.wav"
                 audio_path = os.path.join(project_output_dir, audio_filename)
+                
+                # 🔥 关键修复：优先使用角色配音库的个性化参数
+                final_parameters = {}
+                
+                # 方式1：从角色配音库获取参数（推荐）
+                if character and hasattr(character, 'voice_parameters') and character.voice_parameters:
+                    try:
+                        import json
+                        char_params = json.loads(character.voice_parameters) if isinstance(character.voice_parameters, str) else character.voice_parameters
+                        logger.info(f"[PARAMS] 使用角色配音库参数：{char_params}")
+                        final_parameters = {
+                            'timeStep': char_params.get('timeStep', char_params.get('time_step', 32)),
+                            'pWeight': char_params.get('pWeight', char_params.get('p_weight', 1.4)),
+                            'tWeight': char_params.get('tWeight', char_params.get('t_weight', 3.0))
+                        }
+                    except Exception as e:
+                        logger.warning(f"[PARAMS] 解析角色参数失败，使用默认参数: {e}")
+                        final_parameters = {'timeStep': 32, 'pWeight': 1.4, 'tWeight': 3.0}
+                else:
+                    # 方式2：使用synthesis_plan的通用参数（向后兼容）
+                    final_parameters = {
+                        'timeStep': parameters.get('timeStep', 32),
+                        'pWeight': parameters.get('pWeight', 1.4),
+                        'tWeight': parameters.get('tWeight', 3.0)
+                    }
+                    logger.info(f"[PARAMS] 使用通用参数：{final_parameters}")
                 
                 # 准备TTS请求
                 tts_request = TTSRequest(
                     text=text,
                     reference_audio_path=voice.reference_audio_path,
                     output_audio_path=audio_path,
-                    time_step=parameters.get('timeStep', 32),
-                    p_weight=parameters.get('pWeight', 1.4),
-                    t_weight=parameters.get('tWeight', 3.0),
+                    time_step=final_parameters['timeStep'],
+                    p_weight=final_parameters['pWeight'],
+                    t_weight=final_parameters['tWeight'],
                     latent_file_path=voice.latent_file_path
                 )
                 
@@ -1184,6 +1212,29 @@ async def process_audio_generation_from_synthesis_plan(
                         # 重新合成时不需要检查重复，因为启动时已经清理过了
                         logger.debug(f"[SYNTHESIS_PLAN] 开始合成段落 {segment_id}，角色: {speaker}")
                         
+                        # 🔥 修复：正确设置character_id和voice_profile_id，避免ID空间冲突
+                        # 根据voice对象的来源正确设置ID字段
+                        audio_character_id = None
+                        audio_voice_profile_id = None
+                        
+                        if character_id:
+                            # 新架构：使用角色配音库
+                            audio_character_id = character_id
+                            logger.debug(f"[NEW_ARCH] AudioFile使用character_id: {character_id}")
+                        elif voice_id and hasattr(voice, 'id') and not hasattr(voice, '__dict__'):
+                            # 旧架构：使用VoiceProfile（voice是真正的VoiceProfile对象）
+                            audio_voice_profile_id = voice.id
+                            logger.debug(f"[OLD_ARCH] AudioFile使用voice_profile_id: {voice.id}")
+                        else:
+                            logger.warning(f"[SYNTHESIS_PLAN] 段落 {segment_id} 无法确定ID类型，使用voice对象ID")
+                            # 如果无法确定，根据voice对象类型判断
+                            if hasattr(voice, '__dict__') and 'VoiceCompat' in str(type(voice)):
+                                # VoiceCompat对象来自Character
+                                audio_character_id = voice.id
+                            else:
+                                # 真正的VoiceProfile对象
+                                audio_voice_profile_id = voice.id if hasattr(voice, 'id') else None
+                        
                         # 保存AudioFile记录（新架构：包含完整合成信息）
                         audio_file = AudioFile(
                             filename=audio_filename,
@@ -1197,7 +1248,8 @@ async def process_audio_generation_from_synthesis_plan(
                             character_name=speaker,  # 角色名
                             speaker=speaker,  # 说话人
                             paragraph_index=segment_id,  # 段落索引
-                            voice_profile_id=voice.id if hasattr(voice, 'id') else None,  # 🚀 新架构：VoiceProfile ID
+                            character_id=audio_character_id,  # 🚀 新架构：Character ID
+                            voice_profile_id=audio_voice_profile_id,  # 🚀 旧架构：VoiceProfile ID
                             text_content=text,
                             audio_type='segment',
                             processing_time=processing_time,
@@ -1220,8 +1272,8 @@ async def process_audio_generation_from_synthesis_plan(
                             "file_path": audio_path,
                             "duration": duration,
                             "speaker": speaker,
-                            "character_id": character_id,  # 🚀 新架构：返回character_id
-                            "voice_profile_id": voice.id if hasattr(voice, 'id') else None  # 🚀 新架构：返回voice_profile_id
+                            "character_id": audio_character_id,  # 🚀 新架构：返回正确的character_id
+                            "voice_profile_id": audio_voice_profile_id  # 🚀 旧架构：返回正确的voice_profile_id
                         }
                     else:
                         logger.error(f"[SYNTHESIS_PLAN] 段落 {segment_id} 音频文件未生成")

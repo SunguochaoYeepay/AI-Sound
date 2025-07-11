@@ -27,7 +27,7 @@
               🎯 创建项目
             </a-button> -->
             <a-button @click="$emit('openCharacterManagement')">
-              🎭 全书角色管理
+              🎭 管理角色配音
             </a-button>
           </a-space>
         </div>
