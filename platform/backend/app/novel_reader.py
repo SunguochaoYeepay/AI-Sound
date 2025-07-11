@@ -1106,11 +1106,13 @@ async def process_audio_generation_from_synthesis_plan(
                             
                             voice = VoiceCompat(character)
                         else:
-                            logger.warning(f"[NEW_ARCH] 段落 {segment_id} 角色ID {character_id} 不存在或未配置音频")
+                            logger.error(f"[NEW_ARCH] 段落 {segment_id} 角色ID {character_id} 不存在或未配置音频，请在角色配音库中配置声音")
+                            return {"error": f"段落 {segment_id} 角色'{speaker}'未配置声音，请在角色配音库中上传音频文件"}
                     except Exception as e:
                         logger.error(f"[NEW_ARCH] 段落 {segment_id} 查找角色失败: {e}")
+                        return {"error": f"段落 {segment_id} 角色查找失败: {e}"}
                 
-                if not voice and voice_id:
+                elif voice_id:
                     # 🔄 旧架构：通过voice_id获取VoiceProfile（向后兼容）
                     try:
                         voice = db.query(VoiceProfile).filter(VoiceProfile.id == voice_id).first()

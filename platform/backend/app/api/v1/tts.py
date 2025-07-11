@@ -49,11 +49,15 @@ async def tts_preview(
         if len(text) > 200:
             raise HTTPException(status_code=400, detail="试听文本长度不能超过200字符")
         
-        # 🔥 智能判断数据源：优先检查角色配音库，然后检查VoiceProfile
+        # 🔥 分离ID空间：根据前端传递的参数类型判断数据源
         voice_config = None
         data_source = None
         
-        # 1. 优先从角色配音库获取配置
+        # 检查是否为角色配音库ID（通常前端会传递额外的标识）
+        # 但由于当前前端可能混用ID，我们需要智能判断
+        
+        # 1. 先尝试从角色配音库获取配置
+        character_found = False
         try:
             character = db.query(Character).filter(
                 Character.id == int(voice_id),
@@ -70,13 +74,14 @@ async def tts_preview(
                     'avatar_path': character.avatar_path
                 }
                 data_source = 'character'
+                character_found = True
                 logger.info(f"🎭 [试听] 使用角色配音库数据: {character.name} (ID: {character.id})")
         except (ValueError, TypeError):
             # voice_id不是有效的整数，跳过Character查询
             pass
         
-        # 2. 如果角色配音库没有找到，从VoiceProfile获取配置
-        if not voice_config:
+        # 2. 如果角色配音库没有找到或未配置，且不是角色ID，尝试VoiceProfile
+        if not voice_config and not character_found:
             try:
                 voice_profile = db.query(VoiceProfile).filter(
                     VoiceProfile.id == int(voice_id),
@@ -96,6 +101,9 @@ async def tts_preview(
                     logger.info(f"🎤 [试听] 使用VoiceProfile数据: {voice_profile.name} (ID: {voice_profile.id})")
             except (ValueError, TypeError):
                 pass
+        elif character_found and not voice_config:
+            # 角色存在但未配置声音
+            raise HTTPException(status_code=400, detail=f"角色配音库中的角色'{character.name}'尚未配置声音文件，请先上传音频")
         
         # 3. 如果都没有找到，返回错误
         if not voice_config:

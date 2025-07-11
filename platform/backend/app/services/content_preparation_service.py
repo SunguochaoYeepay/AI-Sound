@@ -722,7 +722,7 @@ class ContentPreparationService:
             if speaker in character_library:
                 library_char = character_library[speaker]
                 character_id = library_char.id  # 🚀 新架构：使用character_id
-                voice_id = library_char.id     # 🔄 向后兼容：保持voice_id
+                # voice_id = library_char.id     # 🔥 移除：避免ID空间冲突
                 voice_name = library_char.name
                 logger.info(f"✅ [角色配音库] 角色'{speaker}'直接使用配音库ID: {character_id}")
             else:
@@ -760,12 +760,13 @@ class ContentPreparationService:
                 **tts_params
             }
             
-            # 🚀 新架构：优先使用character_id，保持voice_id向后兼容
+            # 🚀 新架构：严格分离ID空间，确保一致性
             if character_id:
                 segment_data["character_id"] = character_id
-                segment_data["voice_id"] = voice_id  # 向后兼容
+                # 🔥 关键修复：角色配音库不设置voice_id，避免ID冲突
+                # segment_data["voice_id"] = voice_id  # 移除这行，避免与VoiceProfile ID冲突
             else:
-                segment_data["voice_id"] = voice_id  # 传统映射方式
+                segment_data["voice_id"] = voice_id  # 仅传统映射方式使用
             
             synthesis_plan.append(segment_data)
         
@@ -788,7 +789,7 @@ class ContentPreparationService:
                 library_char = character_library[char_name]
                 # 🔥 关键优化：无论是否配置语音，都使用角色配音库的ID
                 character_id = library_char.id  # 🚀 新架构：使用character_id
-                voice_id = library_char.id      # 🔄 向后兼容：保持voice_id
+                # voice_id = library_char.id      # 🔥 移除：避免ID空间冲突
                 voice_name = library_char.name
                 voice_type = library_char.voice_type or "neutral"
                 character_library_mappings[char_name] = str(library_char.id)
@@ -831,12 +832,13 @@ class ContentPreparationService:
                 "avatarUrl": avatar_url  # 🔥 新增：头像URL
             }
             
-            # 🚀 新架构：优先使用character_id，保持voice_id向后兼容
+            # 🚀 新架构：严格分离ID空间，确保一致性
             if character_id:
                 char_data["character_id"] = character_id
-                char_data["voice_id"] = voice_id  # 向后兼容
+                # 🔥 关键修复：角色配音库不设置voice_id，避免ID冲突
+                # char_data["voice_id"] = voice_id  # 移除这行，避免与VoiceProfile ID冲突
             else:
-                char_data["voice_id"] = voice_id if voice_id else ""  # 传统映射方式
+                char_data["voice_id"] = voice_id if voice_id else ""  # 仅传统映射方式使用
             
             characters.append(char_data)
         
