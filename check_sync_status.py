@@ -105,4 +105,4 @@ def check_xiaohong_sync():
         db.close()
 
 if __name__ == '__main__':
-    check_xiaohong_sync() 
+    check_xiaohong_sync()
