@@ -911,6 +911,14 @@ async def _sync_character_voice_to_synthesis_plans(
     """
     同步角色语音配置到所有相关章节的synthesis_plan
     
+    🚀 新架构说明：
+    在新架构中，synthesis_plan存储character_id而不是voice_id，
+    合成时会动态查找Character表获取最新配音，因此不再需要手动同步。
+    
+    🔄 向后兼容：
+    此函数保留用于处理使用旧架构的历史数据，
+    新的智能准备将直接生成使用character_id的synthesis_plan。
+    
     Args:
         book_id: 书籍ID
         character_voice_mappings: 角色语音映射 {角色名: voice_id}
@@ -922,6 +930,52 @@ async def _sync_character_voice_to_synthesis_plans(
     try:
         # 🔥 增强调试：记录传入的映射信息
         logger.info(f"🚀 [开始同步] 书籍 {book_id}, 传入映射: {character_voice_mappings}")
+        
+        # 🔥 修复：优先从角色配音库获取voice_name，然后才从VoiceProfile获取
+        voice_id_to_name = {}
+
+        # 🔥 CRITICAL FIX: 修复Character ID和VoiceProfile ID混乱的问题
+        # character_voice_mappings中的值是Character的ID，不是VoiceProfile的ID
+        # 需要正确建立映射关系
+
+        # 1. 首先从角色配音库获取Character ID到name的映射
+        character_id_to_name = {}
+        try:
+            from ...models import Character
+            characters = db.query(Character).filter(
+                Character.book_id == book_id
+            ).all()
+            for char in characters:
+                character_id_to_name[str(char.id)] = char.name
+            logger.info(f"📚 [角色配音库] 加载了 {len(character_id_to_name)} 个角色配音库映射")
+            logger.info(f"📚 [角色配音库] 映射详情: {character_id_to_name}")
+        except Exception as e:
+            logger.warning(f"获取角色配音库失败: {str(e)}")
+
+        # 2. 然后从VoiceProfile获取Voice ID到name的映射
+        voice_profile_id_to_name = {}
+        try:
+            from ...models import VoiceProfile
+            voices = db.query(VoiceProfile).filter(VoiceProfile.status == 'active').all()
+            for v in voices:
+                voice_profile_id_to_name[str(v.id)] = v.name
+            logger.info(f"📋 [语音档案] 加载了 {len(voice_profile_id_to_name)} 个语音档案映射")
+            logger.info(f"📋 [语音档案] 映射详情: {voice_profile_id_to_name}")
+        except Exception as e:
+            logger.warning(f"获取语音档案失败: {str(e)}")
+
+        # 3. 🔥 关键修复：建立正确的voice_id_to_name映射
+        # character_voice_mappings中的值是Character ID，需要映射到Character name
+        for character_name, character_id in character_voice_mappings.items():
+            voice_id_to_name[str(character_id)] = character_id_to_name.get(str(character_id), character_name)
+            logger.info(f"🎯 [映射建立] voice_id {character_id} -> voice_name '{voice_id_to_name[str(character_id)]}'")
+
+        # 4. 对于其他voice_id，使用VoiceProfile映射作为后备
+        for voice_id, voice_name in voice_profile_id_to_name.items():
+            if voice_id not in voice_id_to_name:
+                voice_id_to_name[voice_id] = voice_name
+
+        logger.info(f"🎯 [总映射] 最终voice_id到voice_name映射: {voice_id_to_name}")
         
         # 获取这本书所有已完成分析的章节
         # 注意：BookChapter, AnalysisResult 已在文件顶部导入
@@ -958,36 +1012,6 @@ async def _sync_character_voice_to_synthesis_plans(
                     logger.debug(f"章节 {chapter.id} synthesis_plan格式不匹配或为空，跳过同步")
                     continue
                 plan_updated = False
-                
-                # 🔥 修复：优先从角色配音库获取voice_name，然后才从VoiceProfile获取
-                voice_id_to_name = {}
-                
-                # 🔥 修复：从角色配音库获取映射（不限制状态）
-                try:
-                    from ...models import Character
-                    characters = db.query(Character).filter(
-                        Character.book_id == book_id
-                    ).all()
-                    for char in characters:
-                        voice_id_to_name[str(char.id)] = char.name
-                    logger.info(f"📚 [角色配音库] 加载了 {len(voice_id_to_name)} 个角色配音库映射")
-                    logger.info(f"📚 [角色配音库] 角色状态分布: {[(char.name, char.status) for char in characters]}")
-                except Exception as e:
-                    logger.warning(f"获取角色配音库失败: {str(e)}")
-                
-                # 2. 然后从VoiceProfile获取剩余映射（作为后备）
-                try:
-                    from ...models import VoiceProfile
-                    voices = db.query(VoiceProfile).filter(VoiceProfile.status == 'active').all()
-                    for v in voices:
-                        # 只有角色配音库中没有的才使用VoiceProfile
-                        if str(v.id) not in voice_id_to_name:
-                            voice_id_to_name[str(v.id)] = v.name
-                    logger.info(f"📋 [语音档案] 补充了 {len([v for v in voices if str(v.id) not in voice_id_to_name])} 个语音档案映射")
-                except Exception as e:
-                    logger.warning(f"获取语音档案失败: {str(e)}")
-                
-                logger.info(f"🎯 [总映射] 共加载了 {len(voice_id_to_name)} 个voice_id到voice_name的映射")
                 
                 # 遍历每个段落，更新匹配角色的voice_id和voice_name
                 for segment in segments:

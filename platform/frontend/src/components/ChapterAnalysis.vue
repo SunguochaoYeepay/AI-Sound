@@ -1014,71 +1014,79 @@ const hasJsonChanges = computed(() => {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 16px;
+  margin-top: 16px;
 }
 
 .character-card {
   border: 1px solid #e5e7eb;
-  border-radius: 8px;
+  border-radius: 12px;
   padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+  background: #fff;
+  transition: all 0.2s;
+  position: relative;
+  overflow: hidden;
+}
+
+.character-card:hover {
+  border-color: #3b82f6;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.1);
 }
 
 .character-header {
   display: flex;
   align-items: center;
   gap: 12px;
+  margin-bottom: 12px;
 }
 
 .character-avatar {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  font-weight: 600;
-  font-size: 16px;
+  flex-shrink: 0;
 }
 
 .character-info {
   flex: 1;
+  min-width: 0;
 }
 
 .character-name {
-  font-weight: 600;
-  color: #1f2937;
   display: flex;
   align-items: center;
   gap: 8px;
+  margin-bottom: 4px;
 }
 
 .name-text {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1f2937;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 150px;
 }
 
 .character-rank {
   font-size: 12px;
   color: #6b7280;
+  flex-shrink: 0;
 }
 
 .character-tags {
   display: flex;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 4px;
   margin-top: 4px;
 }
 
-.character-stats-detail {
-  margin-top: 8px;
+.character-details {
+  margin-top: 12px;
 }
 
 .character-actions {
   margin-top: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
 }
 
 .no-analysis {

@@ -1070,6 +1070,7 @@ async def process_audio_generation_from_synthesis_plan(
                 text = segment_data.get('text', '')
                 speaker = segment_data.get('speaker', '未知')
                 voice_id = segment_data.get('voice_id')
+                character_id = segment_data.get('character_id')
                 parameters = segment_data.get('parameters', {})
                 
                 logger.info(f"[SYNTHESIS_PLAN] 处理段落 {segment_id}: {speaker} - {text[:50]}...")
@@ -1078,15 +1079,51 @@ async def process_audio_generation_from_synthesis_plan(
                     logger.warning(f"[SYNTHESIS_PLAN] 段落 {segment_id} 文本为空，跳过")
                     return None
                 
-                if not voice_id:
-                    logger.error(f"[SYNTHESIS_PLAN] 段落 {segment_id} 缺少 voice_id")
-                    return {"error": f"段落 {segment_id} 缺少声音配置"}
+                # 🚀 架构改进：支持两种方式获取音频配置
+                # 方式1（推荐）：通过character_id获取最新配音
+                # 方式2（向后兼容）：通过voice_id获取VoiceProfile
+                character = None
+                voice = None
                 
-                # 获取声音档案
-                voice = db.query(VoiceProfile).filter(VoiceProfile.id == voice_id).first()
+                if character_id:
+                    # 🎯 新架构：通过character_id获取角色最新配音
+                    try:
+                        from app.models.character import Character
+                        character = db.query(Character).filter(Character.id == character_id).first()
+                        if character and character.reference_audio_path:
+                            logger.info(f"[NEW_ARCH] 段落 {segment_id} 使用角色配音：{character.name} (ID: {character.id})")
+                            # 创建兼容的voice对象
+                            class VoiceCompat:
+                                def __init__(self, char):
+                                    self.id = char.id
+                                    self.name = char.name
+                                    self.reference_audio_path = char.reference_audio_path
+                                    self.latent_file_path = char.latent_file_path
+                                    self.status = char.status
+                                
+                                def validate_files(self):
+                                    return {'valid': True, 'missing_files': []}
+                            
+                            voice = VoiceCompat(character)
+                        else:
+                            logger.warning(f"[NEW_ARCH] 段落 {segment_id} 角色ID {character_id} 不存在或未配置音频")
+                    except Exception as e:
+                        logger.error(f"[NEW_ARCH] 段落 {segment_id} 查找角色失败: {e}")
+                
+                if not voice and voice_id:
+                    # 🔄 旧架构：通过voice_id获取VoiceProfile（向后兼容）
+                    try:
+                        voice = db.query(VoiceProfile).filter(VoiceProfile.id == voice_id).first()
+                        if voice:
+                            logger.info(f"[OLD_ARCH] 段落 {segment_id} 使用VoiceProfile：{voice.name} (ID: {voice.id})")
+                        else:
+                            logger.error(f"[OLD_ARCH] 段落 {segment_id} VoiceProfile不存在: {voice_id}")
+                    except Exception as e:
+                        logger.error(f"[OLD_ARCH] 段落 {segment_id} 查找VoiceProfile失败: {e}")
+                
                 if not voice:
-                    logger.error(f"[SYNTHESIS_PLAN] 段落 {segment_id} 声音档案不存在: {voice_id}")
-                    return {"error": f"段落 {segment_id} 声音档案不存在"}
+                    logger.error(f"[SYNTHESIS_PLAN] 段落 {segment_id} 无法获取声音配置 (character_id: {character_id}, voice_id: {voice_id})")
+                    return {"error": f"段落 {segment_id} 缺少声音配置"}
                 
                 # 验证声音文件
                 file_validation = voice.validate_files()
@@ -1158,7 +1195,7 @@ async def process_audio_generation_from_synthesis_plan(
                             character_name=speaker,  # 角色名
                             speaker=speaker,  # 说话人
                             paragraph_index=segment_id,  # 段落索引
-                            voice_profile_id=voice_id,
+                            voice_profile_id=voice.id if hasattr(voice, 'id') else None,  # 🚀 新架构：VoiceProfile ID
                             text_content=text,
                             audio_type='segment',
                             processing_time=processing_time,
@@ -1181,7 +1218,8 @@ async def process_audio_generation_from_synthesis_plan(
                             "file_path": audio_path,
                             "duration": duration,
                             "speaker": speaker,
-                            "voice_id": voice_id
+                            "character_id": character_id,  # 🚀 新架构：返回character_id
+                            "voice_profile_id": voice.id if hasattr(voice, 'id') else None  # 🚀 新架构：返回voice_profile_id
                         }
                     else:
                         logger.error(f"[SYNTHESIS_PLAN] 段落 {segment_id} 音频文件未生成")

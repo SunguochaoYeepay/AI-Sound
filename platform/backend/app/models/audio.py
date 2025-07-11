@@ -30,6 +30,7 @@ class AudioFile(BaseModel):
     speaker = Column(String(100), comment="说话人")
     paragraph_index = Column(Integer, comment="段落索引")
     voice_profile_id = Column(Integer, ForeignKey("voice_profiles.id"), comment="声音档案ID")
+    character_id = Column(Integer, ForeignKey("characters.id"), comment="角色ID - 新架构支持")
     
     # 内容信息
     text_content = Column(Text, comment="文本内容")
@@ -54,6 +55,7 @@ class AudioFile(BaseModel):
     project = relationship("NovelProject", back_populates="audio_files")
     chapter = relationship("BookChapter")
     voice_profile = relationship("VoiceProfile")
+    character = relationship("Character")
     
     def to_dict(self):
         """转换为字典"""

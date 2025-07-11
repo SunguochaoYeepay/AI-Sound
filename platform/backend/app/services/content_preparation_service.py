@@ -715,18 +715,22 @@ class ContentPreparationService:
             
             # 🔥 优化：直接从角色配音库获取ID，简化逻辑
             voice_id = None
+            character_id = None  # 🚀 新架构：使用character_id
             voice_name = "未分配"
             
             # 1. 优先从角色配音库获取ID（无论是否配置语音）
             if speaker in character_library:
                 library_char = character_library[speaker]
-                voice_id = library_char.id  # 直接使用Character的ID
+                character_id = library_char.id  # 🚀 新架构：使用character_id
+                voice_id = library_char.id     # 🔄 向后兼容：保持voice_id
                 voice_name = library_char.name
-                logger.info(f"✅ [角色配音库] 角色'{speaker}'直接使用配音库ID: {voice_id}")
+                logger.info(f"✅ [角色配音库] 角色'{speaker}'直接使用配音库ID: {character_id}")
             else:
                 # 2. 如果角色配音库没有，再检查传统映射（应该很少见）
                 if voice_mapping.get(speaker):
                     voice_id = voice_mapping.get(speaker)
+                    # 🚀 新架构：传统映射的voice_id可能指向VoiceProfile，设为None
+                    character_id = None
                     try:
                         from ..models import VoiceProfile
                         voice_profile = self.db.query(VoiceProfile).filter(VoiceProfile.id == voice_id).first()
@@ -744,17 +748,26 @@ class ContentPreparationService:
             # 🔥 TTS优化：根据模式调整参数
             tts_params = self._get_optimized_tts_params(speaker, tts_optimization_mode, segment)
             
-            synthesis_plan.append({
+            # 🚀 新架构：同时保存character_id和voice_id（向后兼容）
+            segment_data = {
                 "segment_id": i + 1,
                 "text": text_content,
                 "speaker": speaker,
-                "voice_id": voice_id,
                 "voice_name": voice_name,
                 "text_type": segment.get('text_type', 'dialogue'),
                 "confidence": segment.get('confidence', 0.8),
                 "detection_rule": segment.get('detection_rule', 'ai_analysis'),
                 **tts_params
-            })
+            }
+            
+            # 🚀 新架构：优先使用character_id，保持voice_id向后兼容
+            if character_id:
+                segment_data["character_id"] = character_id
+                segment_data["voice_id"] = voice_id  # 向后兼容
+            else:
+                segment_data["voice_id"] = voice_id  # 传统映射方式
+            
+            synthesis_plan.append(segment_data)
         
         # 🔥 关键修复：构建角色信息时优先使用角色配音库数据
         characters = []
@@ -766,6 +779,7 @@ class ContentPreparationService:
                 continue
             
             voice_id = None
+            character_id = None  # 🚀 新架构：使用character_id
             voice_name = "未分配"
             voice_type = "neutral"
             
@@ -773,15 +787,17 @@ class ContentPreparationService:
             if char_name in character_library:
                 library_char = character_library[char_name]
                 # 🔥 关键优化：无论是否配置语音，都使用角色配音库的ID
-                voice_id = library_char.id
+                character_id = library_char.id  # 🚀 新架构：使用character_id
+                voice_id = library_char.id      # 🔄 向后兼容：保持voice_id
                 voice_name = library_char.name
                 voice_type = library_char.voice_type or "neutral"
                 character_library_mappings[char_name] = str(library_char.id)
-                logger.info(f"✅ [角色配音库] 角色'{char_name}'直接使用配音库ID: {library_char.id}")
+                logger.info(f"✅ [角色配音库] 角色'{char_name}'直接使用配音库ID: {character_id}")
             else:
                 # 如果角色配音库没有，使用传统映射（但这种情况应该很少）
                 if voice_mapping.get(char_name):
                     voice_id = voice_mapping.get(char_name)
+                    character_id = None  # 🚀 新架构：传统映射不设置character_id
                     try:
                         from ..models import VoiceProfile
                         voice_profile = self.db.query(VoiceProfile).filter(VoiceProfile.id == voice_id).first()
@@ -804,16 +820,25 @@ class ContentPreparationService:
                     filename = os.path.basename(library_char.avatar_path)
                     avatar_url = f"/api/v1/avatars/{filename}"
             
-            characters.append({
+            # 🚀 新架构：构建角色信息
+            char_data = {
                 "name": char_name,
-                "voice_id": voice_id if voice_id else "",
                 "voice_name": voice_name,
                 "voice_type": voice_type,
                 "count": char_count,
                 "in_character_library": char_name in character_library,  # 标记是否在角色配音库中
                 "is_voice_configured": char_name in character_library and character_library[char_name].is_voice_configured,  # 从角色配音库判断
                 "avatarUrl": avatar_url  # 🔥 新增：头像URL
-            })
+            }
+            
+            # 🚀 新架构：优先使用character_id，保持voice_id向后兼容
+            if character_id:
+                char_data["character_id"] = character_id
+                char_data["voice_id"] = voice_id  # 向后兼容
+            else:
+                char_data["voice_id"] = voice_id if voice_id else ""  # 传统映射方式
+            
+            characters.append(char_data)
         
         # 🔥 关键修复：如果使用了角色配音库，同步更新书籍的voice_mappings
         if character_library_mappings and chapter_id:

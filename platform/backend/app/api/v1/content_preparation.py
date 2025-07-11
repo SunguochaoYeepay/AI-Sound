@@ -230,102 +230,9 @@ async def get_preparation_result(
             if not latest_result:
                 raise HTTPException(status_code=404, detail="该章节尚未完成智能准备")
             
-            # 🔥 关键修复：强制应用最新的角色语音配置
+            # 直接使用存储的智能准备结果，不再进行动态缓存同步
             synthesis_plan = latest_result.synthesis_plan or {}
-            
-            # 获取书籍的最新角色语音配置
-            try:
-                from app.models import Book
-                book = db.query(Book).join(BookChapter).filter(BookChapter.id == chapter_id).first()
-                if book:
-                    character_summary = book.get_character_summary()
-                    if isinstance(character_summary, dict) and 'voice_mappings' in character_summary:
-                        voice_mappings = character_summary['voice_mappings']
-                        logger.info(f"📋 [缓存结果] 应用最新角色配置: {voice_mappings}")
-                        
-                        # 强制同步角色配置到synthesis_plan
-                        if 'synthesis_plan' in synthesis_plan and voice_mappings:
-                            # 🔥 修复：优先从角色配音库获取voice_name，然后才从VoiceProfile获取
-                            voice_id_to_name = {}
-                            
-                            # 1. 先从角色配音库获取映射
-                            try:
-                                from app.models import Character
-                                characters = db.query(Character).filter(Character.book_id == book.id).all()
-                                for char in characters:
-                                    voice_id_to_name[str(char.id)] = char.name
-                                logger.info(f"📚 [缓存同步] 从角色配音库获取映射: {voice_id_to_name}")
-                            except Exception as e:
-                                logger.warning(f"获取角色配音库映射失败: {str(e)}")
-                            
-                            # 2. 再从VoiceProfile获取剩余的映射
-                            try:
-                                from app.models import VoiceProfile
-                                voices = db.query(VoiceProfile).filter(VoiceProfile.status == 'active').all()
-                                for v in voices:
-                                    if str(v.id) not in voice_id_to_name:  # 只添加角色配音库中没有的
-                                        voice_id_to_name[str(v.id)] = v.name
-                                logger.info(f"🎙️ [缓存同步] 添加VoiceProfile映射，总映射数: {len(voice_id_to_name)}")
-                            except Exception as e:
-                                logger.warning(f"获取VoiceProfile映射失败: {str(e)}")
-                            
-                            # 更新每个segment的voice配置（使用智能匹配）
-                            segments = synthesis_plan['synthesis_plan']
-                            for segment in segments:
-                                speaker = segment.get('speaker', '')
-                                
-                                # 🔥 智能角色匹配：支持精确匹配和模糊匹配
-                                matched_voice_id = None
-                                matched_character_name = None
-                                
-                                # 1. 精确匹配
-                                if speaker in voice_mappings:
-                                    matched_voice_id = voice_mappings[speaker]
-                                    matched_character_name = speaker
-                                
-                                # 2. 模糊匹配（如果精确匹配失败）
-                                elif speaker:
-                                    for config_name, voice_id in voice_mappings.items():
-                                        # 检查是否为相似角色名（如"太监"和"太监假"）
-                                        if (speaker in config_name) or (config_name in speaker):
-                                            matched_voice_id = voice_id
-                                            matched_character_name = config_name
-                                            logger.info(f"🔍 [API模糊匹配] 角色 '{speaker}' 匹配到配置角色 '{config_name}': voice_id={voice_id}")
-                                            break
-                                        
-                                        # 检查去除常见后缀后是否匹配
-                                        clean_speaker = speaker.rstrip('假临时备用')
-                                        clean_config = config_name.rstrip('假临时备用')
-                                        if clean_speaker == clean_config and len(clean_speaker) > 1:
-                                            matched_voice_id = voice_id
-                                            matched_character_name = config_name
-                                            logger.info(f"🧹 [API后缀匹配] 角色 '{speaker}' 通过去除后缀匹配到 '{config_name}': voice_id={voice_id}")
-                                            break
-                                
-                                if matched_voice_id:
-                                    new_voice_name = voice_id_to_name.get(str(matched_voice_id), f"Voice_{matched_voice_id}")
-                                    segment['voice_id'] = matched_voice_id
-                                    segment['voice_name'] = new_voice_name
-                                    logger.info(f"✅ [缓存同步] {speaker} (通过{matched_character_name}配置): voice_id={matched_voice_id}, voice_name={new_voice_name}")
-                        
-                        # 更新characters配置
-                        if 'characters' in synthesis_plan and voice_mappings:
-                            for character in synthesis_plan['characters']:
-                                char_name = character.get('name', '')
-                                if char_name in voice_mappings:
-                                    new_voice_id = voice_mappings[char_name]
-                                    new_voice_name = voice_id_to_name.get(str(new_voice_id), char_name)  # 🔥 修复：如果找不到映射，使用角色名本身
-                                    character['voice_id'] = new_voice_id
-                                    character['voice_name'] = new_voice_name
-                                    logger.info(f"✅ [角色同步] {char_name}: voice_id={new_voice_id}, voice_name={new_voice_name}")
-                        
-                        logger.info("🔄 [缓存结果] 已应用最新角色语音配置")
-                    else:
-                        logger.info("📋 [缓存结果] 书籍暂无角色配置，使用原始数据")
-                else:
-                    logger.warning("📋 [缓存结果] 无法找到对应书籍，使用原始数据")
-            except Exception as e:
-                logger.warning(f"应用最新角色配置失败: {str(e)}，使用原始数据")
+            logger.info("📋 [结果获取] 使用存储的智能准备结果，已包含正确的角色配置")
             
             # 构建返回数据
             result_data = {
@@ -338,7 +245,7 @@ async def get_preparation_result(
                     "result_id": latest_result.id,
                     "created_at": latest_result.created_at.isoformat() if latest_result.created_at else None,
                     "completed_at": latest_result.completed_at.isoformat() if latest_result.completed_at else None,
-                    "voice_sync_applied": True  # 标记已应用语音同步
+                    "voice_sync_applied": False  # 不再进行动态语音同步
                 },
                 "last_updated": latest_result.updated_at.isoformat() if latest_result.updated_at else latest_result.created_at.isoformat()
             }

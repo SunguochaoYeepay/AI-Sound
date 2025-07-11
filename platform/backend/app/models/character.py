@@ -119,13 +119,13 @@ class Character(BaseModel):
             
         if self.reference_audio_path:
             filename = os.path.basename(self.reference_audio_path)
-            result['referenceAudioUrl'] = f"/voice_profiles/{filename}"
+            result['referenceAudioUrl'] = f"/api/v1/voice_profiles/{filename}"
         else:
             result['referenceAudioUrl'] = None
             
         if self.latent_file_path:
             filename = os.path.basename(self.latent_file_path)
-            result['latentFileUrl'] = f"/voice_profiles/{filename}"
+            result['latentFileUrl'] = f"/api/v1/voice_profiles/{filename}"
         else:
             result['latentFileUrl'] = None
         
