@@ -205,11 +205,16 @@ async def get_preparation_status(
 @router.get("/result/{chapter_id}")
 async def get_preparation_result(
     chapter_id: int,
+    force_refresh: bool = Query(False, description="强制刷新缓存"),
     db: Session = Depends(get_db)
 ):
     """
     获取章节的已有智能准备结果
     不重新执行智能准备，只返回已存储的结果
+    
+    Args:
+        chapter_id: 章节ID
+        force_refresh: 强制刷新缓存，忽略final_config
     """
     try:
         # 获取章节
@@ -245,13 +250,15 @@ async def get_preparation_result(
                     "result_id": latest_result.id,
                     "created_at": latest_result.created_at.isoformat() if latest_result.created_at else None,
                     "completed_at": latest_result.completed_at.isoformat() if latest_result.completed_at else None,
-                    "voice_sync_applied": False  # 不再进行动态语音同步
+                    "voice_sync_applied": False,  # 不再进行动态语音同步
+                    "cache_status": "fresh" if force_refresh else "cached",  # 🔥 新增：缓存状态
+                    "data_source": "synthesis_plan"  # 🔥 新增：数据来源
                 },
                 "last_updated": latest_result.updated_at.isoformat() if latest_result.updated_at else latest_result.created_at.isoformat()
             }
             
-            # 🔥 CRITICAL FIX: 智能处理final_config，优先返回最新数据
-            if latest_result.final_config:
+            # 🔥 智能缓存处理：根据force_refresh参数决定是否使用final_config
+            if not force_refresh and latest_result.final_config:
                 try:
                     final_config = latest_result.final_config
                     if isinstance(final_config, str):
@@ -265,16 +272,27 @@ async def get_preparation_result(
                         
                         # 有明确更新时间的final_config，认为是用户手动编辑的最新数据
                         result_data["synthesis_json"] = final_config['synthesis_json']
+                        result_data["processing_info"]["data_source"] = "final_config"
+                        result_data["processing_info"]["user_edited"] = True
                         logger.info(f"使用final_config数据 (手动编辑于: {final_config.get('last_updated')})")
                     else:
                         # 没有时间戳的final_config认为是过期数据，使用synthesis_plan
+                        result_data["processing_info"]["data_source"] = "synthesis_plan"
+                        result_data["processing_info"]["user_edited"] = False
                         logger.info("final_config缺少时间戳，使用synthesis_plan数据（角色同步后的最新数据）")
                     
                     if final_config.get('processing_info'):
                         result_data["processing_info"].update(final_config['processing_info'])
-                        
+                    
                 except Exception as e:
-                    logger.warning(f"解析final_config失败，使用synthesis_plan数据: {str(e)}")
+                    logger.warning(f"解析final_config失败，使用synthesis_plan: {str(e)}")
+                    result_data["processing_info"]["data_source"] = "synthesis_plan"
+                    result_data["processing_info"]["user_edited"] = False
+            else:
+                if force_refresh:
+                    logger.info("🔄 [强制刷新] 忽略final_config缓存，使用最新synthesis_plan数据")
+                result_data["processing_info"]["data_source"] = "synthesis_plan"
+                result_data["processing_info"]["user_edited"] = False
             
             return {
                 "success": True,
@@ -283,7 +301,7 @@ async def get_preparation_result(
             }
             
         except ImportError:
-            # 如果没有AnalysisResult模型，尝试从章节字段获取
+            # 兼容旧版本：如果没有AnalysisResult模型，尝试从章节字段获取
             analysis_result = getattr(chapter, 'character_analysis_result', None)
             if not analysis_result:
                 raise HTTPException(status_code=404, detail="该章节尚未完成智能准备")
@@ -309,6 +327,72 @@ async def get_preparation_result(
     except Exception as e:
         logger.error(f"获取智能准备结果失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"获取智能准备结果失败: {str(e)}")
+
+
+# 🔥 新增：缓存管理API
+@router.delete("/cache/{chapter_id}")
+async def clear_preparation_cache(
+    chapter_id: int,
+    cache_type: str = Query("final_config", description="缓存类型: final_config | all"),
+    db: Session = Depends(get_db)
+):
+    """
+    清除章节的缓存数据
+    
+    Args:
+        chapter_id: 章节ID
+        cache_type: 缓存类型
+            - final_config: 只清除用户编辑缓存
+            - all: 清除所有缓存（将重新智能准备）
+    """
+    try:
+        from app.models import AnalysisResult
+        from sqlalchemy.orm.attributes import flag_modified
+        
+        # 查找最新的智能准备结果
+        result = db.query(AnalysisResult).filter(
+            AnalysisResult.chapter_id == chapter_id,
+            AnalysisResult.status == 'completed'
+        ).order_by(AnalysisResult.created_at.desc()).first()
+        
+        if not result:
+            raise HTTPException(status_code=404, detail="未找到智能准备结果")
+        
+        if cache_type == "final_config":
+            # 只清除final_config缓存
+            result.final_config = None
+            flag_modified(result, 'final_config')
+            message = "已清除用户编辑缓存，将显示最新的智能准备结果"
+        elif cache_type == "all":
+            # 清除所有缓存，标记为需要重新分析
+            result.status = 'pending'
+            result.final_config = None
+            result.synthesis_plan = None
+            flag_modified(result, 'final_config')
+            flag_modified(result, 'synthesis_plan')
+            message = "已清除所有缓存，需要重新进行智能准备"
+        else:
+            raise HTTPException(status_code=400, detail="不支持的缓存类型")
+        
+        db.commit()
+        
+        logger.info(f"🗑️ [缓存清理] 章节{chapter_id}的{cache_type}缓存已清除")
+        
+        return {
+            "success": True,
+            "data": {
+                "chapter_id": chapter_id,
+                "cache_type": cache_type,
+                "cleared_at": result.updated_at.isoformat()
+            },
+            "message": message
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"清除缓存失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"清除缓存失败: {str(e)}")
 
 
 @router.put("/result/{chapter_id}")

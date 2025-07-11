@@ -193,6 +193,13 @@ export const charactersAPI = {
         'Content-Type': 'multipart/form-data'
       }
     })
+  },
+
+  // 🔥 新增：清除智能准备缓存
+  clearPreparationCache: (chapterId, cacheType = 'final_config') => {
+    return apiClient.delete(`/content-preparation/cache/${chapterId}`, {
+      params: { cache_type: cacheType }
+    })
   }
 }
 
@@ -603,8 +610,14 @@ export const booksAPI = {
     apiClient.get(`/content-preparation/synthesis-preview/${chapterId}`),
 
   // 获取已有的智能准备结果（不重新执行）
-  getPreparationResult: (chapterId) => 
-    apiClient.get(`/content-preparation/result/${chapterId}`),
+  getPreparationResult: (chapterId, options = {}) => {
+    const params = {}
+    if (options.force_refresh) {
+      params.force_refresh = true
+    }
+    
+    return apiClient.get(`/content-preparation/result/${chapterId}`, { params })
+  },
 
   // 更新智能准备结果
   updatePreparationResult: (chapterId, data) => 

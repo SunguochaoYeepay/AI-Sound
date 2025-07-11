@@ -1046,6 +1046,12 @@ async def _sync_character_voice_to_synthesis_plans(
                                 logger.info(f"🧹 [后缀匹配] 角色 '{speaker}' 通过去除后缀匹配到 '{config_name}': voice_id={voice_id}")
                                 break
                     
+                    # 🔥 新架构检查：如果segment已有character_id，跳过voice_id设置
+                    has_character_id = segment.get('character_id') is not None
+                    if has_character_id:
+                        logger.info(f"🔒 [新架构跳过] 角色 '{speaker}' 已有character_id={segment.get('character_id')}，跳过voice_id同步")
+                        continue
+                    
                     # 检查这个角色是否找到了匹配的配置
                     if matched_voice_id:
                         old_voice_id = segment.get('voice_id')
@@ -1073,7 +1079,7 @@ async def _sync_character_voice_to_synthesis_plans(
                             segment['voice_name'] = new_voice_name
                             
                             plan_updated = True
-                            logger.info(f"✅ [同步成功] {speaker} (通过{matched_character_name}配置): voice_id {old_voice_id} → {segment['voice_id']}, voice_name '{old_voice_name}' → '{new_voice_name}'")
+                            logger.info(f"✅ [传统同步] {speaker} (通过{matched_character_name}配置): voice_id {old_voice_id} → {segment['voice_id']}, voice_name '{old_voice_name}' → '{new_voice_name}'")
                         else:
                             logger.info(f"ℹ️ [跳过同步] 角色 '{speaker}' 配置已是最新: voice_id={old_voice_id}, voice_name={old_voice_name}")
                 

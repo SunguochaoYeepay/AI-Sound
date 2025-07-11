@@ -14,6 +14,50 @@
         <a-tabs v-model:activeKey="activeSubTab" type="card">
           <template #rightExtra>
             <a-space>
+              <!-- 🔥 新增：缓存状态指示器 -->
+              <a-tooltip>
+                <template #title>
+                  <div>
+                    <div>数据来源: {{ getCacheStatusText() }}</div>
+                    <div v-if="cacheInfo.user_edited">用户已编辑</div>
+                    <div>最后更新: {{ getLastUpdateTime() }}</div>
+                  </div>
+                </template>
+                <a-tag 
+                  :color="getCacheStatusColor()" 
+                  size="small"
+                  style="cursor: help;"
+                >
+                  {{ getCacheStatusIcon() }} {{ getCacheStatusText() }}
+                </a-tag>
+              </a-tooltip>
+              
+              <!-- 🔥 新增：缓存控制按钮 -->
+              <a-dropdown>
+                <template #overlay>
+                  <a-menu>
+                    <a-menu-item @click="refreshCache">
+                      <ReloadOutlined />
+                      强制刷新缓存
+                    </a-menu-item>
+                    <a-menu-item @click="clearEditCache">
+                      <ClearOutlined />
+                      清除编辑缓存
+                    </a-menu-item>
+                    <a-menu-divider />
+                    <a-menu-item @click="clearAllCache" style="color: #ff4d4f;">
+                      <DeleteOutlined />
+                      清除所有缓存
+                    </a-menu-item>
+                  </a-menu>
+                </template>
+                <a-button size="small" type="text">
+                  <SettingOutlined />
+                  缓存
+                  <DownOutlined />
+                </a-button>
+              </a-dropdown>
+              
               <a-button 
                 type="primary"
                 @click="$emit('refresh')" 
@@ -283,9 +327,16 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue'
-import { message } from 'ant-design-vue'
+import { message, Modal } from 'ant-design-vue'
 import { useAudioPlayerStore } from '@/stores/audioPlayer'
 import { charactersAPI } from '@/api'
+import { 
+  ReloadOutlined, 
+  ClearOutlined, 
+  DeleteOutlined, 
+  SettingOutlined, 
+  DownOutlined 
+} from '@ant-design/icons-vue'
 
 const props = defineProps({
   chapter: {
@@ -321,6 +372,14 @@ const highlightedCharacter = ref(null)
 const testingVoice = ref(null)
 const jsonEditMode = ref(false)
 const editableJsonText = ref('')
+
+// 🔥 新增：缓存状态信息
+const cacheInfo = ref({
+  data_source: 'synthesis_plan',
+  user_edited: false,
+  cache_status: 'cached',
+  last_updated: null
+})
 
 // 可编辑的数据
 const editableCharacters = ref([])
@@ -381,12 +440,27 @@ watch(() => props.analysisData, (newData) => {
       initEditableData()
       originalData.value = JSON.parse(JSON.stringify(newData))
       hasChanges.value = false
+      
+      // 🔥 更新缓存状态信息
+      const processingInfo = newData.processing_info || {}
+      cacheInfo.value = {
+        data_source: processingInfo.data_source || 'synthesis_plan',
+        user_edited: processingInfo.user_edited || false,
+        cache_status: processingInfo.cache_status || 'cached',
+        last_updated: newData.last_updated || null
+      }
     } else {
       // 重置数据
       editableCharacters.value = []
       editableSegments.value = []
       originalData.value = null
       hasChanges.value = false
+      cacheInfo.value = {
+        data_source: 'synthesis_plan',
+        user_edited: false,
+        cache_status: 'cached',
+        last_updated: null
+      }
     }
   } catch (error) {
     console.error('初始化分析数据失败:', error)
@@ -396,6 +470,12 @@ watch(() => props.analysisData, (newData) => {
     editableSegments.value = []
     originalData.value = null
     hasChanges.value = false
+    cacheInfo.value = {
+      data_source: 'synthesis_plan',
+      user_edited: false,
+      cache_status: 'cached',
+      last_updated: null
+    }
   }
 }, { immediate: true })
 
@@ -804,6 +884,124 @@ const hasJsonChanges = computed(() => {
     return true // 如果JSON格式错误，也认为有变化
   }
 })
+
+// 🔥 新增：缓存控制方法
+// 获取缓存状态文本
+const getCacheStatusText = () => {
+  switch (cacheInfo.value.data_source) {
+    case 'final_config':
+      return '用户编辑'
+    case 'synthesis_plan':
+      return '智能准备'
+    default:
+      return '未知'
+  }
+}
+
+// 获取缓存状态颜色
+const getCacheStatusColor = () => {
+  if (cacheInfo.value.user_edited) return 'purple'
+  if (cacheInfo.value.cache_status === 'fresh') return 'green'
+  return 'blue'
+}
+
+// 获取缓存状态图标
+const getCacheStatusIcon = () => {
+  if (cacheInfo.value.user_edited) return '✏️'
+  if (cacheInfo.value.cache_status === 'fresh') return '🔄'
+  return '💾'
+}
+
+// 获取最后更新时间
+const getLastUpdateTime = () => {
+  if (!cacheInfo.value.last_updated) return '未知'
+  try {
+    const date = new Date(cacheInfo.value.last_updated)
+    return date.toLocaleString('zh-CN')
+  } catch {
+    return '未知'
+  }
+}
+
+// 强制刷新缓存
+const refreshCache = async () => {
+  try {
+    message.loading('正在刷新缓存...', 0)
+    // 发送带有force_refresh参数的请求
+    emit('refresh', { force_refresh: true })
+    message.destroy()
+    message.success('缓存已刷新，将显示最新数据')
+  } catch (error) {
+    message.destroy()
+    message.error('刷新缓存失败')
+    console.error('刷新缓存失败:', error)
+  }
+}
+
+// 清除编辑缓存
+const clearEditCache = async () => {
+  try {
+    if (!props.chapter?.id) {
+      message.error('缺少章节信息')
+      return
+    }
+    
+    message.loading('正在清除编辑缓存...', 0)
+    
+    // 调用API清除final_config缓存
+    await charactersAPI.clearPreparationCache(props.chapter.id, 'final_config')
+    
+    message.destroy()
+    message.success('编辑缓存已清除，将显示智能准备结果')
+    
+    // 刷新数据
+    emit('refresh', { force_refresh: true })
+  } catch (error) {
+    message.destroy()
+    message.error('清除编辑缓存失败')
+    console.error('清除编辑缓存失败:', error)
+  }
+}
+
+// 清除所有缓存
+const clearAllCache = async () => {
+  try {
+    if (!props.chapter?.id) {
+      message.error('缺少章节信息')
+      return
+    }
+    
+    // 确认操作
+    const confirmed = await new Promise((resolve) => {
+      const modal = Modal.confirm({
+        title: '确认清除所有缓存',
+        content: '这将删除所有智能准备结果，需要重新进行智能准备。确定继续吗？',
+        okText: '确认清除',
+        cancelText: '取消',
+        okButtonProps: { danger: true },
+        onOk: () => resolve(true),
+        onCancel: () => resolve(false)
+      })
+    })
+    
+    if (!confirmed) return
+    
+    message.loading('正在清除所有缓存...', 0)
+    
+    // 调用API清除所有缓存
+    await charactersAPI.clearPreparationCache(props.chapter.id, 'all')
+    
+    message.destroy()
+    message.success('所有缓存已清除，请重新进行智能准备')
+    
+    // 刷新数据
+    emit('refresh')
+  } catch (error) {
+    message.destroy()
+    message.error('清除所有缓存失败')
+    console.error('清除所有缓存失败:', error)
+  }
+}
 </script>
 
 <style scoped>
