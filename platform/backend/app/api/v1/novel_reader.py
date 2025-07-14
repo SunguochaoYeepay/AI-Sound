@@ -77,7 +77,23 @@ async def get_projects(
                 AudioFile.audio_type == 'segment'
             ).count()
             
-            total_count = project.total_segments or 0
+            # 🚀 新架构：从智能准备结果动态计算总段落数
+            total_count = 0
+            if project.book_id:
+                from app.models import AnalysisResult, BookChapter
+                analysis_results = db.query(AnalysisResult).join(
+                    BookChapter, AnalysisResult.chapter_id == BookChapter.id
+                ).filter(
+                    BookChapter.book_id == project.book_id,
+                    AnalysisResult.status == 'completed',
+                    AnalysisResult.synthesis_plan.isnot(None)
+                ).all()
+                
+                for result in analysis_results:
+                    if result.synthesis_plan and 'synthesis_plan' in result.synthesis_plan:
+                        segments = result.synthesis_plan['synthesis_plan']
+                        total_count += len(segments)
+            
             progress = round((audio_count / total_count) * 100, 1) if total_count > 0 else 0
             
             project_data = {
@@ -86,9 +102,8 @@ async def get_projects(
                 "description": project.description,
                 "status": project.status,
                 "progress": progress,
-                "total_segments": total_count,  # 🚀 基于项目设置
+                "total_segments": total_count,  # 🚀 基于智能准备动态计算
                 "processed_segments": audio_count,  # 🚀 基于AudioFile实际数量
-                "current_segment": project.current_segment,
                 "final_audio_path": project.final_audio_path,
                 "created_at": project.created_at.isoformat() if project.created_at else None,
                 "started_at": project.started_at.isoformat() if project.started_at else None,
@@ -211,8 +226,7 @@ async def create_project(
         # 🚀 新架构：不再进行传统文本分段，使用智能准备模式
         # 项目创建时不分段，等待智能准备结果进行合成
         segments_count = 0
-        project.total_segments = 0
-        project.processed_segments = 0
+        # 🚀 新架构：移除旧进度字段，使用动态计算
         logger.info(f"项目 {project.id} 创建完成，新架构将使用智能准备结果进行合成")
         
         db.commit()
@@ -225,7 +239,7 @@ async def create_project(
                 "name": project.name,
                 "description": project.description,
                 "status": project.status,
-                "total_segments": project.total_segments,
+                "total_segments": 0,  # 新架构：创建时总数为0，等待智能准备
                 "book_id": project.book_id,
                 "created_at": project.created_at.isoformat() if project.created_at else None
             }
@@ -260,7 +274,24 @@ async def get_project_detail(
         # 计算进度百分比
         progress = 0
         completed_count = len(audio_segments)  # AudioFile存在即表示已完成
-        total_count = project.total_segments or 0
+        
+        # 🚀 新架构：从智能准备结果动态计算总段落数
+        total_count = 0
+        if project.book_id:
+            from app.models import AnalysisResult, BookChapter
+            analysis_results = db.query(AnalysisResult).join(
+                BookChapter, AnalysisResult.chapter_id == BookChapter.id
+            ).filter(
+                BookChapter.book_id == project.book_id,
+                AnalysisResult.status == 'completed',
+                AnalysisResult.synthesis_plan.isnot(None)
+            ).all()
+            
+            for result in analysis_results:
+                if result.synthesis_plan and 'synthesis_plan' in result.synthesis_plan:
+                    segments = result.synthesis_plan['synthesis_plan']
+                    total_count += len(segments)
+        
         if total_count > 0:
             progress = round((completed_count / total_count) * 100, 1)
         
@@ -317,7 +348,6 @@ async def get_project_detail(
             "progress": progress,
             "total_segments": total_count,  # 🚀 基于智能准备实际总数
             "processed_segments": completed_count,  # 🚀 基于AudioFile实际数量
-            "current_segment": project.current_segment,
             # 🚀 新架构：提供基于AudioFile的统计信息
             "statistics": {
                 "totalSegments": total_count,
@@ -370,106 +400,44 @@ async def get_generation_progress(
     db: Session = Depends(get_db)
 ):
     """
-    获取项目生成进度
-    实时返回当前处理状态
+    🚨 废弃警告：项目级别进度API已废弃
+    请使用章节级别的进度API: /projects/{project_id}/chapters/{chapter_id}/progress
     """
     try:
         project = db.query(NovelProject).filter(NovelProject.id == project_id).first()
         if not project:
             raise HTTPException(status_code=404, detail="项目不存在")
         
-        # 🚀 新架构：基于AudioFile的实际统计数据
-        audio_count = db.query(AudioFile).filter(
-            AudioFile.project_id == project_id,
-            AudioFile.audio_type == 'segment'
-        ).count()
-        
-        total = project.total_segments or 0  # 智能准备确定的总数
-        processed = audio_count  # 实际已合成的数量
-        
-        # 🔧 修复：数据验证和修复逻辑优化
-        if total > 0 and processed > total:
-            logger.warning(f"项目 {project_id} 数据异常: AudioFile数量({processed}) > total_segments({total})")
-            # 详细记录数据状态
-            logger.warning(f"  项目状态: {project.status}")
-            logger.warning(f"  项目processed_segments字段: {project.processed_segments}")
-            logger.warning(f"  AudioFile实际数量: {processed}")
-            logger.warning(f"  项目total_segments字段: {project.total_segments}")
-            
-            # 🔧 修复策略：以AudioFile实际数量为准，更新total_segments
-            # 因为AudioFile是实际存在的音频文件，比数据库字段更可靠
-            logger.info(f"  修复策略: 更新total_segments为实际AudioFile数量 {processed}")
-            project.total_segments = processed
-            total = processed
-            project.processed_segments = processed
-            
-            db.commit()
-            logger.info(f"  数据修复完成: total={total}, processed={processed}")
-        elif processed != project.processed_segments:
-            # 🔧 同步processed_segments字段与实际AudioFile数量
-            logger.debug(f"同步项目processed_segments: {project.processed_segments} -> {processed}")
-            project.processed_segments = processed
-            db.commit()
-        
-        # 计算进度
-        progress_percentage = round((processed / total) * 100, 1) if total > 0 else 0
-        
-        # 计算其他状态的段落数量
-        if project.status == 'processing':
-            processing = max(0, total - processed)
-            pending = 0
-            failed = 0
-        elif project.status == 'completed':
-            processing = 0
-            pending = 0
-            failed = 0
-        elif project.status == 'failed':
-            processing = 0
-            pending = 0
-            failed = max(0, total - processed)
-        elif project.status == 'partial_completed':
-            processing = 0
-            pending = 0
-            # 对于部分完成状态，假设剩余的都是失败的
-            failed = max(0, total - processed)
-        else:  # pending
-            processing = 0
-            pending = total
-            failed = 0
-        
-        # 记录调试信息
-        logger.info(f"🔍 项目 {project_id} 进度查询: 状态={project.status}, 总数={total}, 完成={processed}, 进度={progress_percentage}%")
-        logger.info(f"🔍 AudioFile实际数量: {audio_count}, 项目total_segments: {project.total_segments}, 项目processed_segments: {project.processed_segments}")
+        logger.warning(f"⚠️ 项目级别进度API已废弃，项目ID: {project_id}")
         
         progress_data = {
             "success": True,
+            "deprecated": True,
+            "message": "项目级别进度API已废弃，请使用章节级别的进度API",
             "data": {
                 "project_id": project.id,
                 "status": project.status,
-                "progress_percentage": progress_percentage,
-                "current_segment": project.current_segment,
-                "current_processing": f"当前段落: {project.current_segment}" if project.current_segment else "",
+                "progress_percentage": 0,
+                "current_processing": "已废弃 - 请使用章节级别API",
                 "segments": {
-                    "total": total,
-                    "completed": processed,
-                    "processing": processing,
-                    "failed": failed,
-                    "pending": pending
+                    "total": 0,
+                    "completed": 0,
+                    "processing": 0,
+                    "failed": 0,
+                    "pending": 0
                 },
                 "timestamps": {
                     "started_at": project.started_at.isoformat() if project.started_at else None,
-                    "estimated_completion": None  # 字段不存在于模型中
+                    "estimated_completion": None
                 },
-                "debug_info": {
-                    "raw_total_segments": project.total_segments,
-                    "raw_processed_segments": project.processed_segments,
-                    "audio_file_count": audio_count,
-                    "calculated_progress": progress_percentage
+                "migration_info": {
+                    "recommended_api": f"/projects/{project_id}/chapters/{{chapter_id}}/progress",
+                    "description": "现在使用章节级别的进度追踪，每个章节独立管理"
                 }
             }
         }
         
-        logger.info(f"🔍 返回进度数据: {progress_data}")
+        logger.info(f"🔍 返回废弃API警告: {progress_data}")
         return progress_data
         
     except HTTPException:
@@ -597,10 +565,8 @@ async def start_project_generation(
         
         # 重置项目状态
         project.status = 'processing'
-        project.total_segments = len(synthesis_data)
-        project.processed_segments = 0
-        project.current_segment = 0
         project.started_at = datetime.utcnow()
+        # 🚀 新架构：不再设置旧的进度字段
         project.completed_at = None
         project.error_message = None
         db.commit()
@@ -687,9 +653,12 @@ async def cancel_generation(
         project.status = 'cancelled'
         
         # 设置取消信息
-        current_progress = project.processed_segments or 0
-        total_segments = project.total_segments or 0
-        project.error_message = f"合成已被用户取消，已处理 {current_progress}/{total_segments} 个段落"
+        # 🚀 新架构：动态计算取消时的进度
+        current_progress = db.query(AudioFile).filter(
+            AudioFile.project_id == project_id,
+            AudioFile.audio_type == 'segment'
+        ).count()
+        project.error_message = f"合成已被用户取消，已处理 {current_progress} 个段落"
         
         # 注意：不重置进度字段，保留取消时的进度信息
         # project.processed_segments = 0  # 保留当前进度
@@ -795,8 +764,7 @@ async def resume_generation(
         if project.status == 'failed':
             # 失败状态重新开始，重置进度
             project.status = 'processing'
-            project.processed_segments = 0
-            project.current_segment = 0
+            # 🚀 新架构：不再重置旧进度字段
             message_text = "项目重新开始成功"
         else:
             # 暂停状态恢复，保持进度
@@ -821,8 +789,8 @@ async def resume_generation(
                 "project_id": project.id,
                 "status": project.status,
                 "total_segments": len(synthesis_data),
-                "parallel_tasks": parallel_tasks,
-                "current_progress": project.processed_segments or 0
+                "processing_type": "智能准备结果",
+                "current_progress": 0  # 新架构：基于AudioFile动态计算
             }
         }
         
@@ -1509,8 +1477,7 @@ async def restart_chapter_synthesis(
             raise HTTPException(status_code=404, detail="项目不存在")
         
         # 重置相关进度（保持项目其他状态）
-        project.processed_segments = 0
-        project.current_segment = 0
+        # 🚀 新架构：不再重置旧进度字段
         project.started_at = None
         project.completed_at = None
         db.commit()
@@ -1973,10 +1940,11 @@ async def get_chapter_progress(
             }
         
         # 查询该章节已完成的AudioFile数量
-        # 根据segment_id范围来判断属于哪个章节，使用DISTINCT避免重复计数
+        # 🔥 修复：添加章节ID约束，避免匹配其他章节的相同segment_id
         completed_audio_files = db.query(AudioFile).filter(
             AudioFile.project_id == project_id,
             AudioFile.audio_type == 'segment',
+            AudioFile.chapter_id == chapter_id,  # 🔥 添加章节ID约束
             AudioFile.paragraph_index.in_(expected_segments)
         ).all()
         

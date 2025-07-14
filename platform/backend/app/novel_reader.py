@@ -302,15 +302,16 @@ async def get_project_detail(
         ).all()
         
         completed_segments = len(audio_files)  # 有AudioFile = 完成
-        total_segments = project.total_segments or 0  # 项目的总段落数
-        failed_segments = max(0, total_segments - completed_segments)  # 缺失的 = 失败
+        
+        # 🚨 项目级别统计已废弃
+        logger.warning(f"⚠️ 项目详情API中的跨章节统计已废弃，项目ID: {project_id}")
         
         project_data['statistics'] = {
             "totalCharacters": total_chars,
-            "totalSegments": total_segments,
-            "completedSegments": completed_segments,
-            "failedSegments": failed_segments,
-            "pendingSegments": 0,  # 新架构没有pending状态
+            "totalSegments": 0,  # 项目级别统计已废弃
+            "completedSegments": completed_segments,  # 仅保留AudioFile计数
+            "failedSegments": 0,  # 项目级别统计已废弃
+            "pendingSegments": 0,  # 项目级别统计已废弃
             "processingSegments": 0  # 新架构没有processing状态
         }
         
@@ -629,9 +630,10 @@ async def start_audio_generation(
         # 更新项目状态
         project.status = 'processing'
         project.started_at = datetime.utcnow()
-        project.current_segment = 0
-        project.processed_segments = 0
-        project.total_segments = len(synthesis_data)
+        # 🚀 新架构：移除旧进度字段的设置
+        # project.current_segment = 0
+        # project.processed_segments = 0
+        # project.total_segments = len(synthesis_data)
         
         logger.info(f"[DEBUG] 提交数据库更改...")
         db.commit()
@@ -727,8 +729,7 @@ async def pause_generation(
             module="novel_reader",
             details={
                 "project_id": project_id,
-                "processed_segments": project.processed_segments,
-                "total_segments": project.total_segments
+                "status": project.status
             }
         )
         
@@ -807,8 +808,8 @@ async def get_generation_progress(
     db: Session = Depends(get_db)
 ):
     """
-    获取生成进度
-    对应前端进度监控功能
+    🚨 废弃警告：项目级别进度API已废弃
+    请使用章节级别的进度API: /projects/{project_id}/chapters/{chapter_id}/progress
     """
     try:
         project = db.query(NovelProject).filter(NovelProject.id == project_id).first()
@@ -816,67 +817,30 @@ async def get_generation_progress(
         if not project:
             raise HTTPException(status_code=404, detail="项目不存在")
         
-        # 智能准备模式：直接从项目字段获取统计信息
-        stats = {
-            "total": project.total_segments or 0,
-            "completed": project.processed_segments or 0,
-            "failed": 0,  # 智能准备模式中，失败信息在 error_message 中
-            "processing": 1 if project.status == 'processing' else 0,
-            "pending": max(0, (project.total_segments or 0) - (project.processed_segments or 0))
-        }
-        
-        # 计算进度百分比
-        progress_percent = 0
-        if stats["total"] > 0:
-            progress_percent = round((stats["completed"] / stats["total"]) * 100, 1)
-        
-        # 估算剩余时间
-        estimated_completion = None
-        if project.started_at and stats["completed"] > 0:
-            try:
-                # 确保时间戳兼容性
-                now = datetime.utcnow()
-                started_at = project.started_at
-                
-                # 如果started_at是aware datetime，转换为naive
-                if started_at.tzinfo is not None:
-                    started_at = started_at.replace(tzinfo=None)
-                
-                elapsed_time = now - started_at
-                avg_time_per_segment = elapsed_time.total_seconds() / stats["completed"]
-                remaining_segments = stats["total"] - stats["completed"]
-                remaining_seconds = avg_time_per_segment * remaining_segments
-                estimated_completion = (now + timedelta(seconds=remaining_seconds)).isoformat()
-            except Exception as time_error:
-                logger.warning(f"时间计算错误: {time_error}")
-                estimated_completion = None
-        
-        # 🚀 新架构：最近完成的段落（基于AudioFile）
-        recent_audio_files = db.query(AudioFile).filter(
-            AudioFile.project_id == project_id,
-            AudioFile.audio_type == 'segment'
-        ).order_by(desc(AudioFile.created_at)).limit(5).all()
-        
-        recent_list = [
-            {
-                "id": audio_file.id,
-                "order": audio_file.paragraph_index,
-                "speaker": audio_file.speaker,
-                "processingTime": None  # AudioFile没有处理时间字段
-            }
-            for audio_file in recent_audio_files
-        ]
+        logger.warning(f"⚠️ 项目级别进度API已废弃，项目ID: {project_id}")
         
         return {
             "success": True,
+            "deprecated": True,
+            "message": "项目级别进度API已废弃，请使用章节级别的进度API",
             "progress": {
                 "projectId": project_id,
                 "status": project.status,
-                "progressPercent": progress_percent,
-                "statistics": stats,
+                "progressPercent": 0,
+                "statistics": {
+                    "total": 0,
+                    "completed": 0,
+                    "failed": 0,
+                    "processing": 0,
+                    "pending": 0
+                },
                 "startedAt": project.started_at.isoformat() if project.started_at else None,
-                "estimatedCompletion": estimated_completion,
-                "recentCompleted": recent_list
+                "estimatedCompletion": None,
+                "recentCompleted": []
+            },
+            "migration_info": {
+                "recommended_api": f"/projects/{project_id}/chapters/{{chapter_id}}/progress",
+                "description": "现在使用章节级别的进度追踪，每个章节独立管理"
             }
         }
         
@@ -898,102 +862,7 @@ async def get_generation_progress(
 
 # 🚀 已删除：segment_text_by_strategy - 旧架构函数，新架构不使用
 
-def detect_speaker(text: str) -> str:
-    """检测说话人"""
-    try:
-        # 清理文本
-        text = text.strip()
-        if not text:
-            return "温柔女声"
-        
-        # 1. 检测直接引语模式："小明说：'你好'"
-        direct_quote_patterns = [
-            r'^([^""''「」『』：:，。！？\s]{1,6})[说道讲叫喊问答回复表示][:：][""''「」『』]',
-            r'^([^""''「」『』：:，。！？\s]{1,6})[说道讲叫喊问答回复表示]，[""''「」『』]',
-            r'^([^""''「」『』：:，。！？\s]{1,6})[:：][""''「」『』]',
-        ]
-        
-        for pattern in direct_quote_patterns:
-            match = re.search(pattern, text)
-            if match:
-                speaker = match.group(1).strip()
-                if len(speaker) <= 6 and speaker and not any(char in speaker for char in '。，！？；'):
-                    # 验证是否像人名
-                    if re.match(r'^[一-龯]{2,4}$', speaker) or re.match(r'^[A-Za-z\s]{2,8}$', speaker):
-                        return speaker
-        
-        # 2. 检测对话标记："小明："
-        speaker_mark_patterns = [
-            r'^([^：:，。！？\s]{2,6})[:：]',
-        ]
-        
-        for pattern in speaker_mark_patterns:
-            match = re.search(pattern, text)
-            if match:
-                speaker = match.group(1).strip()
-                if len(speaker) <= 6 and speaker and not any(char in speaker for char in '。，！？；'):
-                    # 验证是否像人名
-                    if re.match(r'^[一-龯]{2,4}$', speaker) or re.match(r'^[A-Za-z\s]{2,8}$', speaker):
-                        return speaker
-        
-        # 3. 检测包含引号的对话
-        if any(quote in text for quote in ['"', '"', '"', '「', '」', '『', '』', "'", "'"]):
-            # 尝试提取说话人 - 更严格的模式
-            quote_patterns = [
-                r'^([^""''「」『』，。！？\s]{2,6})[^""''「」『』]{0,10}[""''「」『』]',
-                r'[""''「」『』][^""''「」『』]+[""''「」『』][^，。！？]*?([^，。！？\s]{2,6})[说道]',
-            ]
-            
-            for pattern in quote_patterns:
-                matches = re.findall(pattern, text)
-                if matches:
-                    for speaker in matches:
-                        speaker = speaker.strip()
-                        if len(speaker) <= 6 and speaker and not any(char in speaker for char in '。，！？；'):
-                            # 严格验证是否像人名
-                            if re.match(r'^[一-龯]{2,4}$', speaker) or re.match(r'^[A-Za-z\s]{2,8}$', speaker):
-                                return speaker
-        
-        # 4. 检测常见对话动词后的内容 - 更严格
-        dialogue_patterns = [
-            r'^([^，。！？\s]{2,6})[说道讲叫喊问答回复表示]',
-        ]
-        
-        for pattern in dialogue_patterns:
-            match = re.search(pattern, text)
-            if match:
-                speaker = match.group(1).strip()
-                if len(speaker) <= 6 and speaker and not any(char in speaker for char in '。，！？；'):
-                    # 严格验证是否像人名
-                    if re.match(r'^[一-龯]{2,4}$', speaker) or re.match(r'^[A-Za-z\s]{2,8}$', speaker):
-                        return speaker
-        
-        # 5. 检测姓名模式 - 更保守，排除叙述性开头
-        name_patterns = [
-            r'^([一-龯]{2,4})[^一-龯]',  # 开头的中文姓名
-            r'^([A-Z][a-z]+)[^a-z]',   # 开头的英文名
-        ]
-        
-        for pattern in name_patterns:
-            match = re.search(pattern, text)
-            if match:
-                speaker = match.group(1).strip()
-                # 排除常见的非人名词汇和叙述性开头
-                excluded_words = [
-                    '这个', '那个', '什么', '哪里', '为什么', '怎么', '可是', '但是', '所以', '因为', '如果', '虽然',
-                    '遇到', '慢慢', '而这', '这一', '那一', '当他', '当她', '此时', '此后', '然后', '接着', '最后',
-                    '林晓', '苏然', '陈宇', '从那', '经过', '虽然', '尽管', '无奈', '正发', '神奇', '在一', '而这'
-                ]
-                if speaker not in excluded_words and len(speaker) <= 4:
-                    # 进一步验证：必须是真正的人名格式
-                    if re.match(r'^[一-龯]{2,3}$', speaker) and not any(word in speaker for word in ['之后', '以后', '开始', '结束', '时候', '地方']):
-                        return speaker
-        
-        # 默认返回温柔女声（确保存在的声音档案）
-        return "温柔女声"
-        
-    except Exception:
-        return "温柔女声"
+# 🚀 已删除：detect_speaker - 旧架构函数，新架构使用AI智能检测器
 
 # 🚀 已删除：update_segments_voice_mapping - 旧架构函数，新架构不需要
 
@@ -1386,28 +1255,8 @@ async def process_audio_generation_from_synthesis_plan(
                 output_files.append(result)
                 logger.info(f"[SYNTHESIS_PLAN] 段落 {result['segment_id']} 合成完成")
         
-        # 🚀 完善进度统计：基于实际AudioFile数量而非当前批次
-        actual_audio_count = db.query(AudioFile).filter(
-            AudioFile.project_id == project_id,
-            AudioFile.audio_type == 'segment'
-        ).count()
-        
-        # 🚀 智能total_segments设置：取当前智能准备结果和实际AudioFile数量的最大值
-        expected_total = len(synthesis_data)
-        actual_total = actual_audio_count
-        final_total = max(expected_total, actual_total)
-        
-        # 更新项目进度（基于实际数据）
-        project.total_segments = final_total
-        project.processed_segments = actual_total
-        
-        if output_files:
-            # 设置当前处理的最后一个段落
-            last_result = [r for r in output_files if r.get('segment_id')][-1] if output_files else None
-            if last_result:
-                project.current_segment = last_result['segment_id']
-        
-        logger.info(f"[SYNTHESIS_PLAN] 智能进度统计: 预期{expected_total}个，实际{actual_total}个，最终设置{final_total}个")
+        # 🚀 新架构：只记录章节级别的处理结果
+        logger.info(f"[SYNTHESIS_PLAN] 章节处理结果: 预期{len(synthesis_data)}个，成功{completed_count}个")
         db.commit()
         
         logger.info(f"[SYNTHESIS_PLAN] 处理完成: 成功 {completed_count}/{len(synthesis_data)} 个段落")
@@ -1422,45 +1271,7 @@ async def process_audio_generation_from_synthesis_plan(
             except Exception as e:
                 logger.error(f"[SYNTHESIS_PLAN] 音频合并失败: {str(e)}")
         
-        # 🚀 修复：基于所有章节完成情况更新项目状态
-        # 检查项目中所有章节的状态
-        if project.book_id:
-            from app.models import Book, BookChapter
-            book = db.query(Book).filter(Book.id == project.book_id).first()
-            if book:
-                all_chapters = db.query(BookChapter).filter(BookChapter.book_id == book.id).all()
-                completed_chapters = db.query(BookChapter).filter(
-                    BookChapter.book_id == book.id,
-                    BookChapter.synthesis_status == 'completed'
-                ).count()
-                
-                total_chapters = len(all_chapters)
-                
-                if completed_chapters == total_chapters and total_chapters > 0:
-                    project.status = 'completed'
-                    logger.info(f"[SYNTHESIS_PLAN] 所有章节已完成 ({completed_chapters}/{total_chapters})，项目标记为completed")
-                elif completed_chapters > 0:
-                    project.status = 'partial_completed'
-                    logger.info(f"[SYNTHESIS_PLAN] 部分章节已完成 ({completed_chapters}/{total_chapters})，项目标记为partial_completed")
-                else:
-                    project.status = 'failed'
-                    logger.info(f"[SYNTHESIS_PLAN] 没有章节完成，项目标记为failed")
-            else:
-                # 无书籍关联的项目，使用原逻辑
-                if actual_total >= expected_total:
-                    project.status = 'completed'
-                elif actual_total > 0:
-                    project.status = 'partial_completed'
-                else:
-                    project.status = 'failed'
-        else:
-            # 无书籍关联的项目，使用原逻辑
-            if actual_total >= expected_total:
-                project.status = 'completed'
-            elif actual_total > 0:
-                project.status = 'partial_completed'
-            else:
-                project.status = 'failed'
+        # 🚀 项目级别状态管理已废弃 - 现在只关注章节级别的处理
         
         # 🚀 最终数据一致性确认（使用之前计算的final_total）
         project.completed_at = datetime.utcnow()
@@ -1521,7 +1332,7 @@ async def process_audio_generation_from_synthesis_plan(
         except Exception as e:
             logger.error(f"[SYNTHESIS_PLAN] 更新章节状态失败: {str(e)}")
         
-        logger.info(f"[SYNTHESIS_PLAN] 最终项目状态: {project.status}, 实际进度: {actual_total}/{final_total}")
+        # 🚀 项目状态日志已废弃 - 现在只关注章节级别的处理
         
         if failed_segments:
             # 生成详细的错误摘要
@@ -1530,8 +1341,8 @@ async def process_audio_generation_from_synthesis_plan(
         
         db.commit()
         
-        # 🚀 发送基于实际数据的最终状态更新到前端
-        progress_percentage = round((actual_total / final_total) * 100) if final_total > 0 else 0
+        # 🚀 发送章节级别的完成状态到前端
+        chapter_progress = round((completed_count / len(synthesis_data)) * 100) if len(synthesis_data) > 0 else 0
         await websocket_manager.publish_to_topic(
             f"synthesis_{project_id}",
             {
@@ -1539,34 +1350,33 @@ async def process_audio_generation_from_synthesis_plan(
                 "data": {
                     "type": "synthesis",
                     "project_id": project_id,
-                    "status": project.status,
-                    "progress": progress_percentage,
-                    "completed_segments": actual_total,
-                    "total_segments": final_total,
-                    "failed_segments": max(0, final_total - actual_total),
-                    "current_processing": f"合成{'完成' if project.status == 'completed' else '结束'}",
+                    "status": "completed" if completed_count == len(synthesis_data) else "failed",
+                    "progress": chapter_progress,
+                    "completed_segments": completed_count,
+                    "total_segments": len(synthesis_data),
+                    "failed_segments": len(failed_segments),
+                    "current_processing": f"章节合成{'完成' if completed_count == len(synthesis_data) else '结束'}",
                     "final_audio_path": final_audio_path,
                     "timestamp": datetime.utcnow().isoformat()
                 }
             }
         )
         
-        # 🚀 记录基于实际数据的完成日志
+        # 🚀 记录章节级别的完成日志
         await log_system_event(
             db=db,
             level="info",
-            message=f"音频生成完成: {project.name}",
+            message=f"章节音频生成完成: {project.name}",
             module="novel_reader",
             details={
                 "project_id": project_id,
-                "expected_segments": expected_total,
-                "actual_segments": actual_total,
-                "final_total_segments": final_total,
+                "chapter_expected": len(synthesis_data),
+                "chapter_actual": completed_count,
                 "new_generated": completed_count,
                 "failed_segments": len(failed_segments),
                 "final_audio_path": final_audio_path,
                 "data_source": "智能准备结果",
-                "status": project.status
+                "chapter_status": "completed" if completed_count == len(synthesis_data) else "failed"
             }
         )
         
@@ -1578,7 +1388,7 @@ async def process_audio_generation_from_synthesis_plan(
             db = next(get_db())
             project = db.query(NovelProject).filter(NovelProject.id == project_id).first()
             if project:
-                project.status = 'failed'
+                # 🚀 项目状态设置已废弃，只保留错误信息记录
                 # 生成更详细的错误信息
                 error_details = analyze_synthesis_exception(e)
                 project.error_message = error_details

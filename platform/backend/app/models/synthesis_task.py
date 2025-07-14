@@ -26,14 +26,13 @@ class SynthesisTask(Base):
     synthesis_plan = Column(JSON)  # 合成计划配置
     batch_size = Column(Integer, default=10)  # 批处理大小
     
+    # 🚀 新架构：移除旧的进度字段，改为基于AudioFile动态计算
+    # total_segments, completed_segments, current_segment 已移除
+    # 进度现在基于 AudioFile 实际统计
+
     # 任务状态
     status = Column(String(20), default='pending')  # pending, running, paused, completed, failed
     progress = Column(Integer, default=0)  # 0-100
-    
-    # 进度统计
-    total_segments = Column(Integer, default=0)
-    completed_segments = Column(Integer, default=0)
-    current_segment = Column(Integer)  # 当前处理的段落ID
     
     # 错误处理
     failed_segments = Column(JSON)  # 失败的段落列表
@@ -80,9 +79,7 @@ class SynthesisTask(Base):
             'batch_size': self.batch_size,
             'status': self.status,
             'progress': self.progress,
-            'total_segments': self.total_segments,
-            'completed_segments': self.completed_segments,
-            'current_segment': self.current_segment,
+            # 🚀 新架构：移除旧字段，进度基于AudioFile动态计算
             'failed_segments': self.failed_segments,
             'error_message': self.error_message,
             'retry_count': self.retry_count,
@@ -97,10 +94,9 @@ class SynthesisTask(Base):
         }
     
     def get_progress_percentage(self) -> int:
-        """计算进度百分比"""
-        if self.total_segments == 0:
-            return 0
-        return min(100, int((self.completed_segments / self.total_segments) * 100))
+        """计算进度百分比 - 🚀 新架构：基于AudioFile动态计算"""
+        # 新架构不使用存储字段，而是实时计算
+        return self.progress  # 使用实时更新的progress字段
     
     def get_failed_count(self) -> int:
         """获取失败段落数量"""
@@ -110,14 +106,16 @@ class SynthesisTask(Base):
     
     def get_success_rate(self) -> float:
         """获取成功率"""
-        if self.total_segments == 0:
+        # 🚀 新架构：不依赖total_segments字段
+        if self.progress == 0:
             return 0.0
         
-        processed = self.completed_segments + self.get_failed_count()
-        if processed == 0:
-            return 0.0
-        
-        return (self.completed_segments / processed) * 100
+        # 🚀 新架构：基于progress字段计算成功率
+        failed_count = self.get_failed_count()
+        if failed_count == 0:
+            return self.progress  # 使用实时progress
+        else:
+            return max(0.0, self.progress - (failed_count * 5))  # 考虑失败影响
     
     def get_duration(self) -> Optional[int]:
         """获取任务运行时长（秒）"""
@@ -129,18 +127,20 @@ class SynthesisTask(Base):
     
     def get_estimated_remaining_time(self) -> Optional[int]:
         """估算剩余时间（秒）"""
-        if not self.started_at or self.completed_segments == 0:
+        if not self.started_at or self.progress == 0:
             return None
         
-        # 基于已完成的平均处理时间估算
+        # 🚀 新架构：基于progress百分比估算剩余时间
         elapsed = self.get_duration() or 0
-        remaining_segments = self.total_segments - self.completed_segments
         
-        if remaining_segments <= 0:
+        if self.progress >= 100:
             return 0
         
-        avg_time_per_segment = elapsed / self.completed_segments
-        return int(avg_time_per_segment * remaining_segments)
+        # 基于进度百分比估算总时间
+        estimated_total_time = elapsed / (self.progress / 100)
+        remaining_time = estimated_total_time - elapsed
+        
+        return int(max(0, remaining_time))
     
     def is_active(self) -> bool:
         """检查任务是否处于活跃状态"""
@@ -158,14 +158,10 @@ class SynthesisTask(Base):
         """检查是否可以重试"""
         return self.retry_count < self.max_retries and self.status == 'failed'
     
-    def update_progress(self, completed: int = None, current_segment: int = None):
-        """更新进度信息"""
-        if completed is not None:
-            self.completed_segments = completed
-            self.progress = self.get_progress_percentage()
-        
-        if current_segment is not None:
-            self.current_segment = current_segment
+    def update_progress(self, progress: int = None):
+        """更新进度信息 - 🚀 新架构：直接更新progress"""
+        if progress is not None:
+            self.progress = min(100, max(0, progress))
         
         self.updated_at = datetime.utcnow()
     
@@ -225,7 +221,7 @@ class SynthesisTask(Base):
         self.status = 'pending'
         self.progress = 0
         self.completed_segments = 0
-        self.current_segment = None
+        # 🚀 新架构：不再使用current_segment字段
         self.error_message = None
         self.started_at = None
         self.completed_at = None

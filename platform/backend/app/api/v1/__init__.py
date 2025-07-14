@@ -20,6 +20,7 @@ from .audio_library import router as audio_library_router
 from .audio_sync import router as audio_sync_router
 from .intelligent_analysis import router as intelligent_analysis_router
 from .content_preparation import router as content_preparation_router
+from .data_consistency import router as data_consistency_router
 from .novel_reader import router as novel_reader_router
 from .environment_sounds import router as environment_sounds_router
 from .scene_analysis import router as scene_analysis_router
@@ -120,6 +121,7 @@ api.include_router(voice_clone_router, tags=["Voice Clone"])
 api.include_router(monitor_router, tags=["System Monitor"])
 api.include_router(intelligent_analysis_router, tags=["Intelligent Analysis"])
 api.include_router(content_preparation_router, tags=["Content Preparation"]) 
+api.include_router(data_consistency_router, tags=["Data Consistency"])
 api.include_router(environment_sounds_router, prefix="/environment-sounds", tags=["Environment Sounds"])
 api.include_router(scene_analysis_router, tags=["Scene Analysis"])
 api.include_router(environment_generation_router, tags=["Environment Generation"])

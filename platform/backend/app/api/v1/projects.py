@@ -69,10 +69,35 @@ async def get_projects(
         # 转换为字典格式
         project_list = []
         for project in projects:
-            # 计算进度百分比
+            # 🚀 新架构：动态计算进度
             progress = 0
-            if project.total_segments > 0:
-                progress = round((project.processed_segments / project.total_segments) * 100, 1)
+            
+            # 获取实际完成的音频文件数量
+            audio_count = db.query(AudioFile).filter(
+                AudioFile.project_id == project.id,
+                AudioFile.audio_type == 'segment'
+            ).count()
+            
+            # 获取智能准备的总段落数量
+            total_count = 0
+            if project.book_id:
+                from app.models import AnalysisResult, BookChapter
+                analysis_results = db.query(AnalysisResult).join(
+                    BookChapter, AnalysisResult.chapter_id == BookChapter.id
+                ).filter(
+                    BookChapter.book_id == project.book_id,
+                    AnalysisResult.status == 'completed',
+                    AnalysisResult.synthesis_plan.isnot(None)
+                ).all()
+                
+                for result in analysis_results:
+                    if result.synthesis_plan and 'synthesis_plan' in result.synthesis_plan:
+                        segments = result.synthesis_plan['synthesis_plan']
+                        total_count += len(segments)
+            
+            # 计算进度百分比
+            if total_count > 0:
+                progress = round((audio_count / total_count) * 100, 1)
             
             project_data = project.to_dict()
             project_data['progress'] = progress
@@ -234,10 +259,9 @@ async def get_project(
             AudioFile.audio_type == 'segment'
         ).all()
         
-        # 计算进度百分比
-        completed_segments = len(audio_files)
-        total_segments = project.total_segments or 0
-        progress = round((completed_segments / total_segments) * 100, 1) if total_segments > 0 else 0
+        # 🚨 项目级别进度计算已废弃
+        logger.warning(f"⚠️ 项目详情API中的进度计算已废弃，项目ID: {project_id}")
+        progress = 0  # 不再计算项目级别进度
         
         # 获取角色统计
         character_stats = {}
@@ -424,7 +448,7 @@ async def start_project_generation(
         # 更新项目状态
         project.status = 'processing'
         project.started_at = datetime.utcnow()
-        project.current_segment = 1
+        # 🚀 新架构：移除current_segment字段，不再需要设置
         db.commit()
         
         # 记录开始日志

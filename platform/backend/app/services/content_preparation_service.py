@@ -748,9 +748,30 @@ class ContentPreparationService:
             # 🔥 TTS优化：根据模式调整参数
             tts_params = self._get_optimized_tts_params(speaker, tts_optimization_mode, segment)
             
-            # 🚀 新架构：同时保存character_id和voice_id（向后兼容）
+            # 🔥 架构修复：获取章节信息并强制添加到segment_data
+            chapter_number = None
+            if chapter_id:
+                try:
+                    from ..models import BookChapter
+                    chapter = self.db.query(BookChapter).filter(BookChapter.id == chapter_id).first()
+                    if chapter:
+                        chapter_number = chapter.chapter_number
+                        logger.debug(f"获取章节信息: chapter_id={chapter_id}, chapter_number={chapter_number}")
+                    else:
+                        logger.error(f"章节ID {chapter_id} 不存在于数据库中")
+                        raise ValueError(f"章节ID {chapter_id} 不存在")
+                except Exception as e:
+                    logger.error(f"获取章节信息失败: {str(e)}")
+                    raise ValueError(f"获取章节信息失败: {str(e)}")
+            else:
+                logger.error("chapter_id为空，无法构建完整的segment数据")
+                raise ValueError("chapter_id为空，无法构建完整的segment数据")
+
+            # 🚀 新架构：强制包含章节信息的标准化segment_data
             segment_data = {
                 "segment_id": i + 1,
+                "chapter_id": chapter_id,           # 🔥 强制添加章节ID
+                "chapter_number": chapter_number,   # 🔥 强制添加章节编号
                 "text": text_content,
                 "speaker": speaker,
                 "voice_name": voice_name,
@@ -767,6 +788,16 @@ class ContentPreparationService:
                 # segment_data["voice_id"] = voice_id  # 移除这行，避免与VoiceProfile ID冲突
             else:
                 segment_data["voice_id"] = voice_id  # 仅传统映射方式使用
+            
+            # 🔥 数据完整性验证：使用新的Schema验证segment数据
+            try:
+                from ..schemas.segment_data import DataIntegrityValidator
+                validated_segment = DataIntegrityValidator.validate_segment_data(segment_data)
+                logger.debug(f"Segment {i+1} 数据验证通过")
+            except Exception as e:
+                logger.error(f"Segment {i+1} 数据验证失败: {str(e)}")
+                logger.error(f"原始数据: {segment_data}")
+                raise ValueError(f"Segment数据不完整: {str(e)}")
             
             synthesis_plan.append(segment_data)
         
@@ -860,8 +891,8 @@ class ContentPreparationService:
                 logger.error(f"❌ [角色配音库同步] 更新书籍voice_mappings失败: {str(e)}")
                 # 不影响主流程，继续执行
         
-        # 完全匹配现有系统格式
-        return {
+        # 🔥 最终数据完整性验证：验证整个synthesis_plan
+        final_synthesis_data = {
             "project_info": {
                 "novel_type": "智能检测",
                 "analysis_time": datetime.now().isoformat(),
@@ -873,6 +904,25 @@ class ContentPreparationService:
             "synthesis_plan": synthesis_plan,
             "characters": characters
         }
+        
+        # 🔥 架构级验证：确保整个数据结构的一致性
+        try:
+            from ..schemas.segment_data import DataIntegrityValidator
+            validated_plan = DataIntegrityValidator.validate_synthesis_plan(final_synthesis_data)
+            logger.info(f"✅ 合成计划整体验证通过，共 {len(synthesis_plan)} 个segments")
+            
+            # 记录验证成功的统计信息
+            chapter_ids = set(seg.chapter_id for seg in validated_plan.synthesis_plan)
+            logger.info(f"✅ 数据完整性验证通过：涉及章节 {sorted(chapter_ids)}")
+            
+        except Exception as e:
+            logger.error(f"❌ 合成计划整体验证失败: {str(e)}")
+            # 记录详细的验证失败信息
+            logger.error(f"验证失败的数据结构: {final_synthesis_data}")
+            raise ValueError(f"数据完整性验证失败，无法保存到数据库: {str(e)}")
+        
+        # 完全匹配现有系统格式
+        return final_synthesis_data
 
     def _get_optimized_tts_params(self, speaker: str, optimization_mode: str, segment: Dict) -> Dict:
         """获取优化的TTS参数"""

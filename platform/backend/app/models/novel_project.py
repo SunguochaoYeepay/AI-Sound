@@ -26,10 +26,9 @@ class NovelProject(Base):
     # 朗读项目状态
     status = Column(String(20), default='pending')  # pending, processing, paused, completed, failed
     
-    # 朗读进度
-    total_segments = Column(Integer, default=0)
-    processed_segments = Column(Integer, default=0)
-    current_segment = Column(Integer, default=0)
+    # 🚀 新架构：移除旧的进度字段，改为动态计算
+    # total_segments, processed_segments, current_segment 已移除
+    # 进度现在基于 AudioFile 实际统计和 AnalysisResult 智能准备结果
     
     # 朗读时间
     started_at = Column(DateTime)
@@ -122,9 +121,10 @@ class NovelProject(Base):
             'name': self.name,
             'description': self.description,
             'status': self.status,
-            'total_segments': self.total_segments,
-            'processed_segments': self.processed_segments,
-            'current_segment': self.current_segment,
+            # 🚀 新架构：移除旧的进度字段，进度现在动态计算
+            # 'total_segments': self.total_segments,
+            # 'processed_segments': self.processed_segments,
+            # 'current_segment': self.current_segment,
             'started_at': self.started_at.isoformat() if self.started_at else None,
             'completed_at': self.completed_at.isoformat() if self.completed_at else None,
             'config': self.config,

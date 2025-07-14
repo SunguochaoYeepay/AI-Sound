@@ -428,7 +428,7 @@ if __name__ == "__main__":
         "main:app",
         host="0.0.0.0",
         port=dev_port,
-        workers=4,      # 🔥 多进程解决卡死问题
-        reload=False,   # 🔥 多进程模式下必须禁用reload
+        workers=1,      # 🔥 Windows兼容性：使用单进程模式
+        reload=False,   # 🔥 稳定性考虑禁用reload
         log_level="info"
     ) 

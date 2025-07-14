@@ -31,9 +31,8 @@ class SynthesisTaskResponse(BaseResponseModel):
     batch_size: int = Field(description="批处理大小")
     status: str = Field(description="任务状态")
     progress: int = Field(description="进度百分比")
-    total_segments: int = Field(description="总段落数")
-    completed_segments: int = Field(description="已完成段落数")
-    current_segment: Optional[int] = Field(description="当前处理段落ID")
+    # 🚀 新架构：移除旧字段，进度基于AudioFile动态计算
+    # total_segments, completed_segments, current_segment 已移除
     failed_segments: Optional[List[Dict[str, Any]]] = Field(description="失败段落列表")
     error_message: Optional[str] = Field(description="错误消息")
     retry_count: int = Field(description="重试次数")
@@ -76,8 +75,8 @@ class SynthesisProgressUpdate(BaseModel):
     task_id: int = Field(description="任务ID")
     status: str = Field(description="状态")
     progress: int = Field(ge=0, le=100, description="进度百分比")
-    completed_segments: int = Field(description="已完成段落数")
-    current_segment: Optional[int] = Field(description="当前处理段落ID")
+    # 🚀 新架构：移除旧字段，进度基于实时计算
+    # completed_segments, current_segment 已移除
     error_message: Optional[str] = Field(description="错误消息")
 
 
