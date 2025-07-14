@@ -257,6 +257,7 @@ async def start_project_generation(
     parallel_tasks: int = Form(1, description="并行任务数"),
     synthesis_mode: str = Form("chapters", description="合成模式"),
     chapter_ids: str = Form("", description="章节ID列表，逗号分隔"),
+    continue_synthesis: bool = Form(False, description="继续合成模式：true=只生成缺失段落，false=重新合成所有段落"),
     db: Session = Depends(get_db)
 ):
     """启动项目音频生成"""
@@ -328,46 +329,87 @@ async def start_project_generation(
         synthesis_data = add_chapter_info_to_synthesis_data(synthesis_data, analysis_results, db)
         logger.info(f"[CHAPTER_FIX] 已为 {len(synthesis_data)} 个段落添加章节信息")
         
-        # 🔥 修复：只清理选中章节的音频文件
-        logger.info(f"[DEBUG] 清理选中章节 {selected_chapter_ids} 的现有音频文件...")
-        
-        # 删除数据库中的音频文件记录
-        existing_audio_files = db.query(AudioFile).filter(
-            AudioFile.project_id == project_id,
-            AudioFile.audio_type == 'segment',
-            AudioFile.chapter_id.in_(selected_chapter_ids)  # 只清理选中章节
-        ).all()
-        
-        for audio_file in existing_audio_files:
-            # 删除物理文件
-            if audio_file.file_path and os.path.exists(audio_file.file_path):
-                try:
-                    os.remove(audio_file.file_path)
-                    logger.info(f"[DEBUG] 删除音频文件: {audio_file.file_path}")
-                except Exception as e:
-                    logger.error(f"[DEBUG] 删除音频文件失败: {audio_file.file_path} - {e}")
+        # 🚀 合成模式处理
+        if continue_synthesis:
+            # 继续合成模式：只生成缺失的段落
+            logger.info(f"[CONTINUE_SYNTHESIS] 继续合成模式，检查已存在的音频文件...")
             
-            # 删除数据库记录
-            db.delete(audio_file)
-        
-        # 清理选中章节的最终合成音频文件
-        chapter_final_audio_files = db.query(AudioFile).filter(
-            AudioFile.project_id == project_id,
-            AudioFile.audio_type == 'chapter',
-            AudioFile.chapter_id.in_(selected_chapter_ids)
-        ).all()
-        
-        for audio_file in chapter_final_audio_files:
-            if audio_file.file_path and os.path.exists(audio_file.file_path):
-                try:
-                    os.remove(audio_file.file_path)
-                    logger.info(f"[DEBUG] 删除章节最终音频文件: {audio_file.file_path}")
-                except Exception as e:
-                    logger.error(f"[DEBUG] 删除章节最终音频文件失败: {audio_file.file_path} - {e}")
-            db.delete(audio_file)
-        
-        db.commit()
-        logger.info(f"[DEBUG] 音频文件清理完成")
+            # 获取已存在的音频文件
+            existing_audio_files = db.query(AudioFile).filter(
+                AudioFile.project_id == project_id,
+                AudioFile.audio_type == 'segment',
+                AudioFile.chapter_id.in_(selected_chapter_ids)
+            ).all()
+            
+            # 获取已存在的段落ID
+            existing_segment_ids = set()
+            for audio_file in existing_audio_files:
+                if audio_file.paragraph_index is not None:
+                    existing_segment_ids.add(audio_file.paragraph_index)
+            
+            # 过滤出缺失的段落
+            missing_segments = []
+            for segment_data in synthesis_data:
+                segment_id = segment_data.get('segment_id')
+                if segment_id not in existing_segment_ids:
+                    missing_segments.append(segment_data)
+            
+            synthesis_data = missing_segments
+            logger.info(f"[CONTINUE_SYNTHESIS] 找到 {len(existing_segment_ids)} 个已存在的段落")
+            logger.info(f"[CONTINUE_SYNTHESIS] 需要合成 {len(synthesis_data)} 个缺失的段落")
+            
+            if not synthesis_data:
+                return {
+                    "success": True,
+                    "message": "所有章节的段落都已完成，无需继续合成",
+                    "data": {
+                        "project_id": project_id,
+                        "existing_segments": len(existing_segment_ids),
+                        "missing_segments": 0,
+                        "selected_chapters": selected_chapter_ids
+                    }
+                }
+        else:
+            # 重新合成模式：清理所有现有音频文件
+            logger.info(f"[RESTART_SYNTHESIS] 重新合成模式，清理选中章节 {selected_chapter_ids} 的现有音频文件...")
+            
+            # 删除数据库中的音频文件记录
+            existing_audio_files = db.query(AudioFile).filter(
+                AudioFile.project_id == project_id,
+                AudioFile.audio_type == 'segment',
+                AudioFile.chapter_id.in_(selected_chapter_ids)  # 只清理选中章节
+            ).all()
+            
+            for audio_file in existing_audio_files:
+                # 删除物理文件
+                if audio_file.file_path and os.path.exists(audio_file.file_path):
+                    try:
+                        os.remove(audio_file.file_path)
+                        logger.info(f"[RESTART_SYNTHESIS] 删除音频文件: {audio_file.file_path}")
+                    except Exception as e:
+                        logger.error(f"[RESTART_SYNTHESIS] 删除音频文件失败: {audio_file.file_path} - {e}")
+                
+                # 删除数据库记录
+                db.delete(audio_file)
+            
+            # 清理选中章节的最终合成音频文件
+            chapter_final_audio_files = db.query(AudioFile).filter(
+                AudioFile.project_id == project_id,
+                AudioFile.audio_type == 'chapter',
+                AudioFile.chapter_id.in_(selected_chapter_ids)
+            ).all()
+            
+            for audio_file in chapter_final_audio_files:
+                if audio_file.file_path and os.path.exists(audio_file.file_path):
+                    try:
+                        os.remove(audio_file.file_path)
+                        logger.info(f"[RESTART_SYNTHESIS] 删除章节最终音频文件: {audio_file.file_path}")
+                    except Exception as e:
+                        logger.error(f"[RESTART_SYNTHESIS] 删除章节最终音频文件失败: {audio_file.file_path} - {e}")
+                db.delete(audio_file)
+            
+            db.commit()
+            logger.info(f"[RESTART_SYNTHESIS] 音频文件清理完成")
         
         # 更新项目状态
         project.status = 'processing'
@@ -383,14 +425,21 @@ async def start_project_generation(
             parallel_tasks=parallel_tasks
         )
         
+        # 根据合成模式返回不同的消息
+        if continue_synthesis:
+            message = f"继续合成启动成功，将生成 {len(synthesis_data)} 个缺失的段落"
+        else:
+            message = f"重新合成启动成功，将生成 {len(synthesis_data)} 个段落"
+        
         return {
             "success": True,
-            "message": "项目启动成功",
+            "message": message,
             "data": {
                 "project_id": project_id,
                 "total_segments": len(synthesis_data),
                 "parallel_tasks": parallel_tasks,
-                "selected_chapters": selected_chapter_ids
+                "selected_chapters": selected_chapter_ids,
+                "synthesis_mode": "continue" if continue_synthesis else "restart"
             }
         }
         

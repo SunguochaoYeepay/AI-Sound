@@ -840,7 +840,8 @@ const handleStartSynthesis = async () => {
     synthesisStatus.value = 'running'
     
     const response = await api.startGeneration(project.value.id, {
-      chapter_ids: selectedChapter.value ? [selectedChapter.value] : undefined
+      chapter_ids: selectedChapter.value ? [selectedChapter.value] : undefined,
+      continue_synthesis: false  // 重新合成模式
     })
     
     if (response.data.success) {
@@ -1360,7 +1361,7 @@ const handleRestartSynthesis = async () => {
     // 重新启动选中章节的合成
     const response = await api.startGeneration(project.value.id, {
       chapter_ids: selectedChapter.value ? [selectedChapter.value] : undefined,
-      restart: true  // 表示这是重新合成
+      continue_synthesis: false  // 表示这是重新合成，清理现有文件
     })
     
     if (response.data.success) {
@@ -1396,7 +1397,7 @@ const handleResumeSynthesis = async () => {
     // 继续合成剩余章节（不重新开始已完成的部分）
     const response = await api.startGeneration(project.value.id, {
       chapter_ids: selectedChapter.value ? [selectedChapter.value] : undefined,
-      restart: false  // 表示这是继续合成，不重置已完成的部分
+      continue_synthesis: true  // 表示这是继续合成，只生成缺失的段落
     })
     
     if (response.data.success) {

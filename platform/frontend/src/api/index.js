@@ -316,6 +316,11 @@ export const readerAPI = {
       formData.append('chapter_ids', data.chapter_ids.join(','))
     }
     
+    // 🚀 新增：合成模式参数
+    if (data.continue_synthesis !== undefined) {
+      formData.append('continue_synthesis', data.continue_synthesis)
+    }
+    
     // 环境音混合参数
     if (data.enable_environment !== undefined) {
       formData.append('enable_environment', data.enable_environment)

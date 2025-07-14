@@ -86,6 +86,34 @@
                     </a-button>
                   </template>
 
+                  <!-- 部分完成状态：显示继续合成和重新合成按钮 -->
+                  <template v-else-if="selectedChapterStatus === 'partial'">
+                    <a-button
+                      type="primary"
+                      size="small"
+                      @click="$emit('resume-synthesis')"
+                      :disabled="synthesisStarting"
+                      :loading="synthesisStarting"
+                    >
+                      ⚡ 继续合成
+                    </a-button>
+                    <a-button
+                      size="small"
+                      @click="$emit('restart-synthesis')"
+                      :disabled="synthesisStarting"
+                    >
+                      🔄 重新合成
+                    </a-button>
+                    <a-button
+                      size="small"
+                      @click="$emit('play-chapter', selectedChapter)"
+                      :loading="playingChapterAudio === selectedChapter"
+                      v-if="chapterProgress && chapterProgress.completed > 0"
+                    >
+                      🎵 播放已完成
+                    </a-button>
+                  </template>
+
                   <!-- 失败状态：显示重新开始选项 -->
                   <template v-else-if="selectedChapterStatus === 'failed'">
                     <a-button type="primary" size="small" @click="$emit('restart-synthesis')">
