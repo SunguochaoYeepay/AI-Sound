@@ -221,15 +221,15 @@
                   音频
                 </a-button>
                 
-                <!-- 已完成或部分完成项目：显示合成选项菜单 -->
-                <template v-if="project.status === 'completed' || project.status === 'partial_completed'">
+                <!-- 🔥 修复：基于实际数据而不是项目状态显示合成选项 -->
+                <template v-if="hasAudioFiles(project)">
                   <a-dropdown @click.stop>
                     <a-button 
                       type="primary" 
                       size="small"
-                      :title="project.status === 'completed' ? '选择重新合成方式' : '继续合成或重新合成'"
+                      :title="isProjectCompleted(project) ? '选择重新合成方式' : '继续合成或重新合成'"
                     >
-                      {{ project.status === 'completed' ? '🔄 重新合成' : '⚡ 继续合成' }} <DownOutlined />
+                      {{ isProjectCompleted(project) ? '🔄 重新合成' : '⚡ 继续合成' }} <DownOutlined />
                     </a-button>
                     <template #overlay>
                       <a-menu @click="onRestartSynthesis($event, project)">
@@ -436,16 +436,23 @@ const tableColumns = [
   }
 ]
 
-// 项目统计
+// 🔥 修复：基于实际数据而不是项目状态计算统计信息
 const projectStats = computed(() => {
   const stats = { total: 0, completed: 0, processing: 0, pending: 0, partialCompleted: 0 }
   
   projects.value.forEach(project => {
     stats.total++
-    if (project.status === 'completed') stats.completed++
-    else if (project.status === 'partial_completed') stats.partialCompleted++
-    else if (project.status === 'processing') stats.processing++
-    else if (project.status === 'pending') stats.pending++
+    
+    // 🔥 基于实际数据判断项目状态
+    if (isProjectCompleted(project)) {
+      stats.completed++
+    } else if (project.status === 'processing') {
+      stats.processing++
+    } else if (hasAudioFiles(project)) {
+      stats.partialCompleted++
+    } else {
+      stats.pending++
+    }
   })
   
   return stats
@@ -641,11 +648,39 @@ const deleteProject = async (project, force = false) => {
   }
 }
 
-// 辅助函数
+// 🔥 修复：基于实际数据的辅助函数
 const formatDate = (dateString) => {
   if (!dateString) return '-'
   const date = new Date(dateString)
   return date.toLocaleDateString('zh-CN')
+}
+
+// 🔥 判断项目是否完成：基于实际进度而不是状态
+const isProjectCompleted = (project) => {
+  // 优先使用后端计算的进度
+  if (project.progress !== undefined && project.progress !== null) {
+    return project.progress >= 100
+  }
+  
+  // 后备判断：基于段落数量
+  if (project.total_segments && project.total_segments > 0) {
+    const completedSegments = project.processed_segments || 0
+    return completedSegments >= project.total_segments
+  }
+  
+  // 最后后备：基于项目状态
+  return project.status === 'completed'
+}
+
+// 🔥 判断项目是否有音频文件：基于实际数据
+const hasAudioFiles = (project) => {
+  // 如果有处理过的段落，说明有音频文件
+  if (project.processed_segments && project.processed_segments > 0) {
+    return true
+  }
+  
+  // 后备判断：基于项目状态
+  return project.status === 'completed' || project.status === 'partial_completed'
 }
 
 const getCharacterCount = (project) => {
@@ -657,16 +692,23 @@ const getSegmentCount = (project) => {
   return project.segments?.length || 0
 }
 
+// 🔥 修复：基于实际数据而不是项目状态计算进度百分比
 const getProgress = (project) => {
+  // 🔥 使用后端已经计算好的进度百分比
+  if (project.progress !== undefined && project.progress !== null) {
+    return Math.round(project.progress)
+  }
+  
+  // 🔥 后备计算：基于段落数量
+  if (project.total_segments && project.total_segments > 0) {
+    const completedSegments = project.processed_segments || 0
+    return Math.round((completedSegments / project.total_segments) * 100)
+  }
+  
+  // 🔥 最后后备：基于项目状态
   if (project.status === 'completed') return 100
   if (project.status === 'failed') return 0
-  if (project.status === 'processing') {
-    const segments = project.segments || []
-    if (segments.length === 0) return 0
-    
-    const completedSegments = segments.filter(s => s.audio_file_path).length
-    return Math.round((completedSegments / segments.length) * 100)
-  }
+  
   return 0
 }
 
