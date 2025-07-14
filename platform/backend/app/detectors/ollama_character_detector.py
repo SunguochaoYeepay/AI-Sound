@@ -14,12 +14,65 @@ logger = logging.getLogger(__name__)
 
 
 class OllamaCharacterDetector:
-    """基于Ollama的角色检测器"""
+    """基于Ollama的角色检测器 - 优化版使用14B模型"""
     
-    def __init__(self, model_name: str = "qwen2.5:7b", ollama_url: str = None):
-        self.model_name = model_name
+    def __init__(self, model_name: str = "auto", ollama_url: str = None):
+        self.base_model_name = model_name
         self.api_url = ollama_url or "http://localhost:11434/api/generate"
         self.logger = logging.getLogger(__name__)
+        
+        # 智能模型选择策略
+        self.model_selection_strategy = {
+            "short_text_threshold": 2000,  # 短文本阈值
+            "long_text_threshold": 6000,   # 长文本阈值
+            "short_model": "qwen2.5:14b",  # 短文本使用14B高精度模型
+            "long_model": "qwen2.5:7b"     # 长文本使用7B高速模型
+        }
+        
+        self.logger.info(f"🚀 OllamaCharacterDetector 初始化完成，智能模型选择: {model_name}")
+
+    def _select_optimal_model(self, text: str) -> str:
+        """🎯 智能模型选择：根据文本长度选择最优模型"""
+        if self.base_model_name != "auto":
+            # 如果用户手动指定模型，直接使用
+            return self.base_model_name
+        
+        text_length = len(text)
+        strategy = self.model_selection_strategy
+        
+        if text_length <= strategy["short_text_threshold"]:
+            # 短文本：使用14B高精度模型
+            selected_model = strategy["short_model"]
+            self.logger.info(f"📝 短文本({text_length}字符) → 使用高精度模型: {selected_model}")
+        elif text_length >= strategy["long_text_threshold"]:
+            # 长文本：使用7B高速模型
+            selected_model = strategy["long_model"]
+            self.logger.info(f"📄 长文本({text_length}字符) → 使用高速模型: {selected_model}")
+        else:
+            # 中等文本：使用14B模型但调整参数
+            selected_model = strategy["short_model"]
+            self.logger.info(f"📝 中等文本({text_length}字符) → 使用平衡模型: {selected_model}")
+        
+        return selected_model
+
+    def _get_model_options(self) -> Dict:
+        """🎯 获取不同模型的优化参数"""
+        if self.model_name == "qwen2.5:14b":
+            # 14B模型：高精度，较低温度
+            return {
+                "temperature": 0.1,    # 更低温度，提高稳定性
+                "top_p": 0.85,         # 适中采样
+                "max_tokens": 8000,    # 适中输出长度
+                "num_ctx": 8192        # 适中上下文
+            }
+        else:
+            # 7B模型：高速度，适度精度
+            return {
+                "temperature": 0.2,    # 稍高温度，平衡速度和精度
+                "top_p": 0.8,          # 标准采样
+                "max_tokens": 6000,    # 较短输出，提高速度
+                "num_ctx": 6144        # 较短上下文，提高速度
+            }
 
     def _smart_chunk_text(self, text: str, max_chunk_size: int = 3000) -> List[Dict]:
         """🚀 智能分块：按段落和句子边界分块，避免截断"""
@@ -222,14 +275,24 @@ class OllamaCharacterDetector:
             
             # 🚀 智能分块处理：长文本自动分块
             text_length = len(text)
-            chunk_threshold = 4000  # 超过4000字符启用分块
+            
+            # 🎯 智能模型选择
+            self.model_name = self._select_optimal_model(text)
+            
+            # 🎯 智能分块策略：根据模型调整分块参数
+            if self.model_name == "qwen2.5:14b":
+                chunk_threshold = 3000  # 14B模型：3000字符启用分块
+                max_chunk_size = 2000   # 14B模型：每块2000字符
+            else:
+                chunk_threshold = 4000  # 7B模型：4000字符启用分块  
+                max_chunk_size = 3000   # 7B模型：每块3000字符
             
             if text_length > chunk_threshold:
-                logger.info(f"文本长度{text_length}字符，启用智能分块处理")
+                logger.info(f"文本长度{text_length}字符，启用智能分块处理({self.model_name})")
                 await send_analysis_progress(session_id, 20, f"文本较长({text_length}字符)，启用智能分块处理...")
                 
                 # 智能分块
-                chunks = self._smart_chunk_text(text, max_chunk_size=3000)
+                chunks = self._smart_chunk_text(text, max_chunk_size=max_chunk_size)
                 await send_analysis_progress(session_id, 30, f"已分为{len(chunks)}个块，开始逐块分析...")
                 
                 # 逐块分析
@@ -345,12 +408,396 @@ class OllamaCharacterDetector:
                     else:
                         logger.warning("重新分析仍未通过完整性校验，使用原结果并记录警告")
             
+            # 🚀 新增：二次检查机制
+            result = await self._secondary_check_analysis(text, result)
+            
             return result
         else:
             # Ollama调用失败，直接抛出错误
             logger.error("❌ Ollama API调用失败，没有返回有效响应")
             raise Exception("Ollama API调用失败，没有返回有效响应")
     
+    async def _secondary_check_analysis(self, original_text: str, primary_result: Dict) -> Dict:
+        """🚀 二次检查机制：轻量级验证和修复（适配14B模型）"""
+        logger.info("🔍 执行轻量级二次检查...")
+        
+        segments = primary_result['segments']
+        
+        # 1. 基础完整性验证
+        refined_segments = self._validate_and_fix_completeness(original_text, segments)
+        
+        # 2. 简单的格式标准化
+        refined_segments = self._basic_format_normalization(refined_segments)
+        
+        # 3. 更新结果
+        primary_result['segments'] = refined_segments
+        
+        # 确保processing_stats字段存在
+        if 'processing_stats' not in primary_result:
+            primary_result['processing_stats'] = {}
+        
+        primary_result['processing_stats']['total_segments'] = len(refined_segments)
+        primary_result['processing_stats']['dialogue_segments'] = len([s for s in refined_segments if s['text_type'] == 'dialogue'])
+        primary_result['processing_stats']['narration_segments'] = len([s for s in refined_segments if s['text_type'] == 'narration'])
+        primary_result['processing_stats']['secondary_check_applied'] = True
+        primary_result['processing_stats']['model_version'] = "qwen2.5:14b"
+        
+        logger.info(f"✅ 轻量级二次检查完成，段落数: {len(refined_segments)}")
+        return primary_result
+
+    def _detect_and_refine_mixed_sentences(self, segments: List[Dict]) -> List[Dict]:
+        """检测并精细化分割混合句子"""
+        import re
+        
+        refined_segments = []
+        
+        for segment in segments:
+            text = segment['text'].strip()
+            
+            # 检测模式1: "角色说：'对话内容'"
+            pattern1 = r'^(.+?说)[:：]\s*([\'\"](.*?)[\'\"]\s*)$'
+            match1 = re.match(pattern1, text)
+            
+            if match1:
+                action_part = match1.group(1)  # "小明说"
+                dialogue_part = match1.group(2).strip()  # "'早上好，小红！'"
+                dialogue_content = match1.group(3)  # "早上好，小红！"
+                
+                # 提取角色名
+                speaker_match = re.match(r'^(.+?)说$', action_part)
+                speaker = speaker_match.group(1) if speaker_match else segment['speaker']
+                
+                # 分割为两个段落
+                refined_segments.append({
+                    'order': segment['order'],
+                    'text': action_part + '：',
+                    'speaker': '旁白',
+                    'confidence': 0.95,
+                    'detection_rule': 'secondary_check_mixed',
+                    'text_type': 'narration'
+                })
+                
+                refined_segments.append({
+                    'order': segment['order'] + 0.1,
+                    'text': dialogue_content,
+                    'speaker': speaker,
+                    'confidence': 0.95,
+                    'detection_rule': 'secondary_check_mixed',
+                    'text_type': 'dialogue'
+                })
+                continue
+            
+            # 检测模式2: "对话内容，"角色动作，"继续对话"
+            pattern2 = r'^([\'\"](.*?)[\'\"]\s*[，,]\s*)(.+?[，,]\s*)([\'\"](.*?)[\'\"]\s*)$'
+            match2 = re.match(pattern2, text)
+            
+            if match2:
+                dialogue1 = match2.group(2)  # 第一段对话
+                action_part = match2.group(3)  # 动作描述
+                dialogue2 = match2.group(5)  # 第二段对话
+                
+                refined_segments.extend([
+                    {
+                        'order': segment['order'],
+                        'text': dialogue1,
+                        'speaker': segment['speaker'],
+                        'confidence': 0.9,
+                        'detection_rule': 'secondary_check_complex',
+                        'text_type': 'dialogue'
+                    },
+                    {
+                        'order': segment['order'] + 0.1,
+                        'text': action_part.strip('，, '),
+                        'speaker': '旁白',
+                        'confidence': 0.9,
+                        'detection_rule': 'secondary_check_complex',
+                        'text_type': 'narration'
+                    },
+                    {
+                        'order': segment['order'] + 0.2,
+                        'text': dialogue2,
+                        'speaker': segment['speaker'],
+                        'confidence': 0.9,
+                        'detection_rule': 'secondary_check_complex',
+                        'text_type': 'dialogue'
+                    }
+                ])
+                continue
+            
+            # 检测模式3: "角色对角色说：'对话内容'"
+            pattern3 = r'^(.+?对.+?说)[:：]\s*([\'\"](.*?)[\'\"]\s*)$'
+            match3 = re.match(pattern3, text)
+            
+            if match3:
+                action_part = match3.group(1)  # "小明对小红说"
+                dialogue_content = match3.group(3)  # 对话内容
+                
+                # 提取说话者
+                speaker_match = re.match(r'^(.+?)对.*?说$', action_part)
+                speaker = speaker_match.group(1) if speaker_match else segment['speaker']
+                
+                # 确保说话者是角色名而不是完整动作描述
+                if not speaker or speaker == action_part:
+                    speaker = segment['speaker']
+                
+                refined_segments.extend([
+                    {
+                        'order': segment['order'],
+                        'text': action_part + '：',
+                        'speaker': '旁白',
+                        'confidence': 0.95,
+                        'detection_rule': 'secondary_check_indirect',
+                        'text_type': 'narration'
+                    },
+                    {
+                        'order': segment['order'] + 0.1,
+                        'text': dialogue_content,
+                        'speaker': speaker,
+                        'confidence': 0.95,
+                        'detection_rule': 'secondary_check_indirect',
+                        'text_type': 'dialogue'
+                    }
+                ])
+                continue
+            
+            # 检测模式4: "是XXX发来的消息：'内容'"
+            pattern4 = r'^(.+?发来的消息)[:：]\s*([\'\"](.*?)[\'\"]\s*)$'
+            match4 = re.match(pattern4, text)
+            
+            if match4:
+                message_intro = match4.group(1)  # "是导师发来的消息"
+                message_content = match4.group(3)  # 消息内容
+                
+                # 提取消息发送者
+                sender_match = re.search(r'(是)?(.+?)发来的消息', message_intro)
+                sender = sender_match.group(2) if sender_match else '未知'
+                
+                # 清理说话者名称，只保留核心角色名
+                if sender and len(sender) > 6:  # 如果名称过长，尝试提取
+                    # 查找常见角色称呼
+                    for role in ['导师', '老师', '教授', '同学', '朋友', '同事', '助手']:
+                        if role in sender:
+                            sender = role
+                            break
+                
+                refined_segments.extend([
+                    {
+                        'order': segment['order'],
+                        'text': message_intro + '：',
+                        'speaker': '旁白',
+                        'confidence': 0.95,
+                        'detection_rule': 'secondary_check_message',
+                        'text_type': 'narration'
+                    },
+                    {
+                        'order': segment['order'] + 0.1,
+                        'text': message_content,
+                        'speaker': sender,
+                        'confidence': 0.95,
+                        'detection_rule': 'secondary_check_message',
+                        'text_type': 'dialogue'
+                    }
+                ])
+                continue
+            
+            # 检测模式5: 包含手机/通讯设备的间接引述
+            pattern5 = r'^(.+?)(手机.+?消息[:：]\s*)?([\'\"](.*?)[\'\"]\s*)(.*)$'
+            match5 = re.match(pattern5, text)
+            
+            if match5 and ('手机' in text or '消息' in text) and match5.group(3):
+                prefix = match5.group(1).strip()  # 前缀部分
+                message_part = match5.group(2) or ''  # 消息说明部分
+                dialogue_content = match5.group(4)  # 对话内容
+                suffix = match5.group(5).strip()  # 后缀部分
+                
+                # 构建旁白部分
+                narration_text = prefix
+                if message_part:
+                    narration_text += message_part.rstrip('：:')
+                narration_text += '：'
+                
+                # 尝试识别发送者
+                sender = '未知'
+                # 按优先级匹配角色称呼
+                role_patterns = ['导师', '老师', '教授', '同学', '朋友', '同事', '助手', '上司', '下属']
+                for role in role_patterns:
+                    if role in text:
+                        sender = role
+                        break
+                
+                segments_to_add = [
+                    {
+                        'order': segment['order'],
+                        'text': narration_text,
+                        'speaker': '旁白',
+                        'confidence': 0.9,
+                        'detection_rule': 'secondary_check_tech_message',
+                        'text_type': 'narration'
+                    },
+                    {
+                        'order': segment['order'] + 0.1,
+                        'text': dialogue_content,
+                        'speaker': sender,
+                        'confidence': 0.9,
+                        'detection_rule': 'secondary_check_tech_message',
+                        'text_type': 'dialogue'
+                    }
+                ]
+                
+                # 如果有后缀，作为旁白添加
+                if suffix:
+                    segments_to_add.append({
+                        'order': segment['order'] + 0.2,
+                        'text': suffix,
+                        'speaker': '旁白',
+                        'confidence': 0.9,
+                        'detection_rule': 'secondary_check_tech_message',
+                        'text_type': 'narration'
+                    })
+                
+                refined_segments.extend(segments_to_add)
+                continue
+            
+            # 没有匹配到特殊模式，保持原样
+            refined_segments.append(segment)
+        
+        return refined_segments
+
+    def _basic_format_normalization(self, segments: List[Dict]) -> List[Dict]:
+        """基础格式标准化 - 简化版，适配14B模型"""
+        normalized_segments = []
+        
+        for segment in segments:
+            text = segment['text'].strip()
+            speaker = segment['speaker']
+            
+            # 基础清理：去除多余引号
+            if text.startswith('"') and text.endswith('"'):
+                text = text[1:-1]
+            
+            # 确保旁白标记正确
+            if text.startswith('旁白：'):
+                text = text[3:].strip()
+                speaker = '旁白'
+            
+            # 基础角色名规范化
+            if speaker and speaker != '旁白':
+                speaker = speaker.replace('：', '').replace(':', '').strip()
+            
+            segment['text'] = text
+            segment['speaker'] = speaker
+            normalized_segments.append(segment)
+        
+        return normalized_segments
+
+    def _refine_grammar_structure(self, segments: List[Dict]) -> List[Dict]:
+        """精细化语法结构分析"""
+        import re
+        
+        refined_segments = []
+        
+        for segment in segments:
+            text = segment['text'].strip()
+            
+            # 处理引号内容
+            if '"' in text or '"' in text or "'" in text or "'" in text:
+                # 标准化引号
+                text = text.replace('"', '"').replace('"', '"').replace("'", '"').replace("'", '"')
+                
+                # 如果整个文本被引号包围，这是纯对话
+                if text.startswith('"') and text.endswith('"') and text.count('"') == 2:
+                    segment['text'] = text[1:-1]  # 去掉引号
+                    segment['text_type'] = 'dialogue'
+                elif text.startswith('"') and text.endswith('"') and text.count('"') > 2:
+                    # 复杂嵌套引号，需要特殊处理
+                    pass  # 暂时保持原样
+            
+            # 处理旁白标记
+            if text.startswith('旁白：') or text.startswith('旁白:'):
+                segment['text'] = text[3:].strip()
+                segment['speaker'] = '旁白'
+                segment['text_type'] = 'narration'
+            
+            # 修正错误分类：检测明显应该是旁白的内容
+            if segment['text_type'] == 'dialogue' and segment['speaker'] != '旁白':
+                # 检测通用描述性动词和词汇模式
+                narration_indicators = [
+                    # 基础动作动词
+                    '走', '跑', '站', '坐', '躺', '起身', '抬头', '低头', '转身', '回头',
+                    '看', '望', '盯', '瞧', '瞄', '瞅', '观察', '注视', '凝视',
+                    '说', '讲', '道', '言', '语', '话', '声', '音', '响', '听',
+                    '想', '思', '念', '忆', '记', '忘', '知', '觉', '感', '察',
+                    '拿', '取', '抓', '握', '放', '扔', '递', '交', '给', '送',
+                    # 通用连接词和副词
+                    '然后', '接着', '随即', '立即', '马上', '顿时', '突然', '忽然',
+                    '只见', '只听', '只觉', '但见', '但听', '却见', '却听', '便见',
+                    '原来', '显然', '明显', '似乎', '好像', '仿佛', '如同', '犹如',
+                    # 描述性词汇
+                    '发现', '意识到', '察觉', '感到', '觉得', '认为', '以为', '料想'
+                ]
+                
+                # 如果包含太多描述性词汇，可能是旁白
+                narration_count = sum(1 for indicator in narration_indicators if indicator in text)
+                if narration_count >= 2:  # 包含2个或更多描述性词汇
+                    segment['text_type'] = 'narration'
+                    segment['speaker'] = '旁白'
+                    segment['confidence'] = 0.9
+                    segment['detection_rule'] = 'secondary_check_narration_fix'
+            
+            refined_segments.append(segment)
+        
+        return refined_segments
+
+    def _validate_and_fix_completeness(self, original_text: str, segments: List[Dict]) -> List[Dict]:
+        """验证并修复文本完整性"""
+        # 合并所有分段文本
+        combined_text = ''.join([seg['text'] for seg in segments])
+        
+        # 计算完整度
+        original_clean = ''.join(original_text.split())
+        combined_clean = ''.join(combined_text.split())
+        
+        completeness_ratio = len(combined_clean) / len(original_clean) if original_clean else 0
+        
+        if completeness_ratio < 0.9:
+            logger.warning(f"完整性不足({completeness_ratio:.2%})，尝试修复...")
+            
+            # 查找遗漏的文本部分
+            missing_parts = []
+            original_lines = original_text.strip().split('\n')
+            processed_lines = set()
+            
+            for segment in segments:
+                # 找到原文中对应的行
+                for line in original_lines:
+                    if line.strip() and line.strip() in segment['text']:
+                        processed_lines.add(line.strip())
+            
+            # 添加遗漏的行
+            for line in original_lines:
+                if line.strip() and line.strip() not in processed_lines:
+                    missing_parts.append(line.strip())
+            
+            # 将遗漏部分添加为旁白
+            for i, missing in enumerate(missing_parts):
+                segments.append({
+                    'order': len(segments) + i + 1,
+                    'text': missing,
+                    'speaker': '旁白',
+                    'confidence': 0.8,
+                    'detection_rule': 'completeness_fix',
+                    'text_type': 'narration'
+                })
+            
+            logger.info(f"修复完成，添加了{len(missing_parts)}个遗漏段落")
+        
+        # 重新排序
+        segments.sort(key=lambda x: x['order'])
+        for i, segment in enumerate(segments):
+            segment['order'] = i + 1
+        
+        return segments
+
     async def _analyze_single_chunk(self, chunk_text: str, chunk_id: int) -> Dict:
         """分析单个分块"""
         logger.info(f"开始分析第{chunk_id}块，长度{len(chunk_text)}字符")
@@ -385,8 +832,8 @@ class OllamaCharacterDetector:
             
             logger.info(f"内容完整性校验: 原文{original_chars}字符，分析结果{segment_chars}字符，完整度{completeness_ratio:.2%}")
             
-            # 如果差异超过25%，认为不完整 (针对7B模型优化)
-            if completeness_ratio < 0.75:
+            # 如果差异超过15%，认为不完整 (针对14B模型优化)
+            if completeness_ratio < 0.85:
                 logger.warning(f"内容完整性校验失败: 完整度仅{completeness_ratio:.2%}，可能有内容丢失")
                 return False
             
@@ -456,6 +903,13 @@ class OllamaCharacterDetector:
 - 动作描述部分 → 旁白
 - 引述内容部分 → 相应角色
 - 适用于：说道、写道、下旨、传话、告知、命令、询问等所有引述形式
+
+**🗨️ 自言自语和心理活动特殊处理**：
+- "自言自语道："、"暗自想道："、"心中念叨："等描述是旁白
+- 引号内的实际内容才是角色的话语或心理活动
+- 示例："白骨精自言自语道：'造化！'" → 分为两段：
+  * "白骨精自言自语道：" → 旁白
+  * "造化！" → 白骨精
 
 输出要求：
 - 必须包含原文的每个字符（除了标点符号的调整）
@@ -547,154 +1001,40 @@ class OllamaCharacterDetector:
             return 'unknown'
 
     def _build_type_aware_analysis_prompt(self, text: str, novel_type: str) -> str:
-        """🆕 基于小说类型构建专门的分析提示词"""
+        """🆕 基于小说类型构建专门的分析提示词 - 简化版适配14B模型"""
         
-        # 基础分析要求
-        base_requirements = """
-分析要求：
-1. 识别所有说话的角色（包括旁白）
-2. 将文本按句子分段，每段标记正确的说话者
-3. **🚨 绝对强制要求**：必须严格分离所有混合文本
+        prompt = f"""你是中文小说文本分析专家，使用qwen2.5:14b模型。请分析以下小说文本。
 
-🚨 **强制分离规则（必须执行）**：
-❗ 任何包含"角色名 + 动作 + 冒号 + 引号内容"的文本都必须分为两段：
-- "项羽冷笑一声："你又是何人？"" → 必须分为：
-  第一段："项羽冷笑一声：" → 说话者：旁白
-  第二段："你又是何人？" → 说话者：项羽
+文本：{text[:4000] if len(text) > 4000 else text}
 
-❗ 任何包含"引号内容 + 角色动作描述"的文本都必须分为两段：
-- ""何人在此？" 将领勒马，长枪直指他咽喉。" → 必须分为：
-  第一段："何人在此？" → 说话者：将领
-  第二段："将领勒马，长枪直指他咽喉。" → 说话者：旁白
+核心任务：
+1. 按句子分段，识别每段的说话者
+2. 区分对话、旁白、心理独白
+3. 保持角色名称一致性
 
-❗ 任何通讯、消息、传话类文本都必须分离：
-- "是导师发来的消息："新出土的未央宫残简，速来。"" → 必须分为：
-  第一段："是导师发来的消息：" → 说话者：旁白
-  第二段："新出土的未央宫残简，速来。" → 说话者：导师
+关键原则：
+- 引号内容 = 角色对话
+- 描述动作 = 旁白
+- "角色说：'话语'" = 分为两段：动作(旁白) + 话语(角色)
 
-🎯 **分离判断标准**：
-- 描述性文字（动作、场景、来源说明）= 旁白
-- 引号内的实际话语内容 = 对应角色发言
-- 绝不允许将混合内容归为单一说话者！"""
-
-        # 根据小说类型添加专门的规则
-        type_specific_rules = ""
-        
-        if novel_type == 'ancient':
-            type_specific_rules = """
-**🏛️ 古代小说专门规则**：
-- 间接引述：皇帝下旨、传旨、圣旨、诏书、密信等
-  示例："皇帝下旨：'即刻班师回朝。'" → 分离为旁白描述 + 皇帝话语
-- 古代称谓：陛下、皇上、公主、王爷、大人、臣等要准确识别
-- 文言文对话：注意"曰"、"云"、"道"等古代对话动词
-- 书信传话：信中写道、密报、传令等要分离动作和内容"""
-            
-        elif novel_type == 'modern':
-            type_specific_rules = """
-**🏙️ 现代小说专门规则**：
-- 现代通讯分离（重点）：
-  * "导师发来的消息：'内容'" → 两段：
-    第一段："导师发来的消息：" → 旁白（描述收到消息）
-    第二段："内容" → 导师（消息内容）
-  * "他看了一眼屏幕，是导师发来的消息：'内容'" → 三段：
-    第一段："他看了一眼屏幕，" → 旁白（动作描述）
-    第二段："是导师发来的消息：" → 旁白（消息来源描述）
-    第三段："内容" → 导师（消息内容）
-  * "老板在电话里说：'开会了。'" → 两段：
-    第一段："老板在电话里说：" → 旁白（通话描述）
-    第二段："开会了。" → 老板（电话内容）
-
-- 现代通讯关键词：手机、短信、电话、微信、QQ、邮件、消息、语音
-- 职场称谓：老板、经理、同事、导师、老师、领导
-- 必须严格分离描述性文字和实际通讯内容！"""
-            
-        elif novel_type == 'wuxia':
-            type_specific_rules = """
-**⚔️ 武侠小说专门规则**：
-- 江湖称谓：掌门、师父、师兄、弟子、侠客等
-- 传音入密：内力传音、神识传话等特殊对话方式
-- 门派规则：师门规矩、江湖规矩相关的对话
-- 武功招式：注意区分招式名称（旁白）和实际对话"""
-            
-        elif novel_type == 'fantasy':
-            type_specific_rules = """
-**🔮 玄幻小说专门规则**：
-- 魔法通讯：法术传音、魔法通话、精神链接等
-- 异世界称谓：法师、战士、魔导师、国王、贵族等
-- 魔法元素：咒语吟唱、法术释放要区分于对话
-- 种族对话：精灵、矮人、龙族等不同种族的对话特点
-
-**🌟 现代穿越文特殊处理**：
-如果文本包含现代元素（手机、博物馆、导师等），同时应用现代通讯分离规则：
-- "导师发来的消息：'内容'" → 分离为旁白描述 + 导师话语
-- "手机震动"、"收到短信"等现代通讯场景要正确分离
-- 现代称谓（导师、老师、同事）要正确识别"""
-            
-        elif novel_type == 'scifi':
-            type_specific_rules = """
-**🚀 科幻小说专门规则**：
-- 科技通讯：全息通话、量子通讯、脑波传输等
-- 未来称谓：指挥官、舰长、博士、实验员等
-- AI对话：人工智能、机器人的对话要正确识别
-- 科技术语：区分科技描述（旁白）和实际对话"""
-            
-        elif novel_type == 'military':
-            type_specific_rules = """
-**🎖️ 军事小说专门规则**：
-- 军事通讯：无线电、作战指令、军令传达等
-- 军事称谓：将军、指挥官、士兵、参谋等
-- 作战指令：命令下达、战报汇报要分离动作和内容
-- 军事术语：区分战术描述（旁白）和实际对话"""
-        else:
-            type_specific_rules = """
-**🔍 通用规则**：
-- 间接引述：任何"某某[动作]：'内容'"格式都要分离
-- 现代通讯：电话、短信、邮件等要分离描述和内容
-- 传统对话：注意各种对话引导词的正确分离"""
-
-        prompt = f"""你是一个专业的中文小说文本分析专家。当前分析的是**{novel_type}类型小说**，请针对性地分析以下文本。
-
-文本：
-{text[:4000] if len(text) > 4000 else text}
-
-{base_requirements}
-
-{type_specific_rules}
-
-**🎵 声音描述特殊规则（通用）**：
-- 所有描述声音、语调、音色的文字都是旁白，不是对话
-- 关键词识别：凡是包含"声"、"音"、"响"、"传来"、"响起"等描述声音的词汇，都是旁白叙述
-
-**🧠 心理描写特殊规则（通用）**：
-- "他心里想"、"她暗自琢磨"后的引号内容是该角色的心理活动
-- 心理描写关键词：心里想、心想、暗想、暗道、心道、琢磨、思考、想到等
-
-**🎯 角色名称一致性要求（核心）**：
-- 同一角色必须使用统一的名称，避免多种称呼
-- 优先使用具体人名，避免泛指称呼
-
-输出格式（严格JSON）：
+输出JSON格式：
 {{
-  "novel_type": "{novel_type}",
   "segments": [
     {{"order": 1, "text": "文本内容", "speaker": "说话者", "text_type": "dialogue/narration/inner_monologue", "confidence": 0.9}}
   ],
   "characters": [
-    {{"name": "角色名", "frequency": 出现次数, "gender": "male/female/neutral", "personality": "calm/brave/gentle", "personality_description": "性格描述", "is_main_character": true/false, "confidence": 0.8}}
+    {{"name": "角色名", "frequency": 出现次数, "gender": "male/female/neutral", "personality": "calm/brave/gentle", "is_main_character": true/false, "confidence": 0.8}}
   ]
 }}
 
-只输出JSON，不要任何其他文字"""
+只输出JSON，不要其他文字。"""
         
         return prompt
 
     def _build_comprehensive_analysis_prompt(self, text: str) -> str:
-        """构建综合分析提示词 - 现在支持类型感知"""
-        # 🆕 第一步：检测小说类型
-        novel_type = self._detect_novel_type(text)
-        
-        # 🆕 第二步：基于类型构建专门提示词
-        return self._build_type_aware_analysis_prompt(text, novel_type)
+        """构建综合分析提示词 - 14B模型直接处理版本"""
+        # 使用通用提示词，让14B模型自己判断小说类型
+        return self._build_type_aware_analysis_prompt(text, "通用")
 
     def _call_ollama(self, prompt: str) -> Optional[str]:
         """调用Ollama API"""
@@ -703,12 +1043,7 @@ class OllamaCharacterDetector:
                 "model": self.model_name,
                 "prompt": prompt,
                 "stream": False,
-                "options": {
-                    "temperature": 0.2,
-                    "top_p": 0.8,
-                    "max_tokens": 8000,    # 🔥 修复：增加到8000，避免输出截断
-                    "num_ctx": 8192        # 🔥 修复：增加到8192，支持更长的上下文
-                }
+                "options": self._get_model_options()
             }
             
             response = requests.post(
@@ -734,6 +1069,15 @@ class OllamaCharacterDetector:
     def _parse_comprehensive_response(self, response: str) -> Dict:
         """解析Ollama返回的综合分析结果"""
         try:
+            # 检查response是否为None或空
+            if not response or response.strip() == '':
+                logger.error("Ollama响应为空或None")
+                return {
+                    'segments': [],
+                    'detected_characters': [],
+                    'analysis_summary': {'total_segments': 0, 'total_characters': 0}
+                }
+            
             # 记录原始响应用于调试
             logger.info(f"Ollama原始响应: {response[:500]}...")
             
@@ -756,7 +1100,12 @@ class OllamaCharacterDetector:
                         text_type = 'narration'  # 默认为旁白
                         
                     # 🔧 修复：正确处理空的speaker字段
-                    speaker = seg_data.get('speaker', '').strip()
+                    speaker = seg_data.get('speaker', '') or ''  # 确保不是None
+                    if isinstance(speaker, str):
+                        speaker = speaker.strip()
+                    else:
+                        speaker = ''
+                    
                     if not speaker:  # 处理空字符串、None、或只有空格的情况
                         if text_type in ['narration', 'inner_monologue']:
                             speaker = '旁白'
