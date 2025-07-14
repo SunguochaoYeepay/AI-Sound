@@ -3,7 +3,7 @@
     :open="visible"
     :title="drawerTitle"
     placement="bottom"
-    :height="220"
+    :height="300"
     :closable="true"
     @close="$emit('close')"
     @update:open="$emit('update:visible', $event)"
@@ -48,20 +48,31 @@
           size="default"
         />
         
-        <!-- 紧凑的统计信息 -->
-        <div class="compact-stats">
-          <span class="stat-item">
-            <span class="stat-label">进度:</span>
-            <span class="stat-value completed">{{ progressData.completed_segments }}</span>
-            <span class="stat-separator">/</span>
-            <span class="stat-value total">{{ progressData.total_segments }}</span>
-          </span>
+        <!-- 章节信息显示 -->
+        <div class="chapter-info">
+          <div class="current-chapter" v-if="currentChapterInfo">
+            <span class="chapter-title">📖 {{ currentChapterInfo.title }}</span>
+            <div class="chapter-stats">
+              <span class="stat-item">
+                <span class="stat-label">段落进度:</span>
+                <span class="stat-value completed">{{ chapterProgress.completed }}</span>
+                <span class="stat-separator">/</span>
+                <span class="stat-value total">{{ chapterProgress.total }}</span>
+                <span class="stat-percent">({{ chapterProgress.percent }}%)</span>
+              </span>
+            </div>
+          </div>
           
-          <span class="stat-item" v-if="progressData.failed_segments > 0">
-            <span class="stat-label">失败:</span>
-            <span class="stat-value failed">{{ progressData.failed_segments }}</span>
-          </span>
-          
+          <!-- 如果没有章节信息，显示基本信息 -->
+          <div v-else class="basic-progress">
+            <span class="stat-item">
+              <span class="stat-label">合成进度:</span>
+              <span class="stat-value completed">{{ chapterProgress.completed }}</span>
+              <span class="stat-separator">/</span>
+              <span class="stat-value total">{{ chapterProgress.total }}</span>
+              <span class="stat-percent">({{ chapterProgress.percent }}%)</span>
+            </span>
+          </div>
         </div>
 
         
@@ -69,22 +80,15 @@
         <div class="simple-error-notice" v-if="displayStatus === 'failed'">
           <a-space>
             <a-tag color="error" size="small">
-              ❌ {{ progressData.failed_segments }} 个段落合成失败
+              ❌ 章节合成失败
             </a-tag>
-            <a-button 
-              size="small" 
-              type="primary" 
-              @click="$emit('showFailureDetails')"
-            >
-              查看详情
-            </a-button>
             <a-button 
               size="small" 
               type="default" 
               @click="$emit('retryFailedSegments')" 
               :loading="retryLoading"
             >
-              🔄 重试失败段落
+              🔄 重试章节合成
             </a-button>
           </a-space>
         </div>
@@ -104,6 +108,10 @@ const props = defineProps({
   progressData: {
     type: Object,
     required: true
+  },
+  chapterProgress: {
+    type: Object,
+    default: () => ({ completed: 0, total: 0, percent: 0 })
   },
   projectStatus: {
     type: String,
@@ -143,6 +151,25 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'pauseSynthesis', 'cancelSynthesis', 'retryFailedSegments', 'showFailureDetails'])
 
+// 计算当前章节信息
+const currentChapterInfo = computed(() => {
+  if (!props.selectedChapter || !props.chapters.length) {
+    return null
+  }
+  
+  const chapter = props.chapters.find(ch => ch.id === props.selectedChapter)
+  if (!chapter) {
+    return null
+  }
+  
+  return {
+    id: chapter.id,
+    number: chapter.chapter_number || chapter.number,
+    title: `第${chapter.chapter_number || chapter.number}章 ${chapter.chapter_title || chapter.title || ''}`.trim(),
+    rawTitle: chapter.chapter_title || chapter.title
+  }
+})
+
 // 处理函数
 const handlePause = () => {
   console.log('📌 暂停按钮被点击')
@@ -176,88 +203,68 @@ const showPauseButton = computed(() => {
 })
 
 const drawerTitle = computed(() => {
-  const synthesisType = props.progressData?.synthesis_type
-  if (synthesisType === 'environment') {
-    return '🌍 环境音混合合成监控'
-  } else if (synthesisType === 'voice') {
-    return '🎤 角色音合成监控'
-  }
-  return '🎵 合成进度监控'
+  // 🔥 清理环境音混合遗留代码，只保留语音合成监控
+  return '🎤 章节语音合成监控'
 })
 
 const progressTitle = computed(() => {
-  const synthesisType = props.progressData?.synthesis_type
-  if (synthesisType === 'environment') {
-    return '🌍 环境音混合合成进度'
-  } else if (synthesisType === 'voice') {
-    return '🎤 角色音合成进度'
-  }
-  return '🎵 合成进度'
+  // 🔥 清理环境音混合遗留代码，只保留语音合成进度
+  return '🎤 章节语音合成进度'
 })
 
 const displayStatus = computed(() => {
-  const status = props.progressData.status
-  if (status === 'partial_completed') {
-    const completed = props.progressData.completed_segments || 0
-    const total = props.progressData.total_segments || 0
-    const failed = props.progressData.failed_segments || 0
-    
-    if (total > 0 && completed === total && failed === 0) {
-      return 'completed'
-    }
-    if (failed > 0) {
-      return 'failed'
-    }
+  // 🔥 基于章节进度判断状态
+  const chapterCompleted = props.chapterProgress.completed || 0
+  const chapterTotal = props.chapterProgress.total || 0
+  const chapterPercent = props.chapterProgress.percent || 0
+  
+  // 如果章节完全完成
+  if (chapterTotal > 0 && chapterCompleted === chapterTotal) {
+    return 'completed'
   }
-  return status
+  
+  // 如果章节有进度但未完成
+  if (chapterTotal > 0 && chapterCompleted > 0) {
+    return 'active'
+  }
+  
+  // 其他情况使用项目状态
+  return props.progressData.status
 })
 
 const correctProgress = computed(() => {
-  const completed = props.progressData.completed_segments || 0
-  const total = props.progressData.total_segments || 0
-  const status = props.progressData.status
+  // 🔥 只使用章节进度数据，不再考虑项目级别数据
+  const chapterPercent = props.chapterProgress.percent || 0
   
-  console.log('🔍 correctProgress计算:', {
-    status,
-    completed,
-    total,
-    原始progress: props.progressData.progress
+  console.log('🔍 章节进度显示:', {
+    completed: props.chapterProgress.completed,
+    total: props.chapterProgress.total,
+    percent: chapterPercent
   })
   
-  // 如果没有总段落数，返回0
-  if (total === 0) {
-    return 0
-  }
-  
-  // 对于失败或部分完成状态，基于完成段落数计算进度
-  if (status === 'failed' || status === 'partial_completed') {
-    const calculatedProgress = Math.round((completed / total) * 100)
-    console.log('🔍 计算结果:', calculatedProgress)
-    return calculatedProgress
-  }
-  
-  // 其他状态使用原始进度值
-  return props.progressData.progress || 0
+  return chapterPercent
 })
 
 const progressStatus = computed(() => {
-  if (props.progressData.status === 'failed') {
+  const status = displayStatus.value
+  if (status === 'failed') {
     return 'exception'
-  } else if (props.progressData.status === 'completed') {
+  } else if (status === 'completed') {
     return 'success'
-  } else if (props.progressData.status === 'partial_completed') {
-    return 'exception'
+  } else if (status === 'active' && props.chapterProgress.percent === 100) {
+    return 'success'
   }
   return 'active'
 })
 
 const progressColor = computed(() => {
-  if (props.progressData.status === 'completed') {
+  const status = displayStatus.value
+  if (status === 'completed' || props.chapterProgress.percent === 100) {
     return '#52c41a'
-  } else if (props.progressData.status === 'failed') {
+  } else if (status === 'failed') {
     return '#ff4d4f'
-  } else if (props.progressData.status === 'partial_completed') {
-    return '#faad14'
+  } else if (status === 'active') {
+    return '#1890ff'
   }
   return '#1890ff'
 })
@@ -290,10 +297,35 @@ const progressColor = computed(() => {
   flex-shrink: 0;
 }
 
-.compact-stats {
+.chapter-info {
+  margin-top: 12px;
+}
+
+.current-chapter {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chapter-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f2937;
+  background: #f8fafc;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border-left: 3px solid #1890ff;
+}
+
+.chapter-stats {
   display: flex;
   gap: 24px;
-  margin-top: 12px;
+  font-size: 13px;
+}
+
+.basic-progress {
+  display: flex;
+  gap: 24px;
   font-size: 13px;
 }
 
@@ -301,6 +333,12 @@ const progressColor = computed(() => {
   display: flex;
   align-items: center;
   gap: 4px;
+}
+
+.stat-percent {
+  font-weight: 600;
+  color: #1890ff;
+  margin-left: 4px;
 }
 
 .stat-label {
