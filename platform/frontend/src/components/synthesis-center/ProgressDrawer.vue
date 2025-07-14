@@ -3,7 +3,7 @@
     :open="visible"
     :title="drawerTitle"
     placement="bottom"
-    :height="300"
+    :height="220"
     :closable="true"
     @close="$emit('close')"
     @update:open="$emit('update:visible', $event)"
@@ -11,33 +11,40 @@
     <div class="progress-container">
       <!-- 简化的进度显示 -->
       <div class="simple-progress">
-        <!-- 标题和控制按钮在一行 -->
-        <div class="progress-title-row">
-          <span class="progress-title">{{ progressTitle }}</span>
-          
-          <!-- 合成控制按钮 -->
-          <div class="synthesis-controls" v-if="showSynthesisControls">
-            <a-space size="small">
-              <a-button 
-                v-if="showPauseButton"
-                size="small"
-                @click="handlePause"
-                :loading="pauseLoading"
-                danger
-              >
-                ⏸️ 暂停
-              </a-button>
-              <a-button 
-                size="small"
-                @click="handleCancel"
-                :loading="cancelLoading"
-                danger
-              >
-                ❌ 取消
-              </a-button>
-            </a-space>
+         <!-- 章节进度统计 -->
+         <div class="chapter-info">
+          <div class="chapter-stats">
+            <span class="stat-item">
+              <span class="stat-label">段落进度:</span>
+              <span class="stat-value completed">{{ chapterProgress.completed }}</span>
+              <span class="stat-separator">/</span>
+              <span class="stat-value total">{{ chapterProgress.total }}</span>
+            </span>
           </div>
+           <!-- 合成控制按钮 -->
+        <div class="synthesis-controls" v-if="showSynthesisControls">
+          <a-space size="small">
+            <a-button 
+              v-if="showPauseButton"
+              size="small"
+              @click="handlePause"
+              :loading="pauseLoading"
+              danger
+            >
+              ⏸️ 暂停
+            </a-button>
+            <a-button 
+              size="small"
+              @click="handleCancel"
+              :loading="cancelLoading"
+              danger
+            >
+              ❌ 取消
+            </a-button>
+          </a-space>
         </div>
+        </div>
+       
         
         <!-- 进度条 -->
         <a-progress 
@@ -48,32 +55,7 @@
           size="default"
         />
         
-        <!-- 章节信息显示 -->
-        <div class="chapter-info">
-          <div class="current-chapter" v-if="currentChapterInfo">
-            <span class="chapter-title">📖 {{ currentChapterInfo.title }}</span>
-            <div class="chapter-stats">
-              <span class="stat-item">
-                <span class="stat-label">段落进度:</span>
-                <span class="stat-value completed">{{ chapterProgress.completed }}</span>
-                <span class="stat-separator">/</span>
-                <span class="stat-value total">{{ chapterProgress.total }}</span>
-                <span class="stat-percent">({{ chapterProgress.percent }}%)</span>
-              </span>
-            </div>
-          </div>
-          
-          <!-- 如果没有章节信息，显示基本信息 -->
-          <div v-else class="basic-progress">
-            <span class="stat-item">
-              <span class="stat-label">合成进度:</span>
-              <span class="stat-value completed">{{ chapterProgress.completed }}</span>
-              <span class="stat-separator">/</span>
-              <span class="stat-value total">{{ chapterProgress.total }}</span>
-              <span class="stat-percent">({{ chapterProgress.percent }}%)</span>
-            </span>
-          </div>
-        </div>
+       
 
         
         <!-- 简化的错误提示 -->
@@ -203,14 +185,14 @@ const showPauseButton = computed(() => {
 })
 
 const drawerTitle = computed(() => {
-  // 🔥 清理环境音混合遗留代码，只保留语音合成监控
+  // 🔥 包含章节信息的抽屉标题
+  if (currentChapterInfo.value) {
+    return `🎤 ${currentChapterInfo.value.title} - 语音合成监控`
+  }
   return '🎤 章节语音合成监控'
 })
 
-const progressTitle = computed(() => {
-  // 🔥 清理环境音混合遗留代码，只保留语音合成进度
-  return '🎤 章节语音合成进度'
-})
+
 
 const displayStatus = computed(() => {
   // 🔥 基于章节进度判断状态
@@ -275,57 +257,24 @@ const progressColor = computed(() => {
   padding: 16px 24px;
 }
 
-.simple-progress .progress-title-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-}
-
-.websocket-status {
-  display: flex;
-  align-items: center;
-}
-
-.progress-title {
-  font-size: 16px;
-  font-weight: 500;
-  color: #1f2937;
-}
-
 .synthesis-controls {
-  flex-shrink: 0;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+  gap: 24px;
+
 }
 
 .chapter-info {
   margin-top: 12px;
-}
-
-.current-chapter {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
+  gap:12px;
 
-.chapter-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: #1f2937;
-  background: #f8fafc;
-  padding: 6px 12px;
-  border-radius: 6px;
-  border-left: 3px solid #1890ff;
+
 }
 
 .chapter-stats {
   display: flex;
-  gap: 24px;
-  font-size: 13px;
-}
-
-.basic-progress {
-  display: flex;
-  gap: 24px;
+  gap: 12px;
   font-size: 13px;
 }
 
@@ -441,10 +390,6 @@ const progressColor = computed(() => {
 }
 
 /* 暗黑模式适配 */
-[data-theme="dark"] .progress-title {
-  color: #fff !important;
-}
-
 [data-theme="dark"] .stat-label {
   color: #8c8c8c !important;
 }

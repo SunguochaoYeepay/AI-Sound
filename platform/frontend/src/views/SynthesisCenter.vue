@@ -50,7 +50,7 @@
         :available-chapters="chapters"
         :synthesis-starting="synthesisStarting"
         :playing-chapter-audio="playingChapterAudio"
-        :can-start="canStartSynthesis && !synthesisStarting"
+        :can-start="canStartNewSynthesis && !synthesisStarting"
         :synthesis-running="synthesisRunning"
         :selected-chapter-status="getSelectedChapterStatus()"
         @play-segment="handlePlaySegment"
@@ -217,16 +217,46 @@ const canStartSynthesis = computed(() => {
     return false
   }
   
-  // 🔥 基于章节级别判断：检查当前章节是否已经完成
+  return true
+})
+
+// 🔥 新增：专门用于判断是否可以开始新的合成（不包括重新合成）
+const canStartNewSynthesis = computed(() => {
+  if (!canStartSynthesis.value) {
+    return false
+  }
+  
+  // 检查当前章节是否已经完成 - 只对新开始的合成有效
   const chapterProgress = currentChapterProgress.value
   if (chapterProgress.total > 0 && chapterProgress.completed === chapterProgress.total) {
-    console.log('✅ 当前章节已完成，禁用合成按钮', { 
+    console.log('✅ 当前章节已完成，禁用新开始合成按钮', { 
       chapterProgress,
       selectedChapter: selectedChapter.value 
     })
     return false
   }
   
+  return true
+})
+
+// 🔥 新增：专门用于判断是否可以重新合成
+const canRestartSynthesis = computed(() => {
+  if (!selectedChapter.value || !project.value) {
+    return false
+  }
+  
+  // 检查本地合成状态
+  if (synthesisRunning.value || synthesisStarting.value) {
+    return false
+  }
+  
+  // 检查进度状态（如果正在处理则不能重新合成）
+  const progressStatus = progressData.value?.status
+  if (progressStatus === 'processing' || progressStatus === 'running') {
+    return false
+  }
+  
+  // 🔥 重新合成时允许章节已完成的情况
   return true
 })
 
@@ -757,7 +787,7 @@ const handleBack = () => {
 const handleStartSynthesis = async () => {
   try {
     // 🔧 防重复合成检查
-    if (!canStartSynthesis.value) {
+    if (!canStartNewSynthesis.value) {
       message.warning('当前无法开始合成，请检查项目状态')
       return
     }
@@ -1224,7 +1254,7 @@ const handleDownloadChapter = (chapterId) => {
 const handleRestartSynthesis = async () => {
   try {
     // 🔧 防重复合成检查
-    if (!canStartSynthesis.value) {
+    if (!canRestartSynthesis.value) {
       message.warning('当前无法重新合成，请检查项目状态')
       return
     }
@@ -1260,7 +1290,7 @@ const handleRestartSynthesis = async () => {
 const handleResumeSynthesis = async () => {
   try {
     // 🔧 防重复合成检查
-    if (!canStartSynthesis.value) {
+    if (!canRestartSynthesis.value) {
       message.warning('当前无法继续合成，请检查项目状态')
       return
     }
