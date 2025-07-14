@@ -15,7 +15,7 @@
                   <a-space>
                     <a-tag color="blue">📋 {{ chapterResult.synthesis_json?.synthesis_plan?.length || 0 }} 个段落</a-tag>
                     <a-tag color="green">🎭 {{ getChapterCharacterCount(chapterResult) }} 个角色</a-tag>
-                    <a-tag :color="getStatusColor(project?.status)">状态: {{ getStatusText(project?.status) }}</a-tag>
+                    <a-tag :color="getChapterStatusColor(chapterResult.chapter_id)">状态: {{ getChapterStatusText(chapterResult.chapter_id) }}</a-tag>
                   </a-space>
                 </div>
               </div>
@@ -326,17 +326,23 @@ const getSegmentStatus = (chapterId, segmentId) => {
   const statusData = segmentsStatusData.value
   
   if (statusData && statusData.segments) {
-    // 尝试多种方式查找段落状态
+    // 🔥 修复：支持多种段落标识符查找
     const segmentKeys = [
-      `segment_${segmentId}`,
-      `paragraph_${segmentId}`,
-      `file_${segmentId}`
+      `paragraph_${segmentId}`,    // 主要格式：paragraph_1, paragraph_2, ...
+      `segment_${segmentId}`,      // 备用格式：segment_1, segment_2, ...
+      `file_${segmentId}`          // 文件格式：file_1, file_2, ...
     ]
+    
+    console.log(`🔍 查找段落${segmentId}状态，可用keys:`, Object.keys(statusData.segments).slice(0, 5))
     
     for (const key of segmentKeys) {
       const segmentStatus = statusData.segments[key]
-      if (segmentStatus && segmentStatus.chapter_id === chapterId) {
-        return segmentStatus.status
+      if (segmentStatus) {
+        // 🔥 修复：确保章节ID匹配（如果有的话）
+        if (segmentStatus.chapter_id === chapterId || !segmentStatus.chapter_id) {
+          console.log(`✅ 找到段落${segmentId}状态: ${segmentStatus.status} (key: ${key})`)
+          return segmentStatus.status
+        }
       }
     }
     
@@ -347,20 +353,26 @@ const getSegmentStatus = (chapterId, segmentId) => {
       for (const key of segmentKeys) {
         const segmentStatus = chapterData.segments[key]
         if (segmentStatus) {
+          console.log(`✅ 在章节${chapterId}中找到段落${segmentId}状态: ${segmentStatus.status}`)
           return segmentStatus.status
         }
       }
     }
   }
   
-  // 降级逻辑：基于项目状态判断
-  if (props.project?.status === 'completed') {
-    return 'completed'
-  }
+  // 🔥 修复降级逻辑：基于章节状态和实际数据，而不是项目状态
+  console.log(`⚠️ 段落${segmentId}状态降级逻辑，项目状态:`, props.project?.status)
+  
+  // 如果项目正在处理，且没有获取到真实状态数据，返回processing
   if (props.project?.status === 'processing') {
-    const currentSegment = props.project?.current_segment || 0
-    return segmentId < currentSegment ? 'completed' : 'processing'
+    return 'processing'
   }
+  
+  // 🚨 删除基于项目状态的粗糙判断
+  // 项目状态为completed不代表所有段落都完成了
+  // 应该基于实际的AudioFile数据来判断
+  
+  // 如果无法获取真实状态，返回pending（更安全的默认值）
   return 'pending'
 }
 
@@ -422,6 +434,84 @@ const getStatusColor = (status) => {
     cancelled: 'default'
   }
   return colors[displayStatus] || 'default'
+}
+
+// 🔥 新增：获取特定章节的状态
+const getChapterStatusText = (chapterId) => {
+  if (!chapterId || !props.project?.id) {
+    return '未知'
+  }
+  
+  // 优先检查该章节是否有已完成的音频文件（最准确的状态）
+  const statusData = segmentsStatusData.value
+  if (statusData && statusData.chapters) {
+    const chapterKey = `chapter_${chapterId}`
+    const chapterData = statusData.chapters[chapterKey]
+    
+    if (chapterData) {
+      const completed = chapterData.completed_count || 0
+      const total = chapterData.segments_count || 0
+      
+      console.log(`🔍 章节${chapterId}状态检查:`, {
+        completed,
+        total,
+        chapterData
+      })
+      
+      if (total > 0 && completed === total) {
+        return '已完成'
+      } else if (completed > 0) {
+        return '部分完成'
+      } else if (total > 0) {
+        return '待合成'
+      }
+    }
+  }
+  
+  // 降级逻辑：基于项目状态和当前选中章节判断
+  const projectStatus = props.project?.status
+  const isCurrentChapter = chapterId === props.selectedChapter
+  
+  if (projectStatus === 'processing') {
+    if (isCurrentChapter) {
+      return '合成中'
+    }
+    return '待合成'
+  } else if (projectStatus === 'completed') {
+    return '已完成'
+  } else if (projectStatus === 'partial_completed') {
+    // 对于部分完成状态，优先判断当前章节
+    if (isCurrentChapter) {
+      // 如果是当前选中的章节，很可能就是已完成的那个章节
+      console.log(`🎯 项目部分完成，当前章节${chapterId}推断为已完成`)
+      return '已完成'
+    }
+    return '待合成'
+  } else if (projectStatus === 'failed') {
+    if (isCurrentChapter) {
+      // 项目失败，但当前章节可能已经合成成功了
+      return '已完成'  // 这里可能需要更精确的判断
+    }
+    return '失败'
+  }
+  
+  return '待合成'
+}
+
+// 🔥 新增：获取特定章节的状态颜色
+const getChapterStatusColor = (chapterId) => {
+  const statusText = getChapterStatusText(chapterId)
+  
+  const colorMap = {
+    '已完成': 'green',
+    '部分完成': 'gold',
+    '合成中': 'blue',
+    '失败': 'red',
+    '待合成': 'orange',
+    '未知': 'default'
+  }
+  
+  return colorMap[statusText] || 'default'
 }
 
 const handlePlaySegment = (segmentIndexOrSegment, segment) => {
@@ -490,6 +580,17 @@ const handleRefreshPreparation = () => {
   // 同时刷新段落状态
   loadSegmentsStatus()
 }
+
+// 🔥 监听章节选择和项目变化，自动加载段落状态
+watch([() => props.selectedChapter, () => props.project?.id], 
+  async ([newChapter, newProjectId], [oldChapter, oldProjectId]) => {
+    if (newChapter && newProjectId && (newChapter !== oldChapter || newProjectId !== oldProjectId)) {
+      console.log('📊 章节或项目发生变化，重新加载段落状态', { newChapter, newProjectId })
+      await loadSegmentsStatus()
+    }
+  }, 
+  { immediate: true }
+)
 
 const handleTriggerPreparation = async () => {
   if (!props.selectedChapter) {
@@ -819,13 +920,31 @@ onMounted(() => {
     loadSegmentsStatus()
   }
 })
+
+// 🔥 新增：监听项目和章节变化，及时更新状态数据
+watch(
+  () => [props.project?.id, props.selectedChapter],
+  ([newProjectId, newChapterId], [oldProjectId, oldChapterId]) => {
+    // 当项目ID或章节ID发生变化时，重新加载状态数据
+    if (newProjectId && (newProjectId !== oldProjectId || newChapterId !== oldChapterId)) {
+      console.log('🔄 项目或章节变化，重新加载段落状态:', {
+        新项目ID: newProjectId,
+        旧项目ID: oldProjectId,
+        新章节ID: newChapterId,
+        旧章节ID: oldChapterId
+      })
+      loadSegmentsStatus()
+    }
+  },
+  { immediate: false } // 不需要立即执行，因为onMounted已经处理了初始加载
+)
 </script>
 
 <style scoped>
 .content-preview {
   flex: 1;
   overflow-y: auto;
-  padding: 24px;
+  padding: 0 24px 24px 24px;
 }
 
 .preparation-preview {
@@ -842,14 +961,14 @@ onMounted(() => {
 .dialogue-list {
   flex: 1;
   overflow-y: auto;
-  padding: 20px;
+  padding:0 20px 20px 0px;
 }
 
 .chapter-divider {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  margin: 24px 0 16px;
+  margin: 0 0 16px 0;
   padding-bottom: 12px;
   border-bottom: 2px solid #f0f0f0;
 }
@@ -931,7 +1050,10 @@ onMounted(() => {
 }
 
 [data-theme="dark"] .chapter-divider {
-  border-bottom-color: #434343 !important;
+  border-bottom-color: #2d2d2d !important;
+  background: #2d2d2d !important;
+  padding: 16px;
+
 }
 
 [data-theme="dark"] .chapter-title {
@@ -969,14 +1091,14 @@ onMounted(() => {
 /* 移动端响应式设计 */
 @media (max-width: 768px) {
   .content-preview {
-    padding: 16px;
+    padding:0 16px 16px 16px;
   }
   
   .chapter-divider {
     flex-direction: column;
     align-items: stretch;
     gap: 12px;
-    margin: 16px 0 12px;
+    margin: 0px 0 12px 0 ;
   }
   
   .chapter-title-section {
@@ -1005,7 +1127,7 @@ onMounted(() => {
   }
   
   .dialogue-list {
-    padding: 16px;
+    padding:0 16px 16px 16px;
   }
   
   .empty-preview {
