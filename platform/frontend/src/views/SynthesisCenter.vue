@@ -49,10 +49,11 @@
         :preparation-results="preparationResults"
         :available-chapters="chapters"
         :synthesis-starting="synthesisStarting"
-        :playing-chapter-audio="playingChapterAudio"
-        :can-start="canStartNewSynthesis && !synthesisStarting"
         :synthesis-running="synthesisRunning"
         :selected-chapter-status="getSelectedChapterStatus()"
+        :progress-data="progressData"
+        :chapter-progress="currentChapterProgress"
+        :can-start="canStartNewSynthesis"
         @play-segment="handlePlaySegment"
         @refresh-preparation="handleRefreshPreparation"
         @trigger-preparation="handleTriggerPreparation"
@@ -68,8 +69,6 @@
         @download-audio="handleDownloadAudio"
         @restart-synthesis="handleRestartSynthesis"
         @resume-synthesis="handleResumeSynthesis"
-        @reset-project-status="handleResetProjectStatus"
-
       />
 
       <!-- 环境混音功能已迁移至单独的环境混合页面 -->
@@ -155,6 +154,7 @@ const retryLoading = ref(false)
 // WebSocket 连接
 let websocket = null
 let progressRefreshInterval = null
+let statusSyncInterval = null // 🔥 新增：状态同步定时器
 
 // 🔧 新增：当前章节进度数据
 const currentChapterProgress = ref({ completed: 0, total: 0, percent: 0 })
@@ -210,13 +210,6 @@ const canStartSynthesis = computed(() => {
     return false
   }
   
-  // 检查进度状态（如果正在处理则不能开始）
-  const progressStatus = progressData.value?.status
-  if (progressStatus === 'processing' || progressStatus === 'running') {
-    console.log('⚠️ 进度显示正在运行，禁用合成按钮', { progressStatus })
-    return false
-  }
-  
   return true
 })
 
@@ -226,16 +219,20 @@ const canStartNewSynthesis = computed(() => {
     return false
   }
   
-  // 检查当前章节是否已经完成 - 只对新开始的合成有效
-  const chapterProgress = currentChapterProgress.value
-  if (chapterProgress.total > 0 && chapterProgress.completed === chapterProgress.total) {
-    console.log('✅ 当前章节已完成，禁用新开始合成按钮', { 
-      chapterProgress,
-      selectedChapter: selectedChapter.value 
-    })
+  // 检查当前章节状态
+  const chapter = chapters.value.find(ch => ch.id === selectedChapter.value)
+  if (!chapter) {
+    console.log('⚠️ 未找到当前章节，禁用合成按钮')
     return false
   }
   
+  // 如果章节正在处理中，不允许开始新的合成
+  if (chapter.synthesis_status === 'processing') {
+    console.log('⚠️ 章节正在处理中，禁用合成按钮')
+    return false
+  }
+  
+  // 其他状态都允许开始合成
   return true
 })
 
@@ -265,6 +262,9 @@ onMounted(async () => {
   await loadProject()
   await loadChapters()
   
+  // 🔥 **页面初始化时同步所有章节状态**
+  await syncAllChapterStatuses()
+  
   // 如果有选中的章节，立即加载智能准备结果
   if (selectedChapter.value) {
     await loadPreparationResults()
@@ -277,6 +277,11 @@ onMounted(async () => {
     progressDrawerVisible.value = true
     console.log('📊 页面初始化时发现正在合成，自动显示进度抽屉')
   }
+  
+  // 🔥 **启动定期状态同步机制**
+  statusSyncInterval = setInterval(async () => {
+    await syncAllChapterStatuses()
+  }, 30000) // 每30秒同步一次状态
   
   // 🎯 处理重新合成参数
   const restartType = route.query.restart
@@ -317,21 +322,37 @@ onUnmounted(() => {
     clearInterval(progressRefreshInterval)
     progressRefreshInterval = null
   }
+
+  // 🔧 清理状态同步定时器
+  if (statusSyncInterval) {
+    console.log('⏰ 清理状态同步定时器')
+    clearInterval(statusSyncInterval)
+    statusSyncInterval = null
+  }
 })
 
-// 加载项目信息
+// 加载项目详情
 const loadProject = async () => {
   try {
     loading.value = true
     const projectId = route.params.projectId
-    const response = await api.getProject(projectId)
+    
+    const response = await api.getProjectDetail(projectId)
     if (response.data.success) {
       project.value = response.data.data
-      
-      // 🔧 不再获取项目级别的进度信息，避免影响章节状态
+      console.log('📊 项目数据加载成功:', {
+        项目ID: project.value.id,
+        项目名称: project.value.name,
+        项目状态: project.value.status,
+        是否已开始: !!project.value.started_at,
+        开始时间: project.value.started_at,
+        关联书籍: project.value.book_id
+      })
+    } else {
+      message.error('加载项目失败')
     }
   } catch (error) {
-    console.error('Failed to load project:', error)
+    console.error('加载项目失败:', error)
     message.error('加载项目失败')
   } finally {
     loading.value = false
@@ -668,14 +689,18 @@ const initWebSocket = () => {
             total_segments: data.data.total_segments || 0,
             failed_segments: data.data.failed_segments || 0,
             current_processing: data.data.current_processing || '',
+            current_chapter_id: data.data.chapter_id, // 🔥 添加当前正在处理的章节ID
             synthesis_type: progressData.value?.synthesis_type // 保持合成类型
           }
           
           console.log('📊 WebSocket更新进度数据:', progressData.value)
           
-          // 🔧 同时更新章节进度
-          loadCurrentChapterProgress()
+          // 🔧 只更新当前正在合成的章节进度
+          if (data.data.chapter_id) {
+            loadCurrentChapterProgress()
+          }
           
+          // 🔥 处理合成完成状态
           if (data.data.status === 'completed' || data.data.status === 'partial_completed' || data.data.status === 'failed') {
             console.log('🎉 WebSocket收到合成完成消息，更新项目状态')
             
@@ -694,10 +719,20 @@ const initWebSocket = () => {
             // 🔥 立即更新状态
             synthesisRunning.value = false
             
-            // 🔥 只更新当前章节进度，不影响其他章节状态
-            loadCurrentChapterProgress().catch(error => {
-              console.error('更新章节进度失败:', error)
-            })
+            // 🔥 **使用正确的状态同步机制**
+            if (data.data.chapter_id) {
+              const finalStatus = data.data.status === 'completed' ? 'completed' : 
+                                data.data.status === 'failed' ? 'failed' : 'pending'
+              
+              // 调用状态同步方法，确保前后端一致
+              syncChapterStatus(data.data.chapter_id, finalStatus)
+            }
+            
+            // 🔥 删除临时方案，使用正确的状态同步
+            // setTimeout(async () => {
+            //   console.log('🔄 合成完成后重新加载章节数据')
+            //   await loadChapters(false) // 不重置选中章节
+            // }, 1000)
             
             // 🔧 停止定期刷新
             if (progressRefreshInterval) {
@@ -1240,14 +1275,69 @@ const handleStartChapterSynthesis = (chapterId) => {
   handleStartSynthesis()
 }
 
-const handlePlayChapter = (chapterId) => {
-  selectedChapter.value = chapterId
-  handlePlayAudio()
+const handlePlayChapter = async (chapterId) => {
+  try {
+    // 🔥 **修复：播放指定章节，不修改选中章节**
+    playingChapterAudio.value = chapterId
+    
+    // 🎯 构建指定章节的完整标题
+    const targetChapter = chapters.value.find(ch => ch.id === chapterId)
+    const chapterTitle = targetChapter ? 
+      `第${targetChapter.chapter_number || targetChapter.id}章：${targetChapter.title || targetChapter.chapter_title || '未命名章节'}` : 
+      `章节${chapterId}`
+    
+    console.log(`🎵 播放指定章节：`, {
+      项目ID: project.value.id,
+      章节ID: chapterId,
+      章节标题: chapterTitle,
+      当前选中章节: selectedChapter.value, // 不应该被修改
+      播放章节: chapterId
+    })
+    
+    // 🎯 **直接播放指定章节，不修改选中状态**
+    await playChapterAudio(project.value.id, chapterId, chapterTitle)
+    message.success(`🎵 播放：${chapterTitle}`)
+  } catch (error) {
+    console.error('Failed to play chapter audio:', error)
+    message.error('播放章节音频失败')
+  } finally {
+    playingChapterAudio.value = null
+  }
 }
 
-const handleDownloadChapter = (chapterId) => {
-  selectedChapter.value = chapterId
-  handleDownloadAudio()
+const handleDownloadChapter = async (chapterId) => {
+  try {
+    // 🔥 **修复：下载指定章节，不修改选中章节**
+    const targetChapter = chapters.value.find(ch => ch.id === chapterId)
+    const chapterTitle = targetChapter ? 
+      `第${targetChapter.chapter_number || targetChapter.id}章：${targetChapter.title || targetChapter.chapter_title || '未命名章节'}` : 
+      `章节${chapterId}`
+    
+    console.log(`⬇️ 下载指定章节：`, {
+      项目ID: project.value.id,
+      章节ID: chapterId,
+      章节标题: chapterTitle,
+      当前选中章节: selectedChapter.value // 不应该被修改
+    })
+    
+    // 🎯 **直接下载指定章节，不修改选中状态**
+    const response = await api.downloadChapterAudio(project.value.id, chapterId)
+    
+    const blob = new Blob([response.data], { type: 'audio/wav' })
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${chapterTitle}.wav`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    window.URL.revokeObjectURL(url)
+    
+    message.success(`⬇️ 下载完成：${chapterTitle}`)
+  } catch (error) {
+    console.error('Failed to download chapter audio:', error)
+    message.error('下载章节音频失败')
+  }
 }
 
 // 重新合成处理函数
@@ -1331,52 +1421,92 @@ const getSelectedChapterStatus = () => {
   const chapter = chapters.value.find(ch => ch.id === selectedChapter.value)
   if (!chapter) return 'pending'
   
-  // 🔥 最优先：基于章节实际进度数据判断
+  // 1. 如果正在合成当前章节
+  if (synthesisRunning.value && progressData.value?.current_chapter_id === selectedChapter.value) {
+    return 'processing'
+  }
+  
+  // 🔥 核心修复：始终基于项目级别的音频文件数据判断状态
+  // 不再根据项目是否已开始来决定逻辑分支
+  
+  // 2. 使用当前章节的进度数据判断状态
   const chapterProgress = currentChapterProgress.value
-  const chapterAnalysisStatus = chapter.analysis_status
+  if (chapterProgress.total > 0 && chapterProgress.completed === chapterProgress.total) {
+    return 'completed'
+  } else if (chapterProgress.completed > 0) {
+    return 'partial'
+  } else {
+    return 'pending'  // 默认为待合成状态
+  }
+}
+
+// 🔥 **状态同步核心方法** - 确保前端状态与数据库一致
+const syncChapterStatus = async (chapterId, newStatus) => {
+  console.log('🔄 同步章节状态:', { chapterId, newStatus })
   
-  console.log('🔍 章节状态判断（新架构）:', {
-    章节ID: selectedChapter.value,
-    章节进度: chapterProgress,
-    章节分析状态: chapterAnalysisStatus,
-    章节标题: chapter.chapter_title,
-    合成运行状态: synthesisRunning.value
-  })
-  
-  // 1. 如果正在合成（本地状态）
-  if (synthesisRunning.value) {
-    return 'processing'
+  // 1. 更新本地chapters数组
+  const chapter = chapters.value.find(ch => ch.id === chapterId)
+  if (chapter) {
+    const oldStatus = chapter.synthesis_status
+    chapter.synthesis_status = newStatus
+    console.log('✅ 本地状态更新:', { 
+      章节ID: chapterId, 
+      旧状态: oldStatus, 
+      新状态: newStatus 
+    })
   }
   
-  // 2. 基于章节实际进度判断
-  if (chapterProgress.total > 0) {
-    if (chapterProgress.completed === chapterProgress.total) {
-      console.log('✅ 章节已完成，基于实际进度数据')
-      return 'completed'
-    } else if (chapterProgress.completed > 0) {
-      console.log('⚡ 章节部分完成，基于实际进度数据')
-      return 'partial_completed'
-    } else {
-      console.log('📋 章节待合成，有准备数据但未开始合成')
-      return 'pending'
+  // 2. 验证数据库状态（确保一致性）
+  try {
+    const response = await apiClient.get(`/books/${project.value.book_id}/chapters`)
+    if (response.data.success && response.data.data) {
+      const serverChapter = response.data.data.find(ch => ch.id === chapterId)
+      if (serverChapter && serverChapter.synthesis_status !== newStatus) {
+        console.warn('⚠️ 前端状态与服务器不一致:', {
+          前端状态: newStatus,
+          服务器状态: serverChapter.synthesis_status
+        })
+        
+        // 以服务器状态为准
+        if (chapter) {
+          chapter.synthesis_status = serverChapter.synthesis_status
+        }
+      }
     }
+  } catch (error) {
+    console.error('❌ 验证服务器状态失败:', error)
   }
+}
+
+// 🔥 **批量状态同步** - 处理多章节状态更新
+const syncAllChapterStatuses = async () => {
+  if (!project.value?.book_id) return
   
-  // 3. 如果没有进度数据，基于章节分析状态判断
-  if (chapterAnalysisStatus === 'completed') {
-    console.log('📋 章节智能准备完成，待合成')
-    return 'pending'
-  } else if (chapterAnalysisStatus === 'processing' || chapterAnalysisStatus === 'analyzing') {
-    console.log('🔄 章节正在智能准备')
-    return 'processing'
-  } else if (chapterAnalysisStatus === 'failed') {
-    console.log('❌ 章节智能准备失败')
-    return 'failed'
+  console.log('🔄 批量同步所有章节状态')
+  try {
+    const response = await apiClient.get(`/books/${project.value.book_id}/chapters`)
+    if (response.data.success && response.data.data) {
+      const serverChapters = response.data.data
+      
+      // 更新所有章节状态
+      serverChapters.forEach(serverChapter => {
+        const localChapter = chapters.value.find(ch => ch.id === serverChapter.id)
+        if (localChapter && localChapter.synthesis_status !== serverChapter.synthesis_status) {
+          console.log('🔄 更新章节状态:', {
+            章节ID: serverChapter.id,
+            章节标题: serverChapter.chapter_title,
+            旧状态: localChapter.synthesis_status,
+            新状态: serverChapter.synthesis_status
+          })
+          localChapter.synthesis_status = serverChapter.synthesis_status
+          localChapter.analysis_status = serverChapter.analysis_status
+          localChapter.updated_at = serverChapter.updated_at
+        }
+      })
+    }
+  } catch (error) {
+    console.error('❌ 批量同步状态失败:', error)
   }
-  
-  // 4. 默认状态
-  console.log('📝 章节默认状态：待开始')
-  return 'pending'
 }
 
 // 环境混音相关方法已迁移至单独的环境混合页面

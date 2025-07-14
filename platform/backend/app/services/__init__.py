@@ -5,7 +5,7 @@
 
 from .chapter_service import ChapterService
 from .analysis_service import AnalysisService
-# from .synthesis_service import SynthesisService  # 🚀 已删除
+# 音频生成服务已移动到 novel_reader.py
 from .preset_service import PresetService
 # from .dify_client import DifyClient, DifyClientFactory  # 🚀 已删除 - 文件不存在
 
@@ -16,8 +16,8 @@ from .background_music_generation_service import get_background_music_generation
 
 __all__ = [
     'ChapterService',
-    'AnalysisService', 
-    # 'SynthesisService',  # 🚀 已删除
+    'AnalysisService',
+    # 'AudioGenerationService',  # 已移动到 novel_reader.py
     'PresetService',
     # 'DifyClient',  # 🚀 已删除
     # 'DifyClientFactory'  # 🚀 已删除

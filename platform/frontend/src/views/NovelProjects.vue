@@ -436,14 +436,13 @@ const tableColumns = [
   }
 ]
 
-// 🔥 修复：基于实际数据而不是项目状态计算统计信息
+// 🔥 修复：始终基于实际数据计算项目统计信息
 const projectStats = computed(() => {
   const stats = { total: 0, completed: 0, processing: 0, pending: 0, partialCompleted: 0 }
   
   projects.value.forEach(project => {
     stats.total++
     
-    // 🔥 基于实际数据判断项目状态
     if (isProjectCompleted(project)) {
       stats.completed++
     } else if (project.status === 'processing') {
@@ -489,7 +488,9 @@ const loadProjects = async () => {
     })
     
     if (response.data.success) {
-      projects.value = response.data.data || []
+      // 从 response.data.data.projects 中获取项目列表
+      const projectList = response.data.data?.projects || []
+      projects.value = Array.isArray(projectList) ? projectList : []
     } else {
       message.error('获取项目列表失败: ' + response.data.message)
     }
@@ -655,7 +656,7 @@ const formatDate = (dateString) => {
   return date.toLocaleDateString('zh-CN')
 }
 
-// 🔥 判断项目是否完成：基于实际进度而不是状态
+// 🔥 修复：始终基于实际音频文件数据判断项目是否完成
 const isProjectCompleted = (project) => {
   // 优先使用后端计算的进度
   if (project.progress !== undefined && project.progress !== null) {
@@ -672,10 +673,15 @@ const isProjectCompleted = (project) => {
   return project.status === 'completed'
 }
 
-// 🔥 判断项目是否有音频文件：基于实际数据
+// 🔥 修复：始终基于实际音频文件数据判断项目是否有音频文件
 const hasAudioFiles = (project) => {
   // 如果有处理过的段落，说明有音频文件
   if (project.processed_segments && project.processed_segments > 0) {
+    return true
+  }
+  
+  // 如果进度大于0，说明有音频文件
+  if (project.progress !== undefined && project.progress !== null && project.progress > 0) {
     return true
   }
   

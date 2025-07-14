@@ -11,8 +11,20 @@
     <div class="progress-container">
       <!-- 简化的进度显示 -->
       <div class="simple-progress">
-         <!-- 章节进度统计 -->
-         <div class="chapter-info">
+      
+       
+        
+        <!-- 进度条 -->
+        <a-progress 
+          :percent="correctProgress" 
+          :status="progressStatus"
+          :stroke-color="progressColor"
+          :show-info="true"
+          size="default"
+        />
+        
+        <!-- 章节进度统计 -->
+        <div class="chapter-info">
           <div class="chapter-stats">
             <span class="stat-item">
               <span class="stat-label">段落进度:</span>
@@ -44,17 +56,6 @@
           </a-space>
         </div>
         </div>
-       
-        
-        <!-- 进度条 -->
-        <a-progress 
-          :percent="correctProgress" 
-          :status="progressStatus"
-          :stroke-color="progressColor"
-          :show-info="true"
-          size="default"
-        />
-        
        
 
         
@@ -195,10 +196,9 @@ const drawerTitle = computed(() => {
 
 
 const displayStatus = computed(() => {
-  // 🔥 基于章节进度判断状态
+  // 🔥 只关注章节进度
   const chapterCompleted = props.chapterProgress.completed || 0
   const chapterTotal = props.chapterProgress.total || 0
-  const chapterPercent = props.chapterProgress.percent || 0
   
   // 如果章节完全完成
   if (chapterTotal > 0 && chapterCompleted === chapterTotal) {
@@ -210,12 +210,12 @@ const displayStatus = computed(() => {
     return 'active'
   }
   
-  // 其他情况使用项目状态
-  return props.progressData.status
+  // 其他情况都是pending
+  return 'pending'
 })
 
 const correctProgress = computed(() => {
-  // 🔥 只使用章节进度数据，不再考虑项目级别数据
+  // 🔥 只使用章节进度数据
   const chapterPercent = props.chapterProgress.percent || 0
   
   console.log('🔍 章节进度显示:', {
@@ -245,8 +245,6 @@ const progressColor = computed(() => {
     return '#52c41a'
   } else if (status === 'failed') {
     return '#ff4d4f'
-  } else if (status === 'active') {
-    return '#1890ff'
   }
   return '#1890ff'
 })

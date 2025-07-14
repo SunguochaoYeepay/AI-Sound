@@ -34,8 +34,7 @@
                 <!-- 合成控制按钮 -->
                 <a-space size="small">
                   <!-- 待处理状态：显示对话语音生成按钮 -->
-                  <template v-if="selectedChapterStatus === 'pending'">
-                    <!-- 1. 对话语音生成 -->
+                  <template v-if="selectedChapterStatus === 'pending' || selectedChapterStatus === 'ready' || !selectedChapterStatus">
                     <a-button
                       type="primary"
                       size="small"
@@ -47,27 +46,32 @@
                     </a-button>
                   </template>
 
-                  <!-- 已完成状态：显示播放和下载按钮 -->
-                  <template v-if="selectedChapterStatus === 'completed'">
+                  <!-- 完成状态：显示播放、下载和重新合成按钮 -->
+                  <template v-else-if="selectedChapterStatus === 'completed'">
                     <a-button
                       type="primary"
                       size="small"
-                      @click="$emit('play-audio')"
+                      @click="$emit('play-chapter', selectedChapter)"
                       :loading="playingChapterAudio === selectedChapter"
                     >
-                      播放
+                      🎵 播放
                     </a-button>
                     <a-button
                       size="small"
-                      @click="$emit('download-audio')"
+                      @click="$emit('download-chapter', selectedChapter)"
                     >
-                      下载
+                      ⬇️ 下载
                     </a-button>
-                    
+                    <a-button 
+                      size="small" 
+                      @click="$emit('restart-synthesis')"
+                    >
+                      🔄 重新合成
+                    </a-button>
                   </template>
 
                   <!-- 处理中状态：显示暂停和取消按钮 -->
-                  <template v-if="selectedChapterStatus === 'processing'">
+                  <template v-else-if="selectedChapterStatus === 'processing'">
                     <a-button
                       size="small"
                       @click="$emit('pause-synthesis')"
@@ -83,38 +87,8 @@
                   </template>
 
                   <!-- 失败状态：显示重新开始选项 -->
-                  <template v-if="selectedChapterStatus === 'failed'">
+                  <template v-else-if="selectedChapterStatus === 'failed'">
                     <a-button type="primary" size="small" @click="$emit('restart-synthesis')">
-                      🔄 重新合成
-                    </a-button>
-                  </template>
-                  
-                  <!-- 完成状态：独立的功能按钮 -->
-                  <template v-if="selectedChapterStatus === 'completed'">
-                    <!-- 重新合成按钮 -->
-                    <a-button size="small" @click="$emit('restart-synthesis')">
-                      🔄 重新合成
-                    </a-button>
-                  </template>
-                  
-                  <!-- 部分完成状态：根据具体章节情况显示按钮 -->
-                  <template v-if="selectedChapterStatus === 'partial_completed'">
-                    <!-- 继续合成按钮（对于未开始的章节） -->
-                    <a-button 
-                      v-if="!isSelectedChapterStarted()" 
-                      type="primary" 
-                      size="small" 
-                      @click="$emit('resume-synthesis')"
-                    >
-                      ⚡ 继续合成
-                    </a-button>
-                    <!-- 重新合成按钮（对于已开始但未完成的章节） -->
-                    <a-button 
-                      v-else
-                      type="primary" 
-                      size="small" 
-                      @click="$emit('restart-synthesis')"
-                    >
                       🔄 重新合成
                     </a-button>
                   </template>
@@ -204,7 +178,9 @@ const props = defineProps({
   playingChapterAudio: [String, Number],
   canStart: Boolean,
   synthesisRunning: Boolean,
-  selectedChapterStatus: String
+  selectedChapterStatus: String,
+  progressData: Object, // 新增：用于接收WebSocket进度数据
+  chapterProgress: Object // 新增：用于接收章节音频文件进度数据
 })
 
 const emit = defineEmits([
@@ -223,7 +199,6 @@ const emit = defineEmits([
   'download-audio',
   'restart-synthesis',
   'resume-synthesis',
-  'reset-project-status',
   'open-audio-editor'
 ])
 
@@ -239,10 +214,11 @@ const canStartSynthesis = computed(() => {
   const hasPreparationResults = props.preparationResults?.data?.length > 0
   const hasSegments = getTotalSegments() > 0
   
-  return props.project?.status !== 'processing' &&
-         hasValidChapterSelection &&
+  // 🔥 移除项目状态判断，只关注章节状态
+  return hasValidChapterSelection &&
          hasPreparationResults &&
-         hasSegments
+         hasSegments &&
+         !props.synthesisRunning // 只要不在合成中就可以开始
 })
 
 const getDisplaySegments = (chapterResult) => {
@@ -301,202 +277,94 @@ const isSelectedChapterStarted = () => {
   const chapterInfo = getSelectedChapterInfo()
   if (!chapterInfo) return false
   
-  // 检查synthesis_status字段
-  const synthStatus = chapterInfo.synthesis_status
-  console.log(`📝 章节${props.selectedChapter}的synthesis_status:`, synthStatus)
+  // 🔥 核心修复：始终基于项目级别的音频文件数据判断状态
+  // 不再根据项目是否已开始来决定逻辑分支
   
-  // 如果章节状态为completed、failed、processing，说明已经开始过
-  if (['completed', 'failed', 'processing'].includes(synthStatus)) {
-    return true
-  }
-  
-  // 如果章节状态为ready，说明还未开始
-  if (synthStatus === 'ready') {
-    return false
-  }
-  
-  // 降级逻辑：检查是否有生成的音频文件
-  // TODO: 这里可以进一步检查具体的音频文件状态
-  return false
+  // 使用章节进度数据判断是否已开始
+  const chapterProgress = props.chapterProgress || { completed: 0, total: 0 }
+  // 如果有音频文件，说明已经开始过
+  return chapterProgress.completed > 0
 }
 
-// 🔧 修复：获取段落真实状态
-const getSegmentStatus = (chapterId, segmentId) => {
-  // 优先从真实的段落状态数据中获取
-  const statusData = segmentsStatusData.value
+// 🔥 新增：获取空状态提示信息
+const getStartHint = () => {
+  if (!props.project) {
+    return '请先选择一个项目'
+  }
+  if (!props.selectedChapter) {
+    return '请选择要处理的章节'
+  }
+  return '当前章节尚未进行智能准备'
+}
+
+// 🔥 修复：始终基于项目级别的音频文件数据判断章节状态
+const getChapterStatusText = (chapterId) => {
+  if (!chapterId) return '未知'
   
-  if (statusData && statusData.segments) {
-    // 🔥 修复：支持多种段落标识符查找
-    const segmentKeys = [
-      `paragraph_${segmentId}`,    // 主要格式：paragraph_1, paragraph_2, ...
-      `segment_${segmentId}`,      // 备用格式：segment_1, segment_2, ...
-      `file_${segmentId}`          // 文件格式：file_1, file_2, ...
-    ]
-    
-    console.log(`🔍 查找段落${segmentId}状态，可用keys:`, Object.keys(statusData.segments).slice(0, 5))
-    
-    for (const key of segmentKeys) {
-      const segmentStatus = statusData.segments[key]
-      if (segmentStatus) {
-        // 🔥 修复：确保章节ID匹配（如果有的话）
-        if (segmentStatus.chapter_id === chapterId || !segmentStatus.chapter_id) {
-          console.log(`✅ 找到段落${segmentId}状态: ${segmentStatus.status} (key: ${key})`)
-          return segmentStatus.status
-        }
-      }
-    }
-    
-    // 按章节查找
-    const chapterKey = `chapter_${chapterId}`
-    const chapterData = statusData.chapters?.[chapterKey]
-    if (chapterData?.segments) {
-      for (const key of segmentKeys) {
-        const segmentStatus = chapterData.segments[key]
-        if (segmentStatus) {
-          console.log(`✅ 在章节${chapterId}中找到段落${segmentId}状态: ${segmentStatus.status}`)
-          return segmentStatus.status
-        }
-      }
+  // 🔥 核心修复：始终基于项目级别的音频文件数据判断状态
+  // 不再根据项目是否已开始来决定逻辑分支
+  
+  // 如果是当前选中的章节，使用已有的进度数据
+  if (chapterId === props.selectedChapter && props.chapterProgress) {
+    const chapterProgress = props.chapterProgress
+    if (chapterProgress.total > 0 && chapterProgress.completed === chapterProgress.total) {
+      return '已完成'
+    } else if (chapterProgress.completed > 0) {
+      return '部分完成'
+    } else {
+      return '待合成'
     }
   }
   
-  // 🔥 修复降级逻辑：基于章节状态和实际数据，而不是项目状态
-  console.log(`⚠️ 段落${segmentId}状态降级逻辑，项目状态:`, props.project?.status)
-  
-  // 如果项目正在处理，且没有获取到真实状态数据，返回processing
-  if (props.project?.status === 'processing') {
+  // 对于非当前选中的章节，需要查询其在当前项目中的进度
+  // 这里暂时返回待合成，后续可以优化为批量查询所有章节进度
+  return '待合成'
+}
+
+// 🔥 修复：始终基于项目级别的音频文件数据判断段落状态
+const getSegmentStatus = (chapterId, segmentId) => {
+  // 1. 优先检查当前正在合成的段落
+  if (props.synthesisRunning && 
+      props.progressData?.current_chapter_id === chapterId &&
+      props.progressData?.current_segment_id === segmentId) {
     return 'processing'
   }
   
-  // 🚨 删除基于项目状态的粗糙判断
-  // 项目状态为completed不代表所有段落都完成了
-  // 应该基于实际的AudioFile数据来判断
+  // 2. 如果是当前选中的章节，使用已有的进度数据
+  if (chapterId === props.selectedChapter && props.chapterProgress) {
+    const chapterProgress = props.chapterProgress
+    if (chapterProgress.total > 0 && chapterProgress.completed === chapterProgress.total) {
+      return 'completed'  // 章节完成，所有段落都完成
+    } else if (chapterProgress.completed > 0) {
+      // 部分完成：需要检查具体段落（暂时返回待合成，后续可优化）
+      return 'pending'
+    } else {
+      return 'pending'
+    }
+  }
   
-  // 如果无法获取真实状态，返回pending（更安全的默认值）
+  // 3. 对于非当前选中的章节，暂时返回待合成
   return 'pending'
 }
 
-const getStartHint = () => {
-  if (!props.selectedChapter) {
-    return '请选择要合成的章节，系统将自动加载智能准备结果'
-  }
-  if (props.contentLoading) {
-    return '正在加载智能准备结果...'
-  }
-  if (!props.preparationResults?.data?.length) {
-    return '正在自动加载智能准备结果，请稍候...'
-  }
-  if (getTotalSegments() === 0) {
-    return '没有可合成的片段'
-  }
-  return '可以开始合成'
-}
-
-const getDisplayStatus = (rawStatus) => {
-  if (rawStatus === 'partial_completed') {
-    const completed = props.project?.statistics?.completedSegments || props.project?.processed_segments || 0
-    const total = props.project?.statistics?.totalSegments || props.project?.total_segments || 0
-    const failed = props.project?.statistics?.failedSegments || props.project?.failed_segments || 0
-    
-    if (total > 0 && completed === total && failed === 0) {
-      return 'completed'
-    }
-    if (failed > 0) {
-      return 'failed'
-    }
-  }
-  return rawStatus
-}
-
-const getStatusText = (status) => {
-  const displayStatus = getDisplayStatus(status)
-  const texts = {
-    pending: '待开始',
-    processing: '合成中',
-    paused: '已暂停',
-    completed: '已完成',
-    partial_completed: '部分完成',
-    failed: '失败',
-    cancelled: '已取消'
-  }
-  return texts[displayStatus] || displayStatus
-}
-
-const getStatusColor = (status) => {
-  const displayStatus = getDisplayStatus(status)
-  const colors = {
-    pending: 'orange',
-    processing: 'blue',
-    paused: 'purple',
-    completed: 'green',
-    partial_completed: 'gold',
-    failed: 'red',
-    cancelled: 'default'
-  }
-  return colors[displayStatus] || 'default'
-}
-
-// 🔥 新增：获取特定章节的状态
-const getChapterStatusText = (chapterId) => {
-  if (!chapterId || !props.project?.id) {
-    return '未知'
-  }
-  
-  // 优先检查该章节是否有已完成的音频文件（最准确的状态）
-  const statusData = segmentsStatusData.value
-  if (statusData && statusData.chapters) {
-    const chapterKey = `chapter_${chapterId}`
-    const chapterData = statusData.chapters[chapterKey]
-    
-    if (chapterData) {
-      const completed = chapterData.completed_count || 0
-      const total = chapterData.segments_count || 0
-      
-      console.log(`🔍 章节${chapterId}状态检查:`, {
-        completed,
-        total,
-        chapterData
-      })
-      
-      if (total > 0 && completed === total) {
-        return '已完成'
-      } else if (completed > 0) {
-        return '部分完成'
-      } else if (total > 0) {
-        return '待合成'
-      }
-    }
-  }
-  
-  // 🔥 修复跨章节状态污染：不再基于项目状态和当前选中章节判断
-  // 只有实际的音频数据可以决定章节状态，避免选择章节时错误显示状态
-  
-  console.log(`⚠️ 章节${chapterId}无法从音频数据中确定状态，使用安全的默认状态`)
-  
-  // 🚨 删除基于项目状态的跨章节判断逻辑
-  // 项目状态不能代表具体章节的真实状态
-  // 选择一个章节不应该让它显示为"合成中"
-  
-  // 安全的默认状态：待合成
-  return '待合成'
-  
-  return '待合成'
-}
-
-// 🔥 新增：获取特定章节的状态颜色
+// 🔥 修复：始终基于项目级别的音频文件数据判断状态颜色
 const getChapterStatusColor = (chapterId) => {
-  const statusText = getChapterStatusText(chapterId)
+  if (!chapterId) return 'gray'
   
-  const colorMap = {
-    '已完成': 'green',
-    '部分完成': 'gold',
-    '合成中': 'blue',
-    '失败': 'red',
-    '待合成': 'orange',
-    '未知': 'default'
+  // 如果是当前选中的章节，使用已有的进度数据
+  if (chapterId === props.selectedChapter && props.chapterProgress) {
+    const chapterProgress = props.chapterProgress
+    if (chapterProgress.total > 0 && chapterProgress.completed === chapterProgress.total) {
+      return 'green'  // 已完成
+    } else if (chapterProgress.completed > 0) {
+      return 'orange'  // 部分完成
+    } else {
+      return 'gray'  // 待合成
+    }
   }
   
-  return colorMap[statusText] || 'default'
+  // 对于非当前选中的章节，暂时返回灰色
+  return 'gray'
 }
 
 const handlePlaySegment = (segmentIndexOrSegment, segment) => {

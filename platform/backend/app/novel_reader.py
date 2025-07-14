@@ -627,6 +627,10 @@ async def start_audio_generation(
         
         logger.info(f"[DEBUG] 所有验证通过，开始启动合成...")
         
+        # 🔥 音频文件清理逻辑已移至 start_project_generation 中处理
+        # 这里不再需要清理音频文件，因为调用此函数前已经清理过了
+        logger.info(f"[DEBUG] 跳过音频文件清理，已在启动时处理")
+        
         # 更新项目状态
         project.status = 'processing'
         project.started_at = datetime.utcnow()
@@ -1006,7 +1010,10 @@ async def process_audio_generation_from_synthesis_plan(
                 safe_speaker = "".join(c for c in speaker if c.isalnum() or c in (' ', '-', '_')).rstrip()
                 # 🔥 修复：根据实际使用的voice对象ID生成文件名，避免ID混用
                 voice_identifier = voice.id if hasattr(voice, 'id') else 'unknown'
-                audio_filename = f"segment_{segment_id:04d}_{safe_speaker}_{voice_identifier}.wav"
+                
+                # 🚨 重要修复：在文件名中添加章节ID，避免不同章节的段落文件相互覆盖
+                chapter_id = segment_data.get('chapter_id', 'unknown')
+                audio_filename = f"chapter_{chapter_id}_segment_{segment_id:04d}_{safe_speaker}_{voice_identifier}.wav"
                 audio_path = os.path.join(project_output_dir, audio_filename)
                 
                 # 🔥 关键修复：优先使用角色配音库的个性化参数
@@ -1142,7 +1149,8 @@ async def process_audio_generation_from_synthesis_plan(
                             "duration": duration,
                             "speaker": speaker,
                             "character_id": audio_character_id,  # 🚀 新架构：返回正确的character_id
-                            "voice_profile_id": audio_voice_profile_id  # 🚀 旧架构：返回正确的voice_profile_id
+                            "voice_profile_id": audio_voice_profile_id,  # 🚀 旧架构：返回正确的voice_profile_id
+                            "chapter_id": chapter_id  # 🔥 新增：返回章节ID用于音频合并
                         }
                     else:
                         logger.error(f"[SYNTHESIS_PLAN] 段落 {segment_id} 音频文件未生成")
@@ -1341,6 +1349,51 @@ async def process_audio_generation_from_synthesis_plan(
         
         db.commit()
         
+        # 🔥 新增：按章节合并音频文件
+        chapter_audio_files = {}
+        if completed_count > 0:
+            try:
+                logger.info(f"[SYNTHESIS_PLAN] 开始按章节合并音频文件...")
+                
+                # 按章节组织音频文件
+                for result in results:
+                    if isinstance(result, dict) and 'chapter_id' in result and result.get('file_path'):
+                        chapter_id = result['chapter_id']
+                        if chapter_id not in chapter_audio_files:
+                            chapter_audio_files[chapter_id] = []
+                        chapter_audio_files[chapter_id].append(result)
+                
+                # 为每个章节生成合并的音频文件
+                for chapter_id, audio_files in chapter_audio_files.items():
+                    if not audio_files:
+                        continue
+                    
+                    try:
+                        # 按段落顺序排序
+                        audio_files.sort(key=lambda x: x.get('segment_id', 0))
+                        
+                        # 生成章节音频文件
+                        chapter_audio_path = await merge_chapter_audio_files(
+                            project_id, chapter_id, audio_files, db
+                        )
+                        
+                        if chapter_audio_path:
+                            logger.info(f"[SYNTHESIS_PLAN] 章节 {chapter_id} 音频合并完成: {chapter_audio_path}")
+                            
+                            # 更新章节状态为完成
+                            chapter = db.query(BookChapter).filter(BookChapter.id == chapter_id).first()
+                            if chapter:
+                                chapter.synthesis_status = 'completed'
+                                db.commit()
+                        else:
+                            logger.warning(f"[SYNTHESIS_PLAN] 章节 {chapter_id} 音频合并失败")
+                            
+                    except Exception as e:
+                        logger.error(f"[SYNTHESIS_PLAN] 章节 {chapter_id} 音频合并异常: {str(e)}")
+                        
+            except Exception as e:
+                logger.error(f"[SYNTHESIS_PLAN] 章节音频合并过程异常: {str(e)}")
+        
         # 🚀 发送章节级别的完成状态到前端
         chapter_progress = round((completed_count / len(synthesis_data)) * 100) if len(synthesis_data) > 0 else 0
         await websocket_manager.publish_to_topic(
@@ -1356,7 +1409,8 @@ async def process_audio_generation_from_synthesis_plan(
                     "total_segments": len(synthesis_data),
                     "failed_segments": len(failed_segments),
                     "current_processing": f"章节合成{'完成' if completed_count == len(synthesis_data) else '结束'}",
-                    "final_audio_path": final_audio_path,
+                    "final_audio_path": None,  # 现在不再有全局的最终音频文件
+                    "chapter_audio_files": len(chapter_audio_files),  # 生成的章节音频文件数量
                     "timestamp": datetime.utcnow().isoformat()
                 }
             }
@@ -1381,6 +1435,53 @@ async def process_audio_generation_from_synthesis_plan(
         )
         
         logger.info(f"[SYNTHESIS_PLAN] 项目 {project_id} 音频合成任务完成")
+        
+        # 🔧 项目完成状态更新
+        try:
+            # 更新章节状态
+            chapter_ids = list(chapter_audio_files.keys())
+            for chapter_id in chapter_ids:
+                # 检查章节完整音频文件是否存在
+                chapter_complete_audio = db.query(AudioFile).filter(
+                    AudioFile.project_id == project_id,
+                    AudioFile.chapter_id == chapter_id,
+                    AudioFile.audio_type == 'chapter'
+                ).first()
+                
+                # 更新章节状态
+                chapter = db.query(BookChapter).filter(BookChapter.id == chapter_id).first()
+                if chapter:
+                    # 如果有章节完整音频文件，状态为完成
+                    if chapter_complete_audio and os.path.exists(chapter_complete_audio.file_path):
+                        chapter.synthesis_status = 'completed'
+                        logger.info(f"[SYNTHESIS_PLAN] 章节 {chapter_id} 状态更新为 completed (有完整音频文件)")
+                    else:
+                        chapter.synthesis_status = 'failed'
+                        logger.info(f"[SYNTHESIS_PLAN] 章节 {chapter_id} 状态更新为 failed (无音频文件)")
+            
+            # 🔥 更新项目状态
+            if failed_segments:
+                project.status = 'failed'
+                # 生成详细的错误摘要
+                error_summary = generate_detailed_error_summary(failed_segments, len(synthesis_data))
+                project.error_message = error_summary
+                logger.info(f"[SYNTHESIS_PLAN] 项目 {project_id} 状态更新为 failed")
+            elif len(chapter_audio_files) > 0:
+                project.status = 'completed'
+                project.error_message = None
+                logger.info(f"[SYNTHESIS_PLAN] 项目 {project_id} 状态更新为 completed")
+            else:
+                project.status = 'partial_completed'
+                project.error_message = f"部分完成：{completed_count}/{len(synthesis_data)} 个段落"
+                logger.info(f"[SYNTHESIS_PLAN] 项目 {project_id} 状态更新为 partial_completed")
+            
+            project.completed_at = datetime.utcnow()
+            db.commit()
+        
+        except Exception as e:
+            logger.error(f"[SYNTHESIS_PLAN] 更新章节和项目状态失败: {str(e)}")
+        
+        db.commit()
         
     except Exception as e:
         logger.error(f"[SYNTHESIS_PLAN] 项目 {project_id} 音频合成任务异常: {str(e)}", exc_info=True)
@@ -1567,26 +1668,162 @@ async def merge_audio_files_from_plan(
         raise e 
 
 def add_chapter_info_to_synthesis_data(synthesis_data: List[Dict], analysis_results, db: Session) -> List[Dict]:
-    """为合成数据添加章节信息"""
-    # 创建章节ID到章节号的映射
-    chapter_mapping = {}
+    """
+    为合成数据添加章节信息
+    确保每个segment都有完整的章节信息
+    """
+    # 建立章节ID到章节信息的映射
+    chapter_info_map = {}
     for result in analysis_results:
-        chapter = db.query(BookChapter).filter(BookChapter.id == result.chapter_id).first()
-        if chapter:
-            chapter_mapping[result.chapter_id] = chapter.chapter_number
+        chapter_id = result.chapter_id
+        if chapter_id not in chapter_info_map:
+            chapter_info_map[chapter_id] = {
+                'chapter_id': chapter_id,
+                'chapter_number': result.chapter.chapter_number,
+                'chapter_title': result.chapter.chapter_title or result.chapter.title,
+                'book_id': result.chapter.book_id
+            }
     
     # 为每个segment添加章节信息
-    enhanced_data = []
-    result_index = 0
+    for segment in synthesis_data:
+        if 'chapter_id' in segment and segment['chapter_id'] in chapter_info_map:
+            chapter_info = chapter_info_map[segment['chapter_id']]
+            segment.update(chapter_info)
+            logger.debug(f"[CHAPTER_INFO] 段落 {segment.get('segment_id')} 添加章节信息: 第{chapter_info['chapter_number']}章 {chapter_info['chapter_title']}")
     
-    for result in analysis_results:
-        if result.synthesis_plan and 'synthesis_plan' in result.synthesis_plan:
-            plan_segments = result.synthesis_plan['synthesis_plan']
-            for segment in plan_segments:
-                # 添加章节信息
-                segment['chapter_id'] = result.chapter_id
-                segment['chapter_number'] = chapter_mapping.get(result.chapter_id)
-                enhanced_data.append(segment)
-                logger.debug(f"[SYNTHESIS_PLAN] 段落 {segment.get('segment_id')} 添加章节信息: chapter_id={result.chapter_id}, chapter_number={chapter_mapping.get(result.chapter_id)}")
+    return synthesis_data
+
+
+async def merge_chapter_audio_files(
+    project_id: int, 
+    chapter_id: int, 
+    audio_files: List[Dict], 
+    db: Session
+) -> Optional[str]:
+    """
+    合并单个章节的所有音频文件为一个完整的章节音频文件
     
-    return enhanced_data
+    Args:
+        project_id: 项目ID
+        chapter_id: 章节ID
+        audio_files: 章节内的音频文件列表
+        db: 数据库会话
+        
+    Returns:
+        合并后的章节音频文件路径，失败时返回None
+    """
+    try:
+        from pydub import AudioSegment
+        import os
+        
+        if not audio_files:
+            logger.warning(f"[MERGE_CHAPTER] 章节 {chapter_id} 没有音频文件需要合并")
+            return None
+        
+        # 获取章节信息
+        chapter = db.query(BookChapter).filter(BookChapter.id == chapter_id).first()
+        if not chapter:
+            logger.error(f"[MERGE_CHAPTER] 章节 {chapter_id} 不存在")
+            return None
+        
+        chapter_title = chapter.chapter_title or chapter.title or f"Chapter_{chapter_id}"
+        chapter_number = chapter.chapter_number or chapter_id
+        
+        logger.info(f"[MERGE_CHAPTER] 开始合并章节 {chapter_id} ({chapter_title}) 的 {len(audio_files)} 个音频文件")
+        
+        # 初始化合并音频
+        merged_audio = None
+        silence = AudioSegment.silent(duration=800)  # 800ms段落间隔
+        total_duration = 0
+        merged_segments = 0
+        
+        # 按段落顺序合并音频
+        for i, audio_file in enumerate(audio_files):
+            file_path = audio_file.get('file_path')
+            segment_id = audio_file.get('segment_id', i + 1)
+            
+            if not file_path or not os.path.exists(file_path):
+                logger.warning(f"[MERGE_CHAPTER] 音频文件不存在: {file_path}")
+                continue
+            
+            try:
+                # 加载音频段落
+                segment_audio = AudioSegment.from_wav(file_path)
+                
+                if merged_audio is None:
+                    merged_audio = segment_audio
+                else:
+                    # 添加段落间隔，然后合并
+                    merged_audio = merged_audio + silence + segment_audio
+                
+                total_duration += len(segment_audio)
+                merged_segments += 1
+                
+                logger.debug(f"[MERGE_CHAPTER] 已合并段落 {segment_id}: {len(segment_audio)}ms")
+                
+            except Exception as e:
+                logger.error(f"[MERGE_CHAPTER] 读取音频文件失败: {file_path}, 错误: {str(e)}")
+                continue
+        
+        if merged_audio is None or merged_segments == 0:
+            logger.error(f"[MERGE_CHAPTER] 章节 {chapter_id} 没有有效的音频文件可合并")
+            return None
+        
+        # 生成章节音频文件路径
+        project_output_dir = f"outputs/projects/{project_id}"
+        os.makedirs(project_output_dir, exist_ok=True)
+        
+        # 文件名：chapter_章节号_章节标题.wav
+        safe_title = "".join(c for c in chapter_title if c.isalnum() or c in (' ', '-', '_')).strip()
+        safe_title = safe_title.replace(' ', '_')
+        chapter_filename = f"chapter_{chapter_number:03d}_{safe_title}.wav"
+        chapter_audio_path = os.path.join(project_output_dir, chapter_filename)
+        
+        # 导出章节音频文件
+        merged_audio.export(chapter_audio_path, format="wav")
+        
+        # 计算文件信息
+        file_size = os.path.getsize(chapter_audio_path)
+        duration_seconds = len(merged_audio) / 1000.0
+        
+        # 保存章节音频文件记录到数据库
+        chapter_audio_file = AudioFile(
+            filename=chapter_filename,
+            original_name=f"第{chapter_number}章_{chapter_title}",
+            file_path=chapter_audio_path,
+            file_size=file_size,
+            duration=duration_seconds,
+            project_id=project_id,
+            chapter_id=chapter_id,
+            chapter_number=chapter_number,
+            character_name=None,  # 章节音频没有特定角色
+            speaker="多角色",  # 章节音频包含多个角色
+            paragraph_index=None,  # 章节音频不对应特定段落
+            character_id=None,
+            voice_profile_id=None,
+            text_content=f"第{chapter_number}章完整音频",
+            audio_type='chapter',  # 标记为章节音频
+            processing_time=0,  # 合并不需要处理时间
+            model_used='AudioMerge',
+            status='active',
+            created_at=datetime.utcnow(),
+            metadata={
+                'merged_segments': merged_segments,
+                'total_segment_files': len(audio_files),
+                'chapter_title': chapter_title,
+                'merge_method': 'pydub_concatenate'
+            }
+        )
+        
+        db.add(chapter_audio_file)
+        db.commit()
+        db.refresh(chapter_audio_file)
+        
+        logger.info(f"[MERGE_CHAPTER] 章节 {chapter_id} 音频合并完成: {chapter_audio_path}")
+        logger.info(f"[MERGE_CHAPTER] 合并统计: {merged_segments}/{len(audio_files)} 个段落, 总时长: {duration_seconds:.2f}s")
+        
+        return chapter_audio_path
+        
+    except Exception as e:
+        logger.error(f"[MERGE_CHAPTER] 章节 {chapter_id} 音频合并失败: {str(e)}")
+        return None

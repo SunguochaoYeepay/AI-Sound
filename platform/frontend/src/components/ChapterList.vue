@@ -75,6 +75,9 @@
                 >
                   {{ getPreparationStatusText(chapterPreparationStatus[chapter.id]) }}
                 </a-tag>
+                <a-tag v-else-if="chapter.status === 'completed'" color="green" size="small">
+                  已准备
+                </a-tag>
                 <a-tag v-else color="default" size="small">
                   未准备
                 </a-tag>

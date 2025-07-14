@@ -23,22 +23,15 @@ class NovelProject(Base):
     name = Column(String(200), nullable=False)
     description = Column(Text)
     
-    # 朗读项目状态
+    # 项目状态
     status = Column(String(20), default='pending')  # pending, processing, paused, completed, failed
     
-    # 🚀 新架构：移除旧的进度字段，改为动态计算
-    # total_segments, processed_segments, current_segment 已移除
-    # 进度现在基于 AudioFile 实际统计和 AnalysisResult 智能准备结果
-    
-    # 朗读时间
+    # 时间记录
     started_at = Column(DateTime)
     completed_at = Column(DateTime)
     
     # 项目配置
     config = Column(JSON)  # 项目配置信息，包含角色映射等
-    
-    # 最终音频文件路径
-    final_audio_path = Column(String(500))
     
     # 错误信息
     error_message = Column(Text)
@@ -52,8 +45,6 @@ class NovelProject(Base):
     analysis_sessions = relationship("AnalysisSession", back_populates="project", cascade="all, delete-orphan")
     synthesis_tasks = relationship("SynthesisTask", back_populates="project")
     audio_files = relationship("AudioFile", back_populates="project", cascade="all, delete-orphan")
-    
-    # 🎵 音乐生成相关关系
     music_generation_tasks = relationship("MusicGenerationTask", back_populates="novel_project", cascade="all, delete-orphan")
     music_generation_batches = relationship("MusicGenerationBatch", back_populates="novel_project", cascade="all, delete-orphan")
     
@@ -76,11 +67,6 @@ class NovelProject(Base):
     
     def set_character_mapping(self, mapping: Dict[str, str]):
         """设置角色声音映射"""
-        logger = logging.getLogger(__name__)
-        
-        logger.info(f"[MODEL DEBUG] set_character_mapping called with: {mapping}")
-        logger.info(f"[MODEL DEBUG] Current config before update: {self.config}")
-        
         if not self.config:
             self.config = {}
         elif not isinstance(self.config, dict):
@@ -90,10 +76,6 @@ class NovelProject(Base):
         # 重要：标记JSON字段为已修改，强制SQLAlchemy更新
         from sqlalchemy.orm import attributes
         attributes.flag_modified(self, 'config')
-        
-        logger.info(f"[MODEL DEBUG] Config after update: {self.config}")
-        logger.info(f"[MODEL DEBUG] character_mapping in config: {self.config.get('character_mapping')}")
-        logger.info(f"[MODEL DEBUG] JSON field marked as modified")
     
     def get_settings(self) -> Dict[str, Any]:
         """获取项目设置"""
@@ -112,7 +94,7 @@ class NovelProject(Base):
         self.config.update(settings)
         if char_mapping:
             self.config['character_mapping'] = char_mapping
-
+    
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典格式"""
         return {
@@ -121,14 +103,9 @@ class NovelProject(Base):
             'name': self.name,
             'description': self.description,
             'status': self.status,
-            # 🚀 新架构：移除旧的进度字段，进度现在动态计算
-            # 'total_segments': self.total_segments,
-            # 'processed_segments': self.processed_segments,
-            # 'current_segment': self.current_segment,
             'started_at': self.started_at.isoformat() if self.started_at else None,
             'completed_at': self.completed_at.isoformat() if self.completed_at else None,
             'config': self.config,
-            'final_audio_path': self.final_audio_path,
             'error_message': self.error_message,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None

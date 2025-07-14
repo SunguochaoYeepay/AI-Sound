@@ -1,128 +1,50 @@
 <template>
   <div class="chapter-actions">
-    <!-- 手动刷新按钮 -->
-    <a-button 
-      v-if="showRefresh"
-      @click="$emit('refresh')"
-      :loading="refreshLoading"
-      size="small"
-      type="text"
-    >
-      🔄 刷新
-    </a-button>
-    
-    <!-- 简化的章节操作按钮 -->
-    <a-space size="small">
-      <!-- 主要操作按钮 -->
-      <template v-if="isPending">
-        <a-button
-          type="primary"
-          size="small"
-          :disabled="!canStart"
-          :loading="startLoading"
-          @click="$emit('startSynthesis', chapterId)"
-        >
-          开始合成
-        </a-button>
-      </template>
+    <a-space>
+      <!-- 开始合成按钮 -->
+      <a-button 
+        type="primary"
+        :disabled="!canStart"
+        :loading="startLoading"
+        @click="$emit('startSynthesis')"
+        v-if="!synthesisRunning"
+      >
+        🎵 开始合成
+      </a-button>
 
-      <template v-if="isCompleted">
-        <a-button
-          type="primary"
-          size="small"
-          @click="$emit('playAudio', chapterId)"
-          :loading="playLoading"
-        >
-          播放
-        </a-button>
-        <a-button
-          size="small"
-          @click="$emit('downloadAudio', chapterId)"
-        >
-          下载
-        </a-button>
-      </template>
-
-      <template v-if="isProcessing">
-        <a-button
-          size="small"
-          @click="$emit('pauseSynthesis')"
+      <!-- 暂停/继续按钮 -->
+      <template v-if="synthesisRunning">
+        <a-button 
+          type="primary" 
+          danger
           :loading="pauseLoading"
+          @click="$emit('pauseSynthesis')"
         >
-          暂停
+          ⏸️ 暂停
         </a-button>
-        <a-button
-          size="small"
-          @click="$emit('cancelSynthesis')"
+        
+        <a-button 
+          type="primary" 
+          danger
           :loading="cancelLoading"
+          @click="$emit('cancelSynthesis')"
         >
-          取消
+          ⏹️ 取消
         </a-button>
       </template>
 
-      <template v-if="isPausedOrPartiallyFailed">
-        <a-button
-          type="primary"
-          size="small"
-          @click="$emit('resumeSynthesis', chapterId)"
-          :loading="resumeLoading"
-        >
-          继续
-        </a-button>
-      </template>
+      <!-- 重试按钮 -->
+      <a-button 
+        v-if="!synthesisRunning && isFailed"
+        type="primary"
+        :loading="retryLoading"
+        @click="$emit('retryFailedSegments')"
+      >
+        🔄 重试失败段落
+      </a-button>
 
-      <template v-if="isFailed">
-        <a-button
-          type="primary"
-          size="small"
-          @click="$emit('retryFailedSegments', chapterId)"
-          :loading="retryLoading"
-        >
-          重试
-        </a-button>
-      </template>
-      
-      <!-- 更多操作下拉菜单 -->
-      <a-dropdown v-if="isCompleted">
-        <a-button size="small">
-          更多
-          <DownOutlined />
-        </a-button>
-        <template #overlay>
-          <a-menu>
-            <a-menu-item @click="$emit('restartSynthesis', chapterId)">
-              重新合成
-            </a-menu-item>
-            <a-menu-item @click="$emit('refresh')" v-if="showRefresh">
-              刷新数据
-            </a-menu-item>
-          </a-menu>
-        </template>
-      </a-dropdown>
-      
-      <!-- 部分完成项目的继续合成按钮 -->
-      <a-dropdown v-if="isPartialCompleted">
-        <a-button size="small" type="primary">
-          ⚡ 继续合成
-          <DownOutlined />
-        </a-button>
-        <template #overlay>
-          <a-menu>
-            <a-menu-item @click="$emit('resumeSynthesis')" style="color: #1890ff;">
-              ⚡ 继续合成剩余章节
-            </a-menu-item>
-            <a-menu-item @click="$emit('restartSynthesis')" style="color: #ff7a00;">
-              🔄 重新开始合成
-            </a-menu-item>
-            <a-menu-item @click="$emit('refresh')" v-if="showRefresh">
-              🔄 刷新数据
-            </a-menu-item>
-          </a-menu>
-        </template>
-      </a-dropdown>
-
-      <!-- 项目状态卡死时的重置按钮 -->
-      <a-dropdown v-if="isFailed || (projectStatus === 'processing' && !synthesisRunning)">
+      <!-- 重置按钮 -->
+      <a-dropdown v-if="isFailed || (synthesisRunning && !synthesisRunning)">
         <a-button size="small" type="primary">
           🔄 重新合成
           <DownOutlined />
@@ -133,7 +55,7 @@
               🔄 重新开始合成
             </a-menu-item>
             <a-menu-item @click="$emit('resetProjectStatus')" style="color: #ff4d4f;">
-              🔧 重置项目状态（高级）
+              🔧 重置状态（高级）
             </a-menu-item>
             <a-menu-item @click="$emit('refresh')" v-if="showRefresh">
               🔄 刷新数据
@@ -150,10 +72,6 @@ import { computed } from 'vue'
 import { DownOutlined } from '@ant-design/icons-vue'
 
 const props = defineProps({
-  projectStatus: {
-    type: String,
-    default: 'pending'
-  },
   chapterId: {
     type: [Number, String],
     default: null
@@ -167,6 +85,10 @@ const props = defineProps({
     default: false
   },
   showRefresh: {
+    type: Boolean,
+    default: false
+  },
+  isFailed: {
     type: Boolean,
     default: false
   },
@@ -213,42 +135,6 @@ defineEmits([
   'refresh',
   'resetProjectStatus'
 ])
-
-// 计算状态
-const isPending = computed(() => {
-  return ['pending', 'failed', 'configured'].includes(props.projectStatus)
-})
-
-const isCompleted = computed(() => {
-  return getDisplayStatus(props.projectStatus) === 'completed'
-})
-
-const isProcessing = computed(() => {
-  return props.projectStatus === 'processing'
-})
-
-const isPausedOrPartiallyFailed = computed(() => {
-  return props.projectStatus === 'paused' || 
-         (props.projectStatus === 'failed' && props.statistics?.completedSegments > 0)
-})
-
-const isFailed = computed(() => {
-  return getDisplayStatus(props.projectStatus) === 'failed'
-})
-
-const isPartialCompleted = computed(() => {
-  return props.projectStatus === 'partial_completed'
-})
-
-// 智能状态显示
-const getDisplayStatus = (rawStatus) => {
-  if (rawStatus === 'partial_completed') {
-    // 这里需要从父组件传入统计数据来判断
-    // 暂时保持原状态
-    return rawStatus
-  }
-  return rawStatus
-}
 </script>
 
 <style scoped>

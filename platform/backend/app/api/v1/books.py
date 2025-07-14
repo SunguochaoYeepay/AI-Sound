@@ -387,34 +387,49 @@ async def detect_chapters(
 
 
 @router.get("/{book_id}/chapters")
-def get_book_chapters(
+async def get_chapters(
     book_id: int,
-    skip: int = 0,
-    limit: int = 50,
-    status_filter: Optional[str] = None,
+    skip: int = Query(0, description="跳过的记录数"),
+    limit: int = Query(100, description="返回的记录数"),
+    status_filter: str = Query("", description="状态过滤"),
     db: Session = Depends(get_db)
 ):
-    """
-    获取书籍章节列表
-    - 支持分页查询
-    - 支持状态筛选
-    """
-    # 检查书籍是否存在
-    book = db.query(Book).filter(Book.id == book_id).first()
-    if not book:
-        raise HTTPException(status_code=404, detail="书籍不存在")
-    
-    query = db.query(BookChapter).filter(BookChapter.book_id == book_id)
-    
-    if status_filter:
-        query = query.filter(BookChapter.analysis_status == status_filter)
-    
-    chapters = query.order_by(BookChapter.chapter_number).offset(skip).limit(limit).all()
-    
-    return {
-        "success": True,
-        "data": [chapter.to_dict() for chapter in chapters]
-    }
+    """获取书籍的章节列表"""
+    try:
+        # 检查书籍是否存在
+        book = db.query(Book).filter(Book.id == book_id).first()
+        if not book:
+            raise HTTPException(status_code=404, detail="书籍不存在")
+        
+        # 构建查询
+        query = db.query(BookChapter).filter(BookChapter.book_id == book_id)
+        
+        # 应用状态过滤
+        if status_filter:
+            query = query.filter(BookChapter.analysis_status == status_filter)
+        
+        # 获取总数
+        total = query.count()
+        
+        # 应用分页
+        chapters = query.offset(skip).limit(limit).all()
+        
+        # 转换为字典并返回
+        chapters_data = [chapter.to_dict() for chapter in chapters]
+        
+        return {
+            "success": True,
+            "data": chapters_data,
+            "total": total,
+            "skip": skip,
+            "limit": limit
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取章节列表失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取章节列表失败: {str(e)}")
 
 
 @router.get("/{book_id}/structure-status")
