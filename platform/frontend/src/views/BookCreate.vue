@@ -1320,7 +1320,7 @@ const handleFileUpload = async () => {
   white-space: pre-wrap;
   font-family: 'Microsoft YaHei', sans-serif;
   line-height: 1.6;
-  padding: 16px;
+  padding:0 16px 16px 16px;
   background: #f8fafc;
   border-radius: 6px;
 }

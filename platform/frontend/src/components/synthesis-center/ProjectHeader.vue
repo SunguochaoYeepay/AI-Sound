@@ -7,21 +7,10 @@
             <template #icon><ArrowLeftOutlined /></template>
           </a-button>
           <h1 class="page-title">
-            <SoundOutlined class="title-icon" />
-            语音合成
+            {{ project?.book?.title || project?.name || '加载中...' }} 
           </h1>
         </div>
-        <div class="project-info">
-          <p class="page-description">
-            {{ project?.book?.title || project?.name || '加载中...' }}
-          </p>
-          <div class="project-meta">
-            <span class="project-subtitle">{{ project?.book?.author || '项目管理' }}</span>
-            <a-tag :color="getStatusColor(project?.status)" size="small" class="status-tag">
-              {{ getStatusText(project?.status) }}
-            </a-tag>
-          </div>
-        </div>
+       
       </div>
     </div>
   </div>
@@ -97,7 +86,7 @@ const getStatusColor = (status) => {
 
 <style scoped>
 .page-header {
-  margin-bottom: 0;
+  margin-bottom: 16px;
   padding: 24px;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   border-radius: 0;

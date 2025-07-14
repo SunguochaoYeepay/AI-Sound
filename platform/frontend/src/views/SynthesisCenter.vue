@@ -72,70 +72,7 @@
 
       />
 
-      <!-- 环境混音查询区域 (旧版，保持兼容) -->
-      <div v-if="showEnvironmentMixing" class="environment-mixing-section" style="display: none;">
-        <a-card title="🌍 环境音混合列表" :bordered="false">
-          <template #extra>
-            <a-space>
-              <a-button 
-                type="primary" 
-                @click="showEnvironmentConfigDrawer = true"
-                :loading="environmentLoading"
-              >
-                <SoundOutlined />
-                配置环境音混合
-              </a-button>
-            </a-space>
-          </template>
-          
-          <!-- 环境混音结果列表 -->
-          <div class="environment-results-list">
-            <a-empty v-if="environmentMixingResults.length === 0" description="暂无环境混音结果">
-              <template #image>
-                <SoundOutlined style="color: #bfbfbf; font-size: 48px;" />
-              </template>
-            </a-empty>
-            
-            <div v-else class="mixing-results-grid">
-              <a-card 
-                v-for="result in environmentMixingResults" 
-                :key="result.id"
-                class="mixing-result-card"
-                size="small"
-              >
-                <template #title>
-                  <div class="result-title">
-                    <SoundOutlined />
-                    {{ result.name || `环境混音 ${result.id}` }}
-                  </div>
-                </template>
-                
-                <template #extra>
-                  <a-space>
-                    <a-button type="text" size="small" @click="previewEnvironmentMixing(result)">
-                      播放
-                    </a-button>
-                    <a-button type="text" size="small" @click="downloadEnvironmentMixing(result)">
-                      下载
-                    </a-button>
-                  </a-space>
-                </template>
-                
-                <div class="result-info">
-                  <p><strong>章节：</strong>{{ getChapterName(result.chapter_id) }}</p>
-                  <p><strong>状态：</strong>
-                    <a-tag :color="result.status === 'completed' ? 'green' : 'orange'">
-                      {{ result.status === 'completed' ? '已完成' : '处理中' }}
-                    </a-tag>
-                  </p>
-                  <p><strong>创建时间：</strong>{{ formatDate(result.created_at) }}</p>
-                  <p><strong>环境音轨数：</strong>{{ result.environment_tracks_count || 0 }}</p>
-                </div>
-              </a-card>
-            </div>
-          </div>
-        </a-card>
-      </div>
+      <!-- 环境混音功能已迁移至单独的环境混合页面 -->
 
 
     </div>
@@ -144,6 +81,7 @@
     <ProgressDrawer
       :visible="progressDrawerVisible"
       :progress-data="progressData"
+      :chapter-progress="currentChapterProgress"
       :project-status="project?.status || 'pending'"
       :ws-connected="websocketStatus === 'connected'"
       :selected-chapter="selectedChapter"
@@ -155,15 +93,7 @@
       @cancelSynthesis="handleCancelSynthesis"
     />
 
-    <!-- 环境音配置抽屉 -->
-    <EnvironmentGenerationDrawer
-      :visible="showEnvironmentConfigDrawer"
-      :project-id="project?.id"
-      :synthesis-data="preparationResults"
-      @update:visible="showEnvironmentConfigDrawer = $event"
-      @complete="handleEnvironmentGenerationComplete"
-      @start-audio-mixing="handleStartEnvironmentMixing"
-    />
+    <!-- 环境音配置抽屉已迁移至单独的环境混合页面 -->
   </div>
 </template>
 
@@ -181,9 +111,7 @@ import ChapterSelector from '@/components/synthesis-center/ChapterSelector.vue'
 import ContentPreview from '@/components/synthesis-center/ContentPreview.vue'
 import ProgressDrawer from '@/components/synthesis-center/ProgressDrawer.vue'
 
-// 恢复环境音相关组件导入
-import EnvironmentGenerationDrawer from '@/components/synthesis-center/EnvironmentGenerationDrawer.vue'
-// import EnvironmentConfigManager from '@/components/synthesis-center/EnvironmentConfigManager.vue'
+// 环境音相关组件已迁移至单独的环境混合页面
 // 暂时注释掉失败详情模态框的导入
 // import FailureDetailsModal from '@/components/synthesis-center/FailureDetailsModal.vue'
 
@@ -220,11 +148,7 @@ const failureDetailsVisible = ref(false)
 const failedSegmentsList = ref([])
 const retryLoading = ref(false)
 
-// 环境混音相关状态
-const showEnvironmentMixing = ref(false)
-const showEnvironmentConfigDrawer = ref(false)
-const environmentLoading = ref(false)
-const environmentMixingResults = ref([])
+// 环境混音相关状态已迁移至单独的环境混合页面
 
 
 
@@ -234,6 +158,9 @@ let progressRefreshInterval = null
 
 // 🔧 新增：当前章节进度数据
 const currentChapterProgress = ref({ completed: 0, total: 0, percent: 0 })
+
+// 🔥 防止重复提醒的标志
+const hasShownCompletionMessage = ref(false)
 
 // 🔧 加载当前章节进度
 const loadCurrentChapterProgress = async () => {
@@ -272,7 +199,7 @@ const loadCurrentChapterProgress = async () => {
   }
 }
 
-// 计算属性
+// 计算属性 - 🔥 重构：基于章节状态而不是项目状态
 const canStartSynthesis = computed(() => {
   if (!selectedChapter.value || !project.value) {
     return false
@@ -283,17 +210,20 @@ const canStartSynthesis = computed(() => {
     return false
   }
   
-  // 检查项目的真实状态 - 防止重复合成
-  const projectStatus = project.value.status
-  if (projectStatus === 'processing' || projectStatus === 'paused') {
-    console.log('⚠️ 项目正在处理中，禁用合成按钮', { projectStatus, synthesisRunning: synthesisRunning.value })
+  // 检查进度状态（如果正在处理则不能开始）
+  const progressStatus = progressData.value?.status
+  if (progressStatus === 'processing' || progressStatus === 'running') {
+    console.log('⚠️ 进度显示正在运行，禁用合成按钮', { progressStatus })
     return false
   }
   
-  // 检查进度状态
-  const progressStatus = progressData.value?.status
-  if (progressStatus === 'processing' || progressStatus === 'running') {
-    console.log('⚠️ 进度显示正在运行，禁用合成按钮', { progressStatus, synthesisRunning: synthesisRunning.value })
+  // 🔥 基于章节级别判断：检查当前章节是否已经完成
+  const chapterProgress = currentChapterProgress.value
+  if (chapterProgress.total > 0 && chapterProgress.completed === chapterProgress.total) {
+    console.log('✅ 当前章节已完成，禁用合成按钮', { 
+      chapterProgress,
+      selectedChapter: selectedChapter.value 
+    })
     return false
   }
   
@@ -312,10 +242,10 @@ onMounted(async () => {
     await loadCurrentChapterProgress()
   }
   
-  // 🔧 如果项目正在合成，自动显示进度抽屉
-  if (project.value?.status === 'processing') {
+  // 🔥 基于合成状态而不是项目状态决定是否显示进度抽屉
+  if (synthesisRunning.value) {
     progressDrawerVisible.value = true
-    console.log('📊 页面初始化时发现项目正在合成，自动显示进度抽屉')
+    console.log('📊 页面初始化时发现正在合成，自动显示进度抽屉')
   }
   
   // 🎯 处理重新合成参数
@@ -328,10 +258,9 @@ onMounted(async () => {
       if (restartType === 'voice') {
         console.log('🎤 自动触发TTS语音合成')
         handleStartSynthesis()
-      } else if (restartType === 'environment') {
-        console.log('🌍 自动显示环境音混合页面')
-        showEnvironmentMixing.value = true
-        loadEnvironmentMixingResults()
+        } else if (restartType === 'environment') {
+    console.log('🌍 环境音混合功能已迁移至单独页面')
+    message.info('环境音混合功能已迁移至单独页面，请前往环境混合页面操作')
       }
       
       // 清除查询参数，避免重复触发
@@ -369,8 +298,7 @@ const loadProject = async () => {
     if (response.data.success) {
       project.value = response.data.data
       
-      // 🔧 同时获取项目的合成进度信息
-      await loadSynthesisProgress()
+      // 🔧 不再获取项目级别的进度信息，避免影响章节状态
     }
   } catch (error) {
     console.error('Failed to load project:', error)
@@ -380,8 +308,8 @@ const loadProject = async () => {
   }
 }
 
-// 🔧 新增：加载合成进度信息
-const loadSynthesisProgress = async () => {
+// 🔥 已移除 loadSynthesisProgress 函数 - 不再需要项目级别的进度数据
+const loadSynthesisProgress_REMOVED = async () => {
   try {
     const projectId = route.params.projectId
     // 使用正确的API获取项目的合成进度
@@ -393,7 +321,7 @@ const loadSynthesisProgress = async () => {
       const segments = progressInfo.segments || {}
       progressData.value = {
         progress: progressInfo.progress_percentage || 0,
-        status: progressInfo.status || project.value?.status || 'pending',
+        status: progressInfo.status || 'pending', // 🔥 不再依赖项目状态
         completed_segments: segments.completed || 0,
         total_segments: segments.total || 0,
         failed_segments: segments.failed || 0,
@@ -401,15 +329,8 @@ const loadSynthesisProgress = async () => {
         synthesis_type: progressData.value?.synthesis_type // 保持合成类型标识
       }
       
-      // 🔧 根据API返回的实际状态同步前端合成状态（优先级最高）
+      // 🔥 移除项目状态强制同步逻辑 - 我们不再依赖项目状态
       const apiStatus = progressInfo.status
-      const projectStatus = project.value?.status
-      
-      // 🔧 强制更新项目状态为API返回的状态
-      if (project.value && apiStatus !== projectStatus) {
-        console.log('🔄 强制更新项目状态:', { 从: projectStatus, 到: apiStatus })
-        project.value.status = apiStatus
-      }
       
       if (apiStatus === 'processing') {
         synthesisRunning.value = true
@@ -418,12 +339,15 @@ const loadSynthesisProgress = async () => {
           progressDrawerVisible.value = true
           console.log('📊 项目正在合成中，自动显示进度抽屉')
         }
-      } else if (apiStatus === 'paused' || apiStatus === 'cancelled' || apiStatus === 'completed' || apiStatus === 'failed') {
+      } else if (apiStatus === 'paused' || apiStatus === 'cancelled' || apiStatus === 'completed' || apiStatus === 'partial_completed' || apiStatus === 'failed') {
         synthesisRunning.value = false
         console.log('📊 项目非运行状态，重置前端状态', apiStatus)
         
+        // 🔥 确保进度抽屉关闭（页面初始化时不应该显示）
+        progressDrawerVisible.value = false
+        
         // 🔧 合成完成时停止轮询
-        if (apiStatus === 'completed' && progressRefreshInterval) {
+        if ((apiStatus === 'completed' || apiStatus === 'partial_completed') && progressRefreshInterval) {
           console.log('✅ 合成完成，停止进度轮询')
           clearInterval(progressRefreshInterval)
           progressRefreshInterval = null
@@ -437,7 +361,7 @@ const loadSynthesisProgress = async () => {
         const stats = project.value.statistics
         progressData.value = {
           progress: stats.progress || 0,
-          status: project.value.status || 'pending',
+          status: 'pending', // 🔥 不依赖项目状态，始终使用pending
           completed_segments: stats.completedSegments || 0,
           total_segments: stats.totalSegments || 0,
           failed_segments: stats.failedSegments || 0,
@@ -446,10 +370,10 @@ const loadSynthesisProgress = async () => {
         }
         console.log('📊 从项目统计推导进度:', progressData.value)
       } else {
-        // 如果项目没有统计信息，设置默认值
+        // 🔥 如果项目没有统计信息，设置默认值（不依赖项目状态）
         progressData.value = {
           progress: 0,
-          status: project.value?.status || 'pending',
+          status: 'pending',
           completed_segments: 0,
           total_segments: 0,
           failed_segments: 0,
@@ -466,7 +390,7 @@ const loadSynthesisProgress = async () => {
       const stats = project.value.statistics
       progressData.value = {
         progress: stats.progress || 0,
-        status: project.value.status || 'pending',
+        status: 'pending', // 🔥 不再依赖项目状态
         completed_segments: stats.completedSegments || 0,
         total_segments: stats.totalSegments || 0,
         failed_segments: stats.failedSegments || 0,
@@ -474,10 +398,10 @@ const loadSynthesisProgress = async () => {
         synthesis_type: progressData.value?.synthesis_type // 保持合成类型标识
       }
     } else {
-      // 设置安全的默认值
+      // 🔥 设置安全的默认值（不依赖项目状态）
       progressData.value = {
         progress: 0,
-        status: project.value?.status || 'pending',
+        status: 'pending',
         completed_segments: 0,
         total_segments: 0,
         failed_segments: 0,
@@ -659,43 +583,50 @@ const initWebSocket = () => {
           topic: `synthesis_${projectId}`
         }
         console.log('📡 发送订阅消息:', subscribeMsg)
-        websocket.send(JSON.stringify(subscribeMsg))
+        // 🔥 修复：即使在onopen中也确保websocket存在
+        if (websocket && websocket.readyState === WebSocket.OPEN) {
+          websocket.send(JSON.stringify(subscribeMsg))
+        } else {
+          console.error('⚠️ WebSocket在onopen回调中不可用')
+        }
         
         // 添加订阅确认机制
         setTimeout(() => {
           console.log('🔍 检查订阅状态，topic:', `synthesis_${projectId}`)
-          // 可以再次发送订阅以确保成功
-          if (websocket.readyState === WebSocket.OPEN) {
+          // 🔥 修复：先检查websocket是否存在，再检查连接状态
+          if (websocket && websocket.readyState === WebSocket.OPEN) {
             websocket.send(JSON.stringify(subscribeMsg))
             console.log('📡 再次确认订阅')
+          } else {
+            console.log('⚠️ WebSocket连接不可用，跳过再次订阅')
           }
         }, 1000)
       }
     }
     
     websocket.onmessage = (event) => {
-      const message = JSON.parse(event.data)
-      console.log('📨 收到WebSocket消息:', message)
+      const wsMessage = JSON.parse(event.data)
+      console.log('📨 收到WebSocket消息:', wsMessage)
       
       // 🔧 订阅确认消息（匹配后端的实际响应类型）
-      if (message.type === 'subscription_confirmed') {
-        console.log('✅ WebSocket订阅成功:', message.topic)
+      if (wsMessage.type === 'subscription_confirmed') {
+        console.log('✅ WebSocket订阅成功:', wsMessage.topic)
         return
       }
       
-      if (message.type === 'subscribe_success') {
-        console.log('✅ WebSocket订阅成功 (备用格式):', message.topic)
+      if (wsMessage.type === 'subscribe_success') {
+        console.log('✅ WebSocket订阅成功 (备用格式):', wsMessage.topic)
         return
       }
       
-      if (message.type === 'subscribe_error' || message.type === 'subscription_error') {
-        console.error('❌ WebSocket订阅失败:', message)
+      if (wsMessage.type === 'subscribe_error' || wsMessage.type === 'subscription_error') {
+        console.error('❌ WebSocket订阅失败:', wsMessage)
         return
       }
       
       // 处理主题消息
-      if (message.type === 'topic_message' && message.topic === `synthesis_${projectId}`) {
-        const data = message.data
+      if (wsMessage.type === 'topic_message' && wsMessage.topic === `synthesis_${projectId}`) {
+        const data = wsMessage.data
         console.log('🎯 收到合成进度消息:', data)
         
         // 更新进度数据
@@ -715,15 +646,40 @@ const initWebSocket = () => {
           // 🔧 同时更新章节进度
           loadCurrentChapterProgress()
           
-          if (data.data.status === 'completed' || data.data.status === 'failed') {
+          if (data.data.status === 'completed' || data.data.status === 'partial_completed' || data.data.status === 'failed') {
             console.log('🎉 WebSocket收到合成完成消息，更新项目状态')
-            loadProject()
+            
+            // 🔥 立即显示完成提醒（避免重复）
+            if (!hasShownCompletionMessage.value) {
+              if (data.data.status === 'completed') {
+                message.success('🎉 章节合成完成！', 5)
+              } else if (data.data.status === 'partial_completed') {
+                message.success('✅ 章节合成完成！', 5)
+              } else if (data.data.status === 'failed') {
+                message.error('❌ 合成失败！', 5)
+              }
+              hasShownCompletionMessage.value = true
+            }
+            
+            // 🔥 立即更新状态
             synthesisRunning.value = false
+            
+            // 🔥 只更新当前章节进度，不影响其他章节状态
+            loadCurrentChapterProgress().catch(error => {
+              console.error('更新章节进度失败:', error)
+            })
             
             // 🔧 停止定期刷新
             if (progressRefreshInterval) {
               clearInterval(progressRefreshInterval)
               progressRefreshInterval = null
+            }
+            
+            // 🔥 如果章节完成，自动关闭进度抽屉
+            if (data.data.status === 'completed' || data.data.status === 'partial_completed') {
+              setTimeout(() => {
+                progressDrawerVisible.value = false
+              }, 3000) // 3秒后自动关闭
             }
           }
         }
@@ -806,10 +762,9 @@ const handleStartSynthesis = async () => {
       return
     }
     
-    // 🔧 重新获取最新项目状态进行二次确认
-    await loadProject()
-    if (project.value.status === 'processing' || project.value.status === 'paused') {
-      message.warning(`项目正在${project.value.status === 'processing' ? '合成中' : '暂停状态'}，无法重复合成`)
+    // 🔧 检查当前合成状态（不依赖项目状态）
+    if (synthesisRunning.value) {
+      message.warning('当前正在合成中，无法重复合成')
       return
     }
     
@@ -827,6 +782,9 @@ const handleStartSynthesis = async () => {
       message.success('🎤 开始角色音合成')
       synthesisRunning.value = true
       progressDrawerVisible.value = true
+      
+      // 🔥 重置完成提醒标志
+      hasShownCompletionMessage.value = false
       
       // 🔧 确保WebSocket连接正常
       if (websocketStatus.value !== 'connected') {
@@ -847,15 +805,22 @@ const handleStartSynthesis = async () => {
         }
         console.log('🔄 合成开始，重新确认订阅:', subscribeMsg)
         try {
-          websocket.send(JSON.stringify(subscribeMsg))
-          
-          // 延迟再次订阅，确保成功
-          setTimeout(() => {
-            if (websocket.readyState === WebSocket.OPEN) {
-              websocket.send(JSON.stringify(subscribeMsg))
-              console.log('📡 第二次订阅确认')
-            }
-          }, 500)
+          // 🔥 修复：检查websocket是否存在且连接正常
+          if (websocket && websocket.readyState === WebSocket.OPEN) {
+            websocket.send(JSON.stringify(subscribeMsg))
+            
+            // 延迟再次订阅，确保成功
+            setTimeout(() => {
+              if (websocket && websocket.readyState === WebSocket.OPEN) {
+                websocket.send(JSON.stringify(subscribeMsg))
+                console.log('📡 第二次订阅确认')
+              } else {
+                console.log('⚠️ WebSocket连接不可用，跳过第二次订阅')
+              }
+            }, 500)
+          } else {
+            console.log('⚠️ WebSocket未连接或不可用，跳过订阅')
+          }
         } catch (error) {
           console.error('❌ 重新订阅失败:', error)
         }
@@ -872,20 +837,47 @@ const handleStartSynthesis = async () => {
         synthesis_type: 'voice' // 标记合成类型
       }
       
-      // 🔧 立即获取当前项目状态
+      // 🔧 1秒后更新当前章节进度（不影响其他章节）
       setTimeout(() => {
-        loadProject()
+        loadCurrentChapterProgress()
       }, 1000)
       
       // 🔧 启动定期刷新进度（防止WebSocket消息丢失）
       if (progressRefreshInterval) {
         clearInterval(progressRefreshInterval)
       }
-      progressRefreshInterval = setInterval(() => {
+      progressRefreshInterval = setInterval(async () => {
         if (synthesisRunning.value) {
-          loadSynthesisProgress()
-          // 🔧 同时更新章节进度
-          loadCurrentChapterProgress()
+          // 🔥 只检查当前章节状态，不影响其他章节
+          await loadCurrentChapterProgress()
+          
+          // 🔥 基于章节进度检查是否已完成（防止WebSocket消息丢失）
+          const chapterProgress = currentChapterProgress.value
+          const isChapterCompleted = chapterProgress.total > 0 && chapterProgress.completed === chapterProgress.total
+          
+          if (isChapterCompleted) {
+            console.log('🎯 轮询检测到章节合成完成:', chapterProgress)
+            
+            // 显示完成提醒（避免重复）
+            if (!hasShownCompletionMessage.value) {
+              message.success('✅ 章节合成完成！', 5)
+              hasShownCompletionMessage.value = true
+            }
+            
+            // 更新状态
+            synthesisRunning.value = false
+            
+            // 停止轮询
+            if (progressRefreshInterval) {
+              clearInterval(progressRefreshInterval)
+              progressRefreshInterval = null
+            }
+            
+            // 自动关闭进度抽屉
+            setTimeout(() => {
+              progressDrawerVisible.value = false
+            }, 3000)
+          }
         }
       }, 3000) // 每3秒刷新一次
     }
@@ -912,8 +904,8 @@ const handlePauseSynthesis = async () => {
       progressRefreshInterval = null
     }
     
-    // 重新加载项目状态
-    await loadProject()
+    // 更新当前章节状态（不影响其他章节）
+    await loadCurrentChapterProgress()
   } catch (error) {
     console.error('Failed to pause synthesis:', error)
     message.error('暂停合成失败: ' + (error.response?.data?.detail || error.message))
@@ -934,8 +926,8 @@ const handleCancelSynthesis = async () => {
       progressRefreshInterval = null
     }
     
-    // 重新加载项目状态
-    await loadProject()
+    // 更新当前章节状态（不影响其他章节）
+    await loadCurrentChapterProgress()
   } catch (error) {
     console.error('Failed to cancel synthesis:', error)
     message.error('取消合成失败: ' + (error.response?.data?.detail || error.message))
@@ -954,32 +946,21 @@ const handleRetrySynthesis = async () => {
   }
 }
 
-// 重置项目状态 - 解决项目状态卡死问题
-const handleResetProjectStatus = async () => {
-  try {
-    console.log('🔧 重置项目状态，项目ID:', project.value.id)
-    const response = await api.resetProjectStatus(project.value.id)
-    
-    if (response.data.success) {
-      message.success('✅ 项目状态已重置')
-      
-      // 重新加载项目信息
-      await loadProject()
-      
-      // 重置本地状态
-      synthesisRunning.value = false
-      progressDrawerVisible.value = false
-      
-      // 停止定期刷新
-      if (progressRefreshInterval) {
-        clearInterval(progressRefreshInterval)
-        progressRefreshInterval = null
-      }
-    }
-  } catch (error) {
-    console.error('Failed to reset project status:', error)
-    message.error('重置项目状态失败: ' + (error.response?.data?.detail || error.message))
+// 🔥 删除项目状态重置功能 - 不再需要，因为我们不依赖项目状态
+// 如果需要重置，可以直接重置本地状态：
+const handleResetLocalSynthesisState = () => {
+  console.log('🔧 重置本地合成状态')
+  synthesisRunning.value = false
+  progressDrawerVisible.value = false
+  hasShownCompletionMessage.value = false
+  
+  // 停止定期刷新
+  if (progressRefreshInterval) {
+    clearInterval(progressRefreshInterval)
+    progressRefreshInterval = null
   }
+  
+  message.success('✅ 本地状态已重置')
 }
 
 const handlePlayAudio = async () => {
@@ -1158,7 +1139,7 @@ const handleRetryFailedSegments = async () => {
       }
       progressRefreshInterval = setInterval(() => {
         if (synthesisRunning.value) {
-          loadSynthesisProgress()
+          loadCurrentChapterProgress()
         }
       }, 3000)
     }
@@ -1206,9 +1187,7 @@ const createMockFailedSegments = () => {
 // ContentPreview 事件处理
 const handleRefreshPreparation = () => {
   message.info('刷新智能准备结果')
-  // 🔧 只刷新项目状态，不重新加载章节（避免章节选择重置）
-  loadProject()
-  // 🔧 如果有选中章节，只刷新准备结果
+  // 🔧 只刷新当前章节的准备结果，不影响其他章节
   if (selectedChapter.value) {
     loadPreparationResults()
   }
@@ -1250,10 +1229,9 @@ const handleRestartSynthesis = async () => {
       return
     }
     
-    // 🔧 重新获取最新项目状态进行二次确认
-    await loadProject()
-    if (project.value.status === 'processing' || project.value.status === 'paused') {
-      message.warning(`项目正在${project.value.status === 'processing' ? '合成中' : '暂停状态'}，无法重新合成`)
+    // 🔧 检查当前合成状态（不依赖项目状态）
+    if (synthesisRunning.value) {
+      message.warning('当前正在合成中，无法重新合成')
       return
     }
     
@@ -1287,10 +1265,9 @@ const handleResumeSynthesis = async () => {
       return
     }
     
-    // 🔧 重新获取最新项目状态进行二次确认
-    await loadProject()
-    if (project.value.status === 'processing' || project.value.status === 'paused') {
-      message.warning(`项目正在${project.value.status === 'processing' ? '合成中' : '暂停状态'}，无法继续合成`)
+    // 🔧 检查当前合成状态（不依赖项目状态）
+    if (synthesisRunning.value) {
+      message.warning('当前正在合成中，无法继续合成')
       return
     }
     
@@ -1315,7 +1292,7 @@ const handleResumeSynthesis = async () => {
   }
 }
 
-// 获取选中章节的状态
+// 🔥 重构：基于实际AudioFile数据获取章节状态，不再依赖项目状态
 const getSelectedChapterStatus = () => {
   if (!selectedChapter.value || !chapters.value.length) {
     return 'pending'
@@ -1324,196 +1301,55 @@ const getSelectedChapterStatus = () => {
   const chapter = chapters.value.find(ch => ch.id === selectedChapter.value)
   if (!chapter) return 'pending'
   
-  // 🎯 智能状态判断逻辑重构
-  const projectStatus = project.value?.status
+  // 🔥 最优先：基于章节实际进度数据判断
+  const chapterProgress = currentChapterProgress.value
   const chapterAnalysisStatus = chapter.analysis_status
-  const chapterSynthesisStatus = chapter.synthesis_status
   
-  console.log('🔍 章节状态判断调试:', {
+  console.log('🔍 章节状态判断（新架构）:', {
     章节ID: selectedChapter.value,
-    项目状态: projectStatus,
+    章节进度: chapterProgress,
     章节分析状态: chapterAnalysisStatus,
-    章节合成状态: chapterSynthesisStatus,
-    章节标题: chapter.chapter_title
+    章节标题: chapter.chapter_title,
+    合成运行状态: synthesisRunning.value
   })
   
-  // 1. 如果项目正在处理中，章节也是处理中
-  if (projectStatus === 'processing') {
+  // 1. 如果正在合成（本地状态）
+  if (synthesisRunning.value) {
     return 'processing'
   }
   
-  // 2. 如果项目已完成，需要检查该章节是否真的有音频文件
-  if (projectStatus === 'completed') {
-    // 检查该章节的实际合成状态，而不是仅看项目状态
-    if (chapterSynthesisStatus === 'completed') {
-      console.log('✅ 项目和章节都已完成，显示completed状态')
+  // 2. 基于章节实际进度判断
+  if (chapterProgress.total > 0) {
+    if (chapterProgress.completed === chapterProgress.total) {
+      console.log('✅ 章节已完成，基于实际进度数据')
       return 'completed'
+    } else if (chapterProgress.completed > 0) {
+      console.log('⚡ 章节部分完成，基于实际进度数据')
+      return 'partial_completed'
     } else {
-      console.log('📋 项目已完成但该章节未合成，显示pending状态')
+      console.log('📋 章节待合成，有准备数据但未开始合成')
       return 'pending'
     }
   }
   
-  // 3. 如果项目部分完成，需要检查具体的章节状态
-  if (projectStatus === 'partial_completed') {
-    // 检查该章节是否在已完成的范围内
-    if (chapterSynthesisStatus === 'completed') {
-      console.log('✅ 项目部分完成，该章节已完成，显示completed状态')
-      return 'completed'
-    } else {
-      console.log('⚡ 项目部分完成，该章节未完成，显示partial_completed状态')
-      return 'partial_completed'
-    }
-  }
-  
-  // 4. 如果项目失败或暂停
-  if (projectStatus === 'failed') {
+  // 3. 如果没有进度数据，基于章节分析状态判断
+  if (chapterAnalysisStatus === 'completed') {
+    console.log('📋 章节智能准备完成，待合成')
+    return 'pending'
+  } else if (chapterAnalysisStatus === 'processing' || chapterAnalysisStatus === 'analyzing') {
+    console.log('🔄 章节正在智能准备')
+    return 'processing'
+  } else if (chapterAnalysisStatus === 'failed') {
+    console.log('❌ 章节智能准备失败')
     return 'failed'
   }
   
-  if (projectStatus === 'paused') {
-    return 'processing'  // 暂停也算处理中
-  }
-  
-  // 5. 项目待开始或准备状态，检查章节的准备情况
-  if (projectStatus === 'pending' || projectStatus === 'ready') {
-    // 如果章节已完成智能准备，显示待合成状态（pending）
-    if (chapterAnalysisStatus === 'completed' && chapterSynthesisStatus === 'ready') {
-      console.log('📋 章节智能准备完成，显示待合成状态')
-      return 'pending'
-    }
-    
-    // 如果章节正在分析
-    if (chapterAnalysisStatus === 'analyzing') {
-      return 'processing'
-    }
-    
-    // 如果章节分析失败
-    if (chapterAnalysisStatus === 'failed') {
-      return 'failed'
-    }
-    
-    // 默认待开始
-    return 'pending'
-  }
-  
-  // 6. 兜底逻辑：根据章节自身状态
-  const status = chapterAnalysisStatus || chapterSynthesisStatus || 'pending'
-  const statusMap = {
-    'pending': 'pending',
-    'analyzing': 'processing',
-    'processing': 'processing',
-    'completed': 'completed',
-    'failed': 'failed',
-    'ready': 'pending',
-    'not_started': 'pending'
-  }
-  
-  const finalStatus = statusMap[status] || 'pending'
-  console.log('🎯 最终章节状态:', finalStatus)
-  return finalStatus
+  // 4. 默认状态
+  console.log('📝 章节默认状态：待开始')
+  return 'pending'
 }
 
-// 环境混音相关方法
-const loadEnvironmentMixingResults = async () => {
-  try {
-    environmentLoading.value = true
-    const projectId = route.params.projectId
-    
-    // 调用环境混音结果查询API
-    const response = await api.getEnvironmentMixingResults(projectId)
-    if (response.data.success) {
-      environmentMixingResults.value = response.data.data || []
-    }
-  } catch (error) {
-    console.error('加载环境混音结果失败:', error)
-    message.error('加载环境混音结果失败')
-  } finally {
-    environmentLoading.value = false
-  }
-}
-
-const previewEnvironmentMixing = async (result) => {
-  try {
-    // 播放环境混音结果
-    const { getAudioService } = await import('@/utils/audioService')
-    await getAudioService().playEnvironmentMixing(result)
-    message.success('开始播放环境混音')
-  } catch (error) {
-    console.error('播放环境混音失败:', error)
-    message.error('播放失败')
-  }
-}
-
-const downloadEnvironmentMixing = async (result) => {
-  try {
-    // 下载环境混音结果
-    const response = await api.downloadEnvironmentMixing(result.id)
-    
-    // 创建下载链接
-    const url = window.URL.createObjectURL(new Blob([response.data]))
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `环境混音_${result.name || result.id}.wav`
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    window.URL.revokeObjectURL(url)
-    
-    message.success('下载完成')
-  } catch (error) {
-    console.error('下载环境混音失败:', error)
-    message.error('下载失败')
-  }
-}
-
-const getChapterName = (chapterId) => {
-  const chapter = chapters.value.find(ch => ch.id === chapterId)
-  return chapter ? chapter.title : `章节 ${chapterId}`
-}
-
-const formatDate = (dateString) => {
-  if (!dateString) return '-'
-  const date = new Date(dateString)
-  return date.toLocaleDateString('zh-CN') + ' ' + date.toLocaleTimeString('zh-CN', { 
-    hour: '2-digit', 
-    minute: '2-digit' 
-  })
-}
-
-// 环境音配置抽屉处理方法
-const handleEnvironmentGenerationComplete = () => {
-  message.success('环境音配置完成！')
-  showEnvironmentConfigDrawer.value = false
-  // 刷新环境混音结果列表
-  loadEnvironmentMixingResults()
-}
-
-const handleStartEnvironmentMixing = async (environmentConfig) => {
-  try {
-    const projectId = route.params.projectId
-    
-    message.info('开始环境音混合合成...')
-    showEnvironmentConfigDrawer.value = false
-    
-    // 调用环境音混合API
-    const response = await api.startEnvironmentMixing(projectId, {
-      environment_config: environmentConfig,
-      selected_chapter: selectedChapter.value
-    })
-    
-    if (response.data.success) {
-      message.success('环境音混合合成已开始！')
-      // 刷新环境混音结果列表
-      loadEnvironmentMixingResults()
-    } else {
-      message.error(response.data.message || '启动环境音混合失败')
-    }
-  } catch (error) {
-    console.error('启动环境音混合失败:', error)
-    message.error('启动环境音混合失败: ' + (error.response?.data?.detail || error.message))
-  }
-}
+// 环境混音相关方法已迁移至单独的环境混合页面
 
 
 
@@ -1663,65 +1499,11 @@ const handleStartEnvironmentMixing = async (environmentConfig) => {
 }
 
 [data-theme="dark"] .voice-synthesis-content,
-[data-theme="dark"] .music-generation-content,
-[data-theme="dark"] .environment-audio-content {
+[data-theme="dark"] .music-generation-content {
   background: #141414;
 }
 
-/* 环境混音相关样式 */
-.environment-mixing-section {
-  flex: 1;
-  min-width: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-}
-
-.environment-results-list {
-  margin-top: 16px;
-}
-
-.mixing-results-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
-  gap: 16px;
-}
-
-.mixing-result-card {
-  border-radius: 8px;
-  transition: all 0.3s ease;
-}
-
-.mixing-result-card:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  transform: translateY(-2px);
-}
-
-.result-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 500;
-}
-
-.result-info p {
-  margin: 4px 0;
-  font-size: 13px;
-  line-height: 1.4;
-}
-
-.result-info strong {
-  color: #1f2937;
-  font-weight: 500;
-}
-
-/* 暗黑模式适配 */
-[data-theme="dark"] .mixing-result-card:hover {
-  box-shadow: 0 4px 12px rgba(255, 255, 255, 0.1);
-}
-
-[data-theme="dark"] .result-info strong {
-  color: #f9fafb;
-}
+/* 环境混音相关样式已迁移至单独的环境混合页面 */
 
 /* 移动端响应式设计 */
 @media (max-width: 768px) {
@@ -1753,11 +1535,7 @@ const handleStartEnvironmentMixing = async (environmentConfig) => {
     overflow-x: hidden;
   }
   
-  /* 移动端环境混音卡片网格适配 */
-  .mixing-results-grid {
-    grid-template-columns: 1fr;
-    gap: 12px;
-  }
+  /* 移动端环境混音卡片样式已迁移至单独的环境混合页面 */
   
   /* 移动端迷你进度条适配 */
   .mini-progress-content {
