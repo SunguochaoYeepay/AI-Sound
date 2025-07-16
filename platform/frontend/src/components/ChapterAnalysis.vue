@@ -81,69 +81,174 @@
 
           <!-- 合成片段tab -->
           <a-tab-pane key="segments" tab="📝 合成片段">
-            <div class="segments-view">
-              <div class="segments-header">
+            <div class="segments-editor">
+              <div class="editor-header">
                 <h4>合成片段配置</h4>
-                <a-space>
+                <div class="editor-controls">
+                  <a-button
+                    type="primary"
+                    ghost
+                    size="small"
+                    @click="addNewSegment"
+                  >
+                    <template #icon><PlusOutlined /></template>
+                    添加段落
+                  </a-button>
+                  <a-button
+                    type="text"
+                    size="small"
+                    @click="loadBookCharacters"
+                    :loading="loadingBookCharacters"
+                  >
+                    <template #icon><ReloadOutlined /></template>
+                    刷新角色
+                  </a-button>
+                  <a-select
+                    v-model:value="highlightedCharacter"
+                    placeholder="筛选角色"
+                    style="width: 120px;"
+                    @change="handleCharacterFilter"
+                    allowClear
+                    size="small"
+                  >
+                    <a-select-option 
+                      v-for="character in editableCharacters" 
+                      :key="character.name"
+                      :value="character.name"
+                    >
+                      {{ character.name }}
+                    </a-select-option>
+                  </a-select>
                   <span class="segment-count">
                     共 {{ editableSegments.length }} 个片段
                   </span>
-                  <a-button size="small" @click="exportSegments">
-                    📋 导出片段
-                  </a-button>
-                </a-space>
+                </div>
               </div>
 
               <div class="segments-list">
-                <div 
-                  v-for="(segment, index) in editableSegments" 
-                  :key="index"
-                  class="segment-item"
-                  :class="{ 
-                    'segment-highlighted': highlightedCharacter && segment.speaker === highlightedCharacter,
-                    'segment-dimmed': highlightedCharacter && segment.speaker !== highlightedCharacter
-                  }"
+                <draggable 
+                  v-model="editableSegments" 
+                  @end="handleSegmentSort"
+                  :animation="200"
+                  ghost-class="segment-ghost"
+                  chosen-class="segment-chosen"
+                  drag-class="segment-drag"
+                  item-key="id"
+                  tag="div"
                 >
-                  <div class="segment-header">
-                    <span class="segment-index">#{{ index + 1 }}</span>
-                    <a-select
-                      v-model:value="segment.speaker"
-                      placeholder="选择说话人"
-                      style="width: 140px;"
-                      @change="markChanged"
-                      allowClear
+                  <template #item="{element: segment, index}">
+                    <div 
+                      class="segment-item"
+                      :class="{ 
+                        'segment-highlighted': highlightedCharacter && segment.speaker === highlightedCharacter,
+                        'segment-dimmed': highlightedCharacter && segment.speaker !== highlightedCharacter
+                      }"
                     >
-                      <a-select-option 
-                        v-for="character in editableCharacters" 
-                        :key="character.name"
-                        :value="character.name"
-                      >
-                        {{ character.name }}
-                      </a-select-option>
-                    </a-select>
-                    <a-tag 
-                      v-if="segment.speaker"
-                      :color="getCharacterColor(segment.speaker)"
-                      size="small"
-                    >
-                      {{ segment.speaker }}
-                    </a-tag>
-                    <span 
-                      v-if="highlightedCharacter && segment.speaker === highlightedCharacter"
-                      class="highlight-indicator"
-                    >
-                      🔍
-                    </span>
-                  </div>
-                  <div class="segment-content">
-                    <a-textarea
-                      v-model:value="segment.text"
-                      placeholder="文本内容"
-                      :rows="2"
-                      @change="markChanged"
-                    />
-                  </div>
-                </div>
+                      <div class="segment-header">
+                        <span class="segment-index">#{{ index + 1 }}</span>
+                        <a-select
+                          v-model:value="segment.speaker"
+                          placeholder="选择说话人"
+                          style="width: 160px;"
+                          @change="markChanged"
+                          allowClear
+                          show-search
+                          :filter-option="filterSpeakerOption"
+                        >
+                          <!-- 章节分析角色 -->
+                          <a-select-opt-group label="📊 章节分析角色">
+                            <a-select-option 
+                              v-for="character in editableCharacters" 
+                              :key="character.name"
+                              :value="character.name"
+                            >
+                              {{ character.name }}
+                            </a-select-option>
+                          </a-select-opt-group>
+                          
+                          <!-- 本书所有角色 -->
+                          <a-select-opt-group label="📚 本书所有角色" v-if="bookCharacters.length > 0">
+                            <a-select-option 
+                              v-for="character in bookCharacters" 
+                              :key="character.name"
+                              :value="character.name"
+                            >
+                              <div class="character-option">
+                                <span class="char-name">{{ character.name }}</span>
+                                <a-tag v-if="character.is_voice_configured" color="green" size="small">已配音</a-tag>
+                                <a-tag v-else color="orange" size="small">未配音</a-tag>
+                              </div>
+                            </a-select-option>
+                          </a-select-opt-group>
+                        </a-select>
+                        
+                        <a-tag 
+                          v-if="segment.speaker"
+                          :color="getCharacterColor(segment.speaker)"
+                          size="small"
+                        >
+                          {{ segment.speaker }}
+                        </a-tag>
+                        
+                        <span 
+                          v-if="highlightedCharacter && segment.speaker === highlightedCharacter"
+                          class="highlight-indicator"
+                        >
+                          🔍
+                        </span>
+                        
+                        <!-- 段落操作按钮 -->
+                        <div class="segment-actions">
+                          <a-button
+                            type="text"
+                            size="small"
+                            @click="moveSegmentUp(index)"
+                            title="上移段落"
+                            :disabled="index === 0"
+                          >
+                            <template #icon><ArrowUpOutlined /></template>
+                          </a-button>
+                          <a-button
+                            type="text"
+                            size="small"
+                            @click="moveSegmentDown(index)"
+                            title="下移段落"
+                            :disabled="index === editableSegments.length - 1"
+                          >
+                            <template #icon><ArrowDownOutlined /></template>
+                          </a-button>
+                          <a-button
+                            type="text"
+                            size="small"
+                            @click="insertSegmentAfter(index)"
+                            title="在此段落后插入新段落"
+                          >
+                            <template #icon><PlusOutlined /></template>
+                          </a-button>
+                          <a-button
+                            type="text"
+                            size="small"
+                            danger
+                            @click="deleteSegment(index)"
+                            title="删除此段落"
+                            :disabled="editableSegments.length <= 1"
+                          >
+                            <template #icon><DeleteOutlined /></template>
+                          </a-button>
+                        </div>
+                      </div>
+                      
+                      <div class="segment-content">
+                        <a-textarea
+                          v-model:value="segment.text"
+                          placeholder="文本内容"
+                          :auto-size="{ minRows: 2, maxRows: 10 }"
+                          @change="markChanged"
+                        />
+                      </div>
+                    </div>
+                  </template>
+                </draggable>
               </div>
             </div>
           </a-tab-pane>
@@ -207,10 +312,41 @@
           <a-tab-pane key="characters" tab="🎭 角色信息">
             <div class="characters-view">
               <div class="characters-header">
-                <h4>智能识别的角色 (共{{ editableCharacters.length }}个)</h4>
-                <span class="character-stats">
-                  总片段: {{ editableSegments.length }}个
-                </span>
+                <div class="characters-title">
+                  <h4>智能识别的角色 (共{{ editableCharacters.length }}个)</h4>
+                  <span class="character-stats">
+                    总片段: {{ editableSegments.length }}个
+                  </span>
+                </div>
+                
+                <!-- 🔥 新增：批量角色管理操作 -->
+                <div class="characters-actions">
+                  <a-space>
+                    <a-tag 
+                      v-if="missingCharactersCount > 0" 
+                      color="orange" 
+                      size="small"
+                    >
+                      📝 {{ missingCharactersCount }} 个角色待添加到配音库
+                    </a-tag>
+                    <a-button 
+                      v-if="missingCharactersCount > 0"
+                      type="primary" 
+                      size="small"
+                      @click="showBatchCreateModal"
+                      :loading="batchCreating"
+                    >
+                      🎭 批量添加到配音库
+                    </a-button>
+                    <a-button 
+                      size="small"
+                      @click="refreshCharacterLibrary"
+                      :loading="loadingBookCharacters"
+                    >
+                      🔄 刷新配音库
+                    </a-button>
+                  </a-space>
+                </div>
               </div>
 
               <div class="characters-grid">
@@ -322,21 +458,257 @@
         </a-button>
       </a-empty>
     </div>
+
+    <!-- 🔥 新增：批量创建角色抽屉 - 第一步：选择角色 -->
+    <a-drawer
+      v-model:visible="batchCreateModalVisible"
+      title="🎭 批量添加角色到配音库 - 选择角色"
+      :width="800"
+      placement="right"
+      @close="cancelBatchCreate"
+    >
+      <div class="batch-create-content">
+        <div class="drawer-footer" style="position: absolute; bottom: 0; left: 0; right: 0; padding: 16px; border-top: 1px solid #f0f0f0; background: white; z-index: 1000;">
+          <a-space style="float: right;">
+            <a-button @click="cancelBatchCreate">取消</a-button>
+            <a-button 
+              type="primary" 
+              @click="goToAudioConfig"
+              :disabled="selectedCharactersForBatch.length === 0"
+            >
+              下一步：配置音频 ({{ selectedCharactersForBatch.length }}个角色)
+            </a-button>
+          </a-space>
+        </div>
+        
+        <div class="batch-create-body" style="padding-bottom: 80px; max-height: calc(100vh - 120px); overflow-y: auto;">
+        <div class="batch-description">
+          <a-alert
+            message="智能角色检测"
+            :description="`AI已从章节中检测到 ${missingCharacters.length} 个尚未加入配音库的角色，您可以选择批量添加并配置语音。`"
+            type="info"
+            show-icon
+            style="margin-bottom: 16px;"
+          />
+        </div>
+
+        <div class="characters-selection">
+          <div class="selection-header">
+            <h4>选择要添加的角色</h4>
+            <a-space>
+              <a-button size="small" @click="selectAllMissingCharacters">全选</a-button>
+              <a-button size="small" @click="deselectAllMissingCharacters">取消全选</a-button>
+            </a-space>
+          </div>
+
+          <!-- 🔥 重构：使用表格显示角色列表 -->
+          <div class="characters-table">
+            <a-table
+              :data-source="missingCharacters"
+              :columns="characterTableColumns"
+              :row-selection="characterRowSelection"
+              :pagination="false"
+              size="small"
+              :scroll="{ y: 400 }"
+              row-key="name"
+            >
+              <template #bodyCell="{ column, record }">
+                <template v-if="column.key === 'avatar'">
+                  <a-avatar 
+                    :size="32" 
+                    :style="{ backgroundColor: getCharacterColor(record.name) }"
+                  >
+                    {{ getCharacterInitial(record.name) }}
+                  </a-avatar>
+                </template>
+                
+                <template v-if="column.key === 'name'">
+                  <div class="character-name-cell">
+                    <div class="name">{{ record.name }}</div>
+                    <div class="meta">
+                      <a-tag size="small" :color="getCharacterTypeColor(record.voice_type)">
+                        {{ getCharacterTypeText(record.voice_type) }}
+                      </a-tag>
+                    </div>
+                  </div>
+                </template>
+                
+                <template v-if="column.key === 'count'">
+                  <a-tag color="blue" size="small">{{ record.count }}次</a-tag>
+                </template>
+                
+                <template v-if="column.key === 'description'">
+                  <div class="description-cell">
+                    {{ record.description || '暂无描述' }}
+                  </div>
+                </template>
+              </template>
+            </a-table>
+          </div>
+        </div>
+
+        <div v-if="selectedCharactersForBatch.length > 0" class="batch-summary">
+          <a-divider />
+          <div class="summary-info">
+            <h4>📋 批量操作摘要</h4>
+            <p>
+              将创建 <strong>{{ selectedCharactersForBatch.length }}</strong> 个新角色到 
+              <strong>{{ chapter?.book_id ? '角色配音库' : '当前书籍' }}</strong>
+            </p>
+            <p class="summary-note">
+              💡 创建完成后，这些角色将自动关联到合成计划中，您就可以立即开始语音合成了！
+            </p>
+          </div>
+        </div>
+        </div>
+      </div>
+    </a-drawer>
+
+    <!-- 🔥 新增：第二个抽屉 - 统一音频配置 -->
+    <a-drawer
+      v-model:visible="audioConfigModalVisible"
+      title="🎧 统一配置音频文件"
+      :width="700"
+      placement="right"
+      @close="cancelAudioConfig"
+    >
+      <div class="audio-config-content">
+        <div class="drawer-footer" style="position: absolute; bottom: 0; left: 0; right: 0; padding: 16px; border-top: 1px solid #f0f0f0; background: white; z-index: 1000;">
+          <a-space style="float: right;">
+            <a-button @click="cancelAudioConfig">取消</a-button>
+            <a-button @click="goBackToCharacterSelection">上一步</a-button>
+            <a-button 
+              type="primary" 
+              @click="executeBatchCreate"
+              :loading="batchCreating"
+            >
+              创建 {{ selectedCharactersForBatch.length }} 个角色
+            </a-button>
+          </a-space>
+        </div>
+        
+        <div class="audio-config-body" style="padding-bottom: 80px; max-height: calc(100vh - 120px); overflow-y: auto;">
+          <!-- 选中角色摘要 -->
+          <div class="selected-characters-summary">
+            <a-alert
+              message="即将创建的角色"
+              :description="`已选择 ${selectedCharactersForBatch.length} 个角色：${selectedCharactersForBatch.join('、')}`"
+              type="info"
+              show-icon
+              style="margin-bottom: 20px;"
+            />
+          </div>
+
+          <!-- 统一音频配置 -->
+          <div class="unified-audio-config">
+            <h3>🎧 统一音频配置</h3>
+            <p class="config-description">
+              为所有选中的角色设置相同的语音配置。如果某些角色需要个性化设置，您可以在创建后到角色配音库中单独修改。
+            </p>
+
+            <a-form layout="vertical" size="middle">
+              <a-row :gutter="16">
+                <a-col :span="12">
+                  <a-form-item label="默认声音类型">
+                    <a-select 
+                      v-model:value="unifiedVoiceType" 
+                      :options="voiceTypeOptions"
+                      placeholder="选择默认声音类型"
+                    />
+                  </a-form-item>
+                </a-col>
+                <a-col :span="12">
+                  <a-form-item label="默认描述">
+                    <a-input 
+                      v-model:value="unifiedDescription" 
+                      placeholder="如：温柔女声、沉稳男声等"
+                    />
+                  </a-form-item>
+                </a-col>
+              </a-row>
+              
+              <!-- 音频文件上传 -->
+              <a-form-item label="统一语音示例文件（可选，用于声音克隆）">
+                <div class="unified-audio-upload">
+                  <a-row :gutter="16">
+                    <a-col :span="12">
+                      <a-form-item label="WAV 音频文件">
+                        <a-upload
+                          v-model:file-list="unifiedWavFileList"
+                          name="unified_wav_file"
+                          accept=".wav"
+                          :max-count="1"
+                          :before-upload="() => false"
+                          @change="handleUnifiedFileChange($event, 'wav')"
+                        >
+                          <a-button size="large" type="dashed" style="width: 100%; height: 80px;">
+                            <div style="text-align: center;">
+                              <div>📁</div>
+                              <div>选择 WAV 文件</div>
+                              <div style="font-size: 12px; color: #666;">将应用到所有角色</div>
+                            </div>
+                          </a-button>
+                        </a-upload>
+                      </a-form-item>
+                    </a-col>
+                    <a-col :span="12">
+                      <a-form-item label="NPY 特征文件">
+                        <a-upload
+                          v-model:file-list="unifiedNpyFileList"
+                          name="unified_npy_file"
+                          accept=".npy"
+                          :max-count="1"
+                          :before-upload="() => false"
+                          @change="handleUnifiedFileChange($event, 'npy')"
+                        >
+                          <a-button size="large" type="dashed" style="width: 100%; height: 80px;">
+                            <div style="text-align: center;">
+                              <div>📊</div>
+                              <div>选择 NPY 文件</div>
+                              <div style="font-size: 12px; color: #666;">将应用到所有角色</div>
+                            </div>
+                          </a-button>
+                        </a-upload>
+                      </a-form-item>
+                    </a-col>
+                  </a-row>
+                  
+                  <div class="upload-tips">
+                    <a-alert
+                      message="💡 统一配置说明"
+                      description="上传的音频文件将作为所有选中角色的默认语音示例。WAV格式要求：单声道, 16kHz-48kHz采样率。NPY文件为对应的音频特征文件。"
+                      type="info"
+                      show-icon
+                    />
+                  </div>
+                </div>
+              </a-form-item>
+            </a-form>
+          </div>
+        </div>
+      </div>
+    </a-drawer>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { message, Modal } from 'ant-design-vue'
 import { useAudioPlayerStore } from '@/stores/audioPlayer'
 import { charactersAPI } from '@/api'
+import draggable from 'vuedraggable'
 import { 
   ReloadOutlined, 
   ClearOutlined, 
   DeleteOutlined, 
   SettingOutlined, 
-  DownOutlined 
+  DownOutlined, 
+  PlusOutlined,
+  ArrowUpOutlined,
+  ArrowDownOutlined
 } from '@ant-design/icons-vue'
+
+// 在Vue 3 setup script中，导入的组件可以直接在模板中使用
 
 const props = defineProps({
   chapter: {
@@ -365,6 +737,8 @@ const emit = defineEmits(['refresh', 'save'])
 
 const audioStore = useAudioPlayerStore()
 
+// 组件注册 - Vue 3版本的vuedraggable直接使用导入的组件
+
 const activeSubTab = ref('segments')
 const saving = ref(false)
 const hasChanges = ref(false)
@@ -385,6 +759,107 @@ const cacheInfo = ref({
 const editableCharacters = ref([])
 const editableSegments = ref([])
 const originalData = ref(null)
+
+// 🔥 新增：加载本书所有角色
+const loadingBookCharacters = ref(false)
+const bookCharacters = ref([])
+
+// 🔥 新增：批量创建角色相关状态
+const batchCreateModalVisible = ref(false)
+const batchCreating = ref(false)
+const selectedCharactersForBatch = ref([])
+
+// 🔥 新增：第二个抽屉相关状态
+const audioConfigModalVisible = ref(false)
+const unifiedVoiceType = ref('neutral')
+const unifiedDescription = ref('')
+const unifiedWavFileList = ref([])
+const unifiedNpyFileList = ref([])
+const unifiedWavFile = ref(null)
+const unifiedNpyFile = ref(null)
+
+const loadBookCharacters = async () => {
+  if (!props.chapter?.book_id) {
+    console.warn('缺少书籍ID，无法加载角色')
+    return
+  }
+  
+  loadingBookCharacters.value = true
+  try {
+    const response = await charactersAPI.getCharacters({ book_id: props.chapter.book_id })
+    if (response.data?.success && response.data.data) {
+      bookCharacters.value = response.data.data.map(char => ({
+        ...char,
+        is_voice_configured: char.is_voice_configured || false,
+        avatarUrl: char.avatarUrl || null
+      }))
+      console.log('本书角色加载成功:', bookCharacters.value.length, '个角色')
+    } else {
+      console.warn('加载角色失败:', response.data?.message)
+    }
+  } catch (error) {
+    console.error('加载角色失败:', error)
+  } finally {
+    loadingBookCharacters.value = false
+  }
+}
+
+// 🔥 新增：获取不在角色配音库中的角色
+const missingCharacters = computed(() => {
+  return editableCharacters.value.filter(char => !char.in_character_library)
+})
+
+// 🔥 新增：待添加角色数量
+const missingCharactersCount = computed(() => {
+  return missingCharacters.value.length
+})
+
+// 🔥 新增：语音类型选项
+const voiceTypeOptions = [
+  { label: '男声', value: 'male' },
+  { label: '女声', value: 'female' },
+  { label: '童声', value: 'child' },
+  { label: '中性', value: 'neutral' },
+  { label: '旁白', value: 'narrator' }
+]
+
+// 🔥 新增：角色表格列配置
+const characterTableColumns = [
+  {
+    title: '头像',
+    key: 'avatar',
+    width: 60,
+    align: 'center'
+  },
+  {
+    title: '角色名称',
+    key: 'name',
+    width: 150,
+  },
+  {
+    title: '出现次数',
+    key: 'count',
+    width: 100,
+    align: 'center'
+  },
+  {
+    title: '角色描述',
+    key: 'description',
+    ellipsis: true
+  }
+]
+
+// 🔥 新增：表格行选择配置
+const characterRowSelection = {
+  selectedRowKeys: selectedCharactersForBatch,
+  onChange: (selectedRowKeys, selectedRows) => {
+    selectedCharactersForBatch.value = selectedRowKeys
+    console.log('📋 选中角色:', selectedRowKeys)
+  },
+  onSelectAll: (selected, selectedRows, changeRows) => {
+    console.log('📋 全选操作:', selected, selectedRows.map(r => r.name))
+  }
+}
 
 // 处理信息
 const processingInfo = computed(() => {
@@ -408,25 +883,58 @@ const initEditableData = async () => {
   const synthesisJson = props.analysisData.synthesis_json
 
   try {
-    // 🔥 优化：直接使用JSON中的角色信息，确保包含所有必要字段
-    console.log('[角色分析] 直接使用JSON中的角色信息')
-    editableCharacters.value = (synthesisJson.characters || []).map(char => ({
-      ...char,
-      character_id: char.character_id || null,  // 🔥 修复：确保character_id字段存在
-      voice_id: char.voice_id || '',
-      in_character_library: char.in_character_library || false,
-      is_voice_configured: char.is_voice_configured || false,
-      avatarUrl: char.avatarUrl || null
-    }))
+    // 🔥 优化：智能提取角色信息，优先使用characters字段，fallback到synthesis_plan
+    console.log('[角色分析] 开始提取角色信息')
+    
+    if (synthesisJson.characters && synthesisJson.characters.length > 0) {
+      // 如果有characters字段，直接使用
+      console.log('[角色分析] 使用characters字段')
+      editableCharacters.value = synthesisJson.characters.map(char => ({
+        ...char,
+        character_id: char.character_id || null,
+        voice_id: char.voice_id || '',
+        in_character_library: char.in_character_library || false,
+        is_voice_configured: char.is_voice_configured || false,
+        avatarUrl: char.avatarUrl || null
+      }))
+    } else {
+      // 如果没有characters字段，从synthesis_plan中提取
+      console.log('[角色分析] 从synthesis_plan中提取角色信息')
+      const segments = synthesisJson.synthesis_plan || []
+      const characterMap = new Map()
+      
+      // 统计每个角色的出现次数和信息
+      segments.forEach(segment => {
+        const speaker = segment.speaker || '未知'
+        if (!characterMap.has(speaker)) {
+          characterMap.set(speaker, {
+            name: speaker,
+            character_id: segment.character_id || null,
+            voice_id: segment.voice_id || '',
+            voice_name: segment.voice_name || speaker,
+            voice_type: speaker === '旁白' ? 'narrator' : 'neutral',
+            count: 0,
+            in_character_library: segment.character_id ? true : false,
+            is_voice_configured: segment.voice_id ? true : false,
+            avatarUrl: null
+          })
+        }
+        characterMap.get(speaker).count++
+      })
+      
+      // 转换为数组
+      editableCharacters.value = Array.from(characterMap.values())
+    }
     
     // 对角色按出现次数排序
     editableCharacters.value.sort((a, b) => (b.count || 0) - (a.count || 0))
     
-    console.log('[角色分析] 角色信息:', editableCharacters.value)
+    console.log('[角色分析] 最终角色信息:', editableCharacters.value)
 
     // 初始化可编辑的合成计划，确保包含所有必要字段
-    editableSegments.value = (synthesisJson.synthesis_plan || []).map(segment => ({
+    editableSegments.value = (synthesisJson.synthesis_plan || []).map((segment, index) => ({
       ...segment,
+      id: segment.id || `segment_${index}_${Date.now()}`,  // 🔥 修复：确保每个segment都有唯一id
       character_id: segment.character_id || null,  // 🔥 修复：确保character_id字段存在
       voice_id: segment.voice_id || '',
       voice_name: segment.voice_name || '未分配'
@@ -447,49 +955,273 @@ const initEditableData = async () => {
 
 // 🔥 简化：监听分析数据变化
 watch(() => props.analysisData, (newData) => {
-  try {
-    if (newData?.synthesis_json) {
-      initEditableData()
-      originalData.value = JSON.parse(JSON.stringify(newData))
-      hasChanges.value = false
-      
-      // 🔥 更新缓存状态信息
-      const processingInfo = newData.processing_info || {}
-      cacheInfo.value = {
-        data_source: processingInfo.data_source || 'synthesis_plan',
-        user_edited: processingInfo.user_edited || false,
-        cache_status: processingInfo.cache_status || 'cached',
-        last_updated: newData.last_updated || null
-      }
-    } else {
-      // 重置数据
-      editableCharacters.value = []
-      editableSegments.value = []
-      originalData.value = null
-      hasChanges.value = false
-      cacheInfo.value = {
-        data_source: 'synthesis_plan',
-        user_edited: false,
-        cache_status: 'cached',
-        last_updated: null
-      }
-    }
-  } catch (error) {
-    console.error('初始化分析数据失败:', error)
-    message.error('初始化分析数据失败')
-    // 重置数据
-    editableCharacters.value = []
-    editableSegments.value = []
-    originalData.value = null
-    hasChanges.value = false
-    cacheInfo.value = {
-      data_source: 'synthesis_plan',
-      user_edited: false,
-      cache_status: 'cached',
-      last_updated: null
-    }
+  if (newData) {
+    initEditableData()
   }
 }, { immediate: true })
+
+// 🔥 新增：监听章节变化，自动加载本书角色
+watch(() => props.chapter, (newChapter) => {
+  if (newChapter?.book_id) {
+    loadBookCharacters()
+  }
+}, { immediate: true })
+
+// 🔥 新增：页面加载时初始化
+onMounted(() => {
+  if (props.chapter?.book_id) {
+    loadBookCharacters()
+  }
+})
+
+// 🔥 新增：批量创建角色相关方法
+const showBatchCreateModal = () => {
+  // 初始化缺失角色的配置
+  missingCharacters.value.forEach(char => {
+    char.selected_voice_type = char.voice_type || 'neutral'
+    char.description = char.description || ''
+  })
+  selectedCharactersForBatch.value = []
+  batchCreateModalVisible.value = true
+}
+
+const cancelBatchCreate = () => {
+  batchCreateModalVisible.value = false
+  selectedCharactersForBatch.value = []
+}
+
+// 🔥 新增：进入音频配置步骤
+const goToAudioConfig = () => {
+  if (selectedCharactersForBatch.value.length === 0) {
+    message.warning('请先选择要创建的角色')
+    return
+  }
+  
+  // 关闭第一个抽屉，打开第二个抽屉
+  batchCreateModalVisible.value = false
+  audioConfigModalVisible.value = true
+  
+  // 重置统一配置
+  unifiedVoiceType.value = 'neutral'
+  unifiedDescription.value = ''
+  unifiedWavFileList.value = []
+  unifiedNpyFileList.value = []
+  unifiedWavFile.value = null
+  unifiedNpyFile.value = null
+}
+
+// 🔥 新增：取消音频配置
+const cancelAudioConfig = () => {
+  audioConfigModalVisible.value = false
+  selectedCharactersForBatch.value = []
+  // 重置配置
+  unifiedVoiceType.value = 'neutral'
+  unifiedDescription.value = ''
+  unifiedWavFileList.value = []
+  unifiedNpyFileList.value = []
+}
+
+// 🔥 新增：返回角色选择
+const goBackToCharacterSelection = () => {
+  audioConfigModalVisible.value = false
+  batchCreateModalVisible.value = true
+}
+
+const selectAllMissingCharacters = () => {
+  selectedCharactersForBatch.value = missingCharacters.value.map(char => char.name)
+}
+
+const deselectAllMissingCharacters = () => {
+  selectedCharactersForBatch.value = []
+}
+
+const refreshCharacterLibrary = async () => {
+  await loadBookCharacters()
+  // 重新检查角色配音库关联状态
+  await initEditableData()
+  message.success('角色配音库已刷新')
+}
+
+// 🔥 新增：统一文件上传处理
+const handleUnifiedFileChange = (info, fileType) => {
+  console.log(`📁 统一文件变化 - 类型: ${fileType}`, info)
+  
+  if (fileType === 'wav') {
+    unifiedWavFileList.value = info.fileList.slice(-1) // 保持最新的一个文件
+    unifiedWavFile.value = unifiedWavFileList.value.length > 0 ? unifiedWavFileList.value[0].originFileObj : null
+  } else if (fileType === 'npy') {
+    unifiedNpyFileList.value = info.fileList.slice(-1) // 保持最新的一个文件
+    unifiedNpyFile.value = unifiedNpyFileList.value.length > 0 ? unifiedNpyFileList.value[0].originFileObj : null
+  }
+  
+  // 验证文件格式
+  if (unifiedWavFile.value) {
+    const fileName = unifiedWavFile.value.name.toLowerCase()
+    if (!fileName.endsWith('.wav')) {
+      message.warning('音频文件格式不正确，请选择 WAV 格式')
+      unifiedWavFileList.value = []
+      unifiedWavFile.value = null
+      return
+    }
+  }
+  
+  if (unifiedNpyFile.value) {
+    const fileName = unifiedNpyFile.value.name.toLowerCase()
+    if (!fileName.endsWith('.npy')) {
+      message.warning('特征文件格式不正确，请选择 NPY 格式')
+      unifiedNpyFileList.value = []
+      unifiedNpyFile.value = null
+      return
+    }
+  }
+}
+
+const executeBatchCreate = async () => {
+  if (selectedCharactersForBatch.value.length === 0) {
+    message.warning('请选择要添加的角色')
+    return
+  }
+
+  if (!props.chapter?.book_id) {
+    message.error('缺少书籍ID，无法创建角色')
+    return
+  }
+
+  batchCreating.value = true
+  try {
+    console.log('🎭 开始批量创建角色...')
+    
+    // 🔥 修改：使用统一配置创建角色数据
+    const charactersToCreate = selectedCharactersForBatch.value.map(characterName => {
+      const character = missingCharacters.value.find(char => char.name === characterName)
+      return {
+        name: character.name,
+        voice_type: unifiedVoiceType.value || character.voice_type || 'neutral',
+        description: unifiedDescription.value || character.description || `从第${props.chapter.number}章智能识别的角色`,
+        chapter_id: props.chapter.id,
+        frequency: character.count || 1,
+        is_main_character: character.count > 5, // 出现超过5次认为是主要角色
+        // 保留智能分析的原始信息
+        detection_source: 'ai_analysis',
+        confidence: character.confidence || 0.8
+      }
+    })
+
+    console.log('📝 准备创建的角色数据:', charactersToCreate)
+
+    // 调用批量创建API - 修正：使用FormData格式符合后端期望
+    const formData = new FormData()
+    formData.append('characters_data', JSON.stringify(charactersToCreate))
+    formData.append('book_id', props.chapter.book_id)
+    if (props.chapter.id) {
+      formData.append('chapter_id', props.chapter.id)
+    }
+
+    // 🔥 修改：添加统一文件到FormData（为所有角色使用相同文件）
+    if (unifiedWavFile.value || unifiedNpyFile.value) {
+      selectedCharactersForBatch.value.forEach((characterName, index) => {
+        // 为每个角色添加统一的WAV文件
+        if (unifiedWavFile.value) {
+          formData.append(`characters[${index}].wav_file`, unifiedWavFile.value, unifiedWavFile.value.name)
+          console.log(`📁 添加统一WAV文件: ${characterName} -> ${unifiedWavFile.value.name}`)
+        }
+        
+        // 为每个角色添加统一的NPY文件
+        if (unifiedNpyFile.value) {
+          formData.append(`characters[${index}].npy_file`, unifiedNpyFile.value, unifiedNpyFile.value.name)
+          console.log(`📊 添加统一NPY文件: ${characterName} -> ${unifiedNpyFile.value.name}`)
+        }
+      })
+    }
+
+    const response = await charactersAPI.batchCreateCharacters(formData)
+
+    console.log('✅ 批量创建角色响应:', response.data)
+
+    if (response.data?.success) {
+      const responseData = response.data.data || {}
+      const createdCharacters = responseData.created || []
+      const skippedCharacters = responseData.skipped || []
+      
+      console.log('📋 创建的角色:', createdCharacters)
+      console.log('⏭️ 跳过的角色:', skippedCharacters)
+      
+      if (createdCharacters.length > 0) {
+        // 🔥 重要：更新合成计划中的character_id
+        // 注意：后端返回的角色数据可能没有直接的ID，需要重新查询
+        await refreshCharacterLibrary()
+        
+        // 根据创建的角色名称更新合成计划
+        await updateSynthesisPlanWithNewCharacterNames(createdCharacters.map(char => char.name))
+        
+        message.success(`✅ 成功添加 ${createdCharacters.length} 个角色到配音库！${skippedCharacters.length > 0 ? ` (跳过 ${skippedCharacters.length} 个已存在的角色)` : ''}`)
+      } else {
+        message.warning('没有创建新角色，所选角色可能已存在')
+      }
+      
+      // 关闭音频配置抽屉
+      audioConfigModalVisible.value = false
+      selectedCharactersForBatch.value = []
+      
+      // 标记为已修改
+      markChanged()
+      
+    } else {
+      throw new Error(response.data?.message || '批量创建角色失败')
+    }
+    
+  } catch (error) {
+    console.error('❌ 批量创建角色失败:', error)
+    message.error(`批量创建角色失败: ${error.message || '未知错误'}`)
+  } finally {
+    batchCreating.value = false
+  }
+}
+
+// 🔥 新增：根据角色名称更新合成计划中的character_id
+const updateSynthesisPlanWithNewCharacterNames = async (createdCharacterNames) => {
+  console.log('🔄 根据角色名称更新合成计划中的character_id...', createdCharacterNames)
+  
+  if (!createdCharacterNames || createdCharacterNames.length === 0) {
+    console.log('没有需要更新的角色名称')
+    return
+  }
+  
+  // 从刷新后的角色配音库中找到对应的角色ID
+  const characterNameToIdMap = {}
+  bookCharacters.value.forEach(char => {
+    if (createdCharacterNames.includes(char.name)) {
+      characterNameToIdMap[char.name] = char.id
+    }
+  })
+  
+  console.log('📋 角色名称到ID映射:', characterNameToIdMap)
+  
+  let updatedCount = 0
+  
+  // 更新editableSegments中的character_id
+  editableSegments.value.forEach(segment => {
+    const speaker = segment.speaker
+    if (speaker && characterNameToIdMap[speaker]) {
+      segment.character_id = characterNameToIdMap[speaker]
+      segment.voice_id = '' // 清空旧的voice_id，优先使用新架构
+      updatedCount++
+      console.log(`🔗 更新段落 ${segment.segment_id}: ${speaker} -> character_id: ${characterNameToIdMap[speaker]}`)
+    }
+  })
+  
+  // 更新editableCharacters中的状态
+  editableCharacters.value.forEach(char => {
+    if (characterNameToIdMap[char.name]) {
+      char.character_id = characterNameToIdMap[char.name]
+      char.in_character_library = true
+      char.is_voice_configured = true
+      console.log(`✅ 更新角色状态: ${char.name} -> character_id: ${characterNameToIdMap[char.name]}`)
+    }
+  })
+  
+  console.log(`🎉 共更新了 ${updatedCount} 个段落的character_id`)
+}
 
 // 标记为已修改
 const markChanged = () => {
@@ -505,18 +1237,79 @@ const resetChanges = () => {
   }
 }
 
+// 🔥 修复缺失字段的段落 - 保持原有segment_id不变
+const fixMissingFields = (segments) => {
+  // 获取所有已有的segment_id
+  const existingSegmentIds = segments.map(s => s.segment_id).filter(id => id)
+  const maxSegmentId = Math.max(...existingSegmentIds, 0)
+  
+  let newSegmentCounter = 1
+  
+  return segments.map((segment, index) => {
+    // 🔥 关键修复：只修复缺失字段，保持原有segment_id不变
+    if (!segment.segment_id || !segment.chapter_id || !segment.text_type) {
+      console.log(`[修复段落] 修复段落 ${index + 1} 的缺失字段`)
+      
+      // 只有在segment_id真正缺失时才分配新的ID
+      let newSegmentId = segment.segment_id
+      if (!newSegmentId) {
+        // 为新段落分配新的segment_id，确保不重复
+        newSegmentId = maxSegmentId + newSegmentCounter
+        newSegmentCounter++
+      }
+      
+      return {
+        ...segment,
+        segment_id: newSegmentId,
+        chapter_id: segment.chapter_id || props.chapter?.id || null,
+        chapter_number: segment.chapter_number || props.chapter?.number || 1,
+        text_type: segment.text_type || 'narration',
+        confidence: segment.confidence || 0.9,
+        detection_rule: segment.detection_rule || 'manual_input',
+        timeStep: segment.timeStep || 32,
+        pWeight: segment.pWeight || 2,
+        tWeight: segment.tWeight || 3,
+        narrator_mode: segment.narrator_mode !== undefined ? segment.narrator_mode : true,
+        skip_ai_analysis: segment.skip_ai_analysis !== undefined ? segment.skip_ai_analysis : false,
+        character_id: segment.character_id || null,
+        voice_id: segment.voice_id || ''
+      }
+    }
+    // 🔥 关键：对于已有完整字段的段落，保持原样不变
+    return segment
+  })
+}
+
 // 保存修改
 const saveChanges = async () => {
   if (!hasChanges.value) return
   
   saving.value = true
   try {
+    // 🔥 修复缺失字段的段落
+    const fixedSegments = fixMissingFields(editableSegments.value)
+    
+    // 🔥 修复：同步更新total_segments字段
+    const currentTotalSegments = fixedSegments.length
+    console.log('💾 保存时更新total_segments:', {
+      原始total_segments: props.analysisData.synthesis_json.project_info?.total_segments,
+      实际段落数量: currentTotalSegments
+    })
+    
     const updatedData = {
       ...props.analysisData,
       synthesis_json: {
         ...props.analysisData.synthesis_json,
+        project_info: {
+          ...props.analysisData.synthesis_json.project_info,
+          total_segments: currentTotalSegments
+        },
+        processing_info: {
+          ...props.analysisData.synthesis_json.processing_info,
+          total_segments: currentTotalSegments
+        },
         characters: editableCharacters.value,
-        synthesis_plan: editableSegments.value
+        synthesis_plan: fixedSegments
       }
     }
     
@@ -535,12 +1328,26 @@ const saveChanges = async () => {
 const getJsonPreview = () => {
   if (!props.analysisData) return ''
   
+  // 🔥 修复缺失字段的段落
+  const fixedSegments = fixMissingFields(editableSegments.value)
+  
+  // 🔥 修复：同步更新total_segments字段
+  const currentTotalSegments = fixedSegments.length
+  
   const previewData = {
     ...props.analysisData,
     synthesis_json: {
       ...props.analysisData.synthesis_json,
+      project_info: {
+        ...props.analysisData.synthesis_json.project_info,
+        total_segments: currentTotalSegments
+      },
+      processing_info: {
+        ...props.analysisData.synthesis_json.processing_info,
+        total_segments: currentTotalSegments
+      },
       characters: editableCharacters.value,
-      synthesis_plan: editableSegments.value
+      synthesis_plan: fixedSegments
     }
   }
   
@@ -878,7 +1685,14 @@ const saveJsonChanges = async () => {
       editableCharacters.value = parsedJson.characters
     }
     if (parsedJson.synthesis_plan && Array.isArray(parsedJson.synthesis_plan)) {
-      editableSegments.value = parsedJson.synthesis_plan
+      // 🔥 修复：确保每个segment都有唯一id并修复缺失字段
+      const segmentsWithId = parsedJson.synthesis_plan.map((segment, index) => ({
+        ...segment,
+        id: segment.id || `segment_${index}_${Date.now()}`
+      }))
+      
+      // 修复缺失字段
+      editableSegments.value = fixMissingFields(segmentsWithId)
     }
     
     // 标记为已修改
@@ -1023,6 +1837,126 @@ const clearAllCache = async () => {
     console.error('清除所有缓存失败:', error)
   }
 }
+
+// 🔥 新增：添加新段落
+const addNewSegment = () => {
+  const maxSegmentId = Math.max(...editableSegments.value.map(s => s.segment_id || 0))
+  
+  const newSegment = {
+    id: `segment_${Date.now()}`, // 临时ID
+    segment_id: maxSegmentId + 1, // 递增的segment_id
+    chapter_id: props.chapter?.id || null,
+    chapter_number: props.chapter?.number || 1,
+    text: '',
+    speaker: '',
+    voice_name: '未分配',
+    text_type: 'narration', // 默认为旁白
+    confidence: 0.9,
+    detection_rule: 'manual_input', // 标记为手工输入
+    timeStep: 32,
+    pWeight: 2,
+    tWeight: 3,
+    narrator_mode: true,
+    skip_ai_analysis: false,
+    character_id: null,
+    voice_id: ''
+  }
+  
+  editableSegments.value.push(newSegment)
+  markChanged()
+  
+  // 🔥 修复：显示更新后的段落数量
+  const newTotalSegments = editableSegments.value.length
+  console.log('➕ 添加段落后，段落总数更新为:', newTotalSegments)
+  message.success(`已添加新段落，当前共 ${newTotalSegments} 个段落`)
+}
+
+// 🔥 新增：插入段落后
+const insertSegmentAfter = (index) => {
+  const existingSegment = editableSegments.value[index]
+  const maxSegmentId = Math.max(...editableSegments.value.map(s => s.segment_id || 0))
+  
+  const newSegment = {
+    id: `segment_${Date.now()}`, // 临时ID
+    segment_id: maxSegmentId + 1, // 递增的segment_id
+    chapter_id: existingSegment?.chapter_id || props.chapter?.id || null,
+    chapter_number: existingSegment?.chapter_number || props.chapter?.number || 1,
+    text: '',
+    speaker: '',
+    voice_name: '未分配',
+    text_type: 'narration', // 默认为旁白
+    confidence: 0.9,
+    detection_rule: 'manual_input', // 标记为手工输入
+    timeStep: 32,
+    pWeight: 2,
+    tWeight: 3,
+    narrator_mode: true,
+    skip_ai_analysis: false,
+    character_id: null,
+    voice_id: ''
+  }
+  
+  editableSegments.value.splice(index + 1, 0, newSegment)
+  markChanged()
+  
+  // 🔥 修复：显示更新后的段落数量
+  const newTotalSegments = editableSegments.value.length
+  console.log('➕ 插入段落后，段落总数更新为:', newTotalSegments)
+  message.success(`已在此段落后插入新段落，当前共 ${newTotalSegments} 个段落`)
+}
+
+// 🔥 新增：删除段落
+const deleteSegment = (index) => {
+  if (editableSegments.value.length <= 1) {
+    message.warning('至少需要保留一个段落')
+    return
+  }
+  editableSegments.value.splice(index, 1)
+  markChanged()
+  
+  // 🔥 修复：显示更新后的段落数量
+  const newTotalSegments = editableSegments.value.length
+  console.log('➖ 删除段落后，段落总数更新为:', newTotalSegments)
+  message.success(`已删除此段落，当前共 ${newTotalSegments} 个段落`)
+}
+
+// 🔥 新增：过滤角色选项
+const filterSpeakerOption = (input, option) => {
+  return option.label.toLowerCase().includes(input.toLowerCase())
+}
+
+// 🔥 新增：角色筛选处理
+const handleCharacterFilter = (value) => {
+  highlightedCharacter.value = value
+  console.log('角色筛选:', value)
+}
+
+// 🔥 新增：段落排序方法 - 只改变显示顺序，保持原有segment_id不变
+const handleSegmentSort = (evt) => {
+  markChanged()
+  console.log('段落排序:', evt)
+  console.log('📌 重要：段落排序只改变显示顺序，保持原有segment_id不变')
+}
+
+// 🔥 新增：上移段落
+const moveSegmentUp = (index) => {
+  if (index === 0) return
+  const temp = editableSegments.value[index]
+  editableSegments.value[index] = editableSegments.value[index - 1]
+  editableSegments.value[index - 1] = temp
+  markChanged()
+  message.success('段落已上移')
+}
+
+// 🔥 新增：下移段落
+const moveSegmentDown = (index) => {
+  if (index === editableSegments.value.length - 1) return
+  const temp = editableSegments.value[index]
+  editableSegments.value[index] = editableSegments.value[index + 1]
+  editableSegments.value[index + 1] = temp
+  markChanged()
+  message.success('段落已下移')
+}
 </script>
 
 <style scoped>
@@ -1115,53 +2049,138 @@ const clearAllCache = async () => {
   color: #6b7280;
 }
 
-.segments-list {
+/* 段落编辑器样式 */
+.segments-editor {
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.editor-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid #e8e8e8;
   display: flex;
-  flex-direction: column;
-  gap: 12px;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.editor-header h4 {
+  margin: 0;
+  font-size: 14px;
+  color: #333;
+}
+
+.editor-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.segments-list {
+  /* 移除高度限制，使用页面滚动条 */
 }
 
 .segment-item {
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  padding: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid #f0f0f0;
+  transition: all 0.2s ease;
 }
 
-.segment-item.segment-highlighted {
-  background-color: #e0f2fe; /* 高亮背景色 */
-  border-color: #90cdf4; /* 高亮边框色 */
-  box-shadow: 0 0 8px rgba(139, 92, 246, 0.2); /* 高亮阴影 */
+.segment-item:hover {
+  background: #fafafa;
 }
 
-.segment-item.segment-dimmed {
-  opacity: 0.6; /* 半透明效果 */
-  background-color: #f0f2f5; /* 暗化背景色 */
-  border-color: #e5e7eb; /* 暗化边框色 */
+.segment-item:last-child {
+  border-bottom: none;
 }
 
 .segment-header {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   margin-bottom: 8px;
 }
 
 .segment-index {
-  font-weight: 600;
-  color: #6b7280;
+  font-weight: 500;
+  color: #666;
   min-width: 40px;
 }
 
-.highlight-indicator {
+.segment-actions {
+  display: flex;
+  gap: 4px;
   margin-left: auto;
-  color: #8b5cf6;
-  font-size: 16px;
-  animation: pulse 2s infinite;
+  opacity: 0;
+  transition: opacity 0.2s ease;
 }
 
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+.segment-item:hover .segment-actions {
+  opacity: 1;
+}
+
+.character-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.char-name {
+  flex: 1;
+  margin-right: 8px;
+}
+
+/* 段落高亮样式 */
+.segment-highlighted {
+  background: #e6f7ff;
+  border-left: 3px solid #1890ff;
+}
+
+.segment-dimmed {
+  opacity: 0.5;
+}
+
+/* 拖拽排序样式 */
+.segment-ghost {
+  opacity: 0.5;
+  background: #f0f0f0;
+  border: 2px dashed #d9d9d9;
+}
+
+.segment-chosen {
+  background: #e6f7ff;
+  border-left: 3px solid #1890ff;
+}
+
+.segment-drag {
+  background: #fff;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+  border: 1px solid #1890ff;
+  border-radius: 4px;
+  transform: rotate(5deg);
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .editor-header {
+    flex-direction: column;
+    gap: 8px;
+    align-items: flex-start;
+  }
+  
+  .editor-controls {
+    width: 100%;
+    justify-content: flex-end;
+  }
+  
+  .segment-header {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  
+  .segment-actions {
+    opacity: 1; /* 移动端始终显示 */
+  }
 }
 
 .segment-content {
@@ -1326,5 +2345,217 @@ const clearAllCache = async () => {
 .no-analysis p {
   color: #6b7280;
   margin: 8px 0 16px 0;
+}
+
+/* 🔥 新增：角色头部布局样式 */
+.characters-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.characters-title {
+  flex: 1;
+}
+
+.characters-actions {
+  flex-shrink: 0;
+}
+
+/* 🔥 新增：批量创建抽屉样式 */
+.batch-create-content {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.batch-create-body {
+  flex: 1;
+  padding-right: 8px;
+}
+
+.selection-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.selection-header h4 {
+  margin: 0;
+}
+
+.characters-grid-batch {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  max-height: 400px;
+  overflow-y: auto;
+  padding: 8px;
+  border: 1px solid #f0f0f0;
+  border-radius: 6px;
+}
+
+.character-batch-item {
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  padding: 12px;
+  transition: all 0.2s ease;
+}
+
+.character-batch-item:hover {
+  border-color: #1890ff;
+  background-color: #f6f9ff;
+}
+
+.character-batch-info {
+  width: 100%;
+}
+
+.character-batch-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.character-batch-details {
+  flex: 1;
+}
+
+.character-batch-details .character-name {
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+
+.character-batch-details .character-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #666;
+}
+
+.character-count {
+  background: #f0f0f0;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.voice-config-form {
+  background: #fafafa;
+  padding: 12px;
+  border-radius: 6px;
+  margin-top: 8px;
+}
+
+.batch-summary {
+  margin-top: 16px;
+}
+
+.summary-info h4 {
+  margin: 0 0 8px 0;
+  color: #1890ff;
+}
+
+.summary-info p {
+  margin: 4px 0;
+}
+
+.summary-note {
+  color: #52c41a;
+  font-size: 13px;
+  background: #f6ffed;
+  padding: 8px;
+  border-radius: 4px;
+  border-left: 3px solid #52c41a;
+}
+
+/* 🔥 新增：音频上传样式 */
+.audio-upload-section {
+  margin-top: 8px;
+}
+
+.upload-tips {
+  margin-top: 8px;
+}
+
+.upload-tips .ant-alert {
+  border-radius: 4px;
+}
+
+/* 优化抽屉footer */
+.drawer-footer {
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.05);
+}
+
+/* 文件上传按钮样式 */
+.audio-upload-section .ant-upload {
+  display: block;
+  width: 100%;
+}
+
+.audio-upload-section .ant-btn {
+  height: 32px;
+  font-size: 12px;
+}
+
+/* 🔥 新增：角色表格样式 */
+.characters-table {
+  margin-top: 16px;
+}
+
+.character-name-cell .name {
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.character-name-cell .meta {
+  display: flex;
+  gap: 8px;
+}
+
+.description-cell {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 🔥 新增：统一音频配置样式 */
+.audio-config-content {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.audio-config-body {
+  flex: 1;
+  padding-right: 8px;
+}
+
+.config-description {
+  color: #666;
+  font-size: 14px;
+  margin-bottom: 20px;
+  line-height: 1.6;
+}
+
+.unified-audio-upload {
+  margin-top: 12px;
+}
+
+.unified-audio-upload .ant-btn {
+  border-style: dashed;
+  color: #666;
+}
+
+.unified-audio-upload .ant-btn:hover {
+  border-color: #1890ff;
+  color: #1890ff;
 }
 </style> 

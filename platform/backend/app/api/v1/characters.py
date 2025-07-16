@@ -184,12 +184,34 @@ async def get_characters(
             character_data = character.to_dict()
             character_list.append(character_data)
         
-        # 计算统计信息
+        # 🔥 修复：计算基于当前过滤条件的统计信息
+        base_query = db.query(Character)
+        
+        # 应用相同的过滤条件
+        if search:
+            search_pattern = f"%{search}%"
+            base_query = base_query.filter(
+                or_(
+                    Character.name.like(search_pattern),
+                    Character.description.like(search_pattern)
+                )
+            )
+        if voice_type and voice_type in ['male', 'female', 'child', 'elder', 'custom']:
+            base_query = base_query.filter(Character.voice_type == voice_type)
+        if quality_min > 0:
+            base_query = base_query.filter(Character.quality_score >= quality_min)
+        if book_id:
+            base_query = base_query.filter(Character.book_id == book_id)
+        if tags:
+            tag_list = [tag.strip() for tag in tags.split(',') if tag.strip()]
+            for tag in tag_list:
+                base_query = base_query.filter(Character.tags.like(f'%"{tag}"%'))
+        
         stats = {
             'total_count': total,
-            'configured_count': db.query(Character).filter(Character.status == 'configured').count(),
-            'unconfigured_count': db.query(Character).filter(Character.status == 'unconfigured').count(),
-            'average_quality': db.query(func.avg(Character.quality_score)).scalar() or 0
+            'configured_count': base_query.filter(Character.status == 'configured').count(),
+            'unconfigured_count': base_query.filter(Character.status == 'unconfigured').count(),
+            'average_quality': base_query.with_entities(func.avg(Character.quality_score)).scalar() or 0
         }
         
         return {
@@ -1696,6 +1718,8 @@ async def create_character(
 
 @router.post("/batch-create-characters")
 async def batch_create_characters(
+    # 🔥 新增：文件上传支持
+    request: Request,
     characters_data: str = Form(..., description="角色数据JSON"),
     book_id: int = Form(..., description="所属书籍ID"),
     chapter_id: int = Form(None, description="章节ID"),
@@ -1703,6 +1727,31 @@ async def batch_create_characters(
 ) -> Dict[str, Any]:
     """批量创建角色（用于智能分析后）"""
     try:
+        # 🔥 新增：处理文件上传
+        form_data = await request.form()
+        files_map = {}
+        
+        # 提取所有文件字段
+        for key, value in form_data.items():
+            if key.startswith('characters[') and (key.endswith('.wav_file') or key.endswith('.npy_file')):
+                # 解析字段名格式：characters[0].wav_file
+                try:
+                    import re
+                    match = re.match(r'characters\[(\d+)\]\.(wav_file|npy_file)', key)
+                    if match:
+                        char_index = int(match.group(1))
+                        file_type = match.group(2)
+                        
+                        if char_index not in files_map:
+                            files_map[char_index] = {}
+                        files_map[char_index][file_type] = value
+                        
+                        logger.info(f"📁 检测到文件上传: 角色索引{char_index}, 类型{file_type}, 文件名: {value.filename}")
+                except Exception as e:
+                    logger.warning(f"解析文件字段失败: {key}, 错误: {e}")
+        
+        logger.info(f"📁 文件映射表: {list(files_map.keys())}")
+        
         # 解析角色数据
         import json
         characters = json.loads(characters_data)
@@ -1719,7 +1768,7 @@ async def batch_create_characters(
         created_characters = []
         skipped_characters = []
         
-        for char_data in characters:
+        for char_index, char_data in enumerate(characters):
             name = char_data.get('name', '').strip()
             if not name:
                 continue
@@ -1730,11 +1779,91 @@ async def batch_create_characters(
                 Character.book_id == book_id
             ).first()
             
+            # 🔥 新增：如果角色已存在，检查是否需要更新音频文件
             if existing:
-                skipped_characters.append({
-                    "name": name,
-                    "reason": "已存在"
-                })
+                # 如果角色已存在且已有音频文件，跳过
+                if existing.reference_audio_path:
+                    skipped_characters.append({
+                        "name": name,
+                        "reason": "已存在且已配置音频"
+                    })
+                    continue
+                
+                # 如果角色已存在但没有音频文件，且用户上传了音频文件，则更新
+                should_update = False
+                ref_audio_path = None
+                latent_file_path = None
+                
+                if char_index in files_map:
+                    character_files = files_map[char_index]
+                    
+                    # 处理WAV文件
+                    if 'wav_file' in character_files:
+                        wav_file = character_files['wav_file']
+                        if wav_file and wav_file.filename:
+                            logger.info(f"📁 更新角色 {name} 的WAV文件: {wav_file.filename}")
+                            
+                            # 验证文件格式
+                            file_ext = os.path.splitext(wav_file.filename)[1].lower()
+                            if file_ext in ['.wav', '.mp3', '.flac', '.m4a', '.ogg']:
+                                # 保存WAV文件
+                                audio_content = await wav_file.read()
+                                if len(audio_content) <= 100 * 1024 * 1024:  # 100MB限制
+                                    ref_filename = f"{name}_{uuid.uuid4().hex}{file_ext}"
+                                    ref_audio_path = os.path.join(VOICE_PROFILES_DIR, ref_filename)
+                                    
+                                    os.makedirs(VOICE_PROFILES_DIR, exist_ok=True)
+                                    with open(ref_audio_path, 'wb') as f:
+                                        f.write(audio_content)
+                                    
+                                    ref_audio_path = normalize_path(ref_audio_path)
+                                    should_update = True
+                                    logger.info(f"✅ 保存WAV文件: {ref_audio_path}")
+                    
+                    # 处理NPY文件
+                    if 'npy_file' in character_files:
+                        npy_file = character_files['npy_file']
+                        if npy_file and npy_file.filename and npy_file.filename.lower().endswith('.npy'):
+                            logger.info(f"📊 更新角色 {name} 的NPY文件: {npy_file.filename}")
+                            
+                            # 保存NPY文件
+                            npy_content = await npy_file.read()
+                            if len(npy_content) <= 50 * 1024 * 1024:  # 50MB限制
+                                latent_filename = f"{name}_{uuid.uuid4().hex}.npy"
+                                latent_file_path = os.path.join(VOICE_PROFILES_DIR, latent_filename)
+                                
+                                with open(latent_file_path, 'wb') as f:
+                                    f.write(npy_content)
+                                
+                                latent_file_path = normalize_path(latent_file_path)
+                                should_update = True
+                                logger.info(f"✅ 保存NPY文件: {latent_file_path}")
+                
+                if should_update:
+                    # 更新现有角色
+                    existing.reference_audio_path = ref_audio_path
+                    existing.latent_file_path = latent_file_path
+                    existing.status = 'configured' if ref_audio_path else existing.status
+                    
+                    created_characters.append({
+                        "name": name,
+                        "description": existing.description,
+                        "voice_type": existing.voice_type,
+                        "gender": "",  # 从现有数据获取
+                        "personality": "",
+                        "status": existing.status,
+                        "has_audio_file": ref_audio_path is not None,
+                        "has_feature_file": latent_file_path is not None,
+                        "audio_file_path": ref_audio_path,
+                        "feature_file_path": latent_file_path,
+                        "updated": True  # 标记为更新而非创建
+                    })
+                    logger.info(f"✅ 更新已存在角色: {name} -> {existing.status}")
+                else:
+                    skipped_characters.append({
+                        "name": name,
+                        "reason": "已存在但无音频文件上传"
+                    })
                 continue
             
             # 创建新角色（使用新的Character模型字段）
@@ -1768,6 +1897,60 @@ async def batch_create_characters(
             if personality:
                 tags.append(personality)
             
+            # 🔥 新增：处理文件上传
+            ref_audio_path = None
+            latent_file_path = None
+            
+            if char_index in files_map:
+                character_files = files_map[char_index]
+                
+                # 处理WAV文件
+                if 'wav_file' in character_files:
+                    wav_file = character_files['wav_file']
+                    if wav_file and wav_file.filename:
+                        logger.info(f"📁 处理角色 {name} 的WAV文件: {wav_file.filename}")
+                        
+                        # 验证文件格式
+                        file_ext = os.path.splitext(wav_file.filename)[1].lower()
+                        if file_ext not in ['.wav', '.mp3', '.flac', '.m4a', '.ogg']:
+                            logger.warning(f"不支持的音频格式: {wav_file.filename}")
+                        else:
+                            # 保存WAV文件
+                            audio_content = await wav_file.read()
+                            if len(audio_content) <= 100 * 1024 * 1024:  # 100MB限制
+                                ref_filename = f"{name}_{uuid.uuid4().hex}{file_ext}"
+                                ref_audio_path = os.path.join(VOICE_PROFILES_DIR, ref_filename)
+                                
+                                os.makedirs(VOICE_PROFILES_DIR, exist_ok=True)
+                                with open(ref_audio_path, 'wb') as f:
+                                    f.write(audio_content)
+                                
+                                ref_audio_path = normalize_path(ref_audio_path)
+                                logger.info(f"✅ 保存WAV文件: {ref_audio_path}")
+                
+                # 处理NPY文件
+                if 'npy_file' in character_files:
+                    npy_file = character_files['npy_file']
+                    if npy_file and npy_file.filename:
+                        logger.info(f"📊 处理角色 {name} 的NPY文件: {npy_file.filename}")
+                        
+                        # 验证文件格式
+                        if npy_file.filename.lower().endswith('.npy'):
+                            # 保存NPY文件
+                            npy_content = await npy_file.read()
+                            if len(npy_content) <= 50 * 1024 * 1024:  # 50MB限制
+                                latent_filename = f"{name}_{uuid.uuid4().hex}.npy"
+                                latent_file_path = os.path.join(VOICE_PROFILES_DIR, latent_filename)
+                                
+                                with open(latent_file_path, 'wb') as f:
+                                    f.write(npy_content)
+                                
+                                latent_file_path = normalize_path(latent_file_path)
+                                logger.info(f"✅ 保存NPY文件: {latent_file_path}")
+            
+            # 根据是否有文件设置状态
+            character_status = 'configured' if ref_audio_path else 'unconfigured'
+            
             new_character = Character(
                 name=name,
                 description=description,
@@ -1777,7 +1960,10 @@ async def batch_create_characters(
                 color='#8b5cf6',
                 voice_parameters=json.dumps(voice_params, ensure_ascii=False),
                 tags=json.dumps(tags, ensure_ascii=False),
-                status='unconfigured',  # 新创建的角色默认未配置
+                # 🔥 新增：文件路径和状态
+                reference_audio_path=ref_audio_path,
+                latent_file_path=latent_file_path,
+                status=character_status,
                 quality_score=3.0,
                 usage_count=0
             )
@@ -1789,16 +1975,57 @@ async def batch_create_characters(
                 "voice_type": voice_type,
                 "gender": gender,
                 "personality": personality,
-                "status": "unconfigured"
+                "status": character_status,
+                # 🔥 新增：文件信息
+                "has_audio_file": ref_audio_path is not None,
+                "has_feature_file": latent_file_path is not None,
+                "audio_file_path": ref_audio_path,
+                "feature_file_path": latent_file_path
             })
         
         db.commit()
         
-        # 更新书籍的角色汇总
-        if created_characters:
-            character_list = [{"name": char["name"], "description": char["description"]} for char in created_characters]
+        # 🔥 修复：无论创建还是更新，都需要刷新书籍角色汇总
+        try:
+            # 重新获取书籍的所有角色，包括刚刚更新的
+            all_book_characters = db.query(Character).filter(Character.book_id == book_id).all()
+            
+            # 构建角色列表用于汇总更新
+            character_list = []
+            for char in all_book_characters:
+                character_list.append({
+                    "name": char.name,
+                    "description": char.description or f"从第{chapter_id}章智能识别的角色",
+                    "status": char.status,  # 🔥 新增：包含配音状态
+                    "is_voice_configured": bool(char.reference_audio_path),  # 🔥 新增：配音配置状态
+                    "character_id": char.id  # 🔥 新增：角色ID
+                })
+            
+            # 更新书籍角色汇总JSON
             book.update_character_summary(character_list, chapter_id)
+            
+            # 🔥 新增：更新voice_mappings，将角色ID映射进去
+            current_summary = book.get_character_summary()
+            voice_mappings = current_summary.get('voice_mappings', {})
+            
+            # 为已配置的角色添加映射
+            for char in all_book_characters:
+                if char.reference_audio_path:  # 已配置音频的角色
+                    voice_mappings[char.name] = str(char.id)  # 使用角色ID作为语音映射
+            
+            # 更新voice_mappings
+            current_summary['voice_mappings'] = voice_mappings
+            book.character_summary = current_summary
+            from sqlalchemy.orm.attributes import flag_modified
+            flag_modified(book, 'character_summary')
+            
             db.commit()
+            
+            logger.info(f"✅ 已更新书籍角色汇总JSON: 总角色{len(character_list)}个, 已配置{len([c for c in character_list if c['is_voice_configured']])}个")
+            
+        except Exception as e:
+            logger.error(f"❌ 更新书籍角色汇总失败: {str(e)}")
+            # 不影响主流程，继续返回结果
         
         logger.info(f"批量创建角色完成: {len(created_characters)}个成功, {len(skipped_characters)}个跳过 (书籍: {book.title})")
         

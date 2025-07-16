@@ -15,8 +15,13 @@ export async function getAvailableBooks() {
  * 获取书籍的章节列表
  * @param {number} bookId 书籍ID
  */
-export async function getBookChapters(bookId) {
-  const res = await axios.get(`${API_BASE}/books/${bookId}/chapters`)
+export async function getBookChapters(bookId, params = {}) {
+  const defaultParams = {
+    sort_by: 'chapter_number',
+    sort_order: 'asc',
+    ...params
+  }
+  const res = await axios.get(`${API_BASE}/books/${bookId}/chapters`, { params: defaultParams })
   return res.data
 }
 

@@ -709,8 +709,9 @@ async def get_book_characters(
                             character_id = library_char.id
                             voice_name = library_char.name
                             in_character_library = True
-                            is_voice_configured = library_char.status == 'configured'
-                            logger.info(f"🎭 [配音信息] {char_name} -> 角色配音库 ID:{character_id}")
+                            # 🔥 修复：检查是否有音频文件配置，而不是简单检查status
+                            is_voice_configured = bool(library_char.reference_audio_path)
+                            logger.info(f"🎭 [配音信息] {char_name} -> 角色配音库 ID:{character_id} (配音状态: {is_voice_configured})")
                         else:
                             logger.warning(f"⚠️ [配音信息] {char_name} 在配音库中但ID不匹配: 库中ID={library_char.id}, 映射ID={voice_id_int}")
                     
@@ -734,8 +735,9 @@ async def get_book_characters(
                     character_id = library_char.id
                     voice_name = library_char.name
                     in_character_library = True
-                    is_voice_configured = library_char.status == 'configured'
-                    logger.info(f"🎭 [配音信息] {char_name} -> 角色配音库 ID:{character_id} (未配置voice_mappings)")
+                    # 🔥 修复：检查是否有音频文件配置，而不是简单检查status
+                    is_voice_configured = bool(library_char.reference_audio_path)
+                    logger.info(f"🎭 [配音信息] {char_name} -> 角色配音库 ID:{character_id} (未配置voice_mappings, 配音状态: {is_voice_configured})")
             
             # 🔥 关键：添加配音相关字段到角色对象
             enhanced_char.update({

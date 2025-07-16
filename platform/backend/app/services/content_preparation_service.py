@@ -805,6 +805,29 @@ class ContentPreparationService:
         characters = []
         character_library_mappings = {}  # 用于收集角色配音库的映射
         
+        # 🔥 新增：从synthesis_plan中提取所有实际出现的角色
+        actual_speakers = set()
+        for segment in synthesis_plan:
+            speaker = segment.get('speaker')
+            if speaker and speaker.strip():
+                actual_speakers.add(speaker.strip())
+        
+        # 🔥 优化：确保detected_characters包含所有实际出现的角色
+        detected_character_names = {char.get('name', '') for char in detected_characters}
+        missing_characters = actual_speakers - detected_character_names
+        
+        if missing_characters:
+            logger.warning(f"⚠️ [角色汇总修复] 发现synthesis_plan中存在但detected_characters中缺失的角色: {missing_characters}")
+            # 为缺失的角色创建默认配置
+            for missing_char in missing_characters:
+                detected_characters.append({
+                    'name': missing_char,
+                    'voice_type': 'neutral',
+                    'confidence': 0.7,
+                    'source': 'synthesis_plan_补充'
+                })
+                logger.info(f"🔧 [角色汇总修复] 自动补充角色: {missing_char}")
+        
         for character in detected_characters:
             char_name = character.get('name', '')
             if not char_name:

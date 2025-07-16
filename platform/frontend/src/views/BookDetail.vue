@@ -137,7 +137,10 @@ const loadChapters = async () => {
   if (!book.value?.id) return
   
   try {
-    const response = await booksAPI.getBookChapters(book.value.id)
+    const response = await booksAPI.getBookChapters(book.value.id, {
+      sort_by: 'chapter_number',
+      sort_order: 'asc'
+    })
     if (response.data && response.data.success) {
       const chaptersData = response.data.data || []
       chapters.value = chaptersData.map(chapter => ({
@@ -146,7 +149,9 @@ const loadChapters = async () => {
         title: chapter.chapter_title || `第${chapter.chapter_number}章`,
         wordCount: chapter.word_count || 0,
         status: chapter.analysis_status,
-        content: chapter.content
+        content: chapter.content,
+        // 🔥 修复：添加book_id字段，用于批量创建角色
+        book_id: book.value.id
       }))
       
       // 加载所有章节的智能准备状态
@@ -350,7 +355,6 @@ const saveAnalysis = async (data) => {
 }
 
 .main-content .ant-col {
-  height: 100%;
 }
 
 /* 响应式设计 */

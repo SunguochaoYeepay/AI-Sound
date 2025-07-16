@@ -69,6 +69,7 @@
         @download-audio="handleDownloadAudio"
         @restart-synthesis="handleRestartSynthesis"
         @resume-synthesis="handleResumeSynthesis"
+        @reset-project-status="handleResetProjectStatus"
       />
 
       <!-- 环境混音功能已迁移至单独的环境混合页面 -->
@@ -472,12 +473,38 @@ const loadChapters = async (allowChapterReset = true) => {
     
     if (project.value?.book_id) {
       // 直接使用apiClient调用正确的API路径
-      const response = await apiClient.get(`/books/${project.value.book_id}/chapters`)
+      const response = await apiClient.get(`/books/${project.value.book_id}/chapters`, {
+        params: {
+          sort_by: 'chapter_number',
+          sort_order: 'asc'
+        }
+      })
       console.log('Chapters API response:', response.data)
       
       if (response.data.success && response.data.data) {
-        chapters.value = response.data.data
-        console.log('Found chapters:', chapters.value)
+        // 🔧 调试：查看原始章节数据结构
+        console.log('📋 原始章节数据结构示例:', response.data.data.slice(0, 3).map(ch => ({
+          id: ch.id,
+          chapter_number: ch.chapter_number,
+          number: ch.number,
+          title: ch.title,
+          chapter_title: ch.chapter_title,
+          完整对象: ch
+        })))
+        
+        // 🔧 前端强制排序：确保章节按照chapter_number升序排列
+        chapters.value = response.data.data.sort((a, b) => {
+          // 兼容不同的字段名称
+          const aNum = parseInt(a.chapter_number || a.number) || 0
+          const bNum = parseInt(b.chapter_number || b.number) || 0
+          console.log('🔢 排序比较:', { 
+            a: { id: a.id, chapter_number: a.chapter_number, number: a.number, aNum },
+            b: { id: b.id, chapter_number: b.chapter_number, number: b.number, bNum },
+            result: aNum - bNum
+          })
+          return aNum - bNum
+        })
+        console.log('Found chapters (sorted):', chapters.value)
         
         if (chapters.value.length > 0) {
           // 🔧 根据allowChapterReset参数决定是否允许重置章节选择
@@ -997,6 +1024,31 @@ const handleCancelSynthesis = async () => {
   } catch (error) {
     console.error('Failed to cancel synthesis:', error)
     message.error('取消合成失败: ' + (error.response?.data?.detail || error.message))
+  }
+}
+
+const handleResetProjectStatus = async () => {
+  try {
+    console.log('🔧 开始重置项目状态，项目ID:', project.value.id)
+    await api.resetProjectStatus(project.value.id)
+    message.success('项目状态已重置为可用状态')
+    
+    // 重置前端状态
+    synthesisRunning.value = false
+    progressDrawerVisible.value = false
+    
+    // 停止定期刷新
+    if (progressRefreshInterval) {
+      clearInterval(progressRefreshInterval)
+      progressRefreshInterval = null
+    }
+    
+    // 重新加载项目和章节数据
+    await loadProject()
+    await loadCurrentChapterProgress()
+  } catch (error) {
+    console.error('Failed to reset project status:', error)
+    message.error('重置项目状态失败: ' + (error.response?.data?.detail || error.message))
   }
 }
 

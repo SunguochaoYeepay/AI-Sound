@@ -273,7 +273,7 @@ async def start_project_generation(
         if not project.book_id:
             raise HTTPException(status_code=400, detail="项目未关联书籍，无法使用智能准备")
         
-        # 解析章节ID列表
+                # 解析章节ID列表
         selected_chapter_ids = []
         if chapter_ids.strip():
             try:
@@ -1712,7 +1712,7 @@ async def download_segment_audio(
         
         # 查找该章节的完整音频文件
         chapter_audio = db.query(AudioFile).filter(
-            AudioFile.project_id == project_id,
+                AudioFile.project_id == project_id,
             AudioFile.chapter_id == target_chapter_id,
             AudioFile.audio_type == 'chapter'
         ).first()
@@ -1735,9 +1735,9 @@ async def download_segment_audio(
         logger.info(f"🔍 [章节音频未找到] 尝试查找该章节的段落音频...")
         
         chapter_segment_audios = db.query(AudioFile).filter(
-            AudioFile.project_id == project_id,
+                AudioFile.project_id == project_id,
             AudioFile.chapter_id == target_chapter_id,
-            AudioFile.audio_type == 'segment'
+                AudioFile.audio_type == 'segment'
         ).order_by(AudioFile.paragraph_index).all()
         
         if not chapter_segment_audios:

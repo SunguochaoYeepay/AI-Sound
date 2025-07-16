@@ -116,9 +116,21 @@
 
                   <!-- 失败状态：显示重新开始选项 -->
                   <template v-else-if="selectedChapterStatus === 'failed'">
-                    <a-button type="primary" size="small" @click="$emit('restart-synthesis')">
-                      🔄 重新合成
+                    <a-dropdown>
+                      <a-button type="primary" size="small">
+                        🔄 重新合成 <DownOutlined />
                     </a-button>
+                      <template #overlay>
+                        <a-menu>
+                          <a-menu-item @click="$emit('restart-synthesis')">
+                            🔄 重新开始合成
+                          </a-menu-item>
+                          <a-menu-item @click="$emit('reset-project-status')" style="color: #ff4d4f;">
+                            🔧 重置状态（高级）
+                          </a-menu-item>
+                        </a-menu>
+                      </template>
+                    </a-dropdown>
                   </template>
                 </a-space>
               </div>
@@ -182,6 +194,7 @@
 <script setup>
 import { ref, computed, h, watch, onMounted } from 'vue'
 import { Empty, Modal, message } from 'ant-design-vue'
+import { DownOutlined } from '@ant-design/icons-vue'
 import { useRouter } from 'vue-router'
 import { getWebSocketUrl } from '@/config/services'
 import DialogueBubble from './DialogueBubble.vue'
@@ -227,7 +240,8 @@ const emit = defineEmits([
   'download-audio',
   'restart-synthesis',
   'resume-synthesis',
-  'open-audio-editor'
+  'open-audio-editor',
+  'reset-project-status'
 ])
 
 const showAllSegments = ref(false)
@@ -341,7 +355,7 @@ const getChapterStatusText = (chapterId) => {
       return '部分完成'
     } else {
       return '待合成'
-    }
+  }
   }
   
   // 对于非当前选中的章节，需要查询其在当前项目中的进度

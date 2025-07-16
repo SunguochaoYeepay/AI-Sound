@@ -977,7 +977,11 @@ const loadChapters = async () => {
     
     // 直接使用选中的书籍ID获取该书的所有章节
     // 章节是书籍级别的，不属于特定项目，项目只是选择性地使用部分章节
-    const response = await chaptersAPI.getChapters({ book_id: selectedBook.value })
+    const response = await chaptersAPI.getChapters({ 
+      book_id: selectedBook.value,
+      sort_by: 'chapter_number',
+      sort_order: 'asc'
+    })
     
     console.log('Chapters API response:', response)
     

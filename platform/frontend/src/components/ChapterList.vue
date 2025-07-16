@@ -135,12 +135,21 @@ const emit = defineEmits(['selectChapter', 'prepareChapter', 'detectChapters'])
 const searchKeyword = ref('')
 
 const filteredChapters = computed(() => {
-  if (!searchKeyword.value) return props.chapters
+  // 🔧 首先确保章节按照chapter_number排序
+  const sortedChapters = [...props.chapters].sort((a, b) => {
+    // 兼容不同的字段名称
+    const aNum = parseInt(a.number || a.chapter_number) || 0
+    const bNum = parseInt(b.number || b.chapter_number) || 0
+    return aNum - bNum
+  })
+  
+  // 然后进行搜索过滤
+  if (!searchKeyword.value) return sortedChapters
   
   const keyword = searchKeyword.value.toLowerCase()
-  return props.chapters.filter(chapter => 
+  return sortedChapters.filter(chapter => 
     chapter.title.toLowerCase().includes(keyword) ||
-    chapter.number.toString().includes(keyword)
+    (chapter.number || chapter.chapter_number).toString().includes(keyword)
   )
 })
 
@@ -182,7 +191,6 @@ watch(() => props.chapters, (newChapters) => {
 }
 
 .chapter-card {
-  height: 100%;
   display: flex;
   flex-direction: column;
 }

@@ -1264,7 +1264,10 @@ const loadBookChapters = async () => {
   
   try {
     loadingChapters.value = true
-    const response = await booksAPI.getBookChapters(selectedBook.value)
+    const response = await booksAPI.getBookChapters(selectedBook.value, {
+      sort_by: 'chapter_number',
+      sort_order: 'asc'
+    })
     const allChapters = (response.data.success && response.data.data) ? response.data.data : (response.data.data || response.data || [])
     
     // 过滤出已完成智能分析的章节
@@ -1704,7 +1707,10 @@ const loadAllAnalyzedChapters = async () => {
     // 遍历每本书，获取已分析的章节
     for (const book of allBooks) {
       try {
-        const chaptersResponse = await booksAPI.getBookChapters(book.id)
+        const chaptersResponse = await booksAPI.getBookChapters(book.id, {
+          sort_by: 'chapter_number',
+          sort_order: 'asc'
+        })
         const bookChapters = (chaptersResponse.data.success && chaptersResponse.data.data) ? chaptersResponse.data.data : (chaptersResponse.data.data || chaptersResponse.data || [])
         
         // 过滤已分析的章节并添加书籍信息

@@ -2071,7 +2071,9 @@ const loadChapters = async (bookId) => {
   try {
     const response = await chapterAPI.getChapters(bookId, {
       page: 1,
-      page_size: 100 // 加载更多章节
+      page_size: 100, // 加载更多章节
+      sort_by: 'chapter_number',
+      sort_order: 'asc'
     })
     
     console.log('[智能发现] 章节API响应:', response)
