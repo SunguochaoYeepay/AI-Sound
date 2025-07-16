@@ -21,7 +21,11 @@
     "ttsServiceUrl": "http://localhost:7929",
     "concurrentLimit": 3,
     "ollamaServiceUrl": "http://localhost:11434",
-    "defaultLlmModel": "qwen:latest"
+    "defaultLlmModel": "qwen:latest",
+    "analysisMode": "balanced",
+    "fastModeEnabled": true,
+    "analysisTimeout": 120,
+    "enableSecondaryCheck": false
   },
   "storage": {
     "audioRetentionDays": 30,

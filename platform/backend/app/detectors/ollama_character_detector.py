@@ -22,6 +22,9 @@ class OllamaCharacterDetector:
         self.api_url = ollama_url or "http://localhost:11434/api/generate"
         self.logger = logging.getLogger(__name__)
         
+        # 读取系统设置
+        self.settings = self._load_system_settings()
+        
         # 智能模型选择策略
         self.model_selection_strategy = {
             "short_text_threshold": 2000,  # 短文本阈值
@@ -30,7 +33,31 @@ class OllamaCharacterDetector:
             "long_model": "qwen2.5:7b"     # 长文本使用7B高速模型
         }
         
-        self.logger.info(f"🚀 OllamaCharacterDetector 初始化完成，智能模型选择: {model_name}")
+        mode = "快速模式" if self.settings.get("fastModeEnabled", True) else "标准模式"
+        self.logger.info(f"🚀 OllamaCharacterDetector 初始化完成，分析模式: {mode}")
+    
+    def _load_system_settings(self) -> dict:
+        """加载系统设置"""
+        try:
+            import os
+            config_file = os.path.join(
+                os.path.dirname(os.path.dirname(__file__)),
+                "config", "data", "system_settings.json"
+            )
+            if os.path.exists(config_file):
+                import json
+                with open(config_file, 'r', encoding='utf-8') as f:
+                    settings = json.load(f)
+                    return settings.get("ai", {})
+        except Exception as e:
+            self.logger.warning(f"无法加载系统设置，使用默认值: {e}")
+        
+        # 默认快速模式设置
+        return {
+            "fastModeEnabled": True,
+            "analysisTimeout": 60,
+            "enableSecondaryCheck": False
+        }
 
     def _select_optimal_model(self, text: str) -> str:
         """🎯 智能模型选择：根据文本长度选择最优模型"""
@@ -59,22 +86,22 @@ class OllamaCharacterDetector:
         return selected_model
 
     def _get_model_options(self) -> Dict:
-        """🎯 获取不同模型的优化参数"""
+        """🎯 获取平衡的分析参数 - 修复内容丢失问题"""
         if self.model_name == "qwen2.5:14b":
-            # 14B模型：高精度，较低温度
+            # 14B模型：确保输出完整性
             return {
-                "temperature": 0.1,    # 更低温度，提高稳定性
-                "top_p": 0.85,         # 适中采样
-                "max_tokens": 8000,    # 适中输出长度
-                "num_ctx": 8192        # 适中上下文
+                "temperature": 0.2,    # 低温度确保稳定性
+                "top_p": 0.9,          # 标准采样
+                "max_tokens": 8000,    # 足够的输出长度确保完整性
+                "num_ctx": 8192        # 足够的上下文长度
             }
         else:
-            # 7B模型：高速度，适度精度
+            # 7B模型：平衡速度和完整性
             return {
-                "temperature": 0.2,    # 稍高温度，平衡速度和精度
-                "top_p": 0.8,          # 标准采样
-                "max_tokens": 6000,    # 较短输出，提高速度
-                "num_ctx": 6144        # 较短上下文，提高速度
+                "temperature": 0.3,    # 适中温度
+                "top_p": 0.9,          # 快速采样
+                "max_tokens": 6000,    # 充足的输出长度
+                "num_ctx": 6144        # 充足的上下文
             }
 
     def _smart_chunk_text(self, text: str, max_chunk_size: int = 3000) -> List[Dict]:
@@ -282,13 +309,13 @@ class OllamaCharacterDetector:
             # 🎯 智能模型选择
             self.model_name = self._select_optimal_model(text)
             
-            # 🎯 智能分块策略：根据模型调整分块参数
+            # 🎯 简化分块策略：提高阈值减少分块
             if self.model_name == "qwen2.5:14b":
-                chunk_threshold = 3000  # 14B模型：3000字符启用分块
-                max_chunk_size = 2000   # 14B模型：每块2000字符
+                chunk_threshold = 6000  # 14B模型：6000字符启用分块
+                max_chunk_size = 4000   # 14B模型：每块4000字符
             else:
-                chunk_threshold = 4000  # 7B模型：4000字符启用分块  
-                max_chunk_size = 3000   # 7B模型：每块3000字符
+                chunk_threshold = 8000  # 7B模型：8000字符启用分块  
+                max_chunk_size = 5000   # 7B模型：每块5000字符
             
             if text_length > chunk_threshold:
                 logger.info(f"文本长度{text_length}字符，启用智能分块处理({self.model_name})")
@@ -399,6 +426,13 @@ class OllamaCharacterDetector:
             result = self._parse_comprehensive_response(response)
             
             # 🔥 修复：增加内容完整性校验和重试
+            logger.info(f"🔍 调用完整性校验前 - result keys: {list(result.keys())}")
+            segments_list = result.get('segments', [])
+            logger.info(f"🔍 调用完整性校验前 - segments数量: {len(segments_list)}")
+            if len(segments_list) > 0:
+                first_seg = segments_list[0]
+                logger.info(f"🔍 第一个segment: order={first_seg.get('order')}, text_len={len(first_seg.get('text', ''))}, speaker='{first_seg.get('speaker')}'")
+            
             completeness_valid = self._validate_completeness(text, result['segments'])
             if not completeness_valid:
                 logger.warning("内容完整性校验失败，尝试重新分析")
@@ -417,8 +451,11 @@ class OllamaCharacterDetector:
                     else:
                         logger.warning("重新分析仍未通过完整性校验，使用原结果并记录警告")
             
-            # 🚀 新增：二次检查机制
-            result = await self._secondary_check_analysis(text, result)
+            # 🚀 根据系统设置决定是否启用二次检查机制
+            if self.settings.get("enableSecondaryCheck", False):
+                result = await self._secondary_check_analysis(text, result)
+            else:
+                self.logger.info("快速模式：跳过二次检查机制")
             
             return result
         else:
@@ -703,8 +740,11 @@ class OllamaCharacterDetector:
             if response:
                 result = self._parse_comprehensive_response(response)
                 
-                # 🔥 修复：为每个分块也应用二次检查逻辑
-                result = await self._secondary_check_analysis(chunk_text, result)
+                # 🔥 根据系统设置决定是否启用分块的二次检查
+                if self.settings.get("enableSecondaryCheck", False):
+                    result = await self._secondary_check_analysis(chunk_text, result)
+                else:
+                    self.logger.debug("快速模式：跳过分块二次检查")
                 
                 logger.info(f"第{chunk_id}块分析完成：{len(result.get('segments', []))}段落，{len(result.get('characters', []))}个角色")
                 return result
@@ -722,17 +762,37 @@ class OllamaCharacterDetector:
             # 统计原文字数（去除空格和换行）
             original_chars = len(original_text.replace(' ', '').replace('\n', '').replace('\r', ''))
             
+            # 🔍 调试：检查segments参数
+            logger.info(f"🔍 完整性校验 - segments数量: {len(segments)}")
+            if len(segments) > 0:
+                logger.info(f"🔍 第一个segment示例: {segments[0]}")
+                logger.info(f"🔍 最后一个segment示例: {segments[-1]}")
+            else:
+                logger.error(f"❌ segments为空列表！这是问题所在")
+            
             # 统计segments字数（去除空格和换行）
             segment_chars = sum(len(seg.get('text', '').replace(' ', '').replace('\n', '').replace('\r', '')) for seg in segments)
+            
+            # 🔍 调试：详细统计信息
+            if segment_chars == 0 and len(segments) > 0:
+                logger.warning(f"异常：有{len(segments)}个segments但总字数为0，检查segments内容")
+                for i, seg in enumerate(segments[:3]):  # 只检查前3个
+                    text = seg.get('text', '')
+                    logger.warning(f"Segment {i}: text='{text}', length={len(text)}")
             
             # 计算完整度比例
             completeness_ratio = segment_chars / original_chars if original_chars > 0 else 0
             
             logger.info(f"内容完整性校验: 原文{original_chars}字符，分析结果{segment_chars}字符，完整度{completeness_ratio:.2%}")
             
-            # 如果差异超过15%，认为不完整 (针对14B模型优化)
-            if completeness_ratio < 0.85:
-                logger.warning(f"内容完整性校验失败: 完整度仅{completeness_ratio:.2%}，可能有内容丢失")
+            # 根据快速模式调整完整性阈值
+            if self.settings.get("fastModeEnabled", True):
+                min_ratio = 0.75  # 快速模式：75%以上认为可接受
+            else:
+                min_ratio = 0.85  # 标准模式：85%以上认为完整
+            
+            if completeness_ratio < min_ratio:
+                logger.warning(f"内容完整性校验失败: 完整度仅{completeness_ratio:.2%}，阈值{min_ratio:.0%}")
                 return False
             
             # 检查是否有明显的文本遗漏（通过关键词检查）
@@ -741,8 +801,16 @@ class OllamaCharacterDetector:
             segment_keywords = self._extract_keywords(segment_text)
             
             missing_keywords = original_keywords - segment_keywords
-            if len(missing_keywords) > len(original_keywords) * 0.2:  # 如果超过20%的关键词丢失
-                logger.warning(f"关键词完整性校验失败: 丢失关键词{missing_keywords}")
+            missing_ratio = len(missing_keywords) / len(original_keywords) if original_keywords else 0
+            
+            # 根据快速模式调整关键词丢失容忍度
+            if self.settings.get("fastModeEnabled", True):
+                max_missing = 0.3  # 快速模式：允许30%关键词丢失
+            else:
+                max_missing = 0.2  # 标准模式：允许20%关键词丢失
+            
+            if missing_ratio > max_missing:
+                logger.warning(f"关键词完整性校验失败: 丢失{missing_ratio:.1%}关键词，阈值{max_missing:.0%}")
                 return False
             
             logger.info("内容完整性校验通过")
@@ -930,83 +998,43 @@ class OllamaCharacterDetector:
         return prompt
 
     def _build_comprehensive_analysis_prompt(self, text: str) -> str:
-        """构建综合分析提示词 - 通用混合文本处理版本"""
+        """构建平衡的分析提示词 - 确保完整性"""
         
-        prompt = f"""你是一个专业的中文小说文本分析专家。你的任务是分析小说文本，准确识别角色和分离混合文本。
+        prompt = f"""你是专业的中文小说文本分析专家。请完整分析以下文本，确保不遗漏任何内容。
 
-**核心原则：混合文本必须分离！**
+**⚠️ 重要：必须处理所有文本内容，不能遗漏任何句子！**
 
-当遇到包含"叙述+对话"的混合句子时，必须分离成两个独立的segment：
-1. 叙述部分 → 旁白
-2. 对话部分 → 对应角色
+核心任务：
+1. 按句子分段，识别每段的说话者
+2. 分离混合格式："角色说：'对话'" → 两段：动作(旁白) + 对话(角色)  
+3. 引号内容=角色对话，描述动作=旁白
+4. 确保所有文本都在segments中体现
 
-**混合文本识别和分离示例：**
-
-示例1：消息引述格式
-输入：`"叮 ——" 手机震动打断思绪，是导师发来的消息："新出土的未央宫残简，速来。"`
-正确分离：
-- Segment 1: `"叮 ——" 手机震动打断思绪，是导师发来的消息：` → 旁白
-- Segment 2: `新出土的未央宫残简，速来。` → 导师
-
-示例2：对话+动作格式
-输入：`"何人在此？" 将领勒马，长枪直指他咽喉。`
-正确分离：
-- Segment 1: `何人在此？` → 将领
-- Segment 2: `将领勒马，长枪直指他咽喉。` → 旁白
-
-示例3：角色说话+引用格式
-输入：`林渊说道："这确实是汉代的竹简。"`
-正确分离：
-- Segment 1: `林渊说道：` → 旁白
-- Segment 2: `这确实是汉代的竹简。` → 林渊
-
-示例4：复杂嵌套格式
-输入：`"你好，"小明笑着说，"很高兴见到你。"`
-正确分离：
-- Segment 1: `你好，` → 小明
-- Segment 2: `小明笑着说，` → 旁白  
-- Segment 3: `很高兴见到你。` → 小明
-
-示例5：自言自语格式
-输入：`白骨精自言自语道："造化！"`
-正确分离：
-- Segment 1: `白骨精自言自语道：` → 旁白
-- Segment 2: `造化！` → 白骨精
-
-**通用分离规则：**
-1. **引号内容**：始终是角色对话，分配给相应角色
-2. **描述性动作**：如"XX说道"、"XX笑着说"、"XX发来的消息"等，始终是旁白
-3. **动作描述**：如"勒马"、"长枪直指"、"转身"等，始终是旁白
-4. **引述标记**：冒号前的引述部分（如"导师发来的消息："）是旁白
-5. **完整性**：确保原文每个字符都被包含在某个segment中
-
-**绝对不能做的事情：**
-- 不要将整个混合句子归属给一个角色
-- 不要忽略任何文本内容
-- 不要将明显的叙述内容标记为角色对话
-
-现在请分析以下文本，严格按照上述规则进行分离：
+关键规则：
+- 每个完整句子都要成为一个segment
+- "XX说："等动作描述 → 旁白
+- 引号内的实际话语 → 对应角色
+- 纯描述性文字 → 旁白
 
 文本：
 {text}
 
-输出要求：
-1. 必须识别并分离所有混合文本
-2. 每个segment必须是纯粹的对话或纯粹的叙述
-3. 不能遗漏任何文本内容
-4. 角色名称保持一致
+**完整性要求：**
+- segments总字数应接近原文字数
+- 每个句子都必须包含在某个segment中
+- 不能跳过任何内容段落
 
-输出格式（严格JSON）：
+输出JSON格式：
 {{
   "segments": [
-    {{"order": 1, "text": "文本内容", "speaker": "说话者", "text_type": "dialogue/narration", "confidence": 0.95}}
+    {{"order": 1, "text": "完整文本内容", "speaker": "说话者", "text_type": "dialogue/narration", "confidence": 0.9}}
   ],
   "characters": [
-    {{"name": "角色名", "frequency": 出现次数, "gender": "male/female/neutral", "personality": "calm/brave/gentle", "is_main_character": true/false, "confidence": 0.8}}
+    {{"name": "角色名", "frequency": 出现次数, "gender": "male/female/neutral", "is_main_character": true/false, "confidence": 0.8}}
   ]
 }}
 
-只输出JSON，不要其他文字。"""
+只输出JSON，确保包含所有文本内容。"""
         
         return prompt
 
@@ -1020,10 +1048,11 @@ class OllamaCharacterDetector:
                 "options": self._get_model_options()
             }
             
+            timeout = self.settings.get("analysisTimeout", 60)
             response = requests.post(
                 self.api_url,
                 json=payload,
-                timeout=300  # 🔥 修复：增加超时时间到5分钟，避免长文本分析超时
+                timeout=timeout  # 从系统设置读取超时时间
             )
             
             if response.status_code == 200:
@@ -1123,10 +1152,18 @@ class OllamaCharacterDetector:
                                 }
                             })
                 
-                return {
+                result = {
                     'segments': segments,
                     'characters': characters
                 }
+                
+                # 🔍 调试：检查解析结果
+                logger.debug(f"解析完成 - segments数量: {len(segments)}")
+                logger.debug(f"解析完成 - characters数量: {len(characters)}")
+                if len(segments) > 0:
+                    logger.debug(f"解析完成 - 第一个segment: {segments[0]}")
+                
+                return result
             
             else:
                 logger.error("无法从Ollama响应中提取JSON数据")
