@@ -314,6 +314,9 @@
     
     <!-- 全局音频播放器 -->
     <GlobalAudioPlayer />
+
+    <!-- Stagewise工具栏 -->
+    <StagewiseToolbar v-if="isDev" />
   </a-layout>
 </template>
 
@@ -326,6 +329,8 @@ import { useWebSocketStore } from './stores/websocket.js'
 import { systemAPI } from './api/v2.js'
 import DevConsole from './components/DevConsole.vue'
 import GlobalAudioPlayer from './components/GlobalAudioPlayer.vue'
+import { StagewiseToolbar } from '@stagewise/toolbar-vue'
+
 
 const router = useRouter()
 const route = useRoute()

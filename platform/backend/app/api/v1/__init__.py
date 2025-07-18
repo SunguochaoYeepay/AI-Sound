@@ -26,6 +26,7 @@ from .environment_sounds import router as environment_sounds_router
 from .scene_analysis import router as scene_analysis_router
 from .environment_generation import router as environment_generation_router
 from .environment_mixing import router as environment_mixing_router
+from .segment_analysis import router as segment_analysis_router
 
 # Import sound editor router (for multi-track audio editor)
 from .sound_editor import router as sound_editor_router
@@ -126,6 +127,7 @@ api.include_router(environment_sounds_router, prefix="/environment-sounds", tags
 api.include_router(scene_analysis_router, tags=["Scene Analysis"])
 api.include_router(environment_generation_router, tags=["Environment Generation"])
 api.include_router(environment_mixing_router, tags=["Environment Mixing"])
+api.include_router(segment_analysis_router, prefix="/segment_analysis", tags=["Segment Analysis"])
 api.include_router(system_router, tags=["System Settings"])
 api.include_router(logs_router, tags=["Log Monitor"])
 api.include_router(backup_router, tags=["Database Backup"])

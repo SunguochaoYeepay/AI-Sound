@@ -68,6 +68,15 @@
                 🤖 智能准备
               </a-button>
               <a-button 
+                type="default"
+                @click="runIntelligentDetection" 
+                size="small" 
+                :loading="detecting"
+                :disabled="!hasAnalysisData"
+              >
+                🔍 智能检测
+              </a-button>
+              <a-button 
                 type="primary" 
                 @click="saveChanges" 
                 size="small" 
@@ -76,6 +85,7 @@
               >
                 💾 保存修改
               </a-button>
+            
             </a-space>
           </template>
 
@@ -84,6 +94,34 @@
             <div class="segments-editor">
               <div class="editor-header">
                 <h4>合成片段配置</h4>
+                
+                <!-- 检测结果展示区域 -->
+                <div v-if="detectionResult && detectionResult.issues.length > 0" class="detection-results">
+                  <a-alert
+                    :message="`发现 ${detectionResult.issues.length} 个问题`"
+                    :description="`严重: ${detectionResult.stats?.critical_count || 0}, 警告: ${detectionResult.stats?.warning_count || 0}, 信息: ${detectionResult.stats?.info_count || 0}`"
+                    type="warning"
+                    show-icon
+                    closable
+                    @close="clearDetectionResult"
+                  >
+                    <template #action>
+                      <a-space>
+                        <a-button size="small" @click="showDetectionDetails = true">查看详情</a-button>
+                        <a-button 
+                          v-if="detectionResult.fixable_count > 0"
+                          size="small" 
+                          type="primary"
+                          @click="applyAutoFix"
+                          :loading="applyingFix"
+                        >
+                          自动修复 ({{ detectionResult.fixable_count }})
+                        </a-button>
+                      </a-space>
+                    </template>
+                  </a-alert>
+                </div>
+                
                 <div class="editor-controls">
                   <a-button
                     type="primary"
@@ -143,6 +181,7 @@
                         'segment-highlighted': highlightedCharacter && segment.speaker === highlightedCharacter,
                         'segment-dimmed': highlightedCharacter && segment.speaker !== highlightedCharacter
                       }"
+                      :data-segment-index="index"
                     >
                       <div class="segment-header">
                         <span class="segment-index">#{{ index + 1 }}</span>
@@ -688,6 +727,80 @@
         </div>
       </div>
     </a-drawer>
+    
+    <!-- 检测详情模态框 -->
+    <a-modal
+      v-model:open="showDetectionDetails"
+      title="智能检测详情"
+      width="800px"
+      :footer="null"
+    >
+      <div v-if="detectionResult" class="detection-details">
+        <a-descriptions :column="2" bordered size="small" style="margin-bottom: 16px;">
+          <a-descriptions-item label="检测时间">{{ detectionResult.detection_time }}</a-descriptions-item>
+          <a-descriptions-item label="总问题数">{{ detectionResult.issues.length }}</a-descriptions-item>
+          <a-descriptions-item label="严重问题">{{ detectionResult.stats.critical_count }}</a-descriptions-item>
+          <a-descriptions-item label="警告问题">{{ detectionResult.stats.warning_count }}</a-descriptions-item>
+          <a-descriptions-item label="信息问题">{{ detectionResult.stats.info_count }}</a-descriptions-item>
+          <a-descriptions-item label="可自动修复">{{ detectionResult.fixable_count }}</a-descriptions-item>
+        </a-descriptions>
+        
+        <a-list
+          :data-source="detectionResult.issues"
+          size="small"
+          :pagination="{ pageSize: 10, showSizeChanger: false }"
+        >
+          <template #renderItem="{ item }">
+            <a-list-item>
+              <a-list-item-meta>
+                <template #title>
+                  <a-space>
+                    <a-tag 
+                      :color="item.severity === 'critical' ? 'red' : item.severity === 'warning' ? 'orange' : 'blue'"
+                    >
+                      {{ item.severity === 'critical' ? '严重' : item.severity === 'warning' ? '警告' : '信息' }}
+                    </a-tag>
+                    <span>{{ item.message }}</span>
+                    <a-tag v-if="item.fixable" color="green">可修复</a-tag>
+                  </a-space>
+                </template>
+                <template #description>
+                  <div>
+                    <div v-if="item.segment_index !== undefined">
+                      <strong>位置:</strong> 第 {{ item.segment_index + 1 }} 个片段
+                    </div>
+                    <div v-if="item.suggestion">
+                      <strong>建议:</strong> {{ item.suggestion }}
+                    </div>
+                    <div v-if="item.context" class="issue-context">
+                      <strong>上下文:</strong> {{ item.context }}
+                    </div>
+                  </div>
+                </template>
+              </a-list-item-meta>
+              <template #actions>
+                <a-button 
+                  v-if="item.fixable"
+                  size="small" 
+                  type="link"
+                  @click="applySingleFix(item)"
+                >
+                  修复此问题
+                </a-button>
+                <a-button 
+                  v-if="item.segment_index !== undefined"
+                  size="small" 
+                  type="link"
+                  @click="jumpToSegment(item.segment_index)"
+                >
+                  跳转到片段
+                </a-button>
+              </template>
+            </a-list-item>
+          </template>
+        </a-list>
+      </div>
+    </a-modal>
   </div>
 </template>
 
@@ -707,6 +820,7 @@ import {
   ArrowUpOutlined,
   ArrowDownOutlined
 } from '@ant-design/icons-vue'
+import { smartPrepareAPI, deepAnalyzeAPI } from '@/api/sound-editor/segmentAnalysis'
 
 // 在Vue 3 setup script中，导入的组件可以直接在模板中使用
 
@@ -745,6 +859,12 @@ const hasChanges = ref(false)
 const highlightedCharacter = ref(null)
 const testingVoice = ref(null)
 const jsonEditMode = ref(false)
+
+// 智能检测相关状态
+const detecting = ref(false)
+const detectionResult = ref(null)
+const showDetectionDetails = ref(false)
+const applyingFix = ref(false)
 const editableJsonText = ref('')
 
 // 🔥 新增：缓存状态信息
@@ -777,6 +897,19 @@ const unifiedWavFileList = ref([])
 const unifiedNpyFileList = ref([])
 const unifiedWavFile = ref(null)
 const unifiedNpyFile = ref(null)
+
+const rawText = ref('')
+const segments = ref([])
+
+async function onSmartPrepare() {
+  const res = await smartPrepareAPI(rawText.value)
+  segments.value = res.data.data
+}
+
+async function onDeepAnalyze() {
+  const res = await deepAnalyzeAPI(segments.value)
+  segments.value = res.data.data
+}
 
 const loadBookCharacters = async () => {
   if (!props.chapter?.book_id) {
@@ -812,6 +945,11 @@ const missingCharacters = computed(() => {
 // 🔥 新增：待添加角色数量
 const missingCharactersCount = computed(() => {
   return missingCharacters.value.length
+})
+
+// 智能检测相关计算属性
+const hasAnalysisData = computed(() => {
+  return props.analysisData && (editableSegments.value.length > 0 || editableCharacters.value.length > 0)
 })
 
 // 🔥 新增：语音类型选项
@@ -1957,6 +2095,140 @@ const moveSegmentDown = (index) => {
   markChanged()
   message.success('段落已下移')
 }
+
+// 智能检测相关方法
+const runIntelligentDetection = async () => {
+  if (!props.chapter?.id) {
+    message.error('缺少章节信息')
+    return
+  }
+  
+  detecting.value = true
+  try {
+    const response = await fetch(`/api/v1/content-preparation/detect/${props.chapter.id}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        enable_ai_detection: true,
+        auto_fix: false
+      })
+    })
+    
+    const result = await response.json()
+    if (result.success) {
+      // 确保detection_result包含所有必要的字段
+      const detectionData = result.detection_result || {}
+      detectionResult.value = {
+        ...detectionData,
+        stats: detectionData.stats || {
+          critical_count: 0,
+          warning_count: 0,
+          info_count: 0,
+          total_count: 0
+        },
+        issues: detectionData.issues || [],
+        fixable_count: detectionData.fixable_count || 0
+      }
+      
+      if (detectionResult.value.issues.length === 0) {
+        message.success('检测完成，未发现问题')
+      } else {
+        message.warning(`检测完成，发现 ${detectionResult.value.issues.length} 个问题`)
+      }
+    } else {
+      message.error(result.message || '检测失败')
+    }
+  } catch (error) {
+    console.error('智能检测失败:', error)
+    message.error('检测失败，请稍后重试')
+  } finally {
+    detecting.value = false
+  }
+}
+
+const clearDetectionResult = () => {
+  detectionResult.value = null
+}
+
+const applyAutoFix = async () => {
+  if (!detectionResult.value || !props.chapter?.id) {
+    return
+  }
+  
+  applyingFix.value = true
+  try {
+    const response = await fetch(`/api/v1/content-preparation/detect/fix/${props.chapter.id}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        issues: detectionResult.value.issues.filter(issue => issue.fixable)
+      })
+    })
+    
+    const result = await response.json()
+    if (result.success) {
+      message.success(`已修复 ${result.data.fixed_count} 个问题`)
+      // 重新加载数据
+      emit('refresh')
+      clearDetectionResult()
+    } else {
+      message.error(result.message || '修复失败')
+    }
+  } catch (error) {
+    console.error('自动修复失败:', error)
+    message.error('修复失败，请稍后重试')
+  } finally {
+    applyingFix.value = false
+  }
+}
+
+const applySingleFix = async (issue) => {
+  if (!props.chapter?.id) {
+    return
+  }
+  
+  try {
+    const response = await fetch(`/api/v1/content-preparation/detect/fix/${props.chapter.id}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        issues: [issue]
+      })
+    })
+    
+    const result = await response.json()
+    if (result.success) {
+      message.success('问题已修复')
+      // 重新运行检测
+      await runIntelligentDetection()
+    } else {
+      message.error(result.message || '修复失败')
+    }
+  } catch (error) {
+    console.error('修复失败:', error)
+    message.error('修复失败，请稍后重试')
+  }
+}
+
+const jumpToSegment = (segmentIndex) => {
+  // 跳转到指定片段
+  const segmentElement = document.querySelector(`[data-segment-index="${segmentIndex}"]`)
+  if (segmentElement) {
+    segmentElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    // 高亮显示
+    segmentElement.style.backgroundColor = '#fff7e6'
+    setTimeout(() => {
+      segmentElement.style.backgroundColor = ''
+    }, 2000)
+  }
+  showDetectionDetails.value = false
+}
 </script>
 
 <style scoped>
@@ -2558,4 +2830,32 @@ const moveSegmentDown = (index) => {
   border-color: #1890ff;
   color: #1890ff;
 }
-</style> 
+
+/* 🔥 新增：智能检测样式 */
+.detection-results {
+  margin-bottom: 16px;
+}
+
+.detection-details .issue-context {
+  color: #666;
+  font-size: 12px;
+  margin-top: 4px;
+  padding: 4px 8px;
+  background: #f5f5f5;
+  border-radius: 4px;
+  max-width: 100%;
+  word-break: break-all;
+}
+
+.detection-details .ant-list-item {
+  padding: 12px 0;
+}
+
+.detection-details .ant-list-item-meta-title {
+  margin-bottom: 8px;
+}
+
+.detection-details .ant-descriptions {
+  background: #fafafa;
+}
+</style>

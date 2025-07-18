@@ -10,7 +10,7 @@ from app.database import get_db
 from app.services.character_service import CharacterService
 from app.models.character import Character
 from app.models.book import Book
-from app.models.chapter import Chapter
+from app.models.book_chapter import BookChapter
 
 def test_character_matching():
     """测试角色匹配功能"""
@@ -39,4 +39,4 @@ def test_character_matching():
         db.close()
 
 if __name__ == "__main__":
-    test_character_matching() 
+    test_character_matching()

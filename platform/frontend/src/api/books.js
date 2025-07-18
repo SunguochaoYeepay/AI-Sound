@@ -1,9 +1,9 @@
-import request from '@/utils/request'
+import apiClient from '@/api/config'
 
 export default {
   // 获取书籍列表
   getBooks(params) {
-    return request({
+    return apiClient({
       url: '/api/v1/books',
       method: 'get',
       params
@@ -64,4 +64,4 @@ export default {
       params
     })
   }
-} 
+}

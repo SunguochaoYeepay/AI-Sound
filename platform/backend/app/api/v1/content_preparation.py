@@ -10,8 +10,9 @@ from typing import Optional, Dict, Any
 import logging
 
 from app.database import get_db
-from app.models import BookChapter, Book
+from app.models import BookChapter, Book, AnalysisResult
 from app.services.content_preparation_service import ContentPreparationService
+from app.services.intelligent_detection_service import IntelligentDetectionService
 
 router = APIRouter(prefix="/content-preparation")
 logger = logging.getLogger(__name__)
@@ -224,7 +225,6 @@ async def get_preparation_result(
         
         # 检查是否有智能准备结果
         try:
-            from app.models import AnalysisResult
             
             # 查找最新的智能准备结果
             latest_result = db.query(AnalysisResult).filter(
@@ -300,9 +300,9 @@ async def get_preparation_result(
                 "message": "智能准备结果获取成功"
             }
             
-        except ImportError:
+        except Exception as e:
             # 兼容旧版本：如果没有AnalysisResult模型，尝试从章节字段获取
-            analysis_result = getattr(chapter, 'character_analysis_result', None)
+            analysis_result = chapter.analysis_results[0].original_analysis if chapter.analysis_results else None
             if not analysis_result:
                 raise HTTPException(status_code=404, detail="该章节尚未完成智能准备")
             
@@ -346,7 +346,6 @@ async def clear_preparation_cache(
             - all: 清除所有缓存（将重新智能准备）
     """
     try:
-        from app.models import AnalysisResult
         from sqlalchemy.orm.attributes import flag_modified
         
         # 查找最新的智能准备结果
@@ -416,7 +415,6 @@ async def update_preparation_result(
         
         # 尝试找到现有的分析结果
         try:
-            from app.models import AnalysisResult
             
             # 查找最新的智能准备结果
             latest_result = db.query(AnalysisResult).filter(
@@ -514,11 +512,11 @@ async def update_preparation_result(
                 "message": f"智能准备结果更新成功，已自动同步 {updated_chapters_count} 个章节的角色配置"
             }
             
-        except ImportError:
+        except Exception as e:
             # 如果没有AnalysisResult模型，尝试更新章节字段
             try:
                 import json
-                chapter.character_analysis_result = json.dumps(update_data, ensure_ascii=False)
+                chapter.analysis_results[0].original_analysis = json.dumps(update_data, ensure_ascii=False)
                 db.commit()
                 
                 from datetime import datetime
@@ -677,3 +675,316 @@ async def ai_resegment_text(
     except Exception as e:
         logger.error(f"AI重新分段失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"AI重新分段失败: {str(e)}")
+
+
+# ==================== 智能检测相关API ====================
+
+class DetectionRequest(BaseModel):
+    """智能检测请求模型"""
+    use_ai: bool = True
+    auto_fix: bool = False
+
+
+@router.post("/detect/{chapter_id}")
+async def detect_chapter_issues(
+    chapter_id: int,
+    request: DetectionRequest = Body(default=DetectionRequest()),
+    db: Session = Depends(get_db)
+):
+    """
+    执行章节内容智能检测
+    检测智能准备后可能存在的问题
+    
+    Args:
+        chapter_id: 章节ID
+        request: 检测请求参数
+            - use_ai: 是否使用AI检测
+            - auto_fix: 是否自动修复可修复的问题
+    
+    Returns:
+        检测结果，包含问题列表和统计信息
+    """
+    try:
+        # 获取章节
+        chapter = db.query(BookChapter).filter(BookChapter.id == chapter_id).first()
+        if not chapter:
+            raise HTTPException(status_code=404, detail="章节不存在")
+        
+        # 检查是否已完成智能准备
+        if not chapter.analysis_results:
+            raise HTTPException(status_code=400, detail="章节尚未完成智能准备，无法进行检测")
+        
+        # 创建检测服务
+        detection_service = IntelligentDetectionService()
+        
+        # 执行检测
+        detection_result = await detection_service.detect_chapter_issues(
+            chapter_id=chapter_id,
+            enable_ai_detection=request.use_ai
+        )
+        
+        # 如果启用自动修复
+        fixed_segments = None
+        fix_logs = []
+        if request.auto_fix and detection_result.issues:
+            # 这里可以添加自动修复逻辑，目前先跳过
+            pass
+        
+        # 计算统计信息
+        critical_count = sum(1 for issue in detection_result.issues if issue.severity == 'critical')
+        warning_count = sum(1 for issue in detection_result.issues if issue.severity == 'warning')
+        info_count = sum(1 for issue in detection_result.issues if issue.severity == 'info')
+        fixable_count = sum(1 for issue in detection_result.issues if issue.fixable)
+        
+        # 转换DetectionResult对象为字典格式
+        result_dict = {
+            "chapter_id": detection_result.chapter_id,
+            "total_issues": detection_result.total_issues,
+            "issues_by_severity": detection_result.issues_by_severity,
+            "fixable_issues": detection_result.fixable_issues,
+            "fixable_count": fixable_count,
+            "stats": {
+                "critical_count": critical_count,
+                "warning_count": warning_count,
+                "info_count": info_count,
+                "total_count": len(detection_result.issues)
+            },
+            "issues": [{
+                "issue_type": issue.issue_type,
+                "severity": issue.severity,
+                "segment_index": issue.segment_index,
+                "description": issue.description,
+                "suggestion": issue.suggestion,
+                "context": issue.context,
+                "fixable": issue.fixable,
+                "fix_data": issue.fix_data
+            } for issue in detection_result.issues],
+            "detection_time": detection_result.detection_time
+        }
+        
+        return {
+            "success": True,
+            "detection_result": result_dict,
+            "auto_fix_applied": request.auto_fix and len(fix_logs) > 0,
+            "fix_logs": fix_logs,
+            "fixed_segments": fixed_segments,
+            "message": f"检测完成，发现 {detection_result.total_issues} 个问题"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"智能检测失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"智能检测失败: {str(e)}")
+
+
+@router.get("/detect/result/{chapter_id}")
+async def get_detection_result(
+    chapter_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    获取章节的最新检测结果
+    
+    Args:
+        chapter_id: 章节ID
+    
+    Returns:
+        最新的检测结果
+    """
+    try:
+        # 获取章节
+        chapter = db.query(BookChapter).filter(BookChapter.id == chapter_id).first()
+        if not chapter:
+            raise HTTPException(status_code=404, detail="章节不存在")
+        
+        # 检查是否有检测结果（这里可以扩展为从数据库存储的检测结果中获取）
+        # 目前先返回基本信息，后续可以添加检测结果的持久化存储
+        
+        return {
+            "success": True,
+            "chapter_id": chapter_id,
+            "has_detection_result": False,
+            "message": "暂无检测结果，请先执行检测"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取检测结果失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取检测结果失败: {str(e)}")
+
+
+@router.post("/detect/fix/{chapter_id}")
+async def apply_detection_fixes(
+    chapter_id: int,
+    fix_data: Dict[str, Any],
+    db: Session = Depends(get_db)
+):
+    """
+    应用检测问题的修复
+    
+    Args:
+        chapter_id: 章节ID
+        fix_data: 修复数据
+            - issues: 要修复的问题列表（单个问题修复）
+            - fixed_segments: 修复后的片段数据（批量修复）
+    
+    Returns:
+        修复结果
+    """
+    try:
+        # 获取章节
+        chapter = db.query(BookChapter).filter(BookChapter.id == chapter_id).first()
+        if not chapter:
+            raise HTTPException(status_code=404, detail="章节不存在")
+        
+        # 支持两种修复模式：单个问题修复和批量修复
+        issues_to_fix = fix_data.get('issues', [])
+        fixed_segments = fix_data.get('fixed_segments', [])
+        
+        # 如果是单个问题修复模式
+        if issues_to_fix and not fixed_segments:
+            logger.info(f"开始单个问题修复，章节ID: {chapter_id}, 问题数量: {len(issues_to_fix)}")
+            
+            # 获取当前章节的分析结果
+            analysis_result = db.query(AnalysisResult).filter(
+                AnalysisResult.chapter_id == chapter_id
+            ).order_by(AnalysisResult.created_at.desc()).first()
+            
+            if not analysis_result:
+                logger.error(f"未找到章节 {chapter_id} 的分析结果")
+                raise HTTPException(status_code=400, detail="未找到章节的分析结果")
+            
+            if not analysis_result.synthesis_plan:
+                logger.error(f"章节 {chapter_id} 的分析结果中没有合成计划")
+                raise HTTPException(status_code=400, detail="未找到章节的合成计划")
+            
+            # 确保synthesis_plan是字典类型
+            if not isinstance(analysis_result.synthesis_plan, dict):
+                logger.error(f"章节 {chapter_id} 的合成计划不是字典类型: {type(analysis_result.synthesis_plan)}")
+                raise HTTPException(status_code=400, detail="合成计划格式错误")
+            
+            # 应用单个问题的修复
+            current_segments = analysis_result.synthesis_plan.get('segments', [])
+            logger.info(f"当前片段数量: {len(current_segments)}")
+
+            # 如果没有片段数据，则无需尝试修复任何问题
+            if not current_segments:
+                error_detail = f"章节 {chapter_id} 的合成计划中没有片段数据，无法应用修复。请先执行章节分析以生成片段数据。"
+                logger.warning(error_detail)
+                raise HTTPException(status_code=400, detail=error_detail)
+            
+            # 检查是否有可修复的问题
+            if not issues_to_fix:
+                logger.warning(f"章节 {chapter_id} 没有提供可修复的问题")
+                return {
+                    "success": False,
+                    "message": "没有提供可修复的问题",
+                        "details": "请检查修复数据"
+                    }
+
+            fixed_count = 0
+            
+            for i, issue in enumerate(issues_to_fix):
+                logger.info(f"处理问题 {i+1}: {issue}")
+                
+                if issue.get('fixable') and issue.get('fix_data'):
+                    segment_index = issue.get('segment_index')
+                    logger.info(f"问题的片段索引: {segment_index}")
+                    if segment_index is None:
+                        logger.warning(f"问题 {i+1} 缺少片段索引")
+                        continue
+                    
+                    if 0 <= segment_index < len(current_segments):
+                        # 应用修复数据
+                        fix_data_content = issue.get('fix_data', {})
+                        if fix_data_content:
+                            logger.info(f"应用修复数据到片段 {segment_index}: {fix_data_content}")
+                            current_segments[segment_index].update(fix_data_content)
+                            fixed_count += 1
+                        else:
+                            logger.warning(f"问题 {i+1} 的修复数据为空")
+                    else:
+                        logger.warning(f"问题 {i+1} 的片段索引 {segment_index} 超出范围 [0, {len(current_segments)-1}]")
+                else:
+                    logger.warning(f"问题 {i+1} 不可修复或缺少修复数据")
+            
+            if fixed_count == 0:
+                error_detail = "没有成功修复任何问题。请检查提供的修复数据（如 segment_index 是否正确，fixable 是否为 True，fix_data 是否有效）。"
+                logger.error(error_detail)
+                raise HTTPException(status_code=400, detail=error_detail)
+            
+            # 更新分析结果
+            import json
+            from datetime import datetime
+            
+            final_config = analysis_result.synthesis_plan.copy() if analysis_result.synthesis_plan else {}
+            final_config.update({
+                'segments': current_segments,
+                'total_segments': len(current_segments),
+                'last_updated': datetime.now().isoformat(),
+                'updated_by': 'single_issue_fix'
+            })
+            
+            analysis_result.final_config = final_config
+            db.commit()
+            
+            logger.info(f"单个问题修复成功，修复了 {fixed_count} 个问题")
+            
+            return {
+                "success": True,
+                "message": f"成功修复 {fixed_count} 个问题",
+                "fixed_issues": fixed_count
+            }
+        
+        # 批量修复模式
+        elif fixed_segments:
+            try:
+                # 获取AnalysisResult
+                analysis_result = db.query(AnalysisResult).filter(
+                    AnalysisResult.chapter_id == chapter_id
+                ).order_by(AnalysisResult.created_at.desc()).first()
+                
+                if not analysis_result:
+                    logger.error(f"未找到章节 {chapter_id} 的分析结果")
+                    raise HTTPException(status_code=404, detail="未找到分析结果")
+                
+                # 更新final_config以标记为用户编辑
+                import json
+                from datetime import datetime
+                
+                final_config = analysis_result.synthesis_plan.copy() if analysis_result.synthesis_plan else {}
+                final_config.update({
+                    'synthesis_plan': fixed_segments,
+                    'total_segments': len(fixed_segments),
+                    'last_updated': datetime.now().isoformat(),
+                    'updated_by': 'detection_fix'
+                })
+                
+                analysis_result.final_config = final_config
+                db.commit()
+                
+                logger.info(f"批量修复成功，更新了 {len(fixed_segments)} 个片段")
+                
+                return {
+                    "success": True,
+                    "message": f"成功应用修复，更新了 {len(fixed_segments)} 个片段",
+                    "updated_segments": len(fixed_segments)
+                }
+            except HTTPException:
+                db.rollback()
+                raise
+            except Exception as e:
+                db.rollback()
+                logger.error(f"批量修复处理失败: {str(e)}")
+                raise HTTPException(status_code=500, detail=f"批量修复处理失败: {str(e)}")
+        else:
+            raise HTTPException(status_code=400, detail="请提供要修复的问题列表或修复后的片段数据")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"应用修复失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"应用修复失败: {str(e)}")

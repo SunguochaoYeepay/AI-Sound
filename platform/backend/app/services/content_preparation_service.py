@@ -288,9 +288,9 @@ class ContentPreparationService:
                         "version": 1
                     }
                     
-                    # 如果章节有character_analysis_result字段，存储在那里
-                    if hasattr(chapter, 'character_analysis_result'):
-                        chapter.character_analysis_result = json.dumps(full_result, ensure_ascii=False)
+                    # 如果章节有analysis_results字段，存储在那里
+                    if chapter.analysis_results:
+                        chapter.analysis_results[0].original_analysis = json.dumps(full_result, ensure_ascii=False)
                     
                     self.db.commit()
                     
@@ -1234,4 +1234,4 @@ class ContentPreparationService:
             
         except Exception as e:
             logger.error(f"提取丢失内容异常: {str(e)}")
-            return "" 
+            return ""
