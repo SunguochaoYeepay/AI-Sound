@@ -12,7 +12,7 @@ export default {
 
   // 获取单本书籍
   getBook(id) {
-    return request({
+    return apiClient({
       url: `/api/v1/books/${id}`,
       method: 'get'
     })
@@ -20,7 +20,7 @@ export default {
 
   // 创建书籍
   createBook(data) {
-    return request({
+    return apiClient({
       url: '/api/v1/books',
       method: 'post',
       data,
@@ -32,7 +32,7 @@ export default {
 
   // 更新书籍
   updateBook(id, data) {
-    return request({
+    return apiClient({
       url: `/api/v1/books/${id}`,
       method: 'put',
       data
@@ -41,7 +41,7 @@ export default {
 
   // 删除书籍
   deleteBook(id) {
-    return request({
+    return apiClient({
       url: `/api/v1/books/${id}`,
       method: 'delete'
     })
@@ -49,7 +49,7 @@ export default {
 
   // 检测章节
   detectChapters(id, params = {}) {
-    return request({
+    return apiClient({
       url: `/api/v1/books/${id}/detect-chapters`,
       method: 'post',
       data: params

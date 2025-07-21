@@ -151,8 +151,9 @@
           book_id: book.value.id
         }))
 
-        // 加载所有章节的智能准备状态
-        await loadAllChapterPreparationStatus()
+        // 🔥 优化：不再一次性加载所有章节的准备状态
+        // 改为按需加载，在章节选择时加载对应状态
+        console.log('📊 章节加载完成，准备状态将按需加载')
       }
     } catch (error) {
       console.error('加载章节失败:', error)
@@ -164,46 +165,56 @@
     console.log('总章节数更新为:', total)
   }
 
-  // 加载所有章节的智能准备状态
-  const loadAllChapterPreparationStatus = async () => {
-    if (!chapters.value.length) return
+  // 加载单个章节的智能准备状态（按需加载）
+  const loadChapterPreparationStatus = async (chapterId) => {
+    if (!chapterId) return
 
     try {
-      const statusPromises = chapters.value.map(async (chapter) => {
-        try {
-          const response = await booksAPI.getPreparationStatus(chapter.id)
-          if (response.data?.success) {
-            return {
-              chapterId: chapter.id,
-              status: response.data.data
-            }
-          }
-        } catch (error) {
-          console.error(`加载章节${chapter.id}状态失败:`, error)
-          return {
-            chapterId: chapter.id,
-            status: { preparation_complete: false, preparation_started: false }
-          }
+      const response = await booksAPI.getPreparationStatus(chapterId)
+      if (response.data?.success) {
+        chapterPreparationStatus.value = {
+          ...chapterPreparationStatus.value,
+          [chapterId]: response.data.data
         }
-      })
-
-      const results = await Promise.all(statusPromises)
-      const statusMap = {}
-      results.forEach((result) => {
-        if (result) {
-          statusMap[result.chapterId] = result.status
-        }
-      })
-
-      chapterPreparationStatus.value = statusMap
+      }
     } catch (error) {
-      console.error('加载章节状态失败:', error)
+      console.error(`加载章节${chapterId}状态失败:`, error)
+      chapterPreparationStatus.value = {
+        ...chapterPreparationStatus.value,
+        [chapterId]: { preparation_complete: false, preparation_started: false }
+      }
     }
   }
 
-  // 选择章节
-  const selectChapter = (chapter) => {
+  // 批量加载指定章节的智能准备状态（可选优化）
+  const loadSelectedChaptersPreparationStatus = async (chapterIds) => {
+    if (!chapterIds?.length) return
+
+    try {
+      const response = await booksAPI.getChaptersPreparationStatus(book.value?.id, {
+        chapter_ids: chapterIds
+      })
+      
+      if (response.data?.success) {
+        const statusMap = response.data.data || {}
+        chapterPreparationStatus.value = {
+          ...chapterPreparationStatus.value,
+          ...statusMap
+        }
+      }
+    } catch (error) {
+      console.error('批量加载章节状态失败:', error)
+    }
+  }
+
+  // 选择章节 - 按需加载准备状态
+  const selectChapter = async (chapter) => {
     selectedChapterId.value = chapter.id
+    
+    // 🔥 优化：选择章节时加载该章节的准备状态
+    if (chapter.id) {
+      await loadChapterPreparationStatus(chapter.id)
+    }
   }
 
   // 章节检测

@@ -282,10 +282,17 @@
                       <div class="segment-content">
                         <a-textarea
                           v-model="segment.text"
-                          placeholder="文本内容"
+                          :placeholder="segment.text ? '文本内容' : '⚠️ 此片段文本内容为空，请手动输入或重新分析'"
                           :auto-size="{ minRows: 2, maxRows: 10 }"
                           @change="markChanged"
+                          :class="{ 'empty-text-warning': !segment.text || segment.text.trim() === '' }"
                         />
+                        <div v-if="!segment.text || segment.text.trim() === ''" class="empty-text-hint">
+                          💡 提示：此片段的文本内容为空，可能是AI分析时未能正确提取文本。您可以：
+                          <br>1. 手动输入文本内容
+                          <br>2. 重新进行智能分析
+                          <br>3. 删除此空片段
+                        </div>
                       </div>
                     </div>
                   </template>
@@ -1127,13 +1134,12 @@
           segment_id: segment.segment_id || (index + 1),
           chapter_id: segment.chapter_id || props.chapter?.id || null,
           chapter_number: segment.chapter_number || props.chapter?.number || 1,
-          
           // 🔥 关键修复：确保speaker和text字段正确显示
-      speaker: segment.speaker || '未知说话人',
-      text: segment.text || '',
-      
-      // 🔥 强制响应式更新
-      _forceUpdate: Date.now()
+          speaker: segment.speaker || '未知说话人',
+          text: segment.text || '',
+          
+          // 🔥 强制响应式更新
+          _forceUpdate: Date.now(),
           
           // 语音配置字段
           character_id: segment.character_id || null,
@@ -2967,5 +2973,31 @@
 
   .detection-details .ant-descriptions {
     background: #fafafa;
+  }
+
+  /* 空文本警告样式 */
+  .empty-text-warning {
+    border-color: #ff7875 !important;
+    background-color: #fff2f0 !important;
+  }
+
+  .empty-text-warning:focus {
+    border-color: #ff7875 !important;
+    box-shadow: 0 0 0 2px rgba(255, 120, 117, 0.2) !important;
+  }
+
+  .empty-text-hint {
+    margin-top: 8px;
+    padding: 8px 12px;
+    background: #fff7e6;
+    border: 1px solid #ffd591;
+    border-radius: 6px;
+    font-size: 12px;
+    color: #d46b08;
+    line-height: 1.5;
+  }
+
+  .empty-text-hint br {
+    margin: 2px 0;
   }
 </style>
