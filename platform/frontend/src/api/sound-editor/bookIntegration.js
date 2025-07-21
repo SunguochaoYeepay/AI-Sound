@@ -44,7 +44,12 @@ export async function getChapterResources(bookId, chapterIds) {
  * @param {number[]} chapterIds 章节ID列表
  * @param {Object} selectedResources 选中的资源 {dialogue_audio: [id1, id2], environment_configs: [id1]}
  */
-export async function createProjectFromChapters(projectName, bookId, chapterIds, selectedResources) {
+export async function createProjectFromChapters(
+  projectName,
+  bookId,
+  chapterIds,
+  selectedResources
+) {
   const res = await axios.post(`${API_BASE}/create-from-chapters`, {
     project_name: projectName,
     book_id: bookId,
@@ -52,4 +57,4 @@ export async function createProjectFromChapters(projectName, bookId, chapterIds,
     selected_resources: selectedResources
   })
   return res.data
-} 
+}

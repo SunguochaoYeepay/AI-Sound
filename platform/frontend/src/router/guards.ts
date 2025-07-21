@@ -16,7 +16,11 @@ export function createRouteMeta(meta) {
   return {
     title: meta.title || '',
     requiresAuth: meta.requiresAuth !== false,
-    permissions: Array.isArray(meta.permissions) ? meta.permissions : meta.permissions ? [meta.permissions] : [],
+    permissions: Array.isArray(meta.permissions)
+      ? meta.permissions
+      : meta.permissions
+        ? [meta.permissions]
+        : [],
     roles: Array.isArray(meta.roles) ? meta.roles : meta.roles ? [meta.roles] : [],
     hidden: meta.hidden || false
   }
@@ -51,7 +55,7 @@ async function beforeEach(to, from, next) {
       if (authStore.user?.is_superuser) {
         // 超级管理员拥有所有权限，直接通过
       } else {
-        const hasPermission = requiredPermissions.every(permission => 
+        const hasPermission = requiredPermissions.every((permission) =>
           userPermissions.includes(permission)
         )
         if (!hasPermission) {

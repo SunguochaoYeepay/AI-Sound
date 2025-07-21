@@ -88,4 +88,4 @@ export const smartEditingApi = {
       method: 'get'
     })
   }
-} 
+}

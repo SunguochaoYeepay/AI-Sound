@@ -1,36 +1,24 @@
 <template>
   <div class="backup-management">
-    <PageHeader 
-      title="数据库备份管理"
-      subtitle="管理数据库备份与恢复任务"
-    />
-    
+    <PageHeader title="数据库备份管理" subtitle="管理数据库备份与恢复任务" />
+
     <!-- 操作工具栏 -->
     <div class="toolbar">
       <a-row :gutter="16" align="middle">
         <a-col :span="12">
           <a-space>
-            <a-button 
-              type="primary" 
+            <a-button
+              type="primary"
               :icon="h(PlusOutlined)"
               @click="showCreateBackupModal"
               :loading="creating"
             >
               创建备份
             </a-button>
-            <a-button 
-              :icon="h(ReloadOutlined)"
-              @click="refreshBackupList"
-              :loading="loading"
-            >
+            <a-button :icon="h(ReloadOutlined)" @click="refreshBackupList" :loading="loading">
               刷新
             </a-button>
-            <a-button 
-              :icon="h(SettingOutlined)"
-              @click="showConfigModal"
-            >
-              备份配置
-            </a-button>
+            <a-button :icon="h(SettingOutlined)" @click="showConfigModal"> 备份配置 </a-button>
           </a-space>
         </a-col>
         <a-col :span="12" style="text-align: right">
@@ -128,7 +116,7 @@
           <template v-if="column.key === 'task_name'">
             <div class="task-name">
               <a-typography-text strong>{{ record.task_name }}</a-typography-text>
-              <br>
+              <br />
               <a-typography-text type="secondary" style="font-size: 12px">
                 ID: {{ record.id }}
               </a-typography-text>
@@ -154,8 +142,8 @@
 
           <!-- 进度 -->
           <template v-else-if="column.key === 'progress'">
-            <a-progress 
-              :percent="record.progress_percentage" 
+            <a-progress
+              :percent="record.progress_percentage"
               :status="record.status === 'failed' ? 'exception' : 'normal'"
               :show-info="false"
               size="small"
@@ -187,15 +175,11 @@
           <!-- 操作 -->
           <template v-else-if="column.key === 'actions'">
             <a-space>
-              <a-button 
-                size="small" 
-                @click="viewBackupDetails(record)"
-                :icon="h(EyeOutlined)"
-              >
+              <a-button size="small" @click="viewBackupDetails(record)" :icon="h(EyeOutlined)">
                 详情
               </a-button>
-              <a-button 
-                size="small" 
+              <a-button
+                size="small"
                 type="primary"
                 @click="showRestoreModal(record)"
                 :disabled="record.status !== 'success'"
@@ -209,8 +193,8 @@
                 cancel-text="取消"
                 @confirm="deleteBackup(record.id)"
               >
-                <a-button 
-                  size="small" 
+                <a-button
+                  size="small"
                   danger
                   :disabled="record.status === 'running'"
                   :icon="h(DeleteOutlined)"
@@ -286,409 +270,415 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, h } from 'vue'
-import { message } from 'ant-design-vue'
-import {
-  PlusOutlined,
-  ReloadOutlined,
-  SettingOutlined,
-  DatabaseOutlined,
-  CheckCircleOutlined,
-  HddOutlined,
-  ClockCircleOutlined,
-  EyeOutlined,
-  RedoOutlined,
-  DeleteOutlined,
-  LoadingOutlined,
-  CheckOutlined,
-  CloseOutlined,
-  ExclamationOutlined
-} from '@ant-design/icons-vue'
+  import { ref, reactive, onMounted, h } from 'vue'
+  import { message } from 'ant-design-vue'
+  import {
+    PlusOutlined,
+    ReloadOutlined,
+    SettingOutlined,
+    DatabaseOutlined,
+    CheckCircleOutlined,
+    HddOutlined,
+    ClockCircleOutlined,
+    EyeOutlined,
+    RedoOutlined,
+    DeleteOutlined,
+    LoadingOutlined,
+    CheckOutlined,
+    CloseOutlined,
+    ExclamationOutlined
+  } from '@ant-design/icons-vue'
 
-import PageHeader from '@/components/PageHeader.vue'
-import CreateBackupModal from '@/components/backup/CreateBackupModal.vue'
-import RestoreBackupModal from '@/components/backup/RestoreBackupModal.vue'
-import BackupDetailsDrawer from '@/components/backup/BackupDetailsDrawer.vue'
-import BackupConfigModal from '@/components/backup/BackupConfigModal.vue'
-import RestoreMonitorPanel from '@/components/backup/RestoreMonitorPanel.vue'
+  import PageHeader from '@/components/PageHeader.vue'
+  import CreateBackupModal from '@/components/backup/CreateBackupModal.vue'
+  import RestoreBackupModal from '@/components/backup/RestoreBackupModal.vue'
+  import BackupDetailsDrawer from '@/components/backup/BackupDetailsDrawer.vue'
+  import BackupConfigModal from '@/components/backup/BackupConfigModal.vue'
+  import RestoreMonitorPanel from '@/components/backup/RestoreMonitorPanel.vue'
 
-import { getBackupList, getBackupStats, createBackup, deleteBackup as deleteBackupAPI, createRestore } from '@/api/backup'
+  import {
+    getBackupList,
+    getBackupStats,
+    createBackup,
+    deleteBackup as deleteBackupAPI,
+    createRestore
+  } from '@/api/backup'
 
-// 响应式数据
-const loading = ref(false)
-const creating = ref(false)
-const restoring = ref(false)
-const backupList = ref([])
-const selectedBackup = ref(null)
+  // 响应式数据
+  const loading = ref(false)
+  const creating = ref(false)
+  const restoring = ref(false)
+  const backupList = ref([])
+  const selectedBackup = ref(null)
 
-// 弹窗显示状态
-const createBackupVisible = ref(false)
-const restoreBackupVisible = ref(false)
-const detailsVisible = ref(false)
-const configVisible = ref(false)
-const restoreMonitorVisible = ref(false)
-const currentRestoreId = ref(null)
+  // 弹窗显示状态
+  const createBackupVisible = ref(false)
+  const restoreBackupVisible = ref(false)
+  const detailsVisible = ref(false)
+  const configVisible = ref(false)
+  const restoreMonitorVisible = ref(false)
+  const currentRestoreId = ref(null)
 
-// 筛选条件
-const filters = reactive({
-  status: undefined,
-  type: undefined
-})
-
-// 统计数据
-const stats = reactive({
-  total_backups: 0,
-  success_rate: 0,
-  total_storage_gb: 0,
-  avg_backup_duration_minutes: 0
-})
-
-// 分页配置
-const pagination = reactive({
-  current: 1,
-  pageSize: 20,
-  total: 0,
-  showSizeChanger: true,
-  showQuickJumper: true,
-  showTotal: (total: number) => `共 ${total} 条`
-})
-
-// 表格列配置
-const columns = [
-  {
-    title: '任务名称',
-    key: 'task_name',
-    width: 200,
-    fixed: 'left'
-  },
-  {
-    title: '状态',
-    key: 'status',
-    width: 100
-  },
-  {
-    title: '类型',
-    key: 'task_type',
-    width: 100
-  },
-  {
-    title: '进度',
-    key: 'progress',
-    width: 120
-  },
-  {
-    title: '文件大小',
-    key: 'file_size',
-    width: 150
-  },
-  {
-    title: '耗时',
-    key: 'duration',
-    width: 100
-  },
-  {
-    title: '创建时间',
-    dataIndex: 'created_at',
-    width: 160,
-    customRender: ({ text }: any) => formatDateTime(text)
-  },
-  {
-    title: '操作',
-    key: 'actions',
-    width: 200,
-    fixed: 'right'
-  }
-]
-
-// 获取备份列表
-const fetchBackupList = async () => {
-  try {
-    loading.value = true
-    const params = {
-      page: pagination.current,
-      page_size: pagination.pageSize,
-      status: filters.status,
-      backup_type: filters.type
-    }
-    
-    const response = await getBackupList(params)
-    backupList.value = response.data.tasks
-    pagination.total = response.data.pagination.total
-  } catch (error) {
-    console.error('获取备份列表失败:', error)
-    message.error('获取备份列表失败')
-  } finally {
-    loading.value = false
-  }
-}
-
-// 获取统计数据
-const fetchStats = async () => {
-  try {
-    const response = await getBackupStats()
-    Object.assign(stats, response.data)
-  } catch (error) {
-    console.error('获取统计数据失败:', error)
-  }
-}
-
-// 状态相关方法
-const getStatusColor = (status: string) => {
-  const colors: Record<string, string> = {
-    pending: 'blue',
-    running: 'orange',
-    success: 'green',
-    failed: 'red',
-    cancelled: 'gray'
-  }
-  return colors[status] || 'default'
-}
-
-const getStatusIcon = (status: string) => {
-  const icons: Record<string, any> = {
-    pending: ClockCircleOutlined,
-    running: LoadingOutlined,
-    success: CheckOutlined,
-    failed: CloseOutlined,
-    cancelled: ExclamationOutlined
-  }
-  return icons[status] || ClockCircleOutlined
-}
-
-const getStatusText = (status: string) => {
-  const texts: Record<string, string> = {
-    pending: '等待中',
-    running: '运行中',
-    success: '成功',
-    failed: '失败',
-    cancelled: '已取消'
-  }
-  return texts[status] || status
-}
-
-const getTypeColor = (type: string) => {
-  const colors: Record<string, string> = {
-    full: 'purple',
-    incremental: 'cyan',
-    manual: 'lime'
-  }
-  return colors[type] || 'default'
-}
-
-const getTypeText = (type: string) => {
-  const texts: Record<string, string> = {
-    full: '全量备份',
-    incremental: '增量备份',
-    manual: '手动备份'
-  }
-  return texts[type] || type
-}
-
-// 格式化方法
-const formatFileSize = (bytes: number) => {
-  if (bytes === 0) return '0 B'
-  const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
-}
-
-const formatDuration = (seconds: number) => {
-  const hours = Math.floor(seconds / 3600)
-  const minutes = Math.floor((seconds % 3600) / 60)
-  const secs = seconds % 60
-  
-  if (hours > 0) {
-    return `${hours}h ${minutes}m ${secs}s`
-  } else if (minutes > 0) {
-    return `${minutes}m ${secs}s`
-  } else {
-    return `${secs}s`
-  }
-}
-
-const formatDateTime = (dateString: string) => {
-  if (!dateString) return '-'
-  return new Date(dateString).toLocaleString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit'
+  // 筛选条件
+  const filters = reactive({
+    status: undefined,
+    type: undefined
   })
-}
 
-// 事件处理方法
-const handleTableChange = (pag: any) => {
-  pagination.current = pag.current
-  pagination.pageSize = pag.pageSize
-  fetchBackupList()
-}
+  // 统计数据
+  const stats = reactive({
+    total_backups: 0,
+    success_rate: 0,
+    total_storage_gb: 0,
+    avg_backup_duration_minutes: 0
+  })
 
-const handleFilterChange = () => {
-  pagination.current = 1
-  fetchBackupList()
-}
+  // 分页配置
+  const pagination = reactive({
+    current: 1,
+    pageSize: 20,
+    total: 0,
+    showSizeChanger: true,
+    showQuickJumper: true,
+    showTotal: (total: number) => `共 ${total} 条`
+  })
 
-const refreshBackupList = () => {
-  fetchBackupList()
-  fetchStats()
-}
-
-const showCreateBackupModal = () => {
-  createBackupVisible.value = true
-}
-
-const showRestoreModal = (backup: any) => {
-  selectedBackup.value = backup
-  restoreBackupVisible.value = true
-}
-
-const showConfigModal = () => {
-  configVisible.value = true
-}
-
-const viewBackupDetails = (backup: any) => {
-  selectedBackup.value = backup
-  detailsVisible.value = true
-}
-
-const showRestoreMonitor = (restoreId: number) => {
-  currentRestoreId.value = restoreId
-  restoreMonitorVisible.value = true
-}
-
-// 创建备份
-const handleCreateBackup = async (backupData: any) => {
-  try {
-    creating.value = true
-    await createBackup(backupData)
-    message.success('备份任务创建成功')
-    createBackupVisible.value = false
-    refreshBackupList()
-  } catch (error) {
-    console.error('创建备份失败:', error)
-    message.error('创建备份失败')
-  } finally {
-    creating.value = false
-  }
-}
-
-// 恢复备份
-const handleRestoreBackup = async (restoreData: any) => {
-  try {
-    restoring.value = true
-    const response = await createRestore(restoreData)
-    if (response.success) {
-      message.success(`恢复任务创建成功！任务ID: ${response.data.restore_id}`)
-      restoreBackupVisible.value = false
-      
-      // 打开恢复监控抽屉
-      showRestoreMonitor(response.data.restore_id)
-    } else {
-      throw new Error(response.message || '创建失败')
+  // 表格列配置
+  const columns = [
+    {
+      title: '任务名称',
+      key: 'task_name',
+      width: 200,
+      fixed: 'left'
+    },
+    {
+      title: '状态',
+      key: 'status',
+      width: 100
+    },
+    {
+      title: '类型',
+      key: 'task_type',
+      width: 100
+    },
+    {
+      title: '进度',
+      key: 'progress',
+      width: 120
+    },
+    {
+      title: '文件大小',
+      key: 'file_size',
+      width: 150
+    },
+    {
+      title: '耗时',
+      key: 'duration',
+      width: 100
+    },
+    {
+      title: '创建时间',
+      dataIndex: 'created_at',
+      width: 160,
+      customRender: ({ text }: any) => formatDateTime(text)
+    },
+    {
+      title: '操作',
+      key: 'actions',
+      width: 200,
+      fixed: 'right'
     }
-  } catch (error) {
-    console.error('创建恢复任务失败:', error)
-    message.error('创建恢复任务失败: ' + (error.response?.data?.detail || error.message))
-  } finally {
-    restoring.value = false
-  }
-}
+  ]
 
-// 删除备份
-const deleteBackup = async (backupId: number) => {
-  try {
-    await deleteBackupAPI(backupId)
-    message.success('备份删除成功')
+  // 获取备份列表
+  const fetchBackupList = async () => {
+    try {
+      loading.value = true
+      const params = {
+        page: pagination.current,
+        page_size: pagination.pageSize,
+        status: filters.status,
+        backup_type: filters.type
+      }
+
+      const response = await getBackupList(params)
+      backupList.value = response.data.tasks
+      pagination.total = response.data.pagination.total
+    } catch (error) {
+      console.error('获取备份列表失败:', error)
+      message.error('获取备份列表失败')
+    } finally {
+      loading.value = false
+    }
+  }
+
+  // 获取统计数据
+  const fetchStats = async () => {
+    try {
+      const response = await getBackupStats()
+      Object.assign(stats, response.data)
+    } catch (error) {
+      console.error('获取统计数据失败:', error)
+    }
+  }
+
+  // 状态相关方法
+  const getStatusColor = (status: string) => {
+    const colors: Record<string, string> = {
+      pending: 'blue',
+      running: 'orange',
+      success: 'green',
+      failed: 'red',
+      cancelled: 'gray'
+    }
+    return colors[status] || 'default'
+  }
+
+  const getStatusIcon = (status: string) => {
+    const icons: Record<string, any> = {
+      pending: ClockCircleOutlined,
+      running: LoadingOutlined,
+      success: CheckOutlined,
+      failed: CloseOutlined,
+      cancelled: ExclamationOutlined
+    }
+    return icons[status] || ClockCircleOutlined
+  }
+
+  const getStatusText = (status: string) => {
+    const texts: Record<string, string> = {
+      pending: '等待中',
+      running: '运行中',
+      success: '成功',
+      failed: '失败',
+      cancelled: '已取消'
+    }
+    return texts[status] || status
+  }
+
+  const getTypeColor = (type: string) => {
+    const colors: Record<string, string> = {
+      full: 'purple',
+      incremental: 'cyan',
+      manual: 'lime'
+    }
+    return colors[type] || 'default'
+  }
+
+  const getTypeText = (type: string) => {
+    const texts: Record<string, string> = {
+      full: '全量备份',
+      incremental: '增量备份',
+      manual: '手动备份'
+    }
+    return texts[type] || type
+  }
+
+  // 格式化方法
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return '0 B'
+    const k = 1024
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+  }
+
+  const formatDuration = (seconds: number) => {
+    const hours = Math.floor(seconds / 3600)
+    const minutes = Math.floor((seconds % 3600) / 60)
+    const secs = seconds % 60
+
+    if (hours > 0) {
+      return `${hours}h ${minutes}m ${secs}s`
+    } else if (minutes > 0) {
+      return `${minutes}m ${secs}s`
+    } else {
+      return `${secs}s`
+    }
+  }
+
+  const formatDateTime = (dateString: string) => {
+    if (!dateString) return '-'
+    return new Date(dateString).toLocaleString('zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+  }
+
+  // 事件处理方法
+  const handleTableChange = (pag: any) => {
+    pagination.current = pag.current
+    pagination.pageSize = pag.pageSize
+    fetchBackupList()
+  }
+
+  const handleFilterChange = () => {
+    pagination.current = 1
+    fetchBackupList()
+  }
+
+  const refreshBackupList = () => {
+    fetchBackupList()
+    fetchStats()
+  }
+
+  const showCreateBackupModal = () => {
+    createBackupVisible.value = true
+  }
+
+  const showRestoreModal = (backup: any) => {
+    selectedBackup.value = backup
+    restoreBackupVisible.value = true
+  }
+
+  const showConfigModal = () => {
+    configVisible.value = true
+  }
+
+  const viewBackupDetails = (backup: any) => {
+    selectedBackup.value = backup
+    detailsVisible.value = true
+  }
+
+  const showRestoreMonitor = (restoreId: number) => {
+    currentRestoreId.value = restoreId
+    restoreMonitorVisible.value = true
+  }
+
+  // 创建备份
+  const handleCreateBackup = async (backupData: any) => {
+    try {
+      creating.value = true
+      await createBackup(backupData)
+      message.success('备份任务创建成功')
+      createBackupVisible.value = false
+      refreshBackupList()
+    } catch (error) {
+      console.error('创建备份失败:', error)
+      message.error('创建备份失败')
+    } finally {
+      creating.value = false
+    }
+  }
+
+  // 恢复备份
+  const handleRestoreBackup = async (restoreData: any) => {
+    try {
+      restoring.value = true
+      const response = await createRestore(restoreData)
+      if (response.success) {
+        message.success(`恢复任务创建成功！任务ID: ${response.data.restore_id}`)
+        restoreBackupVisible.value = false
+
+        // 打开恢复监控抽屉
+        showRestoreMonitor(response.data.restore_id)
+      } else {
+        throw new Error(response.message || '创建失败')
+      }
+    } catch (error) {
+      console.error('创建恢复任务失败:', error)
+      message.error('创建恢复任务失败: ' + (error.response?.data?.detail || error.message))
+    } finally {
+      restoring.value = false
+    }
+  }
+
+  // 删除备份
+  const deleteBackup = async (backupId: number) => {
+    try {
+      await deleteBackupAPI(backupId)
+      message.success('备份删除成功')
+      refreshBackupList()
+    } catch (error) {
+      console.error('删除备份失败:', error)
+      message.error('删除备份失败')
+    }
+  }
+
+  // 更新配置
+  const handleConfigUpdate = () => {
+    message.success('配置更新成功')
+    configVisible.value = false
+  }
+
+  // 处理任务取消事件
+  const handleTaskCancelled = (taskId: number) => {
+    console.log('任务已取消:', taskId)
     refreshBackupList()
-  } catch (error) {
-    console.error('删除备份失败:', error)
-    message.error('删除备份失败')
   }
-}
 
-// 更新配置
-const handleConfigUpdate = () => {
-  message.success('配置更新成功')
-  configVisible.value = false
-}
+  // 处理任务完成事件
+  const handleTaskCompleted = (taskId: number) => {
+    console.log('任务已完成:', taskId)
+    refreshBackupList()
+  }
 
-// 处理任务取消事件
-const handleTaskCancelled = (taskId: number) => {
-  console.log('任务已取消:', taskId)
-  refreshBackupList()
-}
+  // 处理任务失败事件
+  const handleTaskFailed = (taskId: number) => {
+    console.log('任务执行失败:', taskId)
+    refreshBackupList()
+  }
 
-// 处理任务完成事件
-const handleTaskCompleted = (taskId: number) => {
-  console.log('任务已完成:', taskId)
-  refreshBackupList()
-}
+  // 处理抽屉关闭事件
+  const handleDrawerClosed = () => {
+    refreshBackupList()
+  }
 
-// 处理任务失败事件
-const handleTaskFailed = (taskId: number) => {
-  console.log('任务执行失败:', taskId)
-  refreshBackupList()
-}
+  // 处理抽屉关闭
+  const handleDrawerClose = () => {
+    detailsVisible.value = false
+    refreshBackupList()
+  }
 
-// 处理抽屉关闭事件
-const handleDrawerClosed = () => {
-  refreshBackupList()
-}
+  // 处理恢复任务完成事件
+  const handleRestoreCompleted = (restoreId: number) => {
+    console.log('恢复任务已完成:', restoreId)
+    message.success('恢复任务已完成！')
+    refreshBackupList()
+  }
 
-// 处理抽屉关闭
-const handleDrawerClose = () => {
-  detailsVisible.value = false
-  refreshBackupList()
-}
+  // 处理恢复任务失败事件
+  const handleRestoreFailed = (restoreId: number) => {
+    console.log('恢复任务执行失败:', restoreId)
+    message.error('恢复任务执行失败')
+    refreshBackupList()
+  }
 
-// 处理恢复任务完成事件
-const handleRestoreCompleted = (restoreId: number) => {
-  console.log('恢复任务已完成:', restoreId)
-  message.success('恢复任务已完成！')
-  refreshBackupList()
-}
-
-// 处理恢复任务失败事件
-const handleRestoreFailed = (restoreId: number) => {
-  console.log('恢复任务执行失败:', restoreId)
-  message.error('恢复任务执行失败')
-  refreshBackupList()
-}
-
-// 组件挂载时获取数据
-onMounted(() => {
-  fetchBackupList()
-  fetchStats()
-})
+  // 组件挂载时获取数据
+  onMounted(() => {
+    fetchBackupList()
+    fetchStats()
+  })
 </script>
 
 <style scoped>
-.backup-management {
-}
+  .backup-management {
+  }
 
-.toolbar {
-  margin-bottom: 16px;
-}
+  .toolbar {
+    margin-bottom: 16px;
+  }
 
-.stats-cards {
-  margin-bottom: 16px;
-}
+  .stats-cards {
+    margin-bottom: 16px;
+  }
 
-.backup-list-card {
-  margin-bottom: 16px;
-}
+  .backup-list-card {
+    margin-bottom: 16px;
+  }
 
-.task-name {
-  line-height: 1.4;
-}
+  .task-name {
+    line-height: 1.4;
+  }
 
-:deep(.ant-statistic-title) {
-  font-size: 14px;
-}
+  :deep(.ant-statistic-title) {
+    font-size: 14px;
+  }
 
-:deep(.ant-statistic-content) {
-  font-size: 20px;
-}
+  :deep(.ant-statistic-content) {
+    font-size: 20px;
+  }
 </style>

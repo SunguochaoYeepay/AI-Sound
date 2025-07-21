@@ -6,7 +6,7 @@
 // 智能准备状态枚举
 export const PREPARATION_STATUS = {
   PENDING: 'pending',
-  ANALYZING: 'analyzing', 
+  ANALYZING: 'analyzing',
   COMPLETED: 'completed',
   FAILED: 'failed'
 }
@@ -93,7 +93,7 @@ export function getPreparationStatusColor(chapter, preparationStatus = null) {
  */
 export function getSynthesisStatusText(chapter) {
   if (!chapter) return '未知'
-  
+
   const status = chapter.synthesis_status || SYNTHESIS_STATUS.PENDING
   const statusMap = {
     [SYNTHESIS_STATUS.PENDING]: '待合成',
@@ -112,7 +112,7 @@ export function getSynthesisStatusText(chapter) {
  */
 export function getSynthesisStatusColor(chapter) {
   if (!chapter) return 'gray'
-  
+
   const status = chapter.synthesis_status || SYNTHESIS_STATUS.PENDING
   const colorMap = {
     [SYNTHESIS_STATUS.PENDING]: 'gray',
@@ -198,7 +198,7 @@ export class ChapterStatusManager {
    * @param {Array} chapters - 章节数组
    */
   updateChapters(chapters) {
-    chapters.forEach(chapter => {
+    chapters.forEach((chapter) => {
       this.chapters.set(chapter.id, chapter)
     })
   }
@@ -221,7 +221,7 @@ export class ChapterStatusManager {
   getChapterStatus(chapterId) {
     const chapter = this.chapters.get(chapterId)
     const preparationStatus = this.preparationStatuses.get(chapterId)
-    
+
     return {
       chapter,
       preparationStatus,
@@ -276,7 +276,7 @@ export class ChapterStatusSyncManager {
    * @param {Array} chapters - 章节数组
    */
   updateChapters(chapters) {
-    chapters.forEach(chapter => {
+    chapters.forEach((chapter) => {
       this.chapters.set(chapter.id, { ...chapter })
     })
   }
@@ -288,24 +288,24 @@ export class ChapterStatusSyncManager {
    */
   async syncChapterStatus(chapterId, newStatus) {
     console.log('🔄 [StatusSync] 同步章节状态:', { chapterId, newStatus })
-    
+
     // 更新本地状态
     const chapter = this.chapters.get(chapterId)
     if (chapter) {
       const oldStatus = chapter.synthesis_status
       chapter.synthesis_status = newStatus
       chapter.updated_at = new Date().toISOString()
-      
-      console.log('✅ [StatusSync] 本地状态更新:', { 
-        章节ID: chapterId, 
-        旧状态: oldStatus, 
-        新状态: newStatus 
+
+      console.log('✅ [StatusSync] 本地状态更新:', {
+        章节ID: chapterId,
+        旧状态: oldStatus,
+        新状态: newStatus
       })
     }
 
     // 验证服务器状态
     await this.validateServerStatus(chapterId, newStatus)
-    
+
     // 通知所有监听器
     this.notifyCallbacks(chapterId, newStatus)
   }
@@ -321,7 +321,7 @@ export class ChapterStatusSyncManager {
     try {
       const response = await this.apiClient.get(`/books/${this.bookId}/chapters`)
       if (response.data.success && response.data.data) {
-        const serverChapter = response.data.data.find(ch => ch.id === chapterId)
+        const serverChapter = response.data.data.find((ch) => ch.id === chapterId)
         if (serverChapter) {
           if (serverChapter.synthesis_status !== expectedStatus) {
             console.warn('⚠️ [StatusSync] 前端状态与服务器不一致:', {
@@ -329,7 +329,7 @@ export class ChapterStatusSyncManager {
               前端状态: expectedStatus,
               服务器状态: serverChapter.synthesis_status
             })
-            
+
             // 以服务器状态为准
             await this.syncChapterStatus(chapterId, serverChapter.synthesis_status)
           }
@@ -351,12 +351,12 @@ export class ChapterStatusSyncManager {
       const response = await this.apiClient.get(`/books/${this.bookId}/chapters`)
       if (response.data.success && response.data.data) {
         const serverChapters = response.data.data
-        
-        serverChapters.forEach(serverChapter => {
+
+        serverChapters.forEach((serverChapter) => {
           const localChapter = this.chapters.get(serverChapter.id)
           if (localChapter) {
             let hasChanges = false
-            
+
             if (localChapter.synthesis_status !== serverChapter.synthesis_status) {
               console.log('🔄 [StatusSync] 更新synthesis_status:', {
                 章节ID: serverChapter.id,
@@ -367,7 +367,7 @@ export class ChapterStatusSyncManager {
               localChapter.synthesis_status = serverChapter.synthesis_status
               hasChanges = true
             }
-            
+
             if (localChapter.analysis_status !== serverChapter.analysis_status) {
               console.log('🔄 [StatusSync] 更新analysis_status:', {
                 章节ID: serverChapter.id,
@@ -377,7 +377,7 @@ export class ChapterStatusSyncManager {
               localChapter.analysis_status = serverChapter.analysis_status
               hasChanges = true
             }
-            
+
             if (hasChanges) {
               localChapter.updated_at = serverChapter.updated_at
               this.notifyCallbacks(serverChapter.id, serverChapter.synthesis_status)
@@ -412,7 +412,7 @@ export class ChapterStatusSyncManager {
    * @param {string} newStatus - 新状态
    */
   notifyCallbacks(chapterId, newStatus) {
-    this.syncCallbacks.forEach(callback => {
+    this.syncCallbacks.forEach((callback) => {
       try {
         callback(chapterId, newStatus)
       } catch (error) {
@@ -428,11 +428,11 @@ export class ChapterStatusSyncManager {
     if (this.syncInterval) {
       clearInterval(this.syncInterval)
     }
-    
+
     this.syncInterval = setInterval(async () => {
       await this.syncAllChapterStatuses()
     }, 30000) // 每30秒同步一次
-    
+
     console.log('🚀 [StatusSync] 启动自动状态同步')
   }
 
@@ -476,4 +476,4 @@ export class ChapterStatusSyncManager {
 }
 
 // 导出默认实例
-export const chapterStatusManager = new ChapterStatusManager() 
+export const chapterStatusManager = new ChapterStatusManager()

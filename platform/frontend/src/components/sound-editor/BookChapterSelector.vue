@@ -35,7 +35,7 @@
             v-for="book in books"
             :key="book.id"
             class="book-card"
-            :class="{ 'selected': selectedBook?.id === book.id }"
+            :class="{ selected: selectedBook?.id === book.id }"
             @click="selectBook(book)"
           >
             <div class="book-info">
@@ -78,7 +78,7 @@
             v-for="project in projects"
             :key="project.id"
             class="project-card"
-            :class="{ 'selected': selectedProject?.id === project.id }"
+            :class="{ selected: selectedProject?.id === project.id }"
             @click="selectProject(project)"
           >
             <div class="project-info">
@@ -86,15 +86,19 @@
               <p class="project-description">{{ project.description }}</p>
               <div class="project-stats">
                 <span class="stat-item">{{ project.total_segments }}个片段</span>
-                <span class="stat-item">{{ project.processed_segments }}/{{ project.total_segments }} 已完成</span>
-                <a-tag :color="getProjectStatusColor(project.status)">{{ getProjectStatusText(project.status) }}</a-tag>
+                <span class="stat-item"
+                  >{{ project.processed_segments }}/{{ project.total_segments }} 已完成</span
+                >
+                <a-tag :color="getProjectStatusColor(project.status)">{{
+                  getProjectStatusText(project.status)
+                }}</a-tag>
               </div>
             </div>
             <div class="project-status">
               <div class="progress-bar">
-                <a-progress 
-                  :percent="getProjectProgress(project)" 
-                  size="small" 
+                <a-progress
+                  :percent="getProjectProgress(project)"
+                  size="small"
                   :stroke-color="getProjectStatusColor(project.status)"
                 />
               </div>
@@ -123,13 +127,18 @@
             <div v-for="chapter in chapters" :key="chapter.id" class="chapter-item">
               <a-checkbox :value="chapter.id">
                 <div class="chapter-info">
-                  <div class="chapter-title">第{{ chapter.chapter_number }}章: {{ chapter.title }}</div>
+                  <div class="chapter-title">
+                    第{{ chapter.chapter_number }}章: {{ chapter.title }}
+                  </div>
                   <div class="chapter-stats">
                     <span class="stat-item">{{ chapter.word_count }}字</span>
                     <span v-if="chapter.audio_files_count > 0" class="stat-item has-resource">
                       {{ chapter.audio_files_count }}个音频
                     </span>
-                    <span v-if="chapter.environment_configs_count > 0" class="stat-item has-resource">
+                    <span
+                      v-if="chapter.environment_configs_count > 0"
+                      class="stat-item has-resource"
+                    >
                       {{ chapter.environment_configs_count }}个环境音配置
                     </span>
                   </div>
@@ -158,16 +167,22 @@
               <h4>对话音频 ({{ chapterResources.dialogue_audio?.length || 0 }}个)</h4>
               <div class="header-actions">
                 <a-button type="link" size="small" @click="selectAllDialogueAudio">全选</a-button>
-                <a-button type="link" size="small" @click="deselectAllDialogueAudio">取消全选</a-button>
+                <a-button type="link" size="small" @click="deselectAllDialogueAudio"
+                  >取消全选</a-button
+                >
               </div>
             </div>
-            
+
             <div v-if="!chapterResources.dialogue_audio?.length" class="empty-resource">
               <p>所选章节没有对话音频</p>
             </div>
             <div v-else class="resource-list">
               <a-checkbox-group v-model:value="selectedResources.dialogue_audio">
-                <div v-for="audio in chapterResources.dialogue_audio" :key="audio.id" class="resource-item">
+                <div
+                  v-for="audio in chapterResources.dialogue_audio"
+                  :key="audio.id"
+                  class="resource-item"
+                >
                   <a-checkbox :value="audio.id">
                     <div class="resource-info">
                       <div class="resource-name">{{ audio.original_name || audio.filename }}</div>
@@ -188,17 +203,25 @@
             <div class="section-header">
               <h4>环境音配置 ({{ chapterResources.environment_configs?.length || 0 }}个)</h4>
               <div class="header-actions">
-                <a-button type="link" size="small" @click="selectAllEnvironmentConfigs">全选</a-button>
-                <a-button type="link" size="small" @click="deselectAllEnvironmentConfigs">取消全选</a-button>
+                <a-button type="link" size="small" @click="selectAllEnvironmentConfigs"
+                  >全选</a-button
+                >
+                <a-button type="link" size="small" @click="deselectAllEnvironmentConfigs"
+                  >取消全选</a-button
+                >
               </div>
             </div>
-            
+
             <div v-if="!chapterResources.environment_configs?.length" class="empty-resource">
               <p>所选章节没有环境音配置</p>
             </div>
             <div v-else class="resource-list">
               <a-checkbox-group v-model:value="selectedResources.environment_configs">
-                <div v-for="config in chapterResources.environment_configs" :key="config.session_id" class="resource-item">
+                <div
+                  v-for="config in chapterResources.environment_configs"
+                  :key="config.session_id"
+                  class="resource-item"
+                >
                   <a-checkbox :value="config.session_id">
                     <div class="resource-info">
                       <div class="resource-name">第{{ config.chapter_number }}章环境音配置</div>
@@ -224,13 +247,9 @@
 
       <a-form :model="projectForm" layout="vertical">
         <a-form-item label="项目名称" required>
-          <a-input
-            v-model:value="projectForm.name"
-            placeholder="输入项目名称"
-            :maxlength="50"
-          />
+          <a-input v-model:value="projectForm.name" placeholder="输入项目名称" :maxlength="50" />
         </a-form-item>
-        
+
         <a-form-item label="项目描述">
           <a-textarea
             v-model:value="projectForm.description"
@@ -256,20 +275,10 @@
     <!-- 导航按钮 -->
     <div class="step-actions">
       <a-button v-if="currentStep > 0" @click="prevStep">上一步</a-button>
-      <a-button
-        v-if="currentStep < 4"
-        type="primary"
-        @click="nextStep"
-        :disabled="!canProceed"
-      >
+      <a-button v-if="currentStep < 4" type="primary" @click="nextStep" :disabled="!canProceed">
         下一步
       </a-button>
-      <a-button
-        v-else
-        type="primary"
-        @click="createProject"
-        :loading="creatingProject"
-      >
+      <a-button v-else type="primary" @click="createProject" :loading="creatingProject">
         创建项目
       </a-button>
     </div>
@@ -277,614 +286,633 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
-import { message } from 'ant-design-vue'
-import { useRouter } from 'vue-router'
-import {
-  getAvailableBooks,
-  getBookChapters,
-  getChapterResources,
-  createProjectFromChapters
-} from '@/api/sound-editor/bookIntegration'
+  import { ref, computed, watch } from 'vue'
+  import { message } from 'ant-design-vue'
+  import { useRouter } from 'vue-router'
+  import {
+    getAvailableBooks,
+    getBookChapters,
+    getChapterResources,
+    createProjectFromChapters
+  } from '@/api/sound-editor/bookIntegration'
 
-const router = useRouter()
-const emit = defineEmits(['created'])
+  const router = useRouter()
+  const emit = defineEmits(['created'])
 
-// 步骤状态
-const currentStep = ref(0)
-const canProceed = computed(() => {
-  switch (currentStep.value) {
-    case 0: return !!selectedBook.value
-    case 1: return !!selectedProject.value
-    case 2: return selectedChapterIds.value.length > 0
-    case 3: return selectedResources.value.dialogue_audio.length > 0 || 
-                   selectedResources.value.environment_configs.length > 0
-    case 4: return !!projectForm.value.name
-    default: return false
-  }
-})
+  // 步骤状态
+  const currentStep = ref(0)
+  const canProceed = computed(() => {
+    switch (currentStep.value) {
+      case 0:
+        return !!selectedBook.value
+      case 1:
+        return !!selectedProject.value
+      case 2:
+        return selectedChapterIds.value.length > 0
+      case 3:
+        return (
+          selectedResources.value.dialogue_audio.length > 0 ||
+          selectedResources.value.environment_configs.length > 0
+        )
+      case 4:
+        return !!projectForm.value.name
+      default:
+        return false
+    }
+  })
 
-// 书籍选择状态
-const books = ref([])
-const selectedBook = ref(null)
-const bookSearchTerm = ref('')
-const loadingBooks = ref(false)
+  // 书籍选择状态
+  const books = ref([])
+  const selectedBook = ref(null)
+  const bookSearchTerm = ref('')
+  const loadingBooks = ref(false)
 
-// 朗读项目选择状态
-const projects = ref([])
-const selectedProject = ref(null)
-const loadingProjects = ref(false)
+  // 朗读项目选择状态
+  const projects = ref([])
+  const selectedProject = ref(null)
+  const loadingProjects = ref(false)
 
-// 章节选择状态
-const chapters = ref([])
-const selectedChapterIds = ref([])
-const loadingChapters = ref(false)
+  // 章节选择状态
+  const chapters = ref([])
+  const selectedChapterIds = ref([])
+  const loadingChapters = ref(false)
 
-// 资源选择状态
-const chapterResources = ref(null)
-const selectedResources = ref({
-  dialogue_audio: [],
-  environment_configs: []
-})
-const loadingResources = ref(false)
+  // 资源选择状态
+  const chapterResources = ref(null)
+  const selectedResources = ref({
+    dialogue_audio: [],
+    environment_configs: []
+  })
+  const loadingResources = ref(false)
 
-// 项目创建状态
-const projectForm = ref({
-  name: '',
-  description: ''
-})
-const creatingProject = ref(false)
-const estimatedTotalDuration = ref(0)
+  // 项目创建状态
+  const projectForm = ref({
+    name: '',
+    description: ''
+  })
+  const creatingProject = ref(false)
+  const estimatedTotalDuration = ref(0)
 
-// 初始化加载书籍列表
-const initSelector = async () => {
-  loadingBooks.value = true
-  try {
-    const response = await getAvailableBooks()
-    if (response && response.success) {
-      books.value = response.data || []
-    } else {
+  // 初始化加载书籍列表
+  const initSelector = async () => {
+    loadingBooks.value = true
+    try {
+      const response = await getAvailableBooks()
+      if (response && response.success) {
+        books.value = response.data || []
+      } else {
+        message.error('加载书籍列表失败')
+      }
+    } catch (error) {
+      console.error('加载书籍列表失败:', error)
       message.error('加载书籍列表失败')
+    } finally {
+      loadingBooks.value = false
     }
-  } catch (error) {
-    console.error('加载书籍列表失败:', error)
-    message.error('加载书籍列表失败')
-  } finally {
-    loadingBooks.value = false
   }
-}
 
-// 搜索书籍
-const searchBooks = () => {
-  if (!bookSearchTerm.value) {
-    return
-  }
-  
-  const searchTerm = bookSearchTerm.value.toLowerCase()
-  books.value = books.value.filter(book => 
-    book.title.toLowerCase().includes(searchTerm) || 
-    book.author.toLowerCase().includes(searchTerm)
-  )
-}
-
-// 选择书籍
-const selectBook = async (book) => {
-  selectedBook.value = book
-  selectedProject.value = null
-  selectedChapterIds.value = []
-  chapterResources.value = null
-  
-  // 自动加载朗读项目
-  await loadProjects(book.id)
-}
-
-// 加载朗读项目
-const loadProjects = async (bookId) => {
-  loadingProjects.value = true
-  try {
-    // 使用axios或者API客户端
-    const response = await import('@/api').then(api => api.default.get(`/api/v1/projects?book_id=${bookId}`))
-    
-    if (response && response.data && response.data.success) {
-      projects.value = response.data.data || []
-      
-      // 如果只有一个项目，自动选择
-      if (projects.value.length === 1) {
-        await selectProject(projects.value[0])
-      }
-    } else {
-      message.error('加载朗读项目列表失败')
+  // 搜索书籍
+  const searchBooks = () => {
+    if (!bookSearchTerm.value) {
+      return
     }
-  } catch (error) {
-    console.error('加载朗读项目列表失败:', error)
-    message.error('加载朗读项目列表失败')
-  } finally {
-    loadingProjects.value = false
-  }
-}
 
-// 选择朗读项目
-const selectProject = async (project) => {
-  selectedProject.value = project
-  selectedChapterIds.value = []
-  chapterResources.value = null
-  
-  // 自动加载章节
-  await loadChapters(selectedBook.value.id, project.id)
-}
-
-// 获取项目状态颜色
-const getProjectStatusColor = (status) => {
-  const colors = {
-    'pending': 'orange',
-    'processing': 'blue',
-    'paused': 'orange',
-    'completed': 'green',
-    'partial_completed': 'gold',
-    'failed': 'red'
-  }
-  return colors[status] || 'default'
-}
-
-// 获取项目状态文本
-const getProjectStatusText = (status) => {
-  const texts = {
-    'pending': '待处理',
-    'processing': '处理中',
-    'paused': '已暂停',
-    'completed': '已完成',
-    'partial_completed': '部分完成',
-    'failed': '失败'
-  }
-  return texts[status] || status
-}
-
-// 获取项目进度
-const getProjectProgress = (project) => {
-  if (!project.total_segments || project.total_segments === 0) return 0
-  return Math.round((project.processed_segments / project.total_segments) * 100)
-}
-
-// 加载章节
-const loadChapters = async (bookId, projectId) => {
-  loadingChapters.value = true
-  try {
-    const response = await getBookChapters(bookId)
-    if (response && response.success) {
-      chapters.value = response.data || []
-    } else {
-      message.error('加载章节列表失败')
-    }
-  } catch (error) {
-    console.error('加载章节列表失败:', error)
-    message.error('加载章节列表失败')
-  } finally {
-    loadingChapters.value = false
-  }
-}
-
-// 全选/取消全选章节
-const selectAllChapters = () => {
-  selectedChapterIds.value = chapters.value.map(chapter => chapter.id)
-}
-
-const deselectAllChapters = () => {
-  selectedChapterIds.value = []
-}
-
-// 加载章节资源
-const loadChapterResources = async () => {
-  if (!selectedBook.value || selectedChapterIds.value.length === 0) {
-    return
-  }
-  
-  loadingResources.value = true
-  try {
-    const response = await getChapterResources(selectedBook.value.id, selectedChapterIds.value)
-    if (response && response.success) {
-      chapterResources.value = response.data || {}
-      
-      // 默认全选资源
-      if (chapterResources.value.dialogue_audio) {
-        selectedResources.value.dialogue_audio = chapterResources.value.dialogue_audio.map(audio => audio.id)
-      }
-      
-      if (chapterResources.value.environment_configs) {
-        selectedResources.value.environment_configs = chapterResources.value.environment_configs.map(config => config.session_id)
-      }
-      
-      // 更新估计总时长
-      if (chapterResources.value.resource_summary) {
-        estimatedTotalDuration.value = chapterResources.value.resource_summary.estimated_total_duration || 0
-      }
-      
-      // 设置默认项目名称
-      projectForm.value.name = `《${selectedBook.value.title}》音频编辑`
-      projectForm.value.description = `基于《${selectedBook.value.title}》的${selectedChapterIds.value.length}个章节创建的音频项目`
-    } else {
-      message.error('加载章节资源失败')
-    }
-  } catch (error) {
-    console.error('加载章节资源失败:', error)
-    message.error('加载章节资源失败')
-  } finally {
-    loadingResources.value = false
-  }
-}
-
-// 全选/取消全选资源
-const selectAllDialogueAudio = () => {
-  if (chapterResources.value && chapterResources.value.dialogue_audio) {
-    selectedResources.value.dialogue_audio = chapterResources.value.dialogue_audio.map(audio => audio.id)
-  }
-}
-
-const deselectAllDialogueAudio = () => {
-  selectedResources.value.dialogue_audio = []
-}
-
-const selectAllEnvironmentConfigs = () => {
-  if (chapterResources.value && chapterResources.value.environment_configs) {
-    selectedResources.value.environment_configs = chapterResources.value.environment_configs.map(config => config.session_id)
-  }
-}
-
-const deselectAllEnvironmentConfigs = () => {
-  selectedResources.value.environment_configs = []
-}
-
-// 步骤导航
-const nextStep = async () => {
-  if (currentStep.value === 3 && selectedChapterIds.value.length > 0) {
-    // 从步骤3到步骤4时，加载章节资源
-    await loadChapterResources()
-  }
-  
-  currentStep.value++
-}
-
-const prevStep = () => {
-  currentStep.value--
-}
-
-// 创建项目
-const createProject = async () => {
-  if (!projectForm.value.name) {
-    message.error('请输入项目名称')
-    return
-  }
-  
-  creatingProject.value = true
-  try {
-    const response = await createProjectFromChapters(
-      projectForm.value.name,
-      selectedBook.value.id,
-      selectedChapterIds.value,
-      selectedResources.value
+    const searchTerm = bookSearchTerm.value.toLowerCase()
+    books.value = books.value.filter(
+      (book) =>
+        book.title.toLowerCase().includes(searchTerm) ||
+        book.author.toLowerCase().includes(searchTerm)
     )
-    
-    if (response && response.success) {
-      message.success('项目创建成功')
-      
-      // 发送创建成功事件
-      emit('created', {
-        projectId: response.data.project_id,
-        summary: response.data.resource_summary
-      })
-      
-      // 导航到编辑器页面
-      router.push(`/sound-editor/edit/${response.data.project_id}`)
-    } else {
-      message.error(response?.message || '创建项目失败')
+  }
+
+  // 选择书籍
+  const selectBook = async (book) => {
+    selectedBook.value = book
+    selectedProject.value = null
+    selectedChapterIds.value = []
+    chapterResources.value = null
+
+    // 自动加载朗读项目
+    await loadProjects(book.id)
+  }
+
+  // 加载朗读项目
+  const loadProjects = async (bookId) => {
+    loadingProjects.value = true
+    try {
+      // 使用axios或者API客户端
+      const response = await import('@/api').then((api) =>
+        api.default.get(`/api/v1/projects?book_id=${bookId}`)
+      )
+
+      if (response && response.data && response.data.success) {
+        projects.value = response.data.data || []
+
+        // 如果只有一个项目，自动选择
+        if (projects.value.length === 1) {
+          await selectProject(projects.value[0])
+        }
+      } else {
+        message.error('加载朗读项目列表失败')
+      }
+    } catch (error) {
+      console.error('加载朗读项目列表失败:', error)
+      message.error('加载朗读项目列表失败')
+    } finally {
+      loadingProjects.value = false
     }
-  } catch (error) {
-    console.error('创建项目失败:', error)
-    message.error('创建项目失败: ' + (error.response?.data?.detail || error.message))
-  } finally {
-    creatingProject.value = false
   }
-}
 
-// 工具函数
-const formatDuration = (seconds) => {
-  if (!seconds || seconds <= 0) return '00:00'
-  const minutes = Math.floor(seconds / 60)
-  const remainingSeconds = Math.floor(seconds % 60)
-  return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`
-}
+  // 选择朗读项目
+  const selectProject = async (project) => {
+    selectedProject.value = project
+    selectedChapterIds.value = []
+    chapterResources.value = null
 
-const formatFileSize = (bytes) => {
-  if (!bytes || bytes <= 0) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB']
-  let size = bytes
-  let unitIndex = 0
-  
-  while (size >= 1024 && unitIndex < units.length - 1) {
-    size /= 1024
-    unitIndex++
+    // 自动加载章节
+    await loadChapters(selectedBook.value.id, project.id)
   }
-  
-  return `${size.toFixed(1)} ${units[unitIndex]}`
-}
 
-// 初始化
-initSelector()
+  // 获取项目状态颜色
+  const getProjectStatusColor = (status) => {
+    const colors = {
+      pending: 'orange',
+      processing: 'blue',
+      paused: 'orange',
+      completed: 'green',
+      partial_completed: 'gold',
+      failed: 'red'
+    }
+    return colors[status] || 'default'
+  }
+
+  // 获取项目状态文本
+  const getProjectStatusText = (status) => {
+    const texts = {
+      pending: '待处理',
+      processing: '处理中',
+      paused: '已暂停',
+      completed: '已完成',
+      partial_completed: '部分完成',
+      failed: '失败'
+    }
+    return texts[status] || status
+  }
+
+  // 获取项目进度
+  const getProjectProgress = (project) => {
+    if (!project.total_segments || project.total_segments === 0) return 0
+    return Math.round((project.processed_segments / project.total_segments) * 100)
+  }
+
+  // 加载章节
+  const loadChapters = async (bookId, projectId) => {
+    loadingChapters.value = true
+    try {
+      const response = await getBookChapters(bookId)
+      if (response && response.success) {
+        chapters.value = response.data || []
+      } else {
+        message.error('加载章节列表失败')
+      }
+    } catch (error) {
+      console.error('加载章节列表失败:', error)
+      message.error('加载章节列表失败')
+    } finally {
+      loadingChapters.value = false
+    }
+  }
+
+  // 全选/取消全选章节
+  const selectAllChapters = () => {
+    selectedChapterIds.value = chapters.value.map((chapter) => chapter.id)
+  }
+
+  const deselectAllChapters = () => {
+    selectedChapterIds.value = []
+  }
+
+  // 加载章节资源
+  const loadChapterResources = async () => {
+    if (!selectedBook.value || selectedChapterIds.value.length === 0) {
+      return
+    }
+
+    loadingResources.value = true
+    try {
+      const response = await getChapterResources(selectedBook.value.id, selectedChapterIds.value)
+      if (response && response.success) {
+        chapterResources.value = response.data || {}
+
+        // 默认全选资源
+        if (chapterResources.value.dialogue_audio) {
+          selectedResources.value.dialogue_audio = chapterResources.value.dialogue_audio.map(
+            (audio) => audio.id
+          )
+        }
+
+        if (chapterResources.value.environment_configs) {
+          selectedResources.value.environment_configs =
+            chapterResources.value.environment_configs.map((config) => config.session_id)
+        }
+
+        // 更新估计总时长
+        if (chapterResources.value.resource_summary) {
+          estimatedTotalDuration.value =
+            chapterResources.value.resource_summary.estimated_total_duration || 0
+        }
+
+        // 设置默认项目名称
+        projectForm.value.name = `《${selectedBook.value.title}》音频编辑`
+        projectForm.value.description = `基于《${selectedBook.value.title}》的${selectedChapterIds.value.length}个章节创建的音频项目`
+      } else {
+        message.error('加载章节资源失败')
+      }
+    } catch (error) {
+      console.error('加载章节资源失败:', error)
+      message.error('加载章节资源失败')
+    } finally {
+      loadingResources.value = false
+    }
+  }
+
+  // 全选/取消全选资源
+  const selectAllDialogueAudio = () => {
+    if (chapterResources.value && chapterResources.value.dialogue_audio) {
+      selectedResources.value.dialogue_audio = chapterResources.value.dialogue_audio.map(
+        (audio) => audio.id
+      )
+    }
+  }
+
+  const deselectAllDialogueAudio = () => {
+    selectedResources.value.dialogue_audio = []
+  }
+
+  const selectAllEnvironmentConfigs = () => {
+    if (chapterResources.value && chapterResources.value.environment_configs) {
+      selectedResources.value.environment_configs = chapterResources.value.environment_configs.map(
+        (config) => config.session_id
+      )
+    }
+  }
+
+  const deselectAllEnvironmentConfigs = () => {
+    selectedResources.value.environment_configs = []
+  }
+
+  // 步骤导航
+  const nextStep = async () => {
+    if (currentStep.value === 3 && selectedChapterIds.value.length > 0) {
+      // 从步骤3到步骤4时，加载章节资源
+      await loadChapterResources()
+    }
+
+    currentStep.value++
+  }
+
+  const prevStep = () => {
+    currentStep.value--
+  }
+
+  // 创建项目
+  const createProject = async () => {
+    if (!projectForm.value.name) {
+      message.error('请输入项目名称')
+      return
+    }
+
+    creatingProject.value = true
+    try {
+      const response = await createProjectFromChapters(
+        projectForm.value.name,
+        selectedBook.value.id,
+        selectedChapterIds.value,
+        selectedResources.value
+      )
+
+      if (response && response.success) {
+        message.success('项目创建成功')
+
+        // 发送创建成功事件
+        emit('created', {
+          projectId: response.data.project_id,
+          summary: response.data.resource_summary
+        })
+
+        // 导航到编辑器页面
+        router.push(`/sound-editor/edit/${response.data.project_id}`)
+      } else {
+        message.error(response?.message || '创建项目失败')
+      }
+    } catch (error) {
+      console.error('创建项目失败:', error)
+      message.error('创建项目失败: ' + (error.response?.data?.detail || error.message))
+    } finally {
+      creatingProject.value = false
+    }
+  }
+
+  // 工具函数
+  const formatDuration = (seconds) => {
+    if (!seconds || seconds <= 0) return '00:00'
+    const minutes = Math.floor(seconds / 60)
+    const remainingSeconds = Math.floor(seconds % 60)
+    return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`
+  }
+
+  const formatFileSize = (bytes) => {
+    if (!bytes || bytes <= 0) return '0 B'
+    const units = ['B', 'KB', 'MB', 'GB']
+    let size = bytes
+    let unitIndex = 0
+
+    while (size >= 1024 && unitIndex < units.length - 1) {
+      size /= 1024
+      unitIndex++
+    }
+
+    return `${size.toFixed(1)} ${units[unitIndex]}`
+  }
+
+  // 初始化
+  initSelector()
 </script>
 
 <style scoped>
-.book-chapter-selector {
-  padding: 20px;
-}
+  .book-chapter-selector {
+    padding: 20px;
+  }
 
-.selector-header {
-  margin-bottom: 20px;
-}
+  .selector-header {
+    margin-bottom: 20px;
+  }
 
-.selector-title {
-  margin: 0 0 8px 0;
-  font-size: 20px;
-  font-weight: 600;
-}
+  .selector-title {
+    margin: 0 0 8px 0;
+    font-size: 20px;
+    font-weight: 600;
+  }
 
-.selector-description {
-  margin: 0;
-  color: #666;
-}
+  .selector-description {
+    margin: 0;
+    color: #666;
+  }
 
-.selector-steps {
-  margin-bottom: 30px;
-}
+  .selector-steps {
+    margin-bottom: 30px;
+  }
 
-.step-content {
-  margin-bottom: 30px;
-  min-height: 300px;
-}
+  .step-content {
+    margin-bottom: 30px;
+    min-height: 300px;
+  }
 
-.step-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-}
+  .step-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+  }
 
-.step-header h3 {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 600;
-}
+  .step-header h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+  }
 
-.empty-state {
-  text-align: center;
-  padding: 40px 0;
-  color: #999;
-}
+  .empty-state {
+    text-align: center;
+    padding: 40px 0;
+    color: #999;
+  }
 
-.books-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 16px;
-}
+  .books-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+  }
 
-.book-card {
-  border: 1px solid #e8e8e8;
-  border-radius: 6px;
-  padding: 16px;
-  cursor: pointer;
-  transition: all 0.2s;
-  display: flex;
-  justify-content: space-between;
-}
+  .book-card {
+    border: 1px solid #e8e8e8;
+    border-radius: 6px;
+    padding: 16px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    justify-content: space-between;
+  }
 
-.book-card:hover {
-  border-color: #1890ff;
-  box-shadow: 0 2px 8px rgba(24, 144, 255, 0.15);
-}
+  .book-card:hover {
+    border-color: #1890ff;
+    box-shadow: 0 2px 8px rgba(24, 144, 255, 0.15);
+  }
 
-.book-card.selected {
-  border-color: #1890ff;
-  background-color: #e6f7ff;
-}
+  .book-card.selected {
+    border-color: #1890ff;
+    background-color: #e6f7ff;
+  }
 
-.book-title {
-  margin: 0 0 4px 0;
-  font-size: 16px;
-  font-weight: 600;
-}
+  .book-title {
+    margin: 0 0 4px 0;
+    font-size: 16px;
+    font-weight: 600;
+  }
 
-.book-author {
-  margin: 0 0 8px 0;
-  color: #666;
-}
+  .book-author {
+    margin: 0 0 8px 0;
+    color: #666;
+  }
 
-.book-stats {
-  display: flex;
-  gap: 12px;
-}
+  .book-stats {
+    display: flex;
+    gap: 12px;
+  }
 
-.stat-item {
-  font-size: 12px;
-  color: #666;
-}
+  .stat-item {
+    font-size: 12px;
+    color: #666;
+  }
 
-/* 项目选择样式 */
-.projects-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  max-height: 400px;
-  overflow-y: auto;
-}
+  /* 项目选择样式 */
+  .projects-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    max-height: 400px;
+    overflow-y: auto;
+  }
 
-.project-card {
-  border: 1px solid #e8e8e8;
-  border-radius: 6px;
-  padding: 16px;
-  cursor: pointer;
-  transition: all 0.2s;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
+  .project-card {
+    border: 1px solid #e8e8e8;
+    border-radius: 6px;
+    padding: 16px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
 
-.project-card:hover {
-  border-color: #1890ff;
-  box-shadow: 0 2px 8px rgba(24, 144, 255, 0.15);
-}
+  .project-card:hover {
+    border-color: #1890ff;
+    box-shadow: 0 2px 8px rgba(24, 144, 255, 0.15);
+  }
 
-.project-card.selected {
-  border-color: #1890ff;
-  background-color: #e6f7ff;
-}
+  .project-card.selected {
+    border-color: #1890ff;
+    background-color: #e6f7ff;
+  }
 
-.project-info {
-  flex: 1;
-}
+  .project-info {
+    flex: 1;
+  }
 
-.project-name {
-  margin: 0 0 4px 0;
-  font-size: 16px;
-  font-weight: 600;
-}
+  .project-name {
+    margin: 0 0 4px 0;
+    font-size: 16px;
+    font-weight: 600;
+  }
 
-.project-description {
-  margin: 0 0 8px 0;
-  color: #666;
-  font-size: 14px;
-}
+  .project-description {
+    margin: 0 0 8px 0;
+    color: #666;
+    font-size: 14px;
+  }
 
-.project-stats {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-}
+  .project-stats {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+  }
 
-.project-status {
-  flex-shrink: 0;
-  width: 120px;
-}
+  .project-status {
+    flex-shrink: 0;
+    width: 120px;
+  }
 
-.progress-bar {
-  margin-top: 4px;
-}
+  .progress-bar {
+    margin-top: 4px;
+  }
 
-.chapters-list {
-  border: 1px solid #e8e8e8;
-  border-radius: 6px;
-  max-height: 400px;
-  overflow-y: auto;
-}
+  .chapters-list {
+    border: 1px solid #e8e8e8;
+    border-radius: 6px;
+    max-height: 400px;
+    overflow-y: auto;
+  }
 
-.chapter-item {
-  padding: 12px 16px;
-  border-bottom: 1px solid #f0f0f0;
-}
+  .chapter-item {
+    padding: 12px 16px;
+    border-bottom: 1px solid #f0f0f0;
+  }
 
-.chapter-item:last-child {
-  border-bottom: none;
-}
+  .chapter-item:last-child {
+    border-bottom: none;
+  }
 
-.chapter-info {
-  margin-left: 8px;
-}
+  .chapter-info {
+    margin-left: 8px;
+  }
 
-.chapter-title {
-  font-weight: 500;
-}
+  .chapter-title {
+    font-weight: 500;
+  }
 
-.chapter-stats {
-  margin-top: 4px;
-  display: flex;
-  gap: 12px;
-}
+  .chapter-stats {
+    margin-top: 4px;
+    display: flex;
+    gap: 12px;
+  }
 
-.has-resource {
-  color: #1890ff;
-}
+  .has-resource {
+    color: #1890ff;
+  }
 
-.resources-container {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-}
+  .resources-container {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
 
-.resource-section {
-  border: 1px solid #e8e8e8;
-  border-radius: 6px;
-  padding: 16px;
-}
+  .resource-section {
+    border: 1px solid #e8e8e8;
+    border-radius: 6px;
+    padding: 16px;
+  }
 
-.section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-}
+  .section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+  }
 
-.section-header h4 {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 600;
-}
+  .section-header h4 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+  }
 
-.empty-resource {
-  text-align: center;
-  padding: 20px 0;
-  color: #999;
-}
+  .empty-resource {
+    text-align: center;
+    padding: 20px 0;
+    color: #999;
+  }
 
-.resource-list {
-  max-height: 300px;
-  overflow-y: auto;
-}
+  .resource-list {
+    max-height: 300px;
+    overflow-y: auto;
+  }
 
-.resource-item {
-  padding: 8px 0;
-  border-bottom: 1px solid #f0f0f0;
-}
+  .resource-item {
+    padding: 8px 0;
+    border-bottom: 1px solid #f0f0f0;
+  }
 
-.resource-item:last-child {
-  border-bottom: none;
-}
+  .resource-item:last-child {
+    border-bottom: none;
+  }
 
-.resource-info {
-  margin-left: 8px;
-}
+  .resource-info {
+    margin-left: 8px;
+  }
 
-.resource-name {
-  font-weight: 500;
-}
+  .resource-name {
+    font-weight: 500;
+  }
 
-.resource-meta {
-  margin-top: 4px;
-  display: flex;
-  gap: 12px;
-}
+  .resource-meta {
+    margin-top: 4px;
+    display: flex;
+    gap: 12px;
+  }
 
-.meta-item {
-  font-size: 12px;
-  color: #666;
-}
+  .meta-item {
+    font-size: 12px;
+    color: #666;
+  }
 
-.resource-summary {
-  margin-top: 20px;
-  background-color: #f5f5f5;
-  border-radius: 6px;
-  padding: 16px;
-}
+  .resource-summary {
+    margin-top: 20px;
+    background-color: #f5f5f5;
+    border-radius: 6px;
+    padding: 16px;
+  }
 
-.resource-summary h4 {
-  margin: 0 0 12px 0;
-  font-size: 14px;
-  font-weight: 600;
-}
+  .resource-summary h4 {
+    margin: 0 0 12px 0;
+    font-size: 14px;
+    font-weight: 600;
+  }
 
-.summary-content p {
-  margin: 8px 0;
-}
+  .summary-content p {
+    margin: 8px 0;
+  }
 
-.step-actions {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 30px;
-}
-</style> 
+  .step-actions {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 30px;
+  }
+</style>

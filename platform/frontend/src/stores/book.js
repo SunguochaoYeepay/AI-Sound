@@ -11,15 +11,15 @@ export const useBookStore = defineStore('book', () => {
   const books = ref([])
   const loading = ref(false)
   const currentBook = ref(null)
-  
+
   // 章节数据
   const chapters = ref([])
   const chaptersLoading = ref(false)
-  
+
   // 计算属性
   const bookCount = computed(() => books.value.length)
   const hasBooks = computed(() => bookCount.value > 0)
-  
+
   // 获取书籍列表
   const fetchBooks = async (params = {}) => {
     loading.value = true
@@ -33,7 +33,7 @@ export const useBookStore = defineStore('book', () => {
       loading.value = false
     }
   }
-  
+
   // 获取书籍详情
   const fetchBook = async (bookId) => {
     const result = await bookAPI.getBook(bookId)
@@ -42,7 +42,7 @@ export const useBookStore = defineStore('book', () => {
     }
     return result
   }
-  
+
   // 获取章节列表
   const fetchChapters = async (bookId, params = {}) => {
     chaptersLoading.value = true
@@ -56,36 +56,36 @@ export const useBookStore = defineStore('book', () => {
       chaptersLoading.value = false
     }
   }
-  
+
   // 添加书籍到本地状态
   const addBook = (book) => {
     books.value.unshift(book)
   }
-  
+
   // 更新书籍
   const updateBook = (bookId, updates) => {
-    const index = books.value.findIndex(book => book.id === bookId)
+    const index = books.value.findIndex((book) => book.id === bookId)
     if (index > -1) {
       books.value[index] = { ...books.value[index], ...updates }
     }
-    
+
     if (currentBook.value?.id === bookId) {
       currentBook.value = { ...currentBook.value, ...updates }
     }
   }
-  
+
   // 删除书籍
   const removeBook = (bookId) => {
-    const index = books.value.findIndex(book => book.id === bookId)
+    const index = books.value.findIndex((book) => book.id === bookId)
     if (index > -1) {
       books.value.splice(index, 1)
     }
-    
+
     if (currentBook.value?.id === bookId) {
       currentBook.value = null
     }
   }
-  
+
   return {
     // 状态
     books,
@@ -93,11 +93,11 @@ export const useBookStore = defineStore('book', () => {
     currentBook,
     chapters,
     chaptersLoading,
-    
+
     // 计算属性
     bookCount,
     hasBooks,
-    
+
     // 方法
     fetchBooks,
     fetchBook,
@@ -106,4 +106,4 @@ export const useBookStore = defineStore('book', () => {
     updateBook,
     removeBook
   }
-}) 
+})

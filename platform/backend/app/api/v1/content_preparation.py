@@ -866,7 +866,11 @@ async def apply_detection_fixes(
                 raise HTTPException(status_code=400, detail="合成计划格式错误")
             
             # 应用单个问题的修复
-            current_segments = analysis_result.synthesis_plan.get('segments', [])
+            # 🔧 修复：正确获取segments数据，支持两种数据结构
+            current_segments = analysis_result.synthesis_plan.get('synthesis_plan', [])
+            if not current_segments:
+                # 兼容旧的数据结构
+                current_segments = analysis_result.synthesis_plan.get('segments', [])
             logger.info(f"当前片段数量: {len(current_segments)}")
 
             # 如果没有片段数据，则无需尝试修复任何问题
@@ -919,9 +923,22 @@ async def apply_detection_fixes(
             import json
             from datetime import datetime
             
-            final_config = analysis_result.synthesis_plan.copy() if analysis_result.synthesis_plan else {}
+            # 🔧 修复：正确更新synthesis_plan数据结构
+            synthesis_plan_copy = analysis_result.synthesis_plan.copy() if analysis_result.synthesis_plan else {}
+            
+            # 更新synthesis_plan中的segments数据
+            if 'synthesis_plan' in synthesis_plan_copy:
+                synthesis_plan_copy['synthesis_plan'] = current_segments
+            else:
+                # 兼容旧的数据结构
+                synthesis_plan_copy['segments'] = current_segments
+            
+            # 更新synthesis_plan本身
+            analysis_result.synthesis_plan = synthesis_plan_copy
+            
+            # 同时更新final_config
+            final_config = synthesis_plan_copy.copy()
             final_config.update({
-                'segments': current_segments,
                 'total_segments': len(current_segments),
                 'last_updated': datetime.now().isoformat(),
                 'updated_by': 'single_issue_fix'
@@ -935,7 +952,10 @@ async def apply_detection_fixes(
             return {
                 "success": True,
                 "message": f"成功修复 {fixed_count} 个问题",
-                "fixed_issues": fixed_count
+                "data": {
+                    "fixed_count": fixed_count,
+                    "fixed_issues": fixed_count
+                }
             }
         
         # 批量修复模式
@@ -970,7 +990,10 @@ async def apply_detection_fixes(
                 return {
                     "success": True,
                     "message": f"成功应用修复，更新了 {len(fixed_segments)} 个片段",
-                    "updated_segments": len(fixed_segments)
+                    "data": {
+                        "fixed_count": len(fixed_segments),
+                        "updated_segments": len(fixed_segments)
+                    }
                 }
             except HTTPException:
                 db.rollback()

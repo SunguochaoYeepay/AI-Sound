@@ -35,7 +35,7 @@ export const useAudioPlayerStore = defineStore('audioPlayer', () => {
   const playAudio = async (audioInfo) => {
     try {
       console.log('🎵 [播放请求] 开始播放音频:', audioInfo)
-      
+
       // 验证音频信息
       if (!audioInfo) {
         console.error('🎵 [播放失败] 音频信息为空')
@@ -64,7 +64,7 @@ export const useAudioPlayerStore = defineStore('audioPlayer', () => {
           return
         }
       }
-      
+
       // 如果是同一个音频，切换播放/暂停
       if (currentAudio.value?.id === audioInfo.id) {
         console.log('🎵 [相同音频] 切换播放/暂停状态')
@@ -106,7 +106,7 @@ export const useAudioPlayerStore = defineStore('audioPlayer', () => {
       // 创建新的音频元素
       console.log('🎵 [创建音频] 创建新的音频元素，URL:', currentAudio.value.url)
       audioElement.value = new Audio(currentAudio.value.url)
-      
+
       // 设置音频属性
       audioElement.value.volume = volume.value
       audioElement.value.playbackRate = playbackRate.value
@@ -116,16 +116,15 @@ export const useAudioPlayerStore = defineStore('audioPlayer', () => {
       setupAudioEventListeners()
 
       // 等待一下让事件监听器设置完成
-      await new Promise(resolve => setTimeout(resolve, 100))
+      await new Promise((resolve) => setTimeout(resolve, 100))
 
       // 开始播放
       console.log('🎵 [开始播放] 调用play()方法')
       await audioElement.value.play()
       isPlaying.value = true
-      
+
       console.log('🎵 [播放成功] 音频播放成功')
       message.success(`开始播放: ${currentAudio.value.title}`)
-
     } catch (err) {
       console.error('🎵 [播放失败] 播放音频失败:', {
         error: err,
@@ -140,7 +139,7 @@ export const useAudioPlayerStore = defineStore('audioPlayer', () => {
       })
       error.value = err.message
       loading.value = false
-      
+
       if (err.name === 'NotAllowedError') {
         message.error('浏览器不允许自动播放音频，请先与页面交互')
       } else if (err.name === 'NotSupportedError') {
@@ -181,7 +180,8 @@ export const useAudioPlayerStore = defineStore('audioPlayer', () => {
       const audio = audioElement.value
       try {
         // 只有在音频处于可控制状态时才暂停
-        if (audio.readyState >= 1) { // HAVE_METADATA
+        if (audio.readyState >= 1) {
+          // HAVE_METADATA
           audio.pause()
           audio.currentTime = 0
         } else {
@@ -232,9 +232,33 @@ export const useAudioPlayerStore = defineStore('audioPlayer', () => {
     if (!audioElement.value) return
 
     // 📊 调试：添加所有音频事件监听
-    const debugEvents = ['loadstart', 'progress', 'suspend', 'abort', 'error', 'emptied', 'stalled', 'loadedmetadata', 'loadeddata', 'canplay', 'canplaythrough', 'playing', 'waiting', 'seeking', 'seeked', 'ended', 'durationchange', 'timeupdate', 'play', 'pause', 'ratechange', 'resize', 'volumechange']
-    
-    debugEvents.forEach(eventType => {
+    const debugEvents = [
+      'loadstart',
+      'progress',
+      'suspend',
+      'abort',
+      'error',
+      'emptied',
+      'stalled',
+      'loadedmetadata',
+      'loadeddata',
+      'canplay',
+      'canplaythrough',
+      'playing',
+      'waiting',
+      'seeking',
+      'seeked',
+      'ended',
+      'durationchange',
+      'timeupdate',
+      'play',
+      'pause',
+      'ratechange',
+      'resize',
+      'volumechange'
+    ]
+
+    debugEvents.forEach((eventType) => {
       audioElement.value.addEventListener(eventType, (e) => {
         console.log(`🎵 [音频事件] ${eventType}:`, {
           readyState: audioElement.value?.readyState,
@@ -266,7 +290,7 @@ export const useAudioPlayerStore = defineStore('audioPlayer', () => {
       isPlaying.value = false
       currentTime.value = 0
       message.success(`播放完成: ${currentAudio.value?.title}`)
-      
+
       // 触发播放完成事件
       if (currentAudio.value?.metadata?.onEnded) {
         currentAudio.value.metadata.onEnded()
@@ -317,7 +341,8 @@ export const useAudioPlayerStore = defineStore('audioPlayer', () => {
       console.warn('🎵 [网络停滞] 音频加载停滞')
       // 10秒后如果还在加载，显示错误
       setTimeout(() => {
-        if (loading.value && audioElement.value?.networkState === 2) { // NETWORK_LOADING
+        if (loading.value && audioElement.value?.networkState === 2) {
+          // NETWORK_LOADING
           console.error('🎵 [加载超时] 音频加载超时')
           error.value = '音频加载超时'
           loading.value = false
@@ -363,12 +388,12 @@ export const useAudioPlayerStore = defineStore('audioPlayer', () => {
     playbackRate,
     loading,
     error,
-    
+
     // 计算属性
     progress,
     formattedCurrentTime,
     formattedDuration,
-    
+
     // 方法
     playAudio,
     pause,
@@ -380,8 +405,8 @@ export const useAudioPlayerStore = defineStore('audioPlayer', () => {
     cleanup,
     isCurrentlyPlaying,
     isCurrentAudio,
-    
+
     // 工具函数
     formatTime
   }
-}) 
+})

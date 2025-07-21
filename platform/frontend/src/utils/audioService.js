@@ -105,7 +105,7 @@ export class AudioService {
       const response = await fetch('/api/v1/tts/preview', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           voice_id: voiceId,
@@ -189,7 +189,7 @@ export class AudioService {
           description: sound.description,
           duration: sound.duration,
           category: sound.category?.name,
-          tags: sound.tags?.map(tag => tag.name).join(', '),
+          tags: sound.tags?.map((tag) => tag.name).join(', '),
           onEnded: () => {
             console.log(`环境音 ${sound.name} 播放完成`)
           }
@@ -335,4 +335,4 @@ export const isCurrentlyPlaying = (...args) => getAudioService().isCurrentlyPlay
 export const isCurrentAudio = (...args) => getAudioService().isCurrentAudio(...args)
 export const cleanupAudio = () => getAudioService().cleanup()
 
-export default getAudioService 
+export default getAudioService

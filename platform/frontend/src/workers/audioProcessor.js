@@ -34,7 +34,7 @@ const decodeAudio = async (arrayBuffer, taskId) => {
   try {
     const ctx = initAudioContext()
     const audioBuffer = await ctx.decodeAudioData(arrayBuffer)
-    
+
     const result = {
       taskId,
       success: true,
@@ -46,12 +46,12 @@ const decodeAudio = async (arrayBuffer, taskId) => {
         channelData: []
       }
     }
-    
+
     // 提取每个声道的数据
     for (let i = 0; i < audioBuffer.numberOfChannels; i++) {
       result.data.channelData.push(audioBuffer.getChannelData(i))
     }
-    
+
     self.postMessage({
       type: MessageTypes.DECODE_AUDIO,
       result
@@ -71,36 +71,31 @@ const decodeAudio = async (arrayBuffer, taskId) => {
 // 生成波形数据
 const generateWaveform = (channelData, options = {}, taskId) => {
   try {
-    const {
-      width = 1000,
-      height = 100,
-      samplesPerPixel = 512,
-      normalize = true
-    } = options
-    
+    const { width = 1000, height = 100, samplesPerPixel = 512, normalize = true } = options
+
     const samples = channelData.length
     const blockSize = Math.floor(samples / width)
     const peaks = []
-    
+
     for (let i = 0; i < width; i++) {
       const start = i * blockSize
       const end = Math.min(start + blockSize, samples)
-      
+
       let min = 0
       let max = 0
-      
+
       for (let j = start; j < end; j++) {
         const sample = channelData[j]
         if (sample > max) max = sample
         if (sample < min) min = sample
       }
-      
+
       peaks.push({
         min: normalize ? min * height : min,
         max: normalize ? max * height : max
       })
     }
-    
+
     self.postMessage({
       type: MessageTypes.GENERATE_WAVEFORM,
       result: {
@@ -133,20 +128,20 @@ const calculatePeaks = (channelData, options = {}, taskId) => {
       threshold = -20, // dB
       windowSize = 1024
     } = options
-    
+
     const peaks = []
     const linearThreshold = Math.pow(10, threshold / 20)
-    
+
     for (let i = 0; i < channelData.length; i += windowSize) {
       const window = channelData.slice(i, i + windowSize)
       let rms = 0
-      
+
       for (let j = 0; j < window.length; j++) {
         rms += window[j] * window[j]
       }
-      
+
       rms = Math.sqrt(rms / window.length)
-      
+
       if (rms > linearThreshold) {
         peaks.push({
           time: i / sampleRate,
@@ -155,7 +150,7 @@ const calculatePeaks = (channelData, options = {}, taskId) => {
         })
       }
     }
-    
+
     self.postMessage({
       type: MessageTypes.CALCULATE_PEAKS,
       result: {
@@ -187,17 +182,17 @@ const normalizeAudio = (channelData, targetLevel = -3, taskId) => {
         maxAmplitude = abs
       }
     }
-    
+
     // 计算增益
     const targetLinear = Math.pow(10, targetLevel / 20)
     const gain = maxAmplitude > 0 ? targetLinear / maxAmplitude : 1
-    
+
     // 应用增益
     const normalizedData = new Float32Array(channelData.length)
     for (let i = 0; i < channelData.length; i++) {
       normalizedData[i] = channelData[i] * gain
     }
-    
+
     self.postMessage({
       type: MessageTypes.NORMALIZE_AUDIO,
       result: {
@@ -230,17 +225,17 @@ const applyFade = (channelData, options = {}, taskId) => {
       fadeOutDuration = 0,
       fadeType = 'linear' // linear, exponential, logarithmic
     } = options
-    
+
     const fadeInSamples = Math.floor(fadeInDuration * sampleRate)
     const fadeOutSamples = Math.floor(fadeOutDuration * sampleRate)
     const totalSamples = channelData.length
-    
+
     const processedData = new Float32Array(channelData)
-    
+
     // 淡入处理
     for (let i = 0; i < Math.min(fadeInSamples, totalSamples); i++) {
       let factor = i / fadeInSamples
-      
+
       switch (fadeType) {
         case 'exponential':
           factor = factor * factor
@@ -251,15 +246,15 @@ const applyFade = (channelData, options = {}, taskId) => {
         default: // linear
           break
       }
-      
+
       processedData[i] *= factor
     }
-    
+
     // 淡出处理
     const fadeOutStart = totalSamples - fadeOutSamples
     for (let i = Math.max(0, fadeOutStart); i < totalSamples; i++) {
       let factor = (totalSamples - i) / fadeOutSamples
-      
+
       switch (fadeType) {
         case 'exponential':
           factor = factor * factor
@@ -270,10 +265,10 @@ const applyFade = (channelData, options = {}, taskId) => {
         default: // linear
           break
       }
-      
+
       processedData[i] *= factor
     }
-    
+
     self.postMessage({
       type: MessageTypes.APPLY_FADE,
       result: {
@@ -297,38 +292,36 @@ const applyFade = (channelData, options = {}, taskId) => {
 // 混合多个音频轨道
 const mixTracks = (tracks, options = {}, taskId) => {
   try {
-    const {
-      outputLength = Math.max(...tracks.map(t => t.data.length)),
-      masterVolume = 1.0
-    } = options
-    
+    const { outputLength = Math.max(...tracks.map((t) => t.data.length)), masterVolume = 1.0 } =
+      options
+
     const mixedData = new Float32Array(outputLength)
-    
-    tracks.forEach(track => {
+
+    tracks.forEach((track) => {
       const { data, volume = 1.0, startTime = 0, pan = 0 } = track
       const startSample = Math.floor(startTime * sampleRate)
-      
-      for (let i = 0; i < data.length && (startSample + i) < outputLength; i++) {
+
+      for (let i = 0; i < data.length && startSample + i < outputLength; i++) {
         const outputIndex = startSample + i
         if (outputIndex >= 0) {
           // 应用音量和声像
           let sample = data[i] * volume
-          
+
           // 简单的声像处理（这里可以扩展为更复杂的算法）
           if (pan !== 0) {
-            sample *= (1 - Math.abs(pan))
+            sample *= 1 - Math.abs(pan)
           }
-          
+
           mixedData[outputIndex] += sample
         }
       }
     })
-    
+
     // 应用主音量
     for (let i = 0; i < mixedData.length; i++) {
       mixedData[i] *= masterVolume
     }
-    
+
     self.postMessage({
       type: MessageTypes.MIX_TRACKS,
       result: {
@@ -353,7 +346,7 @@ const mixTracks = (tracks, options = {}, taskId) => {
 const processBatch = async (tasks, taskId) => {
   try {
     const results = []
-    
+
     for (const task of tasks) {
       switch (task.type) {
         case 'normalize':
@@ -380,7 +373,7 @@ const processBatch = async (tasks, taskId) => {
           })
       }
     }
-    
+
     self.postMessage({
       type: MessageTypes.PROCESS_BATCH,
       result: {
@@ -402,38 +395,38 @@ const processBatch = async (tasks, taskId) => {
 }
 
 // 消息处理
-self.onmessage = function(e) {
+self.onmessage = function (e) {
   const { type, data, taskId } = e.data
-  
+
   switch (type) {
     case MessageTypes.DECODE_AUDIO:
       decodeAudio(data.arrayBuffer, taskId)
       break
-      
+
     case MessageTypes.GENERATE_WAVEFORM:
       generateWaveform(data.channelData, data.options, taskId)
       break
-      
+
     case MessageTypes.CALCULATE_PEAKS:
       calculatePeaks(data.channelData, data.options, taskId)
       break
-      
+
     case MessageTypes.NORMALIZE_AUDIO:
       normalizeAudio(data.channelData, data.targetLevel, taskId)
       break
-      
+
     case MessageTypes.APPLY_FADE:
       applyFade(data.channelData, data.options, taskId)
       break
-      
+
     case MessageTypes.MIX_TRACKS:
       mixTracks(data.tracks, data.options, taskId)
       break
-      
+
     case MessageTypes.PROCESS_BATCH:
       processBatch(data.tasks, taskId)
       break
-      
+
     default:
       self.postMessage({
         type: 'error',
@@ -444,4 +437,4 @@ self.onmessage = function(e) {
         }
       })
   }
-} 
+}

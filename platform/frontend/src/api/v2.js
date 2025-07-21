@@ -22,13 +22,13 @@ const apiRequest = async (requestFn, showError = true) => {
     }
   } catch (error) {
     const errorMsg = error.response?.data?.message || error.message || '请求失败'
-    
+
     if (showError) {
       message.error(errorMsg)
     }
-    
+
     console.error('API请求失败:', error)
-    
+
     return {
       success: false,
       error: errorMsg,
@@ -44,45 +44,35 @@ const apiRequest = async (requestFn, showError = true) => {
 export const bookAPI = {
   // 获取书籍列表
   async getBooks(params = {}) {
-    return apiRequest(() => 
-      apiClient.get(`${API_V2_PREFIX}/books`, { params })
-    )
+    return apiRequest(() => apiClient.get(`${API_V2_PREFIX}/books`, { params }))
   },
-  
+
   // 获取书籍详情
   async getBook(bookId) {
-    return apiRequest(() => 
-      apiClient.get(`${API_V2_PREFIX}/books/${bookId}`)
-    )
+    return apiRequest(() => apiClient.get(`${API_V2_PREFIX}/books/${bookId}`))
   },
-  
+
   // 创建书籍
   async createBook(bookData) {
-    return apiRequest(() => 
-      apiClient.post(`${API_V2_PREFIX}/books`, bookData)
-    )
+    return apiRequest(() => apiClient.post(`${API_V2_PREFIX}/books`, bookData))
   },
-  
+
   // 更新书籍
   async updateBook(bookId, bookData) {
-    return apiRequest(() => 
-      apiClient.put(`${API_V2_PREFIX}/books/${bookId}`, bookData)
-    )
+    return apiRequest(() => apiClient.put(`${API_V2_PREFIX}/books/${bookId}`, bookData))
   },
-  
+
   // 删除书籍
   async deleteBook(bookId) {
-    return apiRequest(() => 
-      apiClient.delete(`${API_V2_PREFIX}/books/${bookId}`)
-    )
+    return apiRequest(() => apiClient.delete(`${API_V2_PREFIX}/books/${bookId}`))
   },
-  
+
   // 上传书籍文件
   async uploadBook(file, config = {}) {
     const formData = new FormData()
     formData.append('file', file)
-    
-    return apiRequest(() => 
+
+    return apiRequest(() =>
       apiClient.post(`${API_V2_PREFIX}/books/upload`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data'
@@ -92,26 +82,22 @@ export const bookAPI = {
       })
     )
   },
-  
+
   // 检测章节结构
   async detectChapters(bookId, config = {}) {
-    return apiRequest(() => 
+    return apiRequest(() =>
       apiClient.post(`${API_V2_PREFIX}/books/${bookId}/detect-chapters`, config)
     )
   },
-  
+
   // 获取书籍结构状态
   async getBookStructure(bookId) {
-    return apiRequest(() => 
-      apiClient.get(`${API_V2_PREFIX}/books/${bookId}/structure`)
-    )
+    return apiRequest(() => apiClient.get(`${API_V2_PREFIX}/books/${bookId}/structure`))
   },
-  
+
   // 获取书籍章节列表
   async getBookChapters(bookId, params = {}) {
-    return apiRequest(() => 
-      apiClient.get(`${API_V2_PREFIX}/books/${bookId}/chapters`, { params })
-    )
+    return apiRequest(() => apiClient.get(`${API_V2_PREFIX}/books/${bookId}/chapters`, { params }))
   }
 }
 
@@ -121,39 +107,33 @@ export const bookAPI = {
 export const chapterAPI = {
   // 获取章节列表
   async getChapters(bookId, params = {}) {
-    return apiRequest(() => 
-      apiClient.get(`${API_V2_PREFIX}/chapters`, { 
-        params: { book_id: bookId, ...params } 
+    return apiRequest(() =>
+      apiClient.get(`${API_V2_PREFIX}/chapters`, {
+        params: { book_id: bookId, ...params }
       })
     )
   },
-  
+
   // 获取章节详情
   async getChapter(chapterId) {
-    return apiRequest(() => 
-      apiClient.get(`${API_V2_PREFIX}/chapters/${chapterId}`)
-    )
+    return apiRequest(() => apiClient.get(`${API_V2_PREFIX}/chapters/${chapterId}`))
   },
-  
+
   // 更新章节
   async updateChapter(chapterId, chapterData) {
-    return apiRequest(() => 
-      apiClient.put(`${API_V2_PREFIX}/chapters/${chapterId}`, chapterData)
-    )
+    return apiRequest(() => apiClient.put(`${API_V2_PREFIX}/chapters/${chapterId}`, chapterData))
   },
-  
+
   // 分割章节
   async splitChapter(chapterId, splitData) {
-    return apiRequest(() => 
+    return apiRequest(() =>
       apiClient.post(`${API_V2_PREFIX}/chapters/${chapterId}/split`, splitData)
     )
   },
-  
+
   // 合并章节
   async mergeChapters(mergeData) {
-    return apiRequest(() => 
-      apiClient.post(`${API_V2_PREFIX}/chapters/merge`, mergeData)
-    )
+    return apiRequest(() => apiClient.post(`${API_V2_PREFIX}/chapters/merge`, mergeData))
   }
 }
 
@@ -163,69 +143,57 @@ export const chapterAPI = {
 export const analysisAPI = {
   // 创建分析会话
   async createSession(sessionData) {
-    return apiRequest(() => 
-      apiClient.post(`${API_V2_PREFIX}/analysis/sessions`, sessionData)
-    )
+    return apiRequest(() => apiClient.post(`${API_V2_PREFIX}/analysis/sessions`, sessionData))
   },
-  
+
   // 获取分析会话列表
   async getSessions(params = {}) {
-    return apiRequest(() => 
-      apiClient.get(`${API_V2_PREFIX}/analysis/sessions`, { params })
-    )
+    return apiRequest(() => apiClient.get(`${API_V2_PREFIX}/analysis/sessions`, { params }))
   },
-  
+
   // 获取分析会话详情
   async getSession(sessionId) {
-    return apiRequest(() => 
-      apiClient.get(`${API_V2_PREFIX}/analysis/sessions/${sessionId}`)
-    )
+    return apiRequest(() => apiClient.get(`${API_V2_PREFIX}/analysis/sessions/${sessionId}`))
   },
-  
+
   // 开始分析
   async startAnalysis(sessionId, forceRestart = false) {
-    return apiRequest(() => 
+    return apiRequest(() =>
       apiClient.post(`${API_V2_PREFIX}/analysis/sessions/${sessionId}/start`, {
         force_restart: forceRestart
       })
     )
   },
-  
+
   // 停止分析
   async stopAnalysis(sessionId) {
-    return apiRequest(() => 
-      apiClient.post(`${API_V2_PREFIX}/analysis/sessions/${sessionId}/stop`)
-    )
+    return apiRequest(() => apiClient.post(`${API_V2_PREFIX}/analysis/sessions/${sessionId}/stop`))
   },
-  
+
   // 获取分析结果
   async getResults(sessionId, params = {}) {
-    return apiRequest(() => 
+    return apiRequest(() =>
       apiClient.get(`${API_V2_PREFIX}/analysis/sessions/${sessionId}/results`, { params })
     )
   },
-  
+
   // 获取特定分析结果
   async getResult(resultId) {
-    return apiRequest(() => 
-      apiClient.get(`${API_V2_PREFIX}/analysis/results/${resultId}`)
-    )
+    return apiRequest(() => apiClient.get(`${API_V2_PREFIX}/analysis/results/${resultId}`))
   },
-  
+
   // 更新分析结果配置
   async updateResultConfig(resultId, modifications) {
-    return apiRequest(() => 
+    return apiRequest(() =>
       apiClient.put(`${API_V2_PREFIX}/analysis/results/${resultId}/config`, {
         modifications
       })
     )
   },
-  
+
   // 确认分析结果
   async confirmResult(resultId) {
-    return apiRequest(() => 
-      apiClient.post(`${API_V2_PREFIX}/analysis/results/${resultId}/confirm`)
-    )
+    return apiRequest(() => apiClient.post(`${API_V2_PREFIX}/analysis/results/${resultId}/confirm`))
   }
 }
 
@@ -235,49 +203,37 @@ export const analysisAPI = {
 export const synthesisAPI = {
   // 创建合成任务
   async createTask(taskData) {
-    return apiRequest(() => 
-      apiClient.post(`${API_V2_PREFIX}/synthesis/tasks`, taskData)
-    )
+    return apiRequest(() => apiClient.post(`${API_V2_PREFIX}/synthesis/tasks`, taskData))
   },
-  
+
   // 获取合成任务列表
   async getTasks(params = {}) {
-    return apiRequest(() => 
-      apiClient.get(`${API_V2_PREFIX}/synthesis/tasks`, { params })
-    )
+    return apiRequest(() => apiClient.get(`${API_V2_PREFIX}/synthesis/tasks`, { params }))
   },
-  
+
   // 获取合成任务详情
   async getTask(taskId) {
-    return apiRequest(() => 
-      apiClient.get(`${API_V2_PREFIX}/synthesis/tasks/${taskId}`)
-    )
+    return apiRequest(() => apiClient.get(`${API_V2_PREFIX}/synthesis/tasks/${taskId}`))
   },
-  
+
   // 开始合成
   async startSynthesis(taskId) {
-    return apiRequest(() => 
-      apiClient.post(`${API_V2_PREFIX}/synthesis/tasks/${taskId}/start`)
-    )
+    return apiRequest(() => apiClient.post(`${API_V2_PREFIX}/synthesis/tasks/${taskId}/start`))
   },
-  
+
   // 停止合成
   async stopSynthesis(taskId) {
-    return apiRequest(() => 
-      apiClient.post(`${API_V2_PREFIX}/synthesis/tasks/${taskId}/stop`)
-    )
+    return apiRequest(() => apiClient.post(`${API_V2_PREFIX}/synthesis/tasks/${taskId}/stop`))
   },
-  
+
   // 获取音频文件
   async getAudioFiles(taskId) {
-    return apiRequest(() => 
-      apiClient.get(`${API_V2_PREFIX}/synthesis/tasks/${taskId}/audio-files`)
-    )
+    return apiRequest(() => apiClient.get(`${API_V2_PREFIX}/synthesis/tasks/${taskId}/audio-files`))
   },
-  
+
   // 下载音频文件
   async downloadAudio(taskId, fileId) {
-    return apiRequest(() => 
+    return apiRequest(() =>
       apiClient.get(`${API_V2_PREFIX}/synthesis/tasks/${taskId}/audio-files/${fileId}/download`, {
         responseType: 'blob'
       })
@@ -291,56 +247,42 @@ export const synthesisAPI = {
 export const presetAPI = {
   // 获取预设列表
   async getPresets(params = {}) {
-    return apiRequest(() => 
-      apiClient.get(`${API_V2_PREFIX}/presets`, { params })
-    )
+    return apiRequest(() => apiClient.get(`${API_V2_PREFIX}/presets`, { params }))
   },
-  
+
   // 获取预设详情
   async getPreset(presetId) {
-    return apiRequest(() => 
-      apiClient.get(`${API_V2_PREFIX}/presets/${presetId}`)
-    )
+    return apiRequest(() => apiClient.get(`${API_V2_PREFIX}/presets/${presetId}`))
   },
-  
+
   // 创建预设
   async createPreset(presetData) {
-    return apiRequest(() => 
-      apiClient.post(`${API_V2_PREFIX}/presets`, presetData)
-    )
+    return apiRequest(() => apiClient.post(`${API_V2_PREFIX}/presets`, presetData))
   },
-  
+
   // 更新预设
   async updatePreset(presetId, presetData) {
-    return apiRequest(() => 
-      apiClient.put(`${API_V2_PREFIX}/presets/${presetId}`, presetData)
-    )
+    return apiRequest(() => apiClient.put(`${API_V2_PREFIX}/presets/${presetId}`, presetData))
   },
-  
+
   // 删除预设
   async deletePreset(presetId) {
-    return apiRequest(() => 
-      apiClient.delete(`${API_V2_PREFIX}/presets/${presetId}`)
-    )
+    return apiRequest(() => apiClient.delete(`${API_V2_PREFIX}/presets/${presetId}`))
   },
-  
+
   // 验证预设
   async validatePreset(presetData) {
-    return apiRequest(() => 
-      apiClient.post(`${API_V2_PREFIX}/presets/validate`, presetData)
-    )
+    return apiRequest(() => apiClient.post(`${API_V2_PREFIX}/presets/validate`, presetData))
   },
-  
+
   // 导入预设
   async importPresets(presetsData) {
-    return apiRequest(() => 
-      apiClient.post(`${API_V2_PREFIX}/presets/import`, presetsData)
-    )
+    return apiRequest(() => apiClient.post(`${API_V2_PREFIX}/presets/import`, presetsData))
   },
-  
+
   // 导出预设
   async exportPresets(presetIds = []) {
-    return apiRequest(() => 
+    return apiRequest(() =>
       apiClient.post(`${API_V2_PREFIX}/presets/export`, { preset_ids: presetIds })
     )
   }
@@ -352,44 +294,32 @@ export const presetAPI = {
 export const projectAPI = {
   // 获取项目列表
   async getProjects(params = {}) {
-    return apiRequest(() => 
-      apiClient.get(`${API_V2_PREFIX}/projects`, { params })
-    )
+    return apiRequest(() => apiClient.get(`${API_V2_PREFIX}/projects`, { params }))
   },
-  
+
   // 获取项目详情
   async getProject(projectId) {
-    return apiRequest(() => 
-      apiClient.get(`${API_V2_PREFIX}/projects/${projectId}`)
-    )
+    return apiRequest(() => apiClient.get(`${API_V2_PREFIX}/projects/${projectId}`))
   },
-  
+
   // 创建项目
   async createProject(projectData) {
-    return apiRequest(() => 
-      apiClient.post(`${API_V2_PREFIX}/projects`, projectData)
-    )
+    return apiRequest(() => apiClient.post(`${API_V2_PREFIX}/projects`, projectData))
   },
-  
+
   // 更新项目
   async updateProject(projectId, projectData) {
-    return apiRequest(() => 
-      apiClient.put(`${API_V2_PREFIX}/projects/${projectId}`, projectData)
-    )
+    return apiRequest(() => apiClient.put(`${API_V2_PREFIX}/projects/${projectId}`, projectData))
   },
-  
+
   // 删除项目
   async deleteProject(projectId) {
-    return apiRequest(() => 
-      apiClient.delete(`${API_V2_PREFIX}/projects/${projectId}`)
-    )
+    return apiRequest(() => apiClient.delete(`${API_V2_PREFIX}/projects/${projectId}`))
   },
-  
+
   // 获取项目统计
   async getProjectStats(projectId) {
-    return apiRequest(() => 
-      apiClient.get(`${API_V2_PREFIX}/projects/${projectId}/stats`)
-    )
+    return apiRequest(() => apiClient.get(`${API_V2_PREFIX}/projects/${projectId}/stats`))
   }
 }
 
@@ -399,16 +329,15 @@ export const projectAPI = {
 export const systemAPI = {
   // 健康检查
   async healthCheck() {
-    return apiRequest(() => 
-      apiClient.get(`${API_V2_PREFIX}/health`), false // 不显示错误消息
+    return apiRequest(
+      () => apiClient.get(`${API_V2_PREFIX}/health`),
+      false // 不显示错误消息
     )
   },
-  
+
   // 获取系统状态
   async getSystemStatus() {
-    return apiRequest(() => 
-      apiClient.get(`${API_V2_PREFIX}/system/status`)
-    )
+    return apiRequest(() => apiClient.get(`${API_V2_PREFIX}/system/status`))
   }
 }
 
@@ -421,4 +350,4 @@ export default {
   preset: presetAPI,
   project: projectAPI,
   system: systemAPI
-} 
+}

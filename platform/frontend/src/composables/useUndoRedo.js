@@ -6,22 +6,18 @@ import { message } from 'ant-design-vue'
  * 支持音频编辑器的完整操作历史管理
  */
 export function useUndoRedo(options = {}) {
-  const {
-    maxHistorySize = 100,
-    enableBatching = true,
-    batchTimeout = 1000
-  } = options
-  
+  const { maxHistorySize = 100, enableBatching = true, batchTimeout = 1000 } = options
+
   // 历史记录栈
   const history = ref([])
   const currentIndex = ref(-1)
   const batchTimer = ref(null)
   const currentBatch = ref([])
-  
+
   // 计算属性
   const canUndo = computed(() => currentIndex.value >= 0)
   const canRedo = computed(() => currentIndex.value < history.value.length - 1)
-  
+
   // 操作类型定义
   const ActionTypes = {
     // 轨道操作
@@ -33,7 +29,7 @@ export function useUndoRedo(options = {}) {
     SOLO_TRACK: 'solo_track',
     CHANGE_TRACK_VOLUME: 'change_track_volume',
     CHANGE_TRACK_PAN: 'change_track_pan',
-    
+
     // 音频片段操作
     ADD_CLIP: 'add_clip',
     DELETE_CLIP: 'delete_clip',
@@ -43,13 +39,13 @@ export function useUndoRedo(options = {}) {
     MERGE_CLIPS: 'merge_clips',
     CHANGE_CLIP_VOLUME: 'change_clip_volume',
     CHANGE_CLIP_FADE: 'change_clip_fade',
-    
+
     // 效果操作
     ADD_EFFECT: 'add_effect',
     REMOVE_EFFECT: 'remove_effect',
     CHANGE_EFFECT_PARAMS: 'change_effect_params',
     REORDER_EFFECTS: 'reorder_effects',
-    
+
     // 标记和区域
     ADD_MARKER: 'add_marker',
     DELETE_MARKER: 'delete_marker',
@@ -57,16 +53,16 @@ export function useUndoRedo(options = {}) {
     ADD_REGION: 'add_region',
     DELETE_REGION: 'delete_region',
     MODIFY_REGION: 'modify_region',
-    
+
     // 项目设置
     CHANGE_PROJECT_SETTINGS: 'change_project_settings',
     CHANGE_TIMELINE_ZOOM: 'change_timeline_zoom',
     CHANGE_PLAYHEAD_POSITION: 'change_playhead_position',
-    
+
     // 批量操作
     BATCH: 'batch'
   }
-  
+
   // 创建操作记录
   const createAction = (type, data, undoFn, redoFn) => {
     return {
@@ -78,19 +74,19 @@ export function useUndoRedo(options = {}) {
       redoFn
     }
   }
-  
+
   // 添加操作到历史记录
   const addAction = (type, data, undoFn, redoFn) => {
     const action = createAction(type, data, undoFn, redoFn)
-    
+
     if (enableBatching && shouldBatch(type)) {
       addToBatch(action)
       return
     }
-    
+
     pushToHistory(action)
   }
-  
+
   // 判断是否应该批量处理
   const shouldBatch = (type) => {
     const batchableTypes = [
@@ -106,26 +102,26 @@ export function useUndoRedo(options = {}) {
     ]
     return batchableTypes.includes(type)
   }
-  
+
   // 添加到批处理
   const addToBatch = (action) => {
     currentBatch.value.push(action)
-    
+
     // 清除之前的定时器
     if (batchTimer.value) {
       clearTimeout(batchTimer.value)
     }
-    
+
     // 设置新的定时器
     batchTimer.value = setTimeout(() => {
       flushBatch()
     }, batchTimeout)
   }
-  
+
   // 提交批处理
   const flushBatch = () => {
     if (currentBatch.value.length === 0) return
-    
+
     if (currentBatch.value.length === 1) {
       // 单个操作直接添加
       pushToHistory(currentBatch.value[0])
@@ -148,44 +144,44 @@ export function useUndoRedo(options = {}) {
           }
         }
       )
-      
+
       pushToHistory(batchAction)
     }
-    
+
     currentBatch.value = []
     batchTimer.value = null
   }
-  
+
   // 推送到历史记录
   const pushToHistory = (action) => {
     // 如果当前不在历史记录末尾，删除后面的记录
     if (currentIndex.value < history.value.length - 1) {
       history.value = history.value.slice(0, currentIndex.value + 1)
     }
-    
+
     // 添加新的操作
     history.value.push(action)
     currentIndex.value = history.value.length - 1
-    
+
     // 限制历史记录大小
     if (history.value.length > maxHistorySize) {
       history.value.shift()
       currentIndex.value--
     }
   }
-  
+
   // 撤销操作
   const undo = () => {
     if (!canUndo.value) {
       message.warning('没有可撤销的操作')
       return false
     }
-    
+
     // 先提交当前批处理
     flushBatch()
-    
+
     const action = history.value[currentIndex.value]
-    
+
     try {
       if (action.undoFn) {
         action.undoFn()
@@ -199,17 +195,17 @@ export function useUndoRedo(options = {}) {
       return false
     }
   }
-  
+
   // 重做操作
   const redo = () => {
     if (!canRedo.value) {
       message.warning('没有可重做的操作')
       return false
     }
-    
+
     currentIndex.value++
     const action = history.value[currentIndex.value]
-    
+
     try {
       if (action.redoFn) {
         action.redoFn()
@@ -223,7 +219,7 @@ export function useUndoRedo(options = {}) {
       return false
     }
   }
-  
+
   // 获取操作名称
   const getActionName = (type) => {
     const names = {
@@ -260,7 +256,7 @@ export function useUndoRedo(options = {}) {
     }
     return names[type] || type
   }
-  
+
   // 清除历史记录
   const clearHistory = () => {
     flushBatch()
@@ -268,7 +264,7 @@ export function useUndoRedo(options = {}) {
     currentIndex.value = -1
     message.info('操作历史已清除')
   }
-  
+
   // 获取历史记录信息
   const getHistoryInfo = () => {
     return {
@@ -280,7 +276,7 @@ export function useUndoRedo(options = {}) {
       nextRedo: canRedo.value ? getActionName(history.value[currentIndex.value + 1].type) : null
     }
   }
-  
+
   // 获取历史记录列表（用于调试）
   const getHistoryList = () => {
     return history.value.map((action, index) => ({
@@ -292,16 +288,16 @@ export function useUndoRedo(options = {}) {
       data: action.data
     }))
   }
-  
+
   // 跳转到指定历史记录
   const jumpToHistory = (targetIndex) => {
     if (targetIndex < -1 || targetIndex >= history.value.length) {
       message.error('无效的历史记录索引')
       return false
     }
-    
+
     flushBatch()
-    
+
     try {
       if (targetIndex < currentIndex.value) {
         // 需要撤销
@@ -318,7 +314,7 @@ export function useUndoRedo(options = {}) {
           if (action.redoFn) action.redoFn()
         }
       }
-      
+
       message.success(`跳转到历史记录 ${targetIndex + 1}`)
       return true
     } catch (error) {
@@ -327,30 +323,30 @@ export function useUndoRedo(options = {}) {
       return false
     }
   }
-  
+
   return {
     // 状态
     canUndo,
     canRedo,
-    
+
     // 操作类型
     ActionTypes,
-    
+
     // 核心方法
     addAction,
     undo,
     redo,
-    
+
     // 批处理
     flushBatch,
-    
+
     // 历史记录管理
     clearHistory,
     getHistoryInfo,
     getHistoryList,
     jumpToHistory,
-    
+
     // 工具方法
     getActionName
   }
-} 
+}

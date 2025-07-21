@@ -3,7 +3,7 @@ import axios from 'axios'
 // 环境配置 - 统一使用相对路径，让Vite代理处理
 const isDevelopment = import.meta.env.DEV
 // 强制使用v1 API路径，因为后端在v1路径下
-const API_BASE_URL = '/api/v1'  // 统一使用v1路径
+const API_BASE_URL = '/api/v1' // 统一使用v1路径
 
 console.log(`[API配置] 当前环境: ${isDevelopment ? '开发' : '生产'}, API地址: ${API_BASE_URL}`)
 
@@ -87,4 +87,4 @@ llmAnalysisClient.interceptors.response.use(
 )
 
 export default apiClient
-export { API_BASE_URL } 
+export { API_BASE_URL }

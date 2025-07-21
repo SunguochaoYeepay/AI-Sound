@@ -1,6 +1,6 @@
 <template>
   <a-modal
-    v-model:visible="visible"
+    v-model:open="visible"
     title="角色配置匹配结果"
     :width="700"
     @ok="handleOk"
@@ -38,10 +38,7 @@
       <!-- 未匹配的角色 -->
       <div v-if="unMatchedCharacters.length > 0" class="section">
         <h3>未匹配的角色 ({{ unMatchedCharacters.length }}个)</h3>
-        <a-list
-          :dataSource="unMatchedCharacters"
-          :grid="{ gutter: 16, column: 3 }"
-        >
+        <a-list :dataSource="unMatchedCharacters" :grid="{ gutter: 16, column: 3 }">
           <template #renderItem="{ item }">
             <a-list-item>
               <a-card size="small">
@@ -56,75 +53,75 @@
 </template>
 
 <script setup>
-import { ref, defineProps, defineEmits } from 'vue'
+  import { ref, defineProps, defineEmits } from 'vue'
 
-const props = defineProps({
-  visible: {
-    type: Boolean,
-    default: false
-  },
-  matchedCharacters: {
-    type: Array,
-    default: () => []
-  },
-  unMatchedCharacters: {
-    type: Array,
-    default: () => []
+  const props = defineProps({
+    visible: {
+      type: Boolean,
+      default: false
+    },
+    matchedCharacters: {
+      type: Array,
+      default: () => []
+    },
+    unMatchedCharacters: {
+      type: Array,
+      default: () => []
+    }
+  })
+
+  const emit = defineEmits(['update:visible', 'ok', 'cancel'])
+
+  const columns = [
+    {
+      title: '角色名称',
+      dataIndex: 'name',
+      key: 'name',
+      width: 120
+    },
+    {
+      title: '配置对比',
+      dataIndex: 'config',
+      key: 'config'
+    }
+  ]
+
+  const handleOk = () => {
+    emit('ok')
   }
-})
 
-const emit = defineEmits(['update:visible', 'ok', 'cancel'])
-
-const columns = [
-  {
-    title: '角色名称',
-    dataIndex: 'name',
-    key: 'name',
-    width: 120
-  },
-  {
-    title: '配置对比',
-    dataIndex: 'config',
-    key: 'config'
+  const handleCancel = () => {
+    emit('cancel')
   }
-]
-
-const handleOk = () => {
-  emit('ok')
-}
-
-const handleCancel = () => {
-  emit('cancel')
-}
 </script>
 
 <style scoped>
-.match-results {
-  max-height: 600px;
-  overflow-y: auto;
-}
+  .match-results {
+    max-height: 600px;
+    overflow-y: auto;
+  }
 
-.section {
-  margin-bottom: 24px;
-}
+  .section {
+    margin-bottom: 24px;
+  }
 
-.section h3 {
-  margin-bottom: 16px;
-}
+  .section h3 {
+    margin-bottom: 16px;
+  }
 
-.config-diff {
-  .old-config,
-  .new-config {
-    margin-bottom: 8px;
-    
-    .label {
-      font-weight: bold;
-      margin-bottom: 4px;
+  .config-diff {
+    .old-config,
+    .new-config {
+      margin-bottom: 8px;
+
+      .label {
+        font-weight: bold;
+        margin-bottom: 4px;
+      }
+    }
+
+    .new-config {
+      color: #52c41a;
     }
   }
-  
-  .new-config {
-    color: #52c41a;
-  }
-}
-</style> 
+</style>

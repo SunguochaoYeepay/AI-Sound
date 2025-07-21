@@ -4,8 +4,10 @@ import apiClient from './config.js'
 export async function getSegmentsStatus(projectId, chapterId = null) {
   try {
     const params = chapterId ? { chapter_id: chapterId } : {}
-    const response = await apiClient.get(`/novel-reader/projects/${projectId}/segments/status`, { params })
-    
+    const response = await apiClient.get(`/novel-reader/projects/${projectId}/segments/status`, {
+      params
+    })
+
     if (response.data?.success) {
       return {
         success: true,
@@ -29,8 +31,10 @@ export async function getSegmentsStatus(projectId, chapterId = null) {
 // 获取章节段落状态
 export async function getChapterSegmentsStatus(projectId, chapterId) {
   try {
-    const response = await apiClient.get(`/novel-reader/projects/${projectId}/chapters/${chapterId}/segments/status`)
-    
+    const response = await apiClient.get(
+      `/novel-reader/projects/${projectId}/chapters/${chapterId}/segments/status`
+    )
+
     if (response.data?.success) {
       return {
         success: true,
@@ -49,4 +53,4 @@ export async function getChapterSegmentsStatus(projectId, chapterId) {
       error: error.response?.data?.detail || error.message || '获取章节段落状态失败'
     }
   }
-} 
+}

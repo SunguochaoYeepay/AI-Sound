@@ -314,12 +314,12 @@ export const downloadBackupFile = async (taskId) => {
     const response = await apiClient.get(`/backup/${taskId}/download`, {
       responseType: 'blob'
     })
-    
+
     // 创建下载链接
     const url = window.URL.createObjectURL(new Blob([response.data]))
     const link = document.createElement('a')
     link.href = url
-    
+
     // 从响应头获取文件名
     const contentDisposition = response.headers['content-disposition']
     let filename = `backup_${taskId}.sql.gz`
@@ -329,13 +329,13 @@ export const downloadBackupFile = async (taskId) => {
         filename = filenameMatch[1]
       }
     }
-    
+
     link.setAttribute('download', filename)
     document.body.appendChild(link)
     link.click()
     link.remove()
     window.URL.revokeObjectURL(url)
-    
+
     return { success: true, filename }
   } catch (error) {
     console.error('下载备份文件失败:', error)
@@ -357,20 +357,20 @@ export const exportBackupReport = async (params) => {
       params,
       responseType: 'blob'
     })
-    
+
     const url = window.URL.createObjectURL(new Blob([response.data]))
     const link = document.createElement('a')
     link.href = url
-    
+
     const timestamp = new Date().toISOString().slice(0, 10)
     const filename = `backup_report_${timestamp}.${params.format}`
-    
+
     link.setAttribute('download', filename)
     document.body.appendChild(link)
     link.click()
     link.remove()
     window.URL.revokeObjectURL(url)
-    
+
     return { success: true, filename }
   } catch (error) {
     console.error('导出备份报告失败:', error)

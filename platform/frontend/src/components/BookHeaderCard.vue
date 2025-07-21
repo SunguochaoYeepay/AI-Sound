@@ -14,21 +14,15 @@
             <span class="update-time">更新：{{ formatDate(book.updated_at) }}</span>
           </div>
         </div>
-        
+
         <div class="header-actions">
           <a-space>
-            <a-button @click="$emit('goBack')">
-              ← 返回列表
-            </a-button>
-            <a-button type="primary" @click="$emit('editBook')">
-              ✏️ 编辑
-            </a-button>
+            <a-button @click="$emit('goBack')"> ← 返回列表 </a-button>
+            <a-button type="primary" @click="$emit('editBook')"> ✏️ 编辑 </a-button>
             <!-- <a-button @click="$emit('createProject')" :disabled="!book.content">
               🎯 创建项目
             </a-button> -->
-            <a-button @click="$emit('openCharacterManagement')">
-              🎭 管理角色配音
-            </a-button>
+            <a-button @click="$emit('openCharacterManagement')"> 🎭 管理角色配音 </a-button>
           </a-space>
         </div>
       </div>
@@ -71,12 +65,12 @@
               </div>
             </a-col>
           </a-row>
-          
+
           <div v-if="book.description" class="book-description">
             <h4>描述</h4>
             <p>{{ book.description }}</p>
           </div>
-          
+
           <div v-if="book.tags && book.tags.length > 0" class="book-tags">
             <h4>标签</h4>
             <a-space wrap>
@@ -92,156 +86,156 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+  import { ref, computed } from 'vue'
 
-const props = defineProps({
-  book: {
-    type: Object,
-    required: true
-  },
-  chapterCount: {
-    type: Number,
-    default: 0
-  },
-  showDetails: {
-    type: Boolean,
-    default: false
+  const props = defineProps({
+    book: {
+      type: Object,
+      required: true
+    },
+    chapterCount: {
+      type: Number,
+      default: 0
+    },
+    showDetails: {
+      type: Boolean,
+      default: false
+    }
+  })
+
+  const emit = defineEmits(['goBack', 'editBook', 'createProject', 'openCharacterManagement'])
+
+  const activeDetailKey = ref([])
+
+  const estimatedReadTime = computed(() => {
+    if (!props.book?.word_count) return '0 分钟'
+    const minutes = Math.ceil(props.book.word_count / 300)
+    if (minutes < 60) return `${minutes} 分钟`
+    const hours = Math.floor(minutes / 60)
+    const remainingMinutes = minutes % 60
+    return `${hours}小时${remainingMinutes}分钟`
+  })
+
+  const getStatusColor = (status) => {
+    const colors = {
+      draft: 'orange',
+      published: 'green',
+      archived: 'gray'
+    }
+    return colors[status] || 'default'
   }
-})
 
-const emit = defineEmits(['goBack', 'editBook', 'createProject', 'openCharacterManagement'])
-
-const activeDetailKey = ref([])
-
-const estimatedReadTime = computed(() => {
-  if (!props.book?.word_count) return '0 分钟'
-  const minutes = Math.ceil(props.book.word_count / 300)
-  if (minutes < 60) return `${minutes} 分钟`
-  const hours = Math.floor(minutes / 60)
-  const remainingMinutes = minutes % 60
-  return `${hours}小时${remainingMinutes}分钟`
-})
-
-const getStatusColor = (status) => {
-  const colors = {
-    draft: 'orange',
-    published: 'green',
-    archived: 'gray'
+  const getStatusText = (status) => {
+    const texts = {
+      draft: '草稿',
+      published: '已发布',
+      archived: '已归档'
+    }
+    return texts[status] || status
   }
-  return colors[status] || 'default'
-}
 
-const getStatusText = (status) => {
-  const texts = {
-    draft: '草稿',
-    published: '已发布',
-    archived: '已归档'
+  const formatDate = (dateString) => {
+    if (!dateString) return '未知'
+    const date = new Date(dateString)
+    return date.toLocaleString('zh-CN')
   }
-  return texts[status] || status
-}
-
-const formatDate = (dateString) => {
-  if (!dateString) return '未知'
-  const date = new Date(dateString)
-  return date.toLocaleString('zh-CN')
-}
 </script>
 
 <style scoped>
-.book-header-card {
-  margin-bottom: 16px;
-}
+  .book-header-card {
+    margin-bottom: 16px;
+  }
 
-.header-card {
-  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-  border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-}
+  .header-card {
+    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  }
 
-.header-content {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 16px;
-}
+  .header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 16px;
+  }
 
-.book-meta {
-  flex: 1;
-}
+  .book-meta {
+    flex: 1;
+  }
 
-.book-title {
-  font-size: 24px;
-  font-weight: 600;
-  margin: 0 0 8px 0;
-  color: #1f2937;
-}
+  .book-title {
+    font-size: 24px;
+    font-weight: 600;
+    margin: 0 0 8px 0;
+    color: #1f2937;
+  }
 
-.meta-info {
-  display: flex;
-  gap: 16px;
-  align-items: center;
-  flex-wrap: wrap;
-}
+  .meta-info {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
 
-.meta-info > span {
-  font-size: 14px;
-  color: #6b7280;
-}
+  .meta-info > span {
+    font-size: 14px;
+    color: #6b7280;
+  }
 
-.header-actions {
-  flex-shrink: 0;
-  margin-left: 16px;
-}
+  .header-actions {
+    flex-shrink: 0;
+    margin-left: 16px;
+  }
 
-.book-stats {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-  margin-top: 16px;
-}
+  .book-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-top: 16px;
+  }
 
-.stat-item {
-  text-align: center;
-  padding: 12px;
-  background: #f8fafc;
-  border-radius: 8px;
-}
+  .stat-item {
+    text-align: center;
+    padding: 12px;
+    background: #f8fafc;
+    border-radius: 8px;
+  }
 
-.stat-value {
-  font-size: 18px;
-  font-weight: 600;
-  color: #1f2937;
-}
+  .stat-value {
+    font-size: 18px;
+    font-weight: 600;
+    color: #1f2937;
+  }
 
-.stat-label {
-  font-size: 12px;
-  color: #6b7280;
-  margin-top: 4px;
-}
+  .stat-label {
+    font-size: 12px;
+    color: #6b7280;
+    margin-top: 4px;
+  }
 
-.book-description {
-  margin-top: 16px;
-}
+  .book-description {
+    margin-top: 16px;
+  }
 
-.book-description h4 {
-  margin: 0 0 8px 0;
-  font-size: 14px;
-  color: #374151;
-}
+  .book-description h4 {
+    margin: 0 0 8px 0;
+    font-size: 14px;
+    color: #374151;
+  }
 
-.book-description p {
-  margin: 0;
-  color: #6b7280;
-  line-height: 1.6;
-}
+  .book-description p {
+    margin: 0;
+    color: #6b7280;
+    line-height: 1.6;
+  }
 
-.book-tags {
-  margin-top: 16px;
-}
+  .book-tags {
+    margin-top: 16px;
+  }
 
-.book-tags h4 {
-  margin: 0 0 8px 0;
-  font-size: 14px;
-  color: #374151;
-}
-</style> 
+  .book-tags h4 {
+    margin: 0 0 8px 0;
+    font-size: 14px;
+    color: #374151;
+  }
+</style>

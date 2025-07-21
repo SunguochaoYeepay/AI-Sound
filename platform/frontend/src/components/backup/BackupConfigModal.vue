@@ -46,9 +46,7 @@
           placeholder="个数"
           style="width: 100%"
         />
-        <div style="color: #999; font-size: 12px; margin-top: 4px">
-          同时进行的最大备份任务数量
-        </div>
+        <div style="color: #999; font-size: 12px; margin-top: 4px">同时进行的最大备份任务数量</div>
       </a-form-item>
 
       <!-- 存储设置 -->
@@ -97,7 +95,7 @@
       </a-form-item>
 
       <a-form-item label="加密算法" name="encryption_algorithm">
-        <a-select 
+        <a-select
           v-model:value="formData.encryption_algorithm"
           :disabled="!formData.encryption_enabled"
         >
@@ -136,9 +134,7 @@
           style="width: 100%"
           :disabled="!formData.auto_cleanup_enabled"
         />
-        <div style="color: #999; font-size: 12px; margin-top: 4px">
-          每日自动清理的执行时间
-        </div>
+        <div style="color: #999; font-size: 12px; margin-top: 4px">每日自动清理的执行时间</div>
       </a-form-item>
 
       <a-form-item label="保留失败备份" name="keep_failed_backups">
@@ -147,9 +143,7 @@
           checked-children="保留"
           un-checked-children="删除"
         />
-        <div style="color: #999; font-size: 12px; margin-top: 4px">
-          是否保留执行失败的备份文件
-        </div>
+        <div style="color: #999; font-size: 12px; margin-top: 4px">是否保留执行失败的备份文件</div>
       </a-form-item>
 
       <!-- 通知设置 -->
@@ -209,19 +203,22 @@
     </a-form>
 
     <!-- 配置预览 -->
-    <a-alert
-      type="info"
-      show-icon
-      style="margin-top: 16px"
-    >
+    <a-alert type="info" show-icon style="margin-top: 16px">
       <template #message>
         <div>
           <strong>配置摘要</strong>
         </div>
         <ul style="margin: 8px 0 0 0; padding-left: 20px; font-size: 12px">
-          <li>默认备份: {{ getBackupTypeText(formData.default_backup_type) }}，保留 {{ formData.default_retention_days }} 天</li>
+          <li>
+            默认备份: {{ getBackupTypeText(formData.default_backup_type) }}，保留
+            {{ formData.default_retention_days }} 天
+          </li>
           <li>存储位置: {{ getStorageLocationText(formData.default_storage_location) }}</li>
-          <li>安全设置: {{ formData.encryption_enabled ? '启用加密' : '不加密' }}，{{ formData.integrity_check_enabled ? '启用校验' : '不校验' }}</li>
+          <li>
+            安全设置: {{ formData.encryption_enabled ? '启用加密' : '不加密' }}，{{
+              formData.integrity_check_enabled ? '启用校验' : '不校验'
+            }}
+          </li>
           <li>自动清理: {{ formData.auto_cleanup_enabled ? '启用' : '禁用' }}</li>
         </ul>
       </template>
@@ -230,191 +227,189 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
-import { message } from 'ant-design-vue'
-import type { FormInstance, Rule } from 'ant-design-vue/es/form'
-import type { Dayjs } from 'dayjs'
-import dayjs from 'dayjs'
+  import { ref, reactive, onMounted } from 'vue'
+  import { message } from 'ant-design-vue'
+  import type { FormInstance, Rule } from 'ant-design-vue/es/form'
+  import type { Dayjs } from 'dayjs'
+  import dayjs from 'dayjs'
 
-// Props
-interface Props {
-  open: boolean
-  loading?: boolean
-}
+  // Props
+  interface Props {
+    open: boolean
+    loading?: boolean
+  }
 
-const props = withDefaults(defineProps<Props>(), {
-  loading: false
-})
+  const props = withDefaults(defineProps<Props>(), {
+    loading: false
+  })
 
-// Emits
-const emit = defineEmits<{
-  ok: [data: any]
-  cancel: []
-}>()
+  // Emits
+  const emit = defineEmits<{
+    ok: [data: any]
+    cancel: []
+  }>()
 
-// 表单引用
-const formRef = ref<FormInstance>()
+  // 表单引用
+  const formRef = ref<FormInstance>()
 
-// 表单数据
-const formData = reactive({
-  // 常规设置
-  default_backup_type: 'full',
-  default_retention_days: 30,
-  max_concurrent_backups: 3,
-  
-  // 存储设置
-  default_storage_location: 'local',
-  local_storage_path: '/var/backups/ai-sound',
-  disk_space_threshold: 85,
-  
-  // 安全设置
-  encryption_enabled: true,
-  encryption_algorithm: 'AES-256',
-  integrity_check_enabled: true,
-  
-  // 清理设置
-  auto_cleanup_enabled: true,
-  cleanup_schedule: dayjs('02:00', 'HH:mm'),
-  keep_failed_backups: true,
-  
-  // 通知设置
-  notify_on_success: false,
-  notify_on_failure: true,
-  notification_email: '',
-  
-  // 性能设置
-  compression_level: 6,
-  backup_timeout_minutes: 120
-})
+  // 表单数据
+  const formData = reactive({
+    // 常规设置
+    default_backup_type: 'full',
+    default_retention_days: 30,
+    max_concurrent_backups: 3,
 
-// 压缩级别标记
-const compressionMarks = {
-  0: '无',
-  3: '快速',
-  6: '平衡',
-  9: '最高'
-}
+    // 存储设置
+    default_storage_location: 'local',
+    local_storage_path: '/var/backups/ai-sound',
+    disk_space_threshold: 85,
 
-// 表单验证规则
-const rules: Record<string, Rule[]> = {
-  default_retention_days: [
-    { required: true, message: '请设置默认保留天数', trigger: 'blur' },
-    { type: 'number', min: 1, max: 365, message: '保留天数范围为1-365天', trigger: 'blur' }
-  ],
-  max_concurrent_backups: [
-    { required: true, message: '请设置并发备份数量', trigger: 'blur' },
-    { type: 'number', min: 1, max: 10, message: '并发数量范围为1-10个', trigger: 'blur' }
-  ],
-  local_storage_path: [
-    { required: true, message: '请设置本地存储路径', trigger: 'blur' }
-  ],
-  disk_space_threshold: [
-    { required: true, message: '请设置磁盘空间阈值', trigger: 'blur' },
-    { type: 'number', min: 1, max: 100, message: '阈值范围为1-100%', trigger: 'blur' }
-  ],
-  notification_email: [
-    { 
-      validator: (rule: any, value: string) => {
-        if ((formData.notify_on_success || formData.notify_on_failure) && !value) {
-          return Promise.reject('启用通知时必须设置邮箱地址')
-        }
-        if (value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
-          return Promise.reject('请输入有效的邮箱地址')
-        }
-        return Promise.resolve()
-      },
-      trigger: 'blur'
+    // 安全设置
+    encryption_enabled: true,
+    encryption_algorithm: 'AES-256',
+    integrity_check_enabled: true,
+
+    // 清理设置
+    auto_cleanup_enabled: true,
+    cleanup_schedule: dayjs('02:00', 'HH:mm'),
+    keep_failed_backups: true,
+
+    // 通知设置
+    notify_on_success: false,
+    notify_on_failure: true,
+    notification_email: '',
+
+    // 性能设置
+    compression_level: 6,
+    backup_timeout_minutes: 120
+  })
+
+  // 压缩级别标记
+  const compressionMarks = {
+    0: '无',
+    3: '快速',
+    6: '平衡',
+    9: '最高'
+  }
+
+  // 表单验证规则
+  const rules: Record<string, Rule[]> = {
+    default_retention_days: [
+      { required: true, message: '请设置默认保留天数', trigger: 'blur' },
+      { type: 'number', min: 1, max: 365, message: '保留天数范围为1-365天', trigger: 'blur' }
+    ],
+    max_concurrent_backups: [
+      { required: true, message: '请设置并发备份数量', trigger: 'blur' },
+      { type: 'number', min: 1, max: 10, message: '并发数量范围为1-10个', trigger: 'blur' }
+    ],
+    local_storage_path: [{ required: true, message: '请设置本地存储路径', trigger: 'blur' }],
+    disk_space_threshold: [
+      { required: true, message: '请设置磁盘空间阈值', trigger: 'blur' },
+      { type: 'number', min: 1, max: 100, message: '阈值范围为1-100%', trigger: 'blur' }
+    ],
+    notification_email: [
+      {
+        validator: (rule: any, value: string) => {
+          if ((formData.notify_on_success || formData.notify_on_failure) && !value) {
+            return Promise.reject('启用通知时必须设置邮箱地址')
+          }
+          if (value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+            return Promise.reject('请输入有效的邮箱地址')
+          }
+          return Promise.resolve()
+        },
+        trigger: 'blur'
+      }
+    ],
+    backup_timeout_minutes: [
+      { required: true, message: '请设置备份超时时间', trigger: 'blur' },
+      { type: 'number', min: 5, max: 1440, message: '超时时间范围为5-1440分钟', trigger: 'blur' }
+    ]
+  }
+
+  // 工具方法
+  const getBackupTypeText = (type: string) => {
+    const texts: Record<string, string> = {
+      full: '全量备份',
+      incremental: '增量备份',
+      manual: '手动备份'
     }
-  ],
-  backup_timeout_minutes: [
-    { required: true, message: '请设置备份超时时间', trigger: 'blur' },
-    { type: 'number', min: 5, max: 1440, message: '超时时间范围为5-1440分钟', trigger: 'blur' }
-  ]
-}
-
-// 工具方法
-const getBackupTypeText = (type: string) => {
-  const texts: Record<string, string> = {
-    full: '全量备份',
-    incremental: '增量备份',
-    manual: '手动备份'
+    return texts[type] || type
   }
-  return texts[type] || type
-}
 
-const getStorageLocationText = (location: string) => {
-  const texts: Record<string, string> = {
-    local: '本地存储',
-    s3: 'Amazon S3',
-    oss: '阿里云OSS'
-  }
-  return texts[location] || location
-}
-
-// 加载现有配置
-const loadConfigs = async () => {
-  try {
-    // 这里调用API获取现有配置
-    // const response = await getBackupConfigs()
-    // Object.assign(formData, response.data)
-    console.log('加载备份配置')
-  } catch (error) {
-    console.error('加载配置失败:', error)
-    message.error('加载配置失败')
-  }
-}
-
-// 重置表单
-const resetForm = () => {
-  formRef.value?.resetFields()
-}
-
-// 确认保存
-const handleOk = async () => {
-  try {
-    await formRef.value?.validate()
-    
-    // 转换时间格式
-    const configData = {
-      ...formData,
-      cleanup_schedule: formData.cleanup_schedule?.format('HH:mm') || '02:00'
+  const getStorageLocationText = (location: string) => {
+    const texts: Record<string, string> = {
+      local: '本地存储',
+      s3: 'Amazon S3',
+      oss: '阿里云OSS'
     }
-    
-    emit('ok', configData)
-  } catch (error) {
-    message.error('请检查表单填写是否正确')
+    return texts[location] || location
   }
-}
 
-// 取消保存
-const handleCancel = () => {
-  emit('cancel')
-}
+  // 加载现有配置
+  const loadConfigs = async () => {
+    try {
+      // 这里调用API获取现有配置
+      // const response = await getBackupConfigs()
+      // Object.assign(formData, response.data)
+      console.log('加载备份配置')
+    } catch (error) {
+      console.error('加载配置失败:', error)
+      message.error('加载配置失败')
+    }
+  }
 
-// 组件挂载时加载配置
-onMounted(() => {
-  loadConfigs()
-})
+  // 重置表单
+  const resetForm = () => {
+    formRef.value?.resetFields()
+  }
+
+  // 确认保存
+  const handleOk = async () => {
+    try {
+      await formRef.value?.validate()
+
+      // 转换时间格式
+      const configData = {
+        ...formData,
+        cleanup_schedule: formData.cleanup_schedule?.format('HH:mm') || '02:00'
+      }
+
+      emit('ok', configData)
+    } catch (error) {
+      message.error('请检查表单填写是否正确')
+    }
+  }
+
+  // 取消保存
+  const handleCancel = () => {
+    emit('cancel')
+  }
+
+  // 组件挂载时加载配置
+  onMounted(() => {
+    loadConfigs()
+  })
 </script>
 
 <style scoped>
-:deep(.ant-form-item-explain) {
-  margin-top: 4px;
-}
+  :deep(.ant-form-item-explain) {
+    margin-top: 4px;
+  }
 
-:deep(.ant-divider-horizontal.ant-divider-with-text-left) {
-  margin: 16px 0;
-}
+  :deep(.ant-divider-horizontal.ant-divider-with-text-left) {
+    margin: 16px 0;
+  }
 
-:deep(.ant-divider-horizontal.ant-divider-with-text-left::before) {
-  width: 8%;
-}
+  :deep(.ant-divider-horizontal.ant-divider-with-text-left::before) {
+    width: 8%;
+  }
 
-:deep(.ant-divider-horizontal.ant-divider-with-text-left::after) {
-  width: 92%;
-}
+  :deep(.ant-divider-horizontal.ant-divider-with-text-left::after) {
+    width: 92%;
+  }
 
-:deep(.ant-slider-mark-text) {
-  font-size: 12px;
-}
+  :deep(.ant-slider-mark-text) {
+    font-size: 12px;
+  }
 </style>

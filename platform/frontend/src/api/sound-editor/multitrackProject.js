@@ -56,7 +56,7 @@ export async function downloadExportedAudio(exportTaskId) {
   const response = await axios.get(`${API_BASE}/export/download/${exportTaskId}`, {
     responseType: 'blob'
   })
-  
+
   // 创建下载链接
   const url = window.URL.createObjectURL(new Blob([response.data]))
   const link = document.createElement('a')
@@ -74,7 +74,7 @@ export async function generatePreviewAudio(projectId, startTime = 0, duration = 
   if (duration !== null) {
     params.duration = duration
   }
-  
+
   const res = await axios.post(`${API_BASE}/preview/${projectId}`, null, { params })
   return res.data
 }
@@ -148,14 +148,14 @@ export function createEmptyProject(title = '新建项目') {
 // 工具函数：计算项目总时长
 export function calculateProjectDuration(project) {
   let maxDuration = 0
-  
-  project.tracks.forEach(track => {
-    track.clips.forEach(clip => {
+
+  project.tracks.forEach((track) => {
+    track.clips.forEach((clip) => {
       const endTime = clip.startTime + clip.duration
       maxDuration = Math.max(maxDuration, endTime)
     })
   })
-  
+
   return maxDuration
 }
 
@@ -169,4 +169,4 @@ export function formatTime(seconds) {
 // 工具函数：生成唯一ID
 export function generateId(prefix = 'item') {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-} 
+}

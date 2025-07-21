@@ -10,18 +10,18 @@ import { useAppStore } from './app'
 
 export const useWebSocketStore = defineStore('websocket', () => {
   const appStore = useAppStore()
-  
+
   // WebSocket连接状态
   const ws = ref(null)
   const connected = ref(false)
   const connecting = ref(false)
   const reconnectAttempts = ref(0)
   const maxReconnectAttempts = ref(5)
-  
+
   // 消息队列
   const messageQueue = ref([])
   const subscriptions = ref(new Map())
-  
+
   // 统计信息
   const stats = ref({
     messagesReceived: 0,
@@ -29,16 +29,16 @@ export const useWebSocketStore = defineStore('websocket', () => {
     lastActivity: null,
     connectionTime: null
   })
-  
+
   // 计算属性
   const connectionStatus = computed(() => {
     if (connecting.value) return 'connecting'
     if (connected.value) return 'connected'
     return 'disconnected'
   })
-  
+
   const hasQueuedMessages = computed(() => messageQueue.value.length > 0)
-  
+
   // WebSocket URL
   const getWebSocketUrl = () => {
     // 在开发环境中，使用相对路径通过Vite代理
@@ -46,54 +46,54 @@ export const useWebSocketStore = defineStore('websocket', () => {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
       return `${protocol}//${window.location.host}/ws`
     }
-    
+
     // 生产环境使用配置的URL
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-          const baseUrl = import.meta.env.VITE_API_BASE_URL || getBackendUrl()
+    const baseUrl = import.meta.env.VITE_API_BASE_URL || getBackendUrl()
     // 移除协议前缀（如果存在）
     const cleanHost = baseUrl.replace(/^https?:\/\//, '')
     return `${protocol}//${cleanHost}/ws`
   }
-  
+
   // 连接WebSocket
   const connect = () => {
     if (connected.value || connecting.value) {
       return Promise.resolve()
     }
-    
+
     return new Promise((resolve, reject) => {
       try {
         connecting.value = true
         const wsUrl = getWebSocketUrl()
-        
+
         console.log('🔌 尝试连接WebSocket:', wsUrl)
         console.log('🔍 环境信息:', {
           dev: import.meta.env.DEV,
           baseUrl: import.meta.env.VITE_API_BASE_URL,
           location: window.location.host
         })
-        
+
         ws.value = new WebSocket(wsUrl)
-        
+
         ws.value.onopen = () => {
           connected.value = true
           connecting.value = false
           reconnectAttempts.value = 0
           stats.value.connectionTime = new Date()
-          
+
           console.log('✅ WebSocket连接已建立')
           appStore.addNotification({
             type: 'success',
             title: 'WebSocket连接',
             message: '实时通信连接已建立'
           })
-          
+
           // 发送排队的消息
           flushMessageQueue()
-          
+
           resolve()
         }
-        
+
         ws.value.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data)
@@ -104,13 +104,13 @@ export const useWebSocketStore = defineStore('websocket', () => {
             console.error('WebSocket消息解析失败:', error)
           }
         }
-        
+
         ws.value.onclose = (event) => {
           connected.value = false
           connecting.value = false
-          
+
           console.log('🔌 WebSocket连接已关闭', event.code, event.reason)
-          
+
           // 尝试重连
           if (!event.wasClean && reconnectAttempts.value < maxReconnectAttempts.value) {
             scheduleReconnect()
@@ -122,27 +122,26 @@ export const useWebSocketStore = defineStore('websocket', () => {
             })
           }
         }
-        
+
         ws.value.onerror = (error) => {
           console.error('WebSocket连接错误:', error)
           connecting.value = false
-          
+
           appStore.addNotification({
             type: 'error',
             title: 'WebSocket错误',
             message: '实时通信连接发生错误'
           })
-          
+
           reject(error)
         }
-        
       } catch (error) {
         connecting.value = false
         reject(error)
       }
     })
   }
-  
+
   // 断开连接
   const disconnect = () => {
     if (ws.value) {
@@ -154,7 +153,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
     subscriptions.value.clear()
     messageQueue.value = []
   }
-  
+
   // 发送消息
   const sendMessage = (type, data = {}) => {
     const message = {
@@ -162,7 +161,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
       data,
       timestamp: new Date().toISOString()
     }
-    
+
     if (connected.value && ws.value?.readyState === WebSocket.OPEN) {
       try {
         ws.value.send(JSON.stringify(message))
@@ -181,14 +180,14 @@ export const useWebSocketStore = defineStore('websocket', () => {
       return false
     }
   }
-  
+
   // 订阅消息类型
   const subscribe = (messageType, callback) => {
     if (!subscriptions.value.has(messageType)) {
       subscriptions.value.set(messageType, new Set())
     }
     subscriptions.value.get(messageType).add(callback)
-    
+
     // 返回取消订阅函数
     return () => {
       const callbacks = subscriptions.value.get(messageType)
@@ -200,15 +199,15 @@ export const useWebSocketStore = defineStore('websocket', () => {
       }
     }
   }
-  
+
   // 处理接收到的消息
   const handleMessage = (message) => {
     const { type, data } = message
-    
+
     // 调用订阅的回调函数
     const callbacks = subscriptions.value.get(type)
     if (callbacks) {
-      callbacks.forEach(callback => {
+      callbacks.forEach((callback) => {
         try {
           callback(data, message)
         } catch (error) {
@@ -216,7 +215,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
         }
       })
     }
-    
+
     // 处理通用消息类型
     switch (type) {
       case 'notification':
@@ -241,21 +240,21 @@ export const useWebSocketStore = defineStore('websocket', () => {
       default:
         // 未知消息类型，记录详细日志
         if (type !== 'heartbeat' && type !== 'ping' && type !== 'pong') {
-        console.log('收到未知类型的WebSocket消息:', type, data)
+          console.log('收到未知类型的WebSocket消息:', type, data)
         }
     }
   }
-  
+
   // 清空消息队列
   const flushMessageQueue = () => {
     if (!connected.value || messageQueue.value.length === 0) {
       return
     }
-    
+
     const queue = [...messageQueue.value]
     messageQueue.value = []
-    
-    queue.forEach(message => {
+
+    queue.forEach((message) => {
       if (ws.value?.readyState === WebSocket.OPEN) {
         try {
           ws.value.send(JSON.stringify(message))
@@ -267,14 +266,14 @@ export const useWebSocketStore = defineStore('websocket', () => {
       }
     })
   }
-  
+
   // 安排重连
   const scheduleReconnect = () => {
     const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.value), 30000)
     reconnectAttempts.value++
-    
-    console.log(`⏱️ ${delay/1000}秒后尝试重连 (第${reconnectAttempts.value}次)`)
-    
+
+    console.log(`⏱️ ${delay / 1000}秒后尝试重连 (第${reconnectAttempts.value}次)`)
+
     setTimeout(() => {
       if (!connected.value) {
         connect().catch(() => {
@@ -286,7 +285,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
       }
     }, delay)
   }
-  
+
   // 获取连接统计
   const getStats = () => {
     return {
@@ -297,7 +296,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
       subscriptions: subscriptions.value.size
     }
   }
-  
+
   return {
     // 状态
     connected,
@@ -305,7 +304,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
     connectionStatus,
     hasQueuedMessages,
     stats,
-    
+
     // 方法
     connect,
     disconnect,
@@ -313,4 +312,4 @@ export const useWebSocketStore = defineStore('websocket', () => {
     subscribe,
     getStats
   }
-}) 
+})

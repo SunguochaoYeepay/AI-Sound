@@ -15,19 +15,19 @@ export const useUserStore = defineStore('user', () => {
     avatar: null,
     role: 'admin'
   })
-  
+
   const isLoggedIn = ref(true) // 临时设为已登录
-  
+
   // 用户设置
   const settings = ref({
     language: 'zh-CN',
     timezone: 'Asia/Shanghai',
     defaultVoice: 'default'
   })
-  
+
   return {
     user,
     isLoggedIn,
     settings
   }
-}) 
+})

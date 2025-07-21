@@ -7,9 +7,7 @@
         <p>{{ isEditing ? '修改书籍信息和内容' : '添加新的小说、图书内容到您的资料库' }}</p>
       </div>
       <div class="header-actions">
-        <a-button @click="goBack">
-          ← 返回
-        </a-button>
+        <a-button @click="goBack"> ← 返回 </a-button>
       </div>
     </div>
 
@@ -32,10 +30,7 @@
                 </a-col>
                 <a-col :span="8">
                   <a-form-item label="状态" name="status">
-                    <a-select
-                      v-model:value="bookForm.status"
-                      size="large"
-                    >
+                    <a-select v-model:value="bookForm.status" size="large">
                       <a-select-option value="draft">草稿</a-select-option>
                       <a-select-option value="published">已发布</a-select-option>
                       <a-select-option value="archived">已归档</a-select-option>
@@ -75,7 +70,11 @@
                         @blur="handleTagInputConfirm"
                         @keyup.enter="handleTagInputConfirm"
                       />
-                      <a-tag v-else @click="showTagInput" style="background: #fff; border-style: dashed;">
+                      <a-tag
+                        v-else
+                        @click="showTagInput"
+                        style="background: #fff; border-style: dashed"
+                      >
                         <PlusOutlined /> 新标签
                       </a-tag>
                     </div>
@@ -106,20 +105,29 @@
                     type="info"
                     show-icon
                     closable
-                    style="margin-bottom: 16px;"
+                    style="margin-bottom: 16px"
                   >
                     <template #description>
                       <div class="chapter-rules">
                         <p><strong>系统将自动识别以下格式的章节标题：</strong></p>
                         <ul>
-                          <li>📖 <code>第一章</code>、<code>第1章</code>、<code>第十章</code> 等</li>
-                          <li>📖 <code>第一节</code>、<code>第1节</code>、<code>第十节</code> 等</li>
+                          <li>
+                            📖 <code>第一章</code>、<code>第1章</code>、<code>第十章</code> 等
+                          </li>
+                          <li>
+                            📖 <code>第一节</code>、<code>第1节</code>、<code>第十节</code> 等
+                          </li>
                           <li>📖 <code>Chapter 1</code>、<code>Chapter One</code> 等英文格式</li>
-                          <li>📖 <code># 章节标题</code>、<code>## 章节标题</code> 等Markdown格式</li>
+                          <li>
+                            📖 <code># 章节标题</code>、<code>## 章节标题</code> 等Markdown格式
+                          </li>
                           <li>📖 <code>1. 章节标题</code>、<code>一、章节标题</code> 等序号格式</li>
                           <li>📖 <code>【章节标题】</code>、<code>（第一章）</code> 等括号格式</li>
                         </ul>
-                        <p><strong>提示：</strong>上传后系统会自动检测章节，您可以预览和确认后再导入。</p>
+                        <p>
+                          <strong>提示：</strong
+                          >上传后系统会自动检测章节，您可以预览和确认后再导入。
+                        </p>
                       </div>
                     </template>
                   </a-alert>
@@ -135,32 +143,36 @@
                     :customRequest="handleFileUpload"
                   >
                     <p class="ant-upload-drag-icon">
-                      <InboxOutlined style="font-size: 48px; color: #06b6d4;" />
+                      <InboxOutlined style="font-size: 48px; color: #06b6d4" />
                     </p>
                     <p class="ant-upload-text">点击或拖拽小说文件到此区域上传</p>
-                    <p class="ant-upload-hint">
-                      支持 .txt 和 .md 格式文件，上传后自动检测章节结构
-                    </p>
+                    <p class="ant-upload-hint">支持 .txt 和 .md 格式文件，上传后自动检测章节结构</p>
                   </a-upload-dragger>
-                  
+
                   <div v-if="fileContent" class="file-preview">
                     <div class="preview-header">
                       <span>📄 文件预览</span>
-                      <span class="file-stats">{{ fileStats.chars }} 字符，约 {{ fileStats.words }} 字</span>
+                      <span class="file-stats"
+                        >{{ fileStats.chars }} 字符，约 {{ fileStats.words }} 字</span
+                      >
                     </div>
                     <div class="preview-content">
                       {{ fileContent.substring(0, 500) }}{{ fileContent.length > 500 ? '...' : '' }}
                     </div>
-                    
+
                     <!-- 章节检测结果预览 -->
                     <div v-if="detectedChapters.length > 0" class="chapters-detection-result">
                       <div class="detection-header">
                         <span>🔍 检测到 {{ detectedChapters.length }} 个章节</span>
                         <div class="detection-actions">
-                          <a-button type="link" size="small" @click="showAllChapters = !showAllChapters">
+                          <a-button
+                            type="link"
+                            size="small"
+                            @click="showAllChapters = !showAllChapters"
+                          >
                             {{ showAllChapters ? '收起' : '查看全部' }}
                           </a-button>
-                          <a-button 
+                          <a-button
                             type="primary"
                             :loading="uploadingChapters"
                             @click="handleBatchUpload"
@@ -173,11 +185,13 @@
                         v-if="uploadProgress.visible"
                         :percent="uploadProgress.percent"
                         :status="uploadProgress.status"
-                        style="margin-top: 16px;"
+                        style="margin-top: 16px"
                       />
                       <div class="chapters-list">
                         <div
-                          v-for="(chapter, index) in (showAllChapters ? detectedChapters : detectedChapters.slice(0, 5))"
+                          v-for="(chapter, index) in showAllChapters
+                            ? detectedChapters
+                            : detectedChapters.slice(0, 5)"
                           :key="index"
                           class="chapter-item-preview"
                         >
@@ -185,7 +199,10 @@
                           <div class="chapter-title">{{ chapter.title }}</div>
                           <div class="chapter-stats">{{ chapter.wordCount }} 字</div>
                         </div>
-                        <div v-if="!showAllChapters && detectedChapters.length > 5" class="more-chapters">
+                        <div
+                          v-if="!showAllChapters && detectedChapters.length > 5"
+                          class="more-chapters"
+                        >
                           还有 {{ detectedChapters.length - 5 }} 个章节...
                         </div>
                       </div>
@@ -200,22 +217,26 @@
                   <div class="chapters-list-section">
                     <div class="section-header">
                       <h3>📖 现有章节</h3>
-                      <a-button type="primary" @click="showCreateChapterModal" :loading="loadingChapters">
+                      <a-button
+                        type="primary"
+                        @click="showCreateChapterModal"
+                        :loading="loadingChapters"
+                      >
                         ➕ 新增章节
                       </a-button>
                     </div>
-                    
+
                     <div v-if="loadingChapters" class="loading-chapters">
                       <a-spin size="small" />
-                      <span style="margin-left: 8px;">加载章节列表...</span>
+                      <span style="margin-left: 8px">加载章节列表...</span>
                     </div>
-                    
+
                     <div v-else-if="existingChapters.length > 0" class="chapters-list">
                       <div
                         v-for="chapter in existingChapters"
                         :key="chapter.id"
                         class="chapter-item"
-                        :class="{ 'selected': selectedChapter?.id === chapter.id }"
+                        :class="{ selected: selectedChapter?.id === chapter.id }"
                         @click="selectChapter(chapter)"
                       >
                         <div class="chapter-info">
@@ -227,13 +248,18 @@
                           <a-button type="link" size="small" @click.stop="editChapter(chapter)">
                             ✏️ 编辑
                           </a-button>
-                          <a-button type="link" size="small" danger @click.stop="deleteChapter(chapter)">
+                          <a-button
+                            type="link"
+                            size="small"
+                            danger
+                            @click.stop="deleteChapter(chapter)"
+                          >
                             🗑️ 删除
                           </a-button>
                         </div>
                       </div>
                     </div>
-                    
+
                     <div v-else class="no-chapters">
                       <a-empty description="暂无章节">
                         <a-button type="primary" @click="showCreateChapterModal">
@@ -249,28 +275,33 @@
                       <h3>✏️ 编辑章节：{{ selectedChapter.chapter_title }}</h3>
                       <a-space>
                         <a-button @click="cancelChapterEdit">取消</a-button>
-                        <a-button type="primary" @click="saveChapterChanges" :loading="savingChapter">
+                        <a-button
+                          type="primary"
+                          @click="saveChapterChanges"
+                          :loading="savingChapter"
+                        >
                           💾 保存修改
                         </a-button>
                       </a-space>
                     </div>
-                    
+
                     <a-form layout="vertical">
                       <a-form-item label="章节标题">
-                        <a-input v-model:value="chapterEditForm.title" placeholder="请输入章节标题" />
+                        <a-input
+                          v-model:value="chapterEditForm.title"
+                          placeholder="请输入章节标题"
+                        />
                       </a-form-item>
-                      
+
                       <a-form-item label="章节内容">
-                  <a-textarea
+                        <a-textarea
                           v-model:value="chapterEditForm.content"
                           placeholder="请输入章节内容..."
                           :rows="15"
-                    show-count
-                    class="content-textarea"
-                  />
+                          show-count
+                          class="content-textarea"
+                        />
                       </a-form-item>
-                      
-
                     </a-form>
                   </div>
                 </div>
@@ -304,7 +335,12 @@
           </a-card>
 
           <!-- 章节预览 -->
-          <a-card title="📚 章节预览" :bordered="false" class="preview-card" v-if="detectedChapters.length > 0">
+          <a-card
+            title="📚 章节预览"
+            :bordered="false"
+            class="preview-card"
+            v-if="detectedChapters.length > 0"
+          >
             <div class="chapters-list">
               <div
                 v-for="(chapter, index) in detectedChapters.slice(0, 5)"
@@ -323,7 +359,7 @@
 
           <!-- 操作按钮 -->
           <a-card title="🚀 操作" :bordered="false" class="action-card">
-            <a-space direction="vertical" style="width: 100%;" :size="16">
+            <a-space direction="vertical" style="width: 100%" :size="16">
               <a-button
                 type="primary"
                 size="large"
@@ -337,19 +373,14 @@
                 </template>
                 {{ isEditing ? '保存修改' : '创建书籍' }}
               </a-button>
-              
-              <a-button
-                size="large"
-                block
-                @click="previewContent"
-                :disabled="!currentContent"
-              >
+
+              <a-button size="large" block @click="previewContent" :disabled="!currentContent">
                 <template #icon>
                   <EyeOutlined />
                 </template>
                 预览内容
               </a-button>
-              
+
               <a-button
                 v-if="contentInputMethod !== 'chapters'"
                 size="large"
@@ -370,12 +401,7 @@
     </div>
 
     <!-- 内容预览弹窗 -->
-    <a-modal
-      v-model:open="previewModal.visible"
-      title="📖 内容预览"
-      width="80%"
-      :footer="null"
-    >
+    <a-modal v-model:open="previewModal.visible" title="📖 内容预览" width="80%" :footer="null">
       <div class="content-preview">
         {{ previewModal.content }}
       </div>
@@ -399,7 +425,7 @@
             show-count
           />
         </a-form-item>
-        
+
         <a-form-item label="章节序号">
           <a-input-number
             v-model:value="createChapterModal.form.chapter_number"
@@ -410,7 +436,7 @@
           />
           <div class="form-hint">留空将自动分配为下一个序号</div>
         </a-form-item>
-        
+
         <a-form-item label="章节内容" required>
           <a-textarea
             v-model:value="createChapterModal.form.content"
@@ -419,1082 +445,1091 @@
             show-count
           />
         </a-form-item>
-        
-
       </a-form>
     </a-modal>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, nextTick, watch } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
-import { message, Modal } from 'ant-design-vue'
-import {
-  PlusOutlined,
-  InboxOutlined,
-  SaveOutlined,
-  EyeOutlined,
-  BookOutlined
-} from '@ant-design/icons-vue'
-import { booksAPI, chaptersAPI } from '@/api'
+  import { ref, reactive, computed, onMounted, nextTick, watch } from 'vue'
+  import { useRouter, useRoute } from 'vue-router'
+  import { message, Modal } from 'ant-design-vue'
+  import {
+    PlusOutlined,
+    InboxOutlined,
+    SaveOutlined,
+    EyeOutlined,
+    BookOutlined
+  } from '@ant-design/icons-vue'
+  import { booksAPI, chaptersAPI } from '@/api'
 
-const router = useRouter()
-const route = useRoute()
+  const router = useRouter()
+  const route = useRoute()
 
-// 响应式数据
-const saving = ref(false)
-const loading = ref(false)
-const detectingChapters = ref(false)
+  // 响应式数据
+  const saving = ref(false)
+  const loading = ref(false)
+  const detectingChapters = ref(false)
 
-const bookFormRef = ref()
-const tagInputRef = ref()
+  const bookFormRef = ref()
+  const tagInputRef = ref()
 
-const isEditing = computed(() => !!route.params.id)
+  const isEditing = computed(() => !!route.params.id)
 
-const bookForm = reactive({
-  title: '',
-  author: '',
-  description: '',
-  content: '',
-  tags: [],
-  status: 'draft'
-})
-
-const bookRules = {
-  title: [
-    { required: true, message: '请输入书籍标题', trigger: 'blur' },
-    { min: 1, max: 200, message: '标题长度在 1 到 200 个字符', trigger: 'blur' }
-  ]
-}
-
-// 标签输入
-const tagInputVisible = ref(false)
-const tagInputValue = ref('')
-
-// 内容输入方式
-const contentInputMethod = ref('input')
-const fileList = ref([])
-const fileContent = ref('')
-
-// 检测到的章节
-const detectedChapters = ref([])
-
-// 预览弹窗
-const previewModal = reactive({
-  visible: false,
-  content: ''
-})
-
-// 章节管理相关状态
-const loadingChapters = ref(false)
-const existingChapters = ref([])
-const selectedChapter = ref(null)
-const savingChapter = ref(false)
-
-// 章节编辑表单
-const chapterEditForm = reactive({
-  title: '',
-  content: ''
-})
-
-// 创建章节弹窗
-const createChapterModal = reactive({
-  visible: false,
-  form: {
+  const bookForm = reactive({
     title: '',
-    chapter_number: null,
-    content: ''
-  }
-})
-const creatingChapter = ref(false)
-
-// 计算属性
-const currentContent = computed(() => {
-  return contentInputMethod.value === 'file' ? fileContent.value : bookForm.content
-})
-
-const contentStats = computed(() => {
-  const content = currentContent.value || ''
-  const totalChars = content.length
-  const totalWords = content.replace(/\s/g, '').length
-  const estimatedMinutes = Math.ceil(totalWords / 300) // 假设每分钟阅读300字
-  const estimatedChapters = Math.max(1, Math.ceil(totalWords / 3000)) // 假设每章3000字
-  
-  return {
-    totalChars,
-    totalWords,
-    estimatedMinutes: estimatedMinutes + ' 分钟',
-    estimatedChapters
-  }
-})
-
-const fileStats = reactive({
-  chars: 0,
-  words: 0
-})
-
-const canSave = computed(() => {
-  return bookForm.title.trim() && currentContent.value.trim()
-})
-
-// 方法
-const goBack = () => {
-  router.push('/books')
-}
-
-// 标签管理
-const removeTag = (removedTag) => {
-  bookForm.tags = bookForm.tags.filter(tag => tag !== removedTag)
-}
-
-const showTagInput = () => {
-  tagInputVisible.value = true
-  nextTick(() => {
-    tagInputRef.value?.focus()
+    author: '',
+    description: '',
+    content: '',
+    tags: [],
+    status: 'draft'
   })
-}
 
-const handleTagInputConfirm = () => {
-  const inputValue = tagInputValue.value.trim()
-  if (inputValue && !bookForm.tags.includes(inputValue)) {
-    bookForm.tags.push(inputValue)
-  }
-  tagInputVisible.value = false
-  tagInputValue.value = ''
-}
-
-// 文件处理
-const beforeUpload = (file) => {
-  // 检查文件类型
-  const isValidType = file.type === 'text/plain' || file.type === 'text/markdown' || 
-                     file.name.endsWith('.txt') || file.name.endsWith('.md')
-  if (!isValidType) {
-    message.error('只支持 .txt 和 .md 格式的文件')
-    return false
+  const bookRules = {
+    title: [
+      { required: true, message: '请输入书籍标题', trigger: 'blur' },
+      { min: 1, max: 200, message: '标题长度在 1 到 200 个字符', trigger: 'blur' }
+    ]
   }
 
-  // 检查文件大小（限制为50MB）
-  const isLt50M = file.size / 1024 / 1024 < 50
-  if (!isLt50M) {
-    message.error('文件大小不能超过50MB')
-    return false
+  // 标签输入
+  const tagInputVisible = ref(false)
+  const tagInputValue = ref('')
+
+  // 内容输入方式
+  const contentInputMethod = ref('input')
+  const fileList = ref([])
+  const fileContent = ref('')
+
+  // 检测到的章节
+  const detectedChapters = ref([])
+
+  // 预览弹窗
+  const previewModal = reactive({
+    visible: false,
+    content: ''
+  })
+
+  // 章节管理相关状态
+  const loadingChapters = ref(false)
+  const existingChapters = ref([])
+  const selectedChapter = ref(null)
+  const savingChapter = ref(false)
+
+  // 章节编辑表单
+  const chapterEditForm = reactive({
+    title: '',
+    content: ''
+  })
+
+  // 创建章节弹窗
+  const createChapterModal = reactive({
+    visible: false,
+    form: {
+      title: '',
+      chapter_number: null,
+      content: ''
+    }
+  })
+  const creatingChapter = ref(false)
+
+  // 计算属性
+  const currentContent = computed(() => {
+    return contentInputMethod.value === 'file' ? fileContent.value : bookForm.content
+  })
+
+  const contentStats = computed(() => {
+    const content = currentContent.value || ''
+    const totalChars = content.length
+    const totalWords = content.replace(/\s/g, '').length
+    const estimatedMinutes = Math.ceil(totalWords / 300) // 假设每分钟阅读300字
+    const estimatedChapters = Math.max(1, Math.ceil(totalWords / 3000)) // 假设每章3000字
+
+    return {
+      totalChars,
+      totalWords,
+      estimatedMinutes: estimatedMinutes + ' 分钟',
+      estimatedChapters
+    }
+  })
+
+  const fileStats = reactive({
+    chars: 0,
+    words: 0
+  })
+
+  const canSave = computed(() => {
+    return bookForm.title.trim() && currentContent.value.trim()
+  })
+
+  // 方法
+  const goBack = () => {
+    router.push('/books')
   }
 
-  // 读取文件内容
-  const reader = new FileReader()
-  reader.onload = (e) => {
-    fileContent.value = e.target.result
-    // 更新文件统计信息
-    fileStats.chars = fileContent.value.length
-    fileStats.words = Math.floor(fileContent.value.length / 2) // 简单估算
-    // 检测章节
-    detectChapters()
-  }
-  reader.readAsText(file)
-
-  return false // 阻止自动上传
-}
-
-const handleFileRemove = () => {
-  fileContent.value = ''
-  fileStats.chars = 0
-  fileStats.words = 0
-  detectedChapters.value = []
-}
-
-const onContentMethodChange = (key) => {
-  contentInputMethod.value = key
-}
-
-const handleContentTabChange = (key) => {
-  onContentMethodChange(key)
-  handleTabChange(key)
-}
-
-// 章节检测
-const detectChapters = async () => {
-  if (!currentContent.value) {
-    message.warning('请先输入内容')
-    return
+  // 标签管理
+  const removeTag = (removedTag) => {
+    bookForm.tags = bookForm.tags.filter((tag) => tag !== removedTag)
   }
 
-  // 如果当前在章节管理模式下，不执行自动检测，避免覆盖已有章节
-  if (contentInputMethod.value === 'chapters') {
-    console.log('[BookCreate] 章节管理模式下跳过自动检测')
-    return
+  const showTagInput = () => {
+    tagInputVisible.value = true
+    nextTick(() => {
+      tagInputRef.value?.focus()
+    })
   }
 
-  // 如果是编辑模式且有书籍ID，使用后端API检测
-  if (isEditing.value && route.params.id) {
+  const handleTagInputConfirm = () => {
+    const inputValue = tagInputValue.value.trim()
+    if (inputValue && !bookForm.tags.includes(inputValue)) {
+      bookForm.tags.push(inputValue)
+    }
+    tagInputVisible.value = false
+    tagInputValue.value = ''
+  }
+
+  // 文件处理
+  const beforeUpload = (file) => {
+    // 检查文件类型
+    const isValidType =
+      file.type === 'text/plain' ||
+      file.type === 'text/markdown' ||
+      file.name.endsWith('.txt') ||
+      file.name.endsWith('.md')
+    if (!isValidType) {
+      message.error('只支持 .txt 和 .md 格式的文件')
+      return false
+    }
+
+    // 检查文件大小（限制为50MB）
+    const isLt50M = file.size / 1024 / 1024 < 50
+    if (!isLt50M) {
+      message.error('文件大小不能超过50MB')
+      return false
+    }
+
+    // 读取文件内容
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      fileContent.value = e.target.result
+      // 更新文件统计信息
+      fileStats.chars = fileContent.value.length
+      fileStats.words = Math.floor(fileContent.value.length / 2) // 简单估算
+      // 检测章节
+      detectChapters()
+    }
+    reader.readAsText(file)
+
+    return false // 阻止自动上传
+  }
+
+  const handleFileRemove = () => {
+    fileContent.value = ''
+    fileStats.chars = 0
+    fileStats.words = 0
+    detectedChapters.value = []
+  }
+
+  const onContentMethodChange = (key) => {
+    contentInputMethod.value = key
+  }
+
+  const handleContentTabChange = (key) => {
+    onContentMethodChange(key)
+    handleTabChange(key)
+  }
+
+  // 章节检测
+  const detectChapters = async () => {
+    if (!currentContent.value) {
+      message.warning('请先输入内容')
+      return
+    }
+
+    // 如果当前在章节管理模式下，不执行自动检测，避免覆盖已有章节
+    if (contentInputMethod.value === 'chapters') {
+      console.log('[BookCreate] 章节管理模式下跳过自动检测')
+      return
+    }
+
+    // 如果是编辑模式且有书籍ID，使用后端API检测
+    if (isEditing.value && route.params.id) {
+      detectingChapters.value = true
+      try {
+        console.log('[BookCreate] 使用后端API检测章节，书籍ID:', route.params.id)
+        const response = await booksAPI.detectChapters(route.params.id, { force_reprocess: true })
+
+        if (response.data && response.data.success) {
+          message.success(response.data.message || '章节检测完成')
+          // 更新检测到的章节数据用于预览
+          if (response.data.chapters) {
+            detectedChapters.value = response.data.chapters.map((ch) => ({
+              number: ch.number,
+              title: ch.title,
+              wordCount: ch.word_count
+            }))
+          }
+        }
+      } catch (error) {
+        console.error('[BookCreate] 后端章节检测失败:', error)
+        message.error('章节检测失败: ' + (error.response?.data?.detail || '未知错误'))
+      } finally {
+        detectingChapters.value = false
+      }
+      return
+    }
+
+    // 创建模式使用前端检测逻辑
     detectingChapters.value = true
     try {
-      console.log('[BookCreate] 使用后端API检测章节，书籍ID:', route.params.id)
-      const response = await booksAPI.detectChapters(route.params.id, { force_reprocess: true })
-      
-      if (response.data && response.data.success) {
-        message.success(response.data.message || '章节检测完成')
-        // 更新检测到的章节数据用于预览
-        if (response.data.chapters) {
-          detectedChapters.value = response.data.chapters.map(ch => ({
-            number: ch.number,
-            title: ch.title,
-            wordCount: ch.word_count
-          }))
-        }
-      }
+      const content = currentContent.value
+      const chapters = detectChaptersFromContent(content)
+      detectedChapters.value = chapters
+      message.success(`检测到 ${chapters.length} 个章节`)
     } catch (error) {
-      console.error('[BookCreate] 后端章节检测失败:', error)
-      message.error('章节检测失败: ' + (error.response?.data?.detail || '未知错误'))
+      console.error('章节检测失败:', error)
+      message.error('章节检测失败')
     } finally {
       detectingChapters.value = false
     }
-    return
   }
 
-  // 创建模式使用前端检测逻辑
-  detectingChapters.value = true
-  try {
-    const content = currentContent.value
-    const chapters = detectChaptersFromContent(content)
-    detectedChapters.value = chapters
-    message.success(`检测到 ${chapters.length} 个章节`)
-  } catch (error) {
-    console.error('章节检测失败:', error)
-    message.error('章节检测失败')
-  } finally {
-    detectingChapters.value = false
-  }
-}
+  // 从内容中检测章节的具体实现
+  const detectChaptersFromContent = (content) => {
+    const chapterPatterns = [
+      /第[一二三四五六七八九十百千万\d]+章\s*([^\n]+)/g,
+      /第[一二三四五六七八九十百千万\d]+节\s*([^\n]+)/g,
+      /Chapter\s+[0-9]+\s*[:：]?\s*([^\n]+)/gi,
+      /[#]+\s*([^\n]+)/g,
+      /[一二三四五六七八九十百千万\d]+[、.]\s*([^\n]+)/g,
+      /[【（\(][^】）\)]+[】）\)]/g
+    ]
 
-// 从内容中检测章节的具体实现
-const detectChaptersFromContent = (content) => {
-  const chapterPatterns = [
-    /第[一二三四五六七八九十百千万\d]+章\s*([^\n]+)/g,
-    /第[一二三四五六七八九十百千万\d]+节\s*([^\n]+)/g,
-    /Chapter\s+[0-9]+\s*[:：]?\s*([^\n]+)/gi,
-    /[#]+\s*([^\n]+)/g,
-    /[一二三四五六七八九十百千万\d]+[、.]\s*([^\n]+)/g,
-    /[【（\(][^】）\)]+[】）\)]/g
-  ]
+    let chapters = []
+    let lastIndex = 0
+    let chapterNumber = 1
 
-  let chapters = []
-  let lastIndex = 0
-  let chapterNumber = 1
+    // 按照不同模式匹配章节
+    for (const pattern of chapterPatterns) {
+      let match
+      while ((match = pattern.exec(content)) !== null) {
+        const title = match[1] || match[0]
+        const startIndex = match.index
 
-  // 按照不同模式匹配章节
-  for (const pattern of chapterPatterns) {
-    let match
-    while ((match = pattern.exec(content)) !== null) {
-      const title = match[1] || match[0]
-      const startIndex = match.index
-      
-      // 如果已经有章节，更新上一章节的内容
-      if (chapters.length > 0) {
-        const lastChapter = chapters[chapters.length - 1]
-        lastChapter.content = content.slice(lastChapter.startIndex, startIndex).trim()
-        lastChapter.wordCount = lastChapter.content.length
+        // 如果已经有章节，更新上一章节的内容
+        if (chapters.length > 0) {
+          const lastChapter = chapters[chapters.length - 1]
+          lastChapter.content = content.slice(lastChapter.startIndex, startIndex).trim()
+          lastChapter.wordCount = lastChapter.content.length
+        }
+
+        chapters.push({
+          number: chapterNumber++,
+          title: title.trim(),
+          startIndex,
+          content: '', // 暂时为空，后面会填充
+          wordCount: 0
+        })
+
+        lastIndex = startIndex
       }
+    }
 
+    // 处理最后一章的内容
+    if (chapters.length > 0) {
+      const lastChapter = chapters[chapters.length - 1]
+      lastChapter.content = content.slice(lastChapter.startIndex).trim()
+      lastChapter.wordCount = lastChapter.content.length
+    }
+
+    // 如果没有检测到章节，创建默认章节
+    if (chapters.length === 0) {
       chapters.push({
-        number: chapterNumber++,
-        title: title.trim(),
-        startIndex,
-        content: '', // 暂时为空，后面会填充
-        wordCount: 0
+        number: 1,
+        title: '全文',
+        content: content.trim(),
+        wordCount: content.trim().length
       })
-
-      lastIndex = startIndex
     }
-  }
 
-  // 处理最后一章的内容
-  if (chapters.length > 0) {
-    const lastChapter = chapters[chapters.length - 1]
-    lastChapter.content = content.slice(lastChapter.startIndex).trim()
-    lastChapter.wordCount = lastChapter.content.length
-  }
+    // 按开始位置排序章节
+    chapters.sort((a, b) => a.startIndex - b.startIndex)
 
-  // 如果没有检测到章节，创建默认章节
-  if (chapters.length === 0) {
-    chapters.push({
-      number: 1,
-      title: '全文',
-      content: content.trim(),
-      wordCount: content.trim().length
+    // 重新编号
+    chapters.forEach((chapter, index) => {
+      chapter.number = index + 1
     })
+
+    return chapters
   }
 
-  // 按开始位置排序章节
-  chapters.sort((a, b) => a.startIndex - b.startIndex)
-
-  // 重新编号
-  chapters.forEach((chapter, index) => {
-    chapter.number = index + 1
-  })
-
-  return chapters
-}
-
-// 内容预览
-const previewContent = () => {
-  previewModal.content = currentContent.value
-  previewModal.visible = true
-}
-
-// 保存书籍
-const saveBook = async () => {
-  try {
-    await bookFormRef.value.validate()
-  } catch (error) {
-    message.error('请检查表单内容')
-    return
+  // 内容预览
+  const previewContent = () => {
+    previewModal.content = currentContent.value
+    previewModal.visible = true
   }
 
-  if (!currentContent.value.trim()) {
-    message.error('请输入书籍内容')
-    return
+  // 保存书籍
+  const saveBook = async () => {
+    try {
+      await bookFormRef.value.validate()
+    } catch (error) {
+      message.error('请检查表单内容')
+      return
+    }
+
+    if (!currentContent.value.trim()) {
+      message.error('请输入书籍内容')
+      return
+    }
+
+    saving.value = true
+    try {
+      const bookData = {
+        title: bookForm.title,
+        author: bookForm.author,
+        description: bookForm.description,
+        content: currentContent.value,
+        tags: bookForm.tags,
+        status: bookForm.status
+      }
+
+      // 如果是文件上传，添加文件信息
+      if (contentInputMethod.value === 'file' && fileList.value.length > 0) {
+        bookData.text_file = fileList.value[0].originFileObj
+      }
+
+      let response
+      if (isEditing.value) {
+        response = await booksAPI.updateBook(route.params.id, bookData)
+      } else {
+        response = await booksAPI.createBook(bookData)
+      }
+
+      if (response.data.success) {
+        message.success(isEditing.value ? '书籍更新成功' : '书籍创建成功')
+        router.push('/books')
+      }
+    } catch (error) {
+      console.error('保存书籍失败:', error)
+      const errorMsg = error.response?.data?.detail || '保存失败'
+      message.error(errorMsg)
+    } finally {
+      saving.value = false
+    }
   }
 
-  saving.value = true
-  try {
-    const bookData = {
-      title: bookForm.title,
-      author: bookForm.author,
-      description: bookForm.description,
-      content: currentContent.value,
-      tags: bookForm.tags,
-      status: bookForm.status
-    }
+  // 加载书籍数据（编辑模式）
+  const loadBook = async () => {
+    if (!isEditing.value) return
 
-    // 如果是文件上传，添加文件信息
-    if (contentInputMethod.value === 'file' && fileList.value.length > 0) {
-      bookData.text_file = fileList.value[0].originFileObj
-    }
+    loading.value = true
+    try {
+      const response = await booksAPI.getBookDetail(route.params.id)
+      if (response.data.success) {
+        const book = response.data.data
+        bookForm.title = book.title
+        bookForm.author = book.author
+        bookForm.description = book.description
+        bookForm.content = book.content
+        bookForm.tags = book.tags || []
+        bookForm.status = book.status
 
-    let response
-    if (isEditing.value) {
-      response = await booksAPI.updateBook(route.params.id, bookData)
-    } else {
-      response = await booksAPI.createBook(bookData)
-    }
-
-    if (response.data.success) {
-      message.success(isEditing.value ? '书籍更新成功' : '书籍创建成功')
+        // 不自动检测章节，避免覆盖已有的后端章节数据
+        // await detectChapters()
+      }
+    } catch (error) {
+      console.error('加载书籍数据失败:', error)
+      message.error('加载书籍数据失败')
       router.push('/books')
+    } finally {
+      loading.value = false
     }
-  } catch (error) {
-    console.error('保存书籍失败:', error)
-    const errorMsg = error.response?.data?.detail || '保存失败'
-    message.error(errorMsg)
-  } finally {
-    saving.value = false
-  }
-}
-
-// 加载书籍数据（编辑模式）
-const loadBook = async () => {
-  if (!isEditing.value) return
-
-  loading.value = true
-  try {
-    const response = await booksAPI.getBookDetail(route.params.id)
-    if (response.data.success) {
-      const book = response.data.data
-      bookForm.title = book.title
-      bookForm.author = book.author
-      bookForm.description = book.description
-      bookForm.content = book.content
-      bookForm.tags = book.tags || []
-      bookForm.status = book.status
-      
-      // 不自动检测章节，避免覆盖已有的后端章节数据
-      // await detectChapters()
-    }
-  } catch (error) {
-    console.error('加载书籍数据失败:', error)
-    message.error('加载书籍数据失败')
-    router.push('/books')
-  } finally {
-    loading.value = false
-  }
-}
-
-// 监听内容变化，自动检测章节（仅在文件上传模式下）
-watch(currentContent, async (newContent) => {
-  // 只在文件上传模式下自动检测章节，避免在章节管理模式下覆盖已有章节
-  if (newContent && newContent.length > 100 && contentInputMethod.value === 'file') {
-    // 延迟检测，避免频繁触发
-    setTimeout(() => {
-      if (currentContent.value === newContent && contentInputMethod.value === 'file') {
-        detectChapters()
-      }
-    }, 2000)
-  }
-}, { debounce: 1000 })
-
-// 章节管理方法
-const loadExistingChapters = async () => {
-  if (!isEditing.value || !route.params.id) return
-
-  loadingChapters.value = true
-  try {
-    const response = await chaptersAPI.getChapters({
-      book_id: route.params.id,
-      page_size: 100,
-      sort_by: 'chapter_number',
-      sort_order: 'asc'
-    })
-    
-    if (response.data.success) {
-      existingChapters.value = response.data.data
-    }
-  } catch (error) {
-    console.error('加载章节列表失败:', error)
-    message.error('加载章节列表失败')
-  } finally {
-    loadingChapters.value = false
-  }
-}
-
-const showCreateChapterModal = () => {
-  createChapterModal.form.title = ''
-  createChapterModal.form.chapter_number = null
-  createChapterModal.form.content = ''
-  createChapterModal.visible = true
-}
-
-const cancelCreateChapter = () => {
-  createChapterModal.visible = false
-}
-
-const createNewChapter = async () => {
-  if (!createChapterModal.form.title.trim()) {
-    message.error('请输入章节标题')
-    return
-  }
-  
-  if (!createChapterModal.form.content.trim()) {
-    message.error('请输入章节内容')
-    return
   }
 
-  creatingChapter.value = true
-  try {
-    const chapterData = {
-      book_id: route.params.id,
-      title: createChapterModal.form.title.trim(),
-      content: createChapterModal.form.content
-    }
-    
-    if (createChapterModal.form.chapter_number) {
-      chapterData.chapter_number = createChapterModal.form.chapter_number
-    }
-
-    const response = await chaptersAPI.createChapter(chapterData)
-    
-    if (response.data.success) {
-      message.success('章节创建成功')
-      createChapterModal.visible = false
-      await loadExistingChapters() // 重新加载章节列表
-    }
-  } catch (error) {
-    console.error('创建章节失败:', error)
-    const errorMsg = error.response?.data?.detail || '创建章节失败'
-    message.error(errorMsg)
-  } finally {
-    creatingChapter.value = false
-  }
-}
-
-const selectChapter = (chapter) => {
-  selectedChapter.value = chapter
-  chapterEditForm.title = chapter.chapter_title
-  chapterEditForm.content = chapter.content
-}
-
-const editChapter = (chapter) => {
-  selectChapter(chapter)
-}
-
-const cancelChapterEdit = () => {
-  selectedChapter.value = null
-  chapterEditForm.title = ''
-  chapterEditForm.content = ''
-}
-
-const saveChapterChanges = async () => {
-  if (!selectedChapter.value) return
-  
-  if (!chapterEditForm.title.trim()) {
-    message.error('请输入章节标题')
-    return
-  }
-  
-  if (!chapterEditForm.content.trim()) {
-    message.error('请输入章节内容')
-    return
-  }
-
-  savingChapter.value = true
-  try {
-    const updateData = {
-      title: chapterEditForm.title.trim(),
-      content: chapterEditForm.content
-    }
-
-    const response = await chaptersAPI.updateChapter(selectedChapter.value.id, updateData)
-    
-    if (response.data.success) {
-      message.success('章节更新成功')
-      cancelChapterEdit()
-      await loadExistingChapters() // 重新加载章节列表
-    }
-  } catch (error) {
-    console.error('更新章节失败:', error)
-    const errorMsg = error.response?.data?.detail || '更新章节失败'
-    message.error(errorMsg)
-  } finally {
-    savingChapter.value = false
-  }
-}
-
-const deleteChapter = async (chapter) => {
-  Modal.confirm({
-    title: '确认删除章节',
-    content: `确定要删除章节"${chapter.chapter_title}"吗？此操作不可撤销。`,
-    okText: '确认删除',
-    okType: 'danger',
-    cancelText: '取消',
-    onOk: async () => {
-      try {
-        const response = await chaptersAPI.deleteChapter(chapter.id)
-        if (response.data) {
-          message.success('章节删除成功')
-          if (selectedChapter.value?.id === chapter.id) {
-            cancelChapterEdit()
+  // 监听内容变化，自动检测章节（仅在文件上传模式下）
+  watch(
+    currentContent,
+    async (newContent) => {
+      // 只在文件上传模式下自动检测章节，避免在章节管理模式下覆盖已有章节
+      if (newContent && newContent.length > 100 && contentInputMethod.value === 'file') {
+        // 延迟检测，避免频繁触发
+        setTimeout(() => {
+          if (currentContent.value === newContent && contentInputMethod.value === 'file') {
+            detectChapters()
           }
-          await loadExistingChapters() // 重新加载章节列表
-        }
-      } catch (error) {
-        console.error('删除章节失败:', error)
-        const errorMsg = error.response?.data?.detail || '删除章节失败'
-        message.error(errorMsg)
+        }, 2000)
       }
+    },
+    { debounce: 1000 }
+  )
+
+  // 章节管理方法
+  const loadExistingChapters = async () => {
+    if (!isEditing.value || !route.params.id) return
+
+    loadingChapters.value = true
+    try {
+      const response = await chaptersAPI.getChapters({
+        book_id: route.params.id,
+        page_size: 100,
+        sort_by: 'chapter_number',
+        sort_order: 'asc'
+      })
+
+      if (response.data.success) {
+        existingChapters.value = response.data.data
+      }
+    } catch (error) {
+      console.error('加载章节列表失败:', error)
+      message.error('加载章节列表失败')
+    } finally {
+      loadingChapters.value = false
+    }
+  }
+
+  const showCreateChapterModal = () => {
+    createChapterModal.form.title = ''
+    createChapterModal.form.chapter_number = null
+    createChapterModal.form.content = ''
+    createChapterModal.visible = true
+  }
+
+  const cancelCreateChapter = () => {
+    createChapterModal.visible = false
+  }
+
+  const createNewChapter = async () => {
+    if (!createChapterModal.form.title.trim()) {
+      message.error('请输入章节标题')
+      return
+    }
+
+    if (!createChapterModal.form.content.trim()) {
+      message.error('请输入章节内容')
+      return
+    }
+
+    creatingChapter.value = true
+    try {
+      const chapterData = {
+        book_id: route.params.id,
+        title: createChapterModal.form.title.trim(),
+        content: createChapterModal.form.content
+      }
+
+      if (createChapterModal.form.chapter_number) {
+        chapterData.chapter_number = createChapterModal.form.chapter_number
+      }
+
+      const response = await chaptersAPI.createChapter(chapterData)
+
+      if (response.data.success) {
+        message.success('章节创建成功')
+        createChapterModal.visible = false
+        await loadExistingChapters() // 重新加载章节列表
+      }
+    } catch (error) {
+      console.error('创建章节失败:', error)
+      const errorMsg = error.response?.data?.detail || '创建章节失败'
+      message.error(errorMsg)
+    } finally {
+      creatingChapter.value = false
+    }
+  }
+
+  const selectChapter = (chapter) => {
+    selectedChapter.value = chapter
+    chapterEditForm.title = chapter.chapter_title
+    chapterEditForm.content = chapter.content
+  }
+
+  const editChapter = (chapter) => {
+    selectChapter(chapter)
+  }
+
+  const cancelChapterEdit = () => {
+    selectedChapter.value = null
+    chapterEditForm.title = ''
+    chapterEditForm.content = ''
+  }
+
+  const saveChapterChanges = async () => {
+    if (!selectedChapter.value) return
+
+    if (!chapterEditForm.title.trim()) {
+      message.error('请输入章节标题')
+      return
+    }
+
+    if (!chapterEditForm.content.trim()) {
+      message.error('请输入章节内容')
+      return
+    }
+
+    savingChapter.value = true
+    try {
+      const updateData = {
+        title: chapterEditForm.title.trim(),
+        content: chapterEditForm.content
+      }
+
+      const response = await chaptersAPI.updateChapter(selectedChapter.value.id, updateData)
+
+      if (response.data.success) {
+        message.success('章节更新成功')
+        cancelChapterEdit()
+        await loadExistingChapters() // 重新加载章节列表
+      }
+    } catch (error) {
+      console.error('更新章节失败:', error)
+      const errorMsg = error.response?.data?.detail || '更新章节失败'
+      message.error(errorMsg)
+    } finally {
+      savingChapter.value = false
+    }
+  }
+
+  const deleteChapter = async (chapter) => {
+    Modal.confirm({
+      title: '确认删除章节',
+      content: `确定要删除章节"${chapter.chapter_title}"吗？此操作不可撤销。`,
+      okText: '确认删除',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: async () => {
+        try {
+          const response = await chaptersAPI.deleteChapter(chapter.id)
+          if (response.data) {
+            message.success('章节删除成功')
+            if (selectedChapter.value?.id === chapter.id) {
+              cancelChapterEdit()
+            }
+            await loadExistingChapters() // 重新加载章节列表
+          }
+        } catch (error) {
+          console.error('删除章节失败:', error)
+          const errorMsg = error.response?.data?.detail || '删除章节失败'
+          message.error(errorMsg)
+        }
+      }
+    })
+  }
+
+  // 监听Tab切换，加载章节数据
+  const handleTabChange = (activeKey) => {
+    if (activeKey === 'chapters' && isEditing.value) {
+      loadExistingChapters()
+    }
+  }
+
+  // 生命周期
+  onMounted(() => {
+    if (isEditing.value) {
+      loadBook()
     }
   })
-}
 
-// 监听Tab切换，加载章节数据
-const handleTabChange = (activeKey) => {
-  if (activeKey === 'chapters' && isEditing.value) {
-    loadExistingChapters()
-  }
-}
+  // 添加上传进度状态
+  const uploadProgress = reactive({
+    visible: false,
+    percent: 0,
+    status: 'active' // 'active', 'exception', 'success'
+  })
 
-// 生命周期
-onMounted(() => {
-  if (isEditing.value) {
-    loadBook()
-  }
-})
+  const uploadingChapters = ref(false)
 
-// 添加上传进度状态
-const uploadProgress = reactive({
-  visible: false,
-  percent: 0,
-  status: 'active' // 'active', 'exception', 'success'
-})
-
-const uploadingChapters = ref(false)
-
-// 批量上传章节
-const handleBatchUpload = async () => {
-  if (!route.params.id) {
-    message.error('请先保存书籍基本信息')
-    return
-  }
-
-  try {
-    uploadingChapters.value = true
-    uploadProgress.visible = true
-    uploadProgress.percent = 0
-    uploadProgress.status = 'active'
-
-    const MAX_BATCH_SIZE = 10 // 减小每批次的章节数量
-    const MAX_REQUEST_SIZE = 900 * 1024 // 900KB，留出一些缓冲空间
-
-    const totalChapters = detectedChapters.value.length
-    let processedChapters = 0
-    let currentBatch = []
-    let currentBatchSize = 0
-
-    // 处理所有章节
-    for (let i = 0; i < totalChapters; i++) {
-      const chapter = detectedChapters.value[i]
-      const chapterSize = JSON.stringify({
-        title: chapter.title,
-        content: chapter.content
-      }).length
-
-      // 如果当前批次加上新章节会超过大小限制，先上传当前批次
-      if (currentBatchSize + chapterSize > MAX_REQUEST_SIZE || currentBatch.length >= MAX_BATCH_SIZE) {
-        if (currentBatch.length > 0) {
-          await uploadBatch(currentBatch, processedChapters + 1)
-          processedChapters += currentBatch.length
-          // 更新进度
-          uploadProgress.percent = Math.round((processedChapters / totalChapters) * 100)
-        }
-        // 重置当前批次
-        currentBatch = []
-        currentBatchSize = 0
-      }
-
-      // 添加章节到当前批次
-      currentBatch.push({
-        title: chapter.title,
-        content: chapter.content
-      })
-      currentBatchSize += chapterSize
+  // 批量上传章节
+  const handleBatchUpload = async () => {
+    if (!route.params.id) {
+      message.error('请先保存书籍基本信息')
+      return
     }
 
-    // 上传最后一批
-    if (currentBatch.length > 0) {
-      await uploadBatch(currentBatch, processedChapters + 1)
-      processedChapters += currentBatch.length
-      uploadProgress.percent = 100
-    }
-
-    uploadProgress.status = 'success'
-    message.success(`成功导入 ${totalChapters} 个章节`)
-
-    // 重新加载章节列表
-    if (isEditing.value) {
-      await loadExistingChapters()
-    }
-
-    // 清理上传状态
-    fileContent.value = ''
-    detectedChapters.value = []
-    fileList.value = []
-
-  } catch (error) {
-    console.error('批量上传章节失败:', error)
-    uploadProgress.status = 'exception'
-    message.error('批量上传章节失败: ' + (error.message || '未知错误'))
-  } finally {
-    uploadingChapters.value = false
-    // 3秒后隐藏进度条
-    setTimeout(() => {
-      uploadProgress.visible = false
+    try {
+      uploadingChapters.value = true
+      uploadProgress.visible = true
       uploadProgress.percent = 0
-    }, 3000)
-  }
-}
+      uploadProgress.status = 'active'
 
-// 上传单个批次的章节
-const uploadBatch = async (chapters, startChapterNumber) => {
-  try {
-    await chaptersAPI.createChaptersBatch({
-      book_id: route.params.id,
-      chapters: chapters,
-      start_chapter_number: startChapterNumber
-    })
-  } catch (error) {
-    console.error('上传批次失败:', error)
-    throw new Error(`上传批次失败: ${error.message || '未知错误'}`)
-  }
-}
+      const MAX_BATCH_SIZE = 10 // 减小每批次的章节数量
+      const MAX_REQUEST_SIZE = 900 * 1024 // 900KB，留出一些缓冲空间
 
-// 处理文件上传
-const handleFileUpload = async () => {
-  if (!bookForm.title) {
-    message.warning('请先填写书籍标题')
-    return
-  }
+      const totalChapters = detectedChapters.value.length
+      let processedChapters = 0
+      let currentBatch = []
+      let currentBatchSize = 0
 
-  try {
-    uploading.value = true
-    
-    // 创建FormData对象
-    const formData = new FormData()
-    formData.append('title', bookForm.title)
-    formData.append('author', bookForm.author || '')
-    formData.append('description', bookForm.description || '')
-    formData.append('tags', JSON.stringify(bookForm.tags || []))
-    formData.append('auto_detect_chapters', 'true')
-    
-    // 如果有文件，添加文件
-    if (fileList.value.length > 0) {
-      formData.append('text_file', fileList.value[0].originFileObj)
-    } else if (fileContent.value) {
-      // 如果没有文件但有内容，直接添加内容
-      formData.append('content', fileContent.value)
-    }
-    
-    // 发送请求
-    const response = await booksAPI.createBook(formData)
-    
-    if (response.data && response.data.success) {
-      message.success('书籍创建成功')
-      // 更新书籍ID
-      currentBookId.value = response.data.data.id
-      // 如果检测到章节，显示章节列表
-      if (response.data.data.chapter_count > 0) {
-        await loadChapters()
+      // 处理所有章节
+      for (let i = 0; i < totalChapters; i++) {
+        const chapter = detectedChapters.value[i]
+        const chapterSize = JSON.stringify({
+          title: chapter.title,
+          content: chapter.content
+        }).length
+
+        // 如果当前批次加上新章节会超过大小限制，先上传当前批次
+        if (
+          currentBatchSize + chapterSize > MAX_REQUEST_SIZE ||
+          currentBatch.length >= MAX_BATCH_SIZE
+        ) {
+          if (currentBatch.length > 0) {
+            await uploadBatch(currentBatch, processedChapters + 1)
+            processedChapters += currentBatch.length
+            // 更新进度
+            uploadProgress.percent = Math.round((processedChapters / totalChapters) * 100)
+          }
+          // 重置当前批次
+          currentBatch = []
+          currentBatchSize = 0
+        }
+
+        // 添加章节到当前批次
+        currentBatch.push({
+          title: chapter.title,
+          content: chapter.content
+        })
+        currentBatchSize += chapterSize
       }
+
+      // 上传最后一批
+      if (currentBatch.length > 0) {
+        await uploadBatch(currentBatch, processedChapters + 1)
+        processedChapters += currentBatch.length
+        uploadProgress.percent = 100
+      }
+
+      uploadProgress.status = 'success'
+      message.success(`成功导入 ${totalChapters} 个章节`)
+
+      // 重新加载章节列表
+      if (isEditing.value) {
+        await loadExistingChapters()
+      }
+
+      // 清理上传状态
+      fileContent.value = ''
+      detectedChapters.value = []
+      fileList.value = []
+    } catch (error) {
+      console.error('批量上传章节失败:', error)
+      uploadProgress.status = 'exception'
+      message.error('批量上传章节失败: ' + (error.message || '未知错误'))
+    } finally {
+      uploadingChapters.value = false
+      // 3秒后隐藏进度条
+      setTimeout(() => {
+        uploadProgress.visible = false
+        uploadProgress.percent = 0
+      }, 3000)
     }
-  } catch (error) {
-    console.error('创建书籍失败:', error)
-    message.error(error.response?.data?.detail || '创建书籍失败')
-  } finally {
-    uploading.value = false
   }
-}
+
+  // 上传单个批次的章节
+  const uploadBatch = async (chapters, startChapterNumber) => {
+    try {
+      await chaptersAPI.createChaptersBatch({
+        book_id: route.params.id,
+        chapters: chapters,
+        start_chapter_number: startChapterNumber
+      })
+    } catch (error) {
+      console.error('上传批次失败:', error)
+      throw new Error(`上传批次失败: ${error.message || '未知错误'}`)
+    }
+  }
+
+  // 处理文件上传
+  const handleFileUpload = async () => {
+    if (!bookForm.title) {
+      message.warning('请先填写书籍标题')
+      return
+    }
+
+    try {
+      uploading.value = true
+
+      // 创建FormData对象
+      const formData = new FormData()
+      formData.append('title', bookForm.title)
+      formData.append('author', bookForm.author || '')
+      formData.append('description', bookForm.description || '')
+      formData.append('tags', JSON.stringify(bookForm.tags || []))
+      formData.append('auto_detect_chapters', 'true')
+
+      // 如果有文件，添加文件
+      if (fileList.value.length > 0) {
+        formData.append('text_file', fileList.value[0].originFileObj)
+      } else if (fileContent.value) {
+        // 如果没有文件但有内容，直接添加内容
+        formData.append('content', fileContent.value)
+      }
+
+      // 发送请求
+      const response = await booksAPI.createBook(formData)
+
+      if (response.data && response.data.success) {
+        message.success('书籍创建成功')
+        // 更新书籍ID
+        currentBookId.value = response.data.data.id
+        // 如果检测到章节，显示章节列表
+        if (response.data.data.chapter_count > 0) {
+          await loadChapters()
+        }
+      }
+    } catch (error) {
+      console.error('创建书籍失败:', error)
+      message.error(error.response?.data?.detail || '创建书籍失败')
+    } finally {
+      uploading.value = false
+    }
+  }
 </script>
 
 <style scoped>
-.book-create-container {
-  padding: 24px;
-  min-height: 100vh;
-}
+  .book-create-container {
+    padding: 24px;
+    min-height: 100vh;
+  }
 
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 24px;
-  padding: 24px;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-}
+  .page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+    padding: 24px;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  }
 
-.header-content h1 {
-  margin: 0;
-  color: #1f2937;
-  font-size: 24px;
-}
+  .header-content h1 {
+    margin: 0;
+    color: #1f2937;
+    font-size: 24px;
+  }
 
-.header-content p {
-  margin: 8px 0 0 0;
-  color: #6b7280;
-}
+  .header-content p {
+    margin: 8px 0 0 0;
+    color: #6b7280;
+  }
 
-.create-content {
-  margin-bottom: 24px;
-}
+  .create-content {
+    margin-bottom: 24px;
+  }
 
-.form-card {
-  margin-bottom: 24px;
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-}
+  .form-card {
+    margin-bottom: 24px;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  }
 
-.stats-card, .preview-card, .action-card {
-  margin-bottom: 24px;
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-}
+  .stats-card,
+  .preview-card,
+  .action-card {
+    margin-bottom: 24px;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  }
 
-.tags-input {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-}
+  .tags-input {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+  }
 
-.upload-section {
-  margin-bottom: 16px;
-}
+  .upload-section {
+    margin-bottom: 16px;
+  }
 
-.file-preview {
-  margin-top: 16px;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  overflow: hidden;
-}
+  .file-preview {
+    margin-top: 16px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    overflow: hidden;
+  }
 
-.preview-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 16px;
-  background: #f8fafc;
-  border-bottom: 1px solid #e5e7eb;
-  font-weight: 500;
-}
+  .preview-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    background: #f8fafc;
+    border-bottom: 1px solid #e5e7eb;
+    font-weight: 500;
+  }
 
-.file-stats {
-  font-size: 12px;
-  color: #6b7280;
-}
+  .file-stats {
+    font-size: 12px;
+    color: #6b7280;
+  }
 
-.preview-content {
-  padding: 16px;
-  max-height: 200px;
-  overflow-y: auto;
-  font-family: monospace;
-  font-size: 14px;
-  line-height: 1.5;
-  white-space: pre-wrap;
-}
+  .preview-content {
+    padding: 16px;
+    max-height: 200px;
+    overflow-y: auto;
+    font-family: monospace;
+    font-size: 14px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+  }
 
-.content-textarea {
-  font-family: 'Microsoft YaHei', sans-serif;
-  font-size: 14px;
-  line-height: 1.6;
-}
+  .content-textarea {
+    font-family: 'Microsoft YaHei', sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+  }
 
-.stats-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-}
+  .stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
 
-.stat-item {
-  text-align: center;
-  padding: 16px;
-  background: #f8fafc;
-  border-radius: 8px;
-}
+  .stat-item {
+    text-align: center;
+    padding: 16px;
+    background: #f8fafc;
+    border-radius: 8px;
+  }
 
-.stat-value {
-  font-size: 24px;
-  font-weight: 600;
-  color: #1f2937;
-  margin-bottom: 4px;
-}
+  .stat-value {
+    font-size: 24px;
+    font-weight: 600;
+    color: #1f2937;
+    margin-bottom: 4px;
+  }
 
-.stat-label {
-  font-size: 12px;
-  color: #6b7280;
-}
+  .stat-label {
+    font-size: 12px;
+    color: #6b7280;
+  }
 
-.chapters-list {
-  max-height: 300px;
-  overflow-y: auto;
-}
+  .chapters-list {
+    max-height: 300px;
+    overflow-y: auto;
+  }
 
-.chapter-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px 0;
-  border-bottom: 1px solid #f0f0f0;
-}
+  .chapter-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid #f0f0f0;
+  }
 
-.chapter-item:last-child {
-  border-bottom: none;
-}
+  .chapter-item:last-child {
+    border-bottom: none;
+  }
 
-.chapter-number {
-  font-size: 12px;
-  color: #6b7280;
-  min-width: 60px;
-}
+  .chapter-number {
+    font-size: 12px;
+    color: #6b7280;
+    min-width: 60px;
+  }
 
-.chapter-title {
-  flex: 1;
-  font-size: 14px;
-  margin: 0 8px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+  .chapter-title {
+    flex: 1;
+    font-size: 14px;
+    margin: 0 8px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 
-.chapter-stats {
-  font-size: 12px;
-  color: #9ca3af;
-}
+  .chapter-stats {
+    font-size: 12px;
+    color: #9ca3af;
+  }
 
-.more-chapters {
-  text-align: center;
-  padding: 8px 0;
-  color: #6b7280;
-  font-size: 12px;
-}
+  .more-chapters {
+    text-align: center;
+    padding: 8px 0;
+    color: #6b7280;
+    font-size: 12px;
+  }
 
-.content-preview {
-  max-height: 60vh;
-  overflow-y: auto;
-  white-space: pre-wrap;
-  font-family: 'Microsoft YaHei', sans-serif;
-  line-height: 1.6;
-  padding:0 16px 16px 16px;
-  background: #f8fafc;
-  border-radius: 6px;
-}
+  .content-preview {
+    max-height: 60vh;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    font-family: 'Microsoft YaHei', sans-serif;
+    line-height: 1.6;
+    padding: 0 16px 16px 16px;
+    background: #f8fafc;
+    border-radius: 6px;
+  }
 
-/* 章节管理样式 */
-.chapters-management {
-  display: flex;
-  gap: 24px;
-  min-height: 600px;
-}
+  /* 章节管理样式 */
+  .chapters-management {
+    display: flex;
+    gap: 24px;
+    min-height: 600px;
+  }
 
-.chapters-list-section {
-  flex: 1;
-  min-width: 300px;
-}
+  .chapters-list-section {
+    flex: 1;
+    min-width: 300px;
+  }
 
-.section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid #e5e7eb;
-}
+  .section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #e5e7eb;
+  }
 
-.section-header h3 {
-  margin: 0;
-  color: #1f2937;
-  font-size: 16px;
-}
+  .section-header h3 {
+    margin: 0;
+    color: #1f2937;
+    font-size: 16px;
+  }
 
-.loading-chapters {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 40px;
-  color: #6b7280;
-}
+  .loading-chapters {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+    color: #6b7280;
+  }
 
-.chapters-management .chapters-list {
-  max-height: 500px;
-  overflow-y: auto;
-}
+  .chapters-management .chapters-list {
+    max-height: 500px;
+    overflow-y: auto;
+  }
 
-.chapters-management .chapter-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 16px;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  margin-bottom: 8px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
+  .chapters-management .chapter-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
 
-.chapters-management .chapter-item:hover {
-  border-color: #06b6d4;
-  background-color: #f0f9ff;
-}
+  .chapters-management .chapter-item:hover {
+    border-color: #06b6d4;
+    background-color: #f0f9ff;
+  }
 
-.chapters-management .chapter-item.selected {
-  border-color: #06b6d4;
-  background-color: #e0f2fe;
-  box-shadow: 0 2px 4px rgba(6, 182, 212, 0.1);
-}
+  .chapters-management .chapter-item.selected {
+    border-color: #06b6d4;
+    background-color: #e0f2fe;
+    box-shadow: 0 2px 4px rgba(6, 182, 212, 0.1);
+  }
 
-.chapter-info {
-  flex: 1;
-}
+  .chapter-info {
+    flex: 1;
+  }
 
-.chapters-management .chapter-number {
-  font-weight: 600;
-  color: #1f2937;
-  font-size: 14px;
-  min-width: auto;
-}
+  .chapters-management .chapter-number {
+    font-weight: 600;
+    color: #1f2937;
+    font-size: 14px;
+    min-width: auto;
+  }
 
-.chapters-management .chapter-title {
-  color: #374151;
-  margin: 4px 0;
-  font-size: 13px;
-  white-space: normal;
-  overflow: visible;
-  text-overflow: initial;
-}
+  .chapters-management .chapter-title {
+    color: #374151;
+    margin: 4px 0;
+    font-size: 13px;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: initial;
+  }
 
-.chapters-management .chapter-stats {
-  color: #6b7280;
-  font-size: 12px;
-}
+  .chapters-management .chapter-stats {
+    color: #6b7280;
+    font-size: 12px;
+  }
 
-.chapter-actions {
-  display: flex;
-  gap: 8px;
-}
+  .chapter-actions {
+    display: flex;
+    gap: 8px;
+  }
 
-.no-chapters {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 60px 20px;
-  text-align: center;
-}
+  .no-chapters {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 20px;
+    text-align: center;
+  }
 
-.chapter-editor {
-  flex: 2;
-  min-width: 400px;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  padding: 20px;
-  background: #fafafa;
-}
+  .chapter-editor {
+    flex: 2;
+    min-width: 400px;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 20px;
+    background: #fafafa;
+  }
 
-.editor-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid #e5e7eb;
-}
+  .editor-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid #e5e7eb;
+  }
 
-.editor-header h3 {
-  margin: 0;
-  color: #1f2937;
-  font-size: 16px;
-}
+  .editor-header h3 {
+    margin: 0;
+    color: #1f2937;
+    font-size: 16px;
+  }
 
-.form-hint {
-  font-size: 12px;
-  color: #6b7280;
-  margin-top: 4px;
-}
+  .form-hint {
+    font-size: 12px;
+    color: #6b7280;
+    margin-top: 4px;
+  }
 
-.detection-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-}
+  .detection-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+  }
 
-.detection-actions {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
+  .detection-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
 
-.chapter-item-preview {
-  display: flex;
-  align-items: center;
-  padding: 8px;
-  border-bottom: 1px solid #f0f0f0;
-}
+  .chapter-item-preview {
+    display: flex;
+    align-items: center;
+    padding: 8px;
+    border-bottom: 1px solid #f0f0f0;
+  }
 
-.chapter-number {
-  width: 100px;
-  color: #666;
-}
+  .chapter-number {
+    width: 100px;
+    color: #666;
+  }
 
-.chapter-title {
-  flex: 1;
-  margin: 0 16px;
-}
+  .chapter-title {
+    flex: 1;
+    margin: 0 16px;
+  }
 
-.chapter-stats {
-  color: #999;
-}
+  .chapter-stats {
+    color: #999;
+  }
 
-.more-chapters {
-  text-align: center;
-  padding: 8px;
-  color: #999;
-  background: #f9f9f9;
-}
-</style> 
+  .more-chapters {
+    text-align: center;
+    padding: 8px;
+    color: #999;
+    background: #f9f9f9;
+  }
+</style>

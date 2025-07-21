@@ -25,7 +25,6 @@ import UserManagement from '../views/UserManagement.vue'
 import RoleManagement from '../views/RoleManagement.vue'
 import LoginView from '../views/auth/LoginView.vue'
 
-
 const routes = [
   // 认证路由
   {
@@ -247,7 +246,7 @@ const routes = [
       permission: PERMISSIONS.ROLE_MANAGE
     }
   },
-  
+
   // 错误页面和其他路由
   {
     path: '/403',
@@ -269,7 +268,7 @@ const routes = [
       hidden: true
     }
   },
-  
+
   // 捕获所有未匹配的路由
   {
     path: '/:pathMatch(.*)*',

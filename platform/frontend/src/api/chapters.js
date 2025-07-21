@@ -33,7 +33,7 @@ export default {
     if (data.batch_size) {
       formData.append('batch_size', data.batch_size)
     }
-    
+
     return apiClient({
       url: '/api/v1/chapters/batch',
       method: 'post',
@@ -74,26 +74,28 @@ export default {
     return apiClient({
       url: `/content-preparation/result/${chapterId}`,
       method: 'get'
-    }).then(response => {
-      if (response.data) {
-        return {
-          success: true,
-          data: response.data,
-          message: response.data.message || '获取分析结果成功'
-        }
-      }
-      return {
-        success: false,
-        data: null,
-        message: '获取分析结果失败'
-      }
-    }).catch(error => {
-      console.error('获取分析结果失败:', error)
-      return {
-        success: false,
-        data: null,
-        message: error.response?.data?.message || '获取分析结果失败'
-      }
     })
+      .then((response) => {
+        if (response.data) {
+          return {
+            success: true,
+            data: response.data,
+            message: response.data.message || '获取分析结果成功'
+          }
+        }
+        return {
+          success: false,
+          data: null,
+          message: '获取分析结果失败'
+        }
+      })
+      .catch((error) => {
+        console.error('获取分析结果失败:', error)
+        return {
+          success: false,
+          data: null,
+          message: error.response?.data?.message || '获取分析结果失败'
+        }
+      })
   }
-} 
+}

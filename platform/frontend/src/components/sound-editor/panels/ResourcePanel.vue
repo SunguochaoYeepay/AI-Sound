@@ -3,7 +3,12 @@
     <div class="panel-header">
       <h4>资源库</h4>
       <a-space size="small">
-        <a-button size="small" @click="$emit('refresh')" :icon="h(ReloadOutlined)" title="刷新资源库" />
+        <a-button
+          size="small"
+          @click="$emit('refresh')"
+          :icon="h(ReloadOutlined)"
+          title="刷新资源库"
+        />
       </a-space>
     </div>
     <div class="panel-content">
@@ -85,131 +90,131 @@
 </template>
 
 <script setup>
-import { h, computed } from 'vue'
-import { ReloadOutlined } from '@ant-design/icons-vue'
-import AudioFileList from './AudioFileList.vue'
+  import { h, computed } from 'vue'
+  import { ReloadOutlined } from '@ant-design/icons-vue'
+  import AudioFileList from './AudioFileList.vue'
 
-// Props
-const props = defineProps({
-  audioFiles: {
-    type: Array,
-    default: () => []
-  },
-  loading: {
-    type: Boolean,
-    default: false
-  },
-  searchKeyword: {
-    type: String,
-    default: ''
-  },
-  playingFileId: {
-    type: String,
-    default: null
-  },
-  activeTab: {
-    type: String,
-    default: 'dialogue'
+  // Props
+  const props = defineProps({
+    audioFiles: {
+      type: Array,
+      default: () => []
+    },
+    loading: {
+      type: Boolean,
+      default: false
+    },
+    searchKeyword: {
+      type: String,
+      default: ''
+    },
+    playingFileId: {
+      type: String,
+      default: null
+    },
+    activeTab: {
+      type: String,
+      default: 'dialogue'
+    }
+  })
+
+  // Emits
+  const emit = defineEmits([
+    'refresh',
+    'import-json',
+    'tab-change',
+    'upload',
+    'search',
+    'select-file',
+    'play-file',
+    'delete-file',
+    'add-to-project',
+    'drag-start',
+    'drag-end'
+  ])
+
+  // 计算属性：分类过滤的音频文件
+  const filteredDialogueFiles = computed(() => {
+    const files = props.audioFiles.filter((file) => file.category === 'dialogue' || !file.category)
+    return filterFilesByKeyword(files)
+  })
+
+  const filteredEnvironmentFiles = computed(() => {
+    const files = props.audioFiles.filter((file) => file.category === 'environment')
+    return filterFilesByKeyword(files)
+  })
+
+  const filteredThemeFiles = computed(() => {
+    const files = props.audioFiles.filter((file) => file.category === 'theme')
+    return filterFilesByKeyword(files)
+  })
+
+  // 根据关键词过滤文件
+  function filterFilesByKeyword(files) {
+    if (!props.searchKeyword) return files
+
+    const keyword = props.searchKeyword.toLowerCase()
+    return files.filter((file) =>
+      (file.original_name || file.filename).toLowerCase().includes(keyword)
+    )
   }
-})
 
-// Emits
-const emit = defineEmits([
-  'refresh',
-  'import-json',
-  'tab-change',
-  'upload',
-  'search',
-  'select-file',
-  'play-file',
-  'delete-file',
-  'add-to-project',
-  'drag-start',
-  'drag-end'
-])
-
-// 计算属性：分类过滤的音频文件
-const filteredDialogueFiles = computed(() => {
-  const files = props.audioFiles.filter(file => file.category === 'dialogue' || !file.category)
-  return filterFilesByKeyword(files)
-})
-
-const filteredEnvironmentFiles = computed(() => {
-  const files = props.audioFiles.filter(file => file.category === 'environment')
-  return filterFilesByKeyword(files)
-})
-
-const filteredThemeFiles = computed(() => {
-  const files = props.audioFiles.filter(file => file.category === 'theme')
-  return filterFilesByKeyword(files)
-})
-
-// 根据关键词过滤文件
-function filterFilesByKeyword(files) {
-  if (!props.searchKeyword) return files
-  
-  const keyword = props.searchKeyword.toLowerCase()
-  return files.filter(file => 
-    (file.original_name || file.filename).toLowerCase().includes(keyword)
-  )
-}
-
-// 处理上传
-function handleUpload(file, category) {
-  emit('upload', file, category)
-}
+  // 处理上传
+  function handleUpload(file, category) {
+    emit('upload', file, category)
+  }
 </script>
 
 <style scoped>
-.resource-panel {
-  background: #2a2a2a;
-  display: flex;
-  flex-direction: column;
-  border-radius: 8px;
-  border: 1px solid #333;
-  flex: 3;
-}
+  .resource-panel {
+    background: #2a2a2a;
+    display: flex;
+    flex-direction: column;
+    border-radius: 8px;
+    border: 1px solid #333;
+    flex: 3;
+  }
 
-/* 面板头部 */
-.panel-header {
-  padding: 12px 16px;
-  background: #333;
-  border-bottom: 1px solid #444;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  border-top-left-radius: 8px;
-  border-top-right-radius: 8px;
-}
+  /* 面板头部 */
+  .panel-header {
+    padding: 12px 16px;
+    background: #333;
+    border-bottom: 1px solid #444;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+  }
 
-.panel-header h4 {
-  margin: 0;
-  color: #fff;
-  font-size: 14px;
-  font-weight: 500;
-}
+  .panel-header h4 {
+    margin: 0;
+    color: #fff;
+    font-size: 14px;
+    font-weight: 500;
+  }
 
-/* 面板内容 */
-.panel-content {
-  flex: 1;
-  padding: 12px;
-  overflow: auto;
-}
+  /* 面板内容 */
+  .panel-content {
+    flex: 1;
+    padding: 12px;
+    overflow: auto;
+  }
 
-/* 资源库样式 */
-.resource-tabs :deep(.ant-tabs-nav) {
-  margin: 0;
-}
+  /* 资源库样式 */
+  .resource-tabs :deep(.ant-tabs-nav) {
+    margin: 0;
+  }
 
-.resource-tabs :deep(.ant-tabs-tab) {
-  color: #ccc;
-}
+  .resource-tabs :deep(.ant-tabs-tab) {
+    color: #ccc;
+  }
 
-.resource-tabs :deep(.ant-tabs-tab-active) {
-  color: #1890ff;
-}
+  .resource-tabs :deep(.ant-tabs-tab-active) {
+    color: #1890ff;
+  }
 
-.resource-tabs :deep(.ant-tabs-content-holder) {
-  padding-top: 8px;
-}
+  .resource-tabs :deep(.ant-tabs-content-holder) {
+    padding-top: 8px;
+  }
 </style>

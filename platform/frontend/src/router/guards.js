@@ -7,11 +7,11 @@ import { hasPermission } from '@/utils/auth'
 export function setupRouterGuards(router) {
   router.beforeEach(async (to, from, next) => {
     const authStore = useAuthStore()
-    
+
     // 获取当前用户信息
     const user = authStore.user
     const token = authStore.token
-    
+
     // 如果没有token，重定向到登录页
     if (!token) {
       if (to.path !== '/login') {
@@ -22,7 +22,7 @@ export function setupRouterGuards(router) {
       next()
       return
     }
-    
+
     // 如果有token但没有用户信息，尝试获取用户信息
     if (!user) {
       console.log('Token exists but no user info, fetching...')
@@ -34,23 +34,23 @@ export function setupRouterGuards(router) {
         return
       }
     }
-    
+
     // 如果已登录且访问登录页，重定向到首页
     if (to.path === '/login') {
       next('/')
       return
     }
-    
+
     // 检查路由权限
     if (to.meta?.requiresAuth !== false) {
       const currentUser = authStore.user
-      
+
       // 超级管理员跳过所有权限检查
       if (currentUser?.is_superuser) {
         next()
         return
       }
-      
+
       // 检查页面访问权限
       if (to.meta?.permission) {
         if (!hasPermission(to.meta.permission)) {
@@ -59,25 +59,23 @@ export function setupRouterGuards(router) {
           return
         }
       }
-      
+
       // 检查多个权限（任一满足即可）
       if (to.meta?.permissions && Array.isArray(to.meta.permissions)) {
-        const hasAnyPermission = to.meta.permissions.some(permission => 
-          hasPermission(permission)
-        )
-        
+        const hasAnyPermission = to.meta.permissions.some((permission) => hasPermission(permission))
+
         if (!hasAnyPermission) {
           console.warn(`用户 ${currentUser?.username} 无权限访问页面: ${to.path}`)
           next('/403')
           return
         }
       }
-      
+
       // 检查角色权限
       if (to.meta?.roles && Array.isArray(to.meta.roles)) {
-        const userRoles = currentUser?.roles?.map(role => role.name) || []
-        const hasRequiredRole = to.meta.roles.some(role => userRoles.includes(role))
-        
+        const userRoles = currentUser?.roles?.map((role) => role.name) || []
+        const hasRequiredRole = to.meta.roles.some((role) => userRoles.includes(role))
+
         if (!hasRequiredRole) {
           console.warn(`用户 ${currentUser?.username} 角色不足，无法访问页面: ${to.path}`)
           next('/403')
@@ -85,7 +83,7 @@ export function setupRouterGuards(router) {
         }
       }
     }
-    
+
     next()
   })
 }
@@ -101,7 +99,7 @@ export function setupRouterAfterGuards(router) {
     } else {
       document.title = 'AI-Sound'
     }
-    
+
     // 记录页面访问日志
     console.log(`页面访问: ${to.path}`)
   })

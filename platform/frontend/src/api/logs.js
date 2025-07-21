@@ -61,16 +61,16 @@ export const logApi = {
    * @returns {Promise}
    */
   async exportLogs(params = {}) {
-    const response = await apiClient.get('/logs/export', { 
+    const response = await apiClient.get('/logs/export', {
       params,
       responseType: 'blob'
     })
-    
+
     // 处理文件下载
-    const blob = new Blob([response], { 
-      type: params.format === 'csv' ? 'text/csv' : 'application/json' 
+    const blob = new Blob([response], {
+      type: params.format === 'csv' ? 'text/csv' : 'application/json'
     })
-    
+
     const url = window.URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
@@ -79,7 +79,7 @@ export const logApi = {
     link.click()
     document.body.removeChild(link)
     window.URL.revokeObjectURL(url)
-    
+
     return response
   },
 

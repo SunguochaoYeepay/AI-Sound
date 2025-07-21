@@ -11,21 +11,19 @@ export const useAnalysisStore = defineStore('analysis', () => {
   const sessions = ref([])
   const currentSession = ref(null)
   const sessionsLoading = ref(false)
-  
+
   // 分析结果
   const results = ref([])
   const resultsLoading = ref(false)
-  
+
   // 进度跟踪
   const analysisProgress = ref({})
-  
+
   // 计算属性
-  const hasActiveSessions = computed(() => 
-    sessions.value.some(s => s.status === 'running')
-  )
-  
+  const hasActiveSessions = computed(() => sessions.value.some((s) => s.status === 'running'))
+
   const sessionCount = computed(() => sessions.value.length)
-  
+
   // 获取分析会话列表
   const fetchSessions = async (params = {}) => {
     sessionsLoading.value = true
@@ -39,22 +37,22 @@ export const useAnalysisStore = defineStore('analysis', () => {
       sessionsLoading.value = false
     }
   }
-  
+
   // 获取分析会话详情
   const fetchSession = async (sessionId) => {
     const result = await analysisAPI.getSession(sessionId)
     if (result.success) {
       currentSession.value = result.data
-      
+
       // 更新本地会话列表中的对应项
-      const index = sessions.value.findIndex(s => s.id === sessionId)
+      const index = sessions.value.findIndex((s) => s.id === sessionId)
       if (index > -1) {
         sessions.value[index] = result.data
       }
     }
     return result
   }
-  
+
   // 获取分析结果
   const fetchResults = async (sessionId, params = {}) => {
     resultsLoading.value = true
@@ -68,7 +66,7 @@ export const useAnalysisStore = defineStore('analysis', () => {
       resultsLoading.value = false
     }
   }
-  
+
   // 创建分析会话
   const createSession = async (sessionData) => {
     const result = await analysisAPI.createSession(sessionData)
@@ -78,14 +76,14 @@ export const useAnalysisStore = defineStore('analysis', () => {
     }
     return result
   }
-  
+
   // 开始分析
   const startAnalysis = async (sessionId, forceRestart = false) => {
     const result = await analysisAPI.startAnalysis(sessionId, forceRestart)
     if (result.success) {
       // 更新会话状态
       updateSessionStatus(sessionId, 'running')
-      
+
       // 初始化进度
       analysisProgress.value[sessionId] = {
         stage: 'initializing',
@@ -95,7 +93,7 @@ export const useAnalysisStore = defineStore('analysis', () => {
     }
     return result
   }
-  
+
   // 停止分析
   const stopAnalysis = async (sessionId) => {
     const result = await analysisAPI.stopAnalysis(sessionId)
@@ -105,19 +103,19 @@ export const useAnalysisStore = defineStore('analysis', () => {
     }
     return result
   }
-  
+
   // 更新会话状态
   const updateSessionStatus = (sessionId, status) => {
-    const session = sessions.value.find(s => s.id === sessionId)
+    const session = sessions.value.find((s) => s.id === sessionId)
     if (session) {
       session.status = status
     }
-    
+
     if (currentSession.value?.id === sessionId) {
       currentSession.value.status = status
     }
   }
-  
+
   // 更新分析进度
   const updateProgress = (sessionId, progress) => {
     analysisProgress.value[sessionId] = {
@@ -125,29 +123,29 @@ export const useAnalysisStore = defineStore('analysis', () => {
       ...progress
     }
   }
-  
+
   // 添加分析结果
   const addResult = (result) => {
-    const existingIndex = results.value.findIndex(r => r.id === result.id)
+    const existingIndex = results.value.findIndex((r) => r.id === result.id)
     if (existingIndex > -1) {
       results.value[existingIndex] = result
     } else {
       results.value.unshift(result)
     }
   }
-  
+
   // 确认分析结果
   const confirmResult = async (resultId) => {
     const result = await analysisAPI.confirmResult(resultId)
     if (result.success) {
-      const resultIndex = results.value.findIndex(r => r.id === resultId)
+      const resultIndex = results.value.findIndex((r) => r.id === resultId)
       if (resultIndex > -1) {
         results.value[resultIndex].confirmed = true
       }
     }
     return result
   }
-  
+
   return {
     // 状态
     sessions,
@@ -156,11 +154,11 @@ export const useAnalysisStore = defineStore('analysis', () => {
     results,
     resultsLoading,
     analysisProgress,
-    
+
     // 计算属性
     hasActiveSessions,
     sessionCount,
-    
+
     // 方法
     fetchSessions,
     fetchSession,
@@ -173,4 +171,4 @@ export const useAnalysisStore = defineStore('analysis', () => {
     addResult,
     confirmResult
   }
-}) 
+})

@@ -392,9 +392,17 @@ async def get_chapters(
     skip: int = Query(0, description="跳过的记录数"),
     limit: int = Query(100, description="返回的记录数"),
     status_filter: str = Query("", description="状态过滤"),
+    fields: str = Query("", description="指定返回字段，逗号分隔，如'id,chapter_number,chapter_title,word_count'"),
+    exclude_content: bool = Query(True, description="是否排除内容字段以优化性能"),
     db: Session = Depends(get_db)
 ):
-    """获取书籍的章节列表"""
+    """获取书籍的章节列表
+    
+    性能优化：
+    - 支持字段选择，避免返回大字段
+    - 默认排除content字段以减少数据传输
+    - 支持分页查询
+    """
     try:
         # 检查书籍是否存在
         book = db.query(Book).filter(Book.id == book_id).first()
@@ -412,17 +420,50 @@ async def get_chapters(
         total = query.count()
         
         # 应用分页
-        chapters = query.offset(skip).limit(limit).all()
+        chapters = query.order_by(BookChapter.chapter_number).offset(skip).limit(limit).all()
         
-        # 转换为字典并返回
-        chapters_data = [chapter.to_dict() for chapter in chapters]
+        # 处理字段选择
+        if fields:
+            requested_fields = [f.strip() for f in fields.split(',') if f.strip()]
+        else:
+            # 默认字段，排除大内容字段
+            requested_fields = [
+                'id', 'book_id', 'chapter_number', 'chapter_title', 
+                'word_count', 'character_count', 'analysis_status', 
+                'synthesis_status', 'created_at', 'updated_at'
+            ]
+            if not exclude_content:
+                requested_fields.append('content')
+        
+        # 转换为精简字典
+        chapters_data = []
+        for chapter in chapters:
+            chapter_dict = chapter.to_dict()
+            
+            # 根据字段选择过滤
+            if fields or exclude_content:
+                filtered_dict = {}
+                for field in requested_fields:
+                    if field in chapter_dict:
+                        filtered_dict[field] = chapter_dict[field]
+                chapters_data.append(filtered_dict)
+            else:
+                chapters_data.append(chapter_dict)
         
         return {
             "success": True,
             "data": chapters_data,
             "total": total,
             "skip": skip,
-            "limit": limit
+            "limit": limit,
+            "pagination": {
+                "page": (skip // limit) + 1 if limit > 0 else 1,
+                "page_size": limit,
+                "total": total,
+                "total_pages": (total + limit - 1) // limit if limit > 0 else 1,
+                "has_next": skip + limit < total,
+                "has_prev": skip > 0
+            }
         }
         
     except HTTPException:
@@ -921,6 +962,122 @@ async def batch_set_character_voice_mappings(
         raise HTTPException(status_code=500, detail=f"批量设置失败: {str(e)}")
 
 
+@router.post("/{book_id}/chapters/batch-status")
+async def get_chapters_batch_status(
+    book_id: int,
+    chapter_ids: List[int] = Query(None, description="章节ID列表，不传则返回所有章节"),
+    include_analysis: bool = Query(False, description="是否包含分析结果摘要"),
+    include_synthesis: bool = Query(False, description="是否包含合成状态"),
+    db: Session = Depends(get_db)
+):
+    """
+    批量获取章节状态信息
+    
+    性能优化：
+    - 单次请求获取多个章节的状态，避免8000+次单独请求
+    - 支持选择性包含分析结果和合成状态
+    - 返回轻量级状态数据
+    """
+    try:
+        # 检查书籍是否存在
+        book = db.query(Book).filter(Book.id == book_id).first()
+        if not book:
+            raise HTTPException(status_code=404, detail="书籍不存在")
+        
+        # 构建查询
+        query = db.query(BookChapter).filter(BookChapter.book_id == book_id)
+        
+        # 如果指定了章节ID，则只查询这些章节
+        if chapter_ids:
+            query = query.filter(BookChapter.id.in_(chapter_ids))
+        
+        chapters = query.order_by(BookChapter.chapter_number).all()
+        
+        if not chapters:
+            return {
+                "success": True,
+                "data": [],
+                "total": 0,
+                "message": "未找到章节"
+            }
+        
+        # 准备结果
+        results = []
+        
+        # 如果需要分析结果，批量查询
+        analysis_map = {}
+        if include_analysis:
+            chapter_ids_list = [c.id for c in chapters]
+            analysis_results = db.query(AnalysisResult).filter(
+                AnalysisResult.chapter_id.in_(chapter_ids_list)
+            ).all()
+            analysis_map = {a.chapter_id: a for a in analysis_results}
+        
+        # 合成任务状态查询（如果需要）
+        synthesis_map = {}
+        if include_synthesis:
+            from ..models import SynthesisTask
+            chapter_ids_list = [c.id for c in chapters]
+            synthesis_tasks = db.query(SynthesisTask).filter(
+                SynthesisTask.chapter_id.in_(chapter_ids_list)
+            ).all()
+            synthesis_map = {t.chapter_id: t for t in synthesis_tasks}
+        
+        # 构建响应数据
+        for chapter in chapters:
+            chapter_data = {
+                "id": chapter.id,
+                "chapter_number": chapter.chapter_number,
+                "chapter_title": chapter.chapter_title,
+                "word_count": chapter.word_count,
+                "analysis_status": chapter.analysis_status,
+                "synthesis_status": chapter.synthesis_status,
+                "updated_at": chapter.updated_at.isoformat() if chapter.updated_at else None
+            }
+            
+            # 添加分析结果摘要
+            if include_analysis and chapter.id in analysis_map:
+                analysis = analysis_map[chapter.id]
+                chapter_data["analysis_summary"] = {
+                    "id": analysis.id,
+                    "status": analysis.status,
+                    "confidence_score": analysis.confidence_score,
+                    "character_count": len(analysis.detected_characters or []),
+                    "segment_count": len(analysis.synthesis_plan.get('segments', [])) if analysis.synthesis_plan else 0,
+                    "created_at": analysis.created_at.isoformat() if analysis.created_at else None
+                }
+            
+            # 添加合成状态
+            if include_synthesis and chapter.id in synthesis_map:
+                synthesis = synthesis_map[chapter.id]
+                chapter_data["synthesis_summary"] = {
+                    "task_id": synthesis.id,
+                    "status": synthesis.status,
+                    "progress": synthesis.progress,
+                    "duration": synthesis.duration,
+                    "created_at": synthesis.created_at.isoformat() if synthesis.created_at else None
+                }
+            
+            results.append(chapter_data)
+        
+        return {
+            "success": True,
+            "data": results,
+            "total": len(results),
+            "book_info": {
+                "id": book.id,
+                "title": book.title,
+                "total_chapters": book.chapter_count
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"批量获取章节状态失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"批量获取章节状态失败: {str(e)}")
+
+
 @router.post("/{book_id}/characters/rebuild-summary")
 async def rebuild_character_summary(
     book_id: int,
@@ -1002,6 +1159,89 @@ async def rebuild_character_summary(
     except Exception as e:
         logger.error(f"重建角色汇总失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"重建汇总失败: {str(e)}")
+
+
+@router.get("/{book_id}/chapters/search")
+async def search_chapters(
+    book_id: int,
+    query: str = Query("", description="搜索关键词，支持章节标题模糊搜索"),
+    chapter_number: int = Query(None, description="按章节号精确搜索"),
+    status_filter: str = Query("", description="状态过滤"),
+    skip: int = Query(0, description="跳过的记录数"),
+    limit: int = Query(50, description="返回的记录数"),
+    db: Session = Depends(get_db)
+):
+    """
+    搜索章节
+    
+    支持：
+    - 按章节标题模糊搜索
+    - 按章节号精确搜索
+    - 状态过滤
+    - 分页返回
+    """
+    try:
+        # 检查书籍是否存在
+        book = db.query(Book).filter(Book.id == book_id).first()
+        if not book:
+            raise HTTPException(status_code=404, detail="书籍不存在")
+        
+        # 构建查询
+        query_obj = db.query(BookChapter).filter(BookChapter.book_id == book_id)
+        
+        # 应用搜索条件
+        if query:
+            search_pattern = f"%{query}%"
+            query_obj = query_obj.filter(BookChapter.chapter_title.like(search_pattern))
+        
+        if chapter_number:
+            query_obj = query_obj.filter(BookChapter.chapter_number == chapter_number)
+        
+        if status_filter:
+            query_obj = query_obj.filter(BookChapter.analysis_status == status_filter)
+        
+        # 获取总数
+        total = query_obj.count()
+        
+        # 应用分页
+        chapters = query_obj.order_by(BookChapter.chapter_number).offset(skip).limit(limit).all()
+        
+        # 返回精简数据
+        chapters_data = []
+        for chapter in chapters:
+            chapters_data.append({
+                "id": chapter.id,
+                "chapter_number": chapter.chapter_number,
+                "chapter_title": chapter.chapter_title,
+                "word_count": chapter.word_count,
+                "analysis_status": chapter.analysis_status,
+                "synthesis_status": chapter.synthesis_status,
+                "created_at": chapter.created_at.isoformat() if chapter.created_at else None,
+                "updated_at": chapter.updated_at.isoformat() if chapter.updated_at else None
+            })
+        
+        return {
+            "success": True,
+            "data": chapters_data,
+            "total": total,
+            "skip": skip,
+            "limit": limit,
+            "query": query,
+            "pagination": {
+                "page": (skip // limit) + 1 if limit > 0 else 1,
+                "page_size": limit,
+                "total": total,
+                "total_pages": (total + limit - 1) // limit if limit > 0 else 1,
+                "has_next": skip + limit < total,
+                "has_prev": skip > 0
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"搜索章节失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"搜索章节失败: {str(e)}")
 
 
 # ========== 内部辅助函数 ==========

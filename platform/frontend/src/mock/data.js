@@ -149,7 +149,7 @@ export const mockAPI = {
   async deleteCharacter(id) {
     return new Promise((resolve) => {
       setTimeout(() => {
-        const index = mockCharacters.findIndex(c => c.id === id)
+        const index = mockCharacters.findIndex((c) => c.id === id)
         if (index > -1) {
           mockCharacters.splice(index, 1)
           resolve({
@@ -177,9 +177,9 @@ export const mockAPI = {
           { speaker: '小灵儿', text: '主人，这里的灵气好浓郁呀！' },
           { speaker: '林清雅', text: '小灵儿说得对，我感觉整个人都轻松了许多。' }
         ]
-        
+
         const characters = ['林清雅', '张浩然', '小灵儿']
-        
+
         resolve({
           success: true,
           data: {
