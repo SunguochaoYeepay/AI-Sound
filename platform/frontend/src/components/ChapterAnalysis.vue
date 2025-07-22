@@ -350,8 +350,29 @@ const initEditableData = async () => {
 }
 
 const refreshCharacterLibrary = async () => {
+  console.log('[ChapterAnalysis] 开始刷新角色配音库')
   await loadBookCharacters()
-  await initEditableData()
+  
+  // 🔥 重新同步角色库中的角色信息到editableCharacters
+  editableCharacters.value = editableCharacters.value.map(char => {
+    const bookChar = bookCharacters.value.find(bc => bc.name === char.name)
+    if (bookChar) {
+      console.log('[ChapterAnalysis] 同步角色库角色信息:', char.name, '->', bookChar)
+      return {
+        ...char,
+        character_id: bookChar.id,
+        voice_id: bookChar.voice_id || bookChar.id?.toString() || '',
+        voice_name: bookChar.name,
+        voice_type: bookChar.voice_type || char.voice_type || 'neutral',
+        in_character_library: true,
+        is_voice_configured: bookChar.is_voice_configured || !!(bookChar.voice_id || bookChar.id),
+        avatarUrl: bookChar.avatarUrl || null
+      }
+    }
+    return char
+  })
+  
+  markChanged()
   message.success('角色配音库已刷新')
 }
 
@@ -548,21 +569,60 @@ const handleJsonChanged = (data) => {
 
 const handleCharactersCreated = (createdCharacters) => {
   console.log('[ChapterAnalysis] 角色创建完成:', createdCharacters)
-  loadBookCharacters()
+  
+  // 🔥 更新editableCharacters中的角色信息
   editableCharacters.value = editableCharacters.value.map(char => {
     const created = createdCharacters.find(c => c.name === char.name)
     if (created) {
+      console.log('[ChapterAnalysis] 更新角色信息:', char.name, '->', created)
       return {
         ...char,
-        character_id: created.character_id,
+        character_id: created.id || created.character_id,
+        voice_id: created.voice_id || created.id?.toString() || '',
+        voice_name: created.name || char.name,
+        voice_type: created.voice_type || char.voice_type || 'neutral',
         in_character_library: true,
-        is_voice_configured: created.is_voice_configured || false
+        is_voice_configured: !!(created.voice_id || created.id),
+        avatarUrl: created.avatarUrl || null
       }
     }
     return char
   })
+  
+  // 🔥 同时更新segments中引用这些角色的片段
+  editableSegments.value = editableSegments.value.map(segment => {
+    const created = createdCharacters.find(c => c.name === segment.speaker)
+    if (created) {
+      console.log('[ChapterAnalysis] 更新片段角色信息:', segment.speaker, segment.segment_id)
+      return {
+        ...segment,
+        character_id: created.id || created.character_id,
+        voice_id: created.voice_id || created.id?.toString() || '',
+        voice_name: created.name || segment.speaker,
+        voice_type: created.voice_type || segment.voice_type || 'neutral',
+        _forceUpdate: Date.now()
+      }
+    }
+    return segment
+  })
+  
+  // 🔥 刷新角色库数据
+  loadBookCharacters()
+  
+  // 标记数据已更改并自动保存
   markChanged()
-  message.success(`成功创建 ${createdCharacters.length} 个角色`)
+  
+  // 延迟自动保存，确保数据完全更新
+  setTimeout(async () => {
+    try {
+      console.log('[ChapterAnalysis] 自动保存更新后的角色数据')
+      await saveChanges()
+      message.success(`成功创建 ${createdCharacters.length} 个角色并自动保存`)
+    } catch (error) {
+      console.error('[ChapterAnalysis] 自动保存失败:', error)
+      message.error('角色创建成功，但自动保存失败，请手动保存')
+    }
+  }, 1000)
 }
 
 // 监听器

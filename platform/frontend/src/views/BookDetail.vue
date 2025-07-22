@@ -72,7 +72,7 @@
   import { message, Modal } from 'ant-design-vue'
   import { booksAPI } from '@/api'
   import BookHeaderCard from '@/components/BookHeaderCard.vue'
-  import ChapterList from '@/components/ChapterList.vue'
+  import ChapterList from '@/components/ChapterListSimple.vue'
   import ChapterDetail from '@/components/ChapterDetail.vue'
   // 移除CharacterManagement组件引用，改为直接跳转到角色配音页面
 
