@@ -619,12 +619,21 @@ export const booksAPI = {
     return apiClient.post(`/books/${bookId}/detect-chapters?${params.toString()}`)
   },
 
+  // 智能检测API
+  intelligentDetection: (data) => {
+    return apiClient.post('/content-preparation/intelligent-detection', data)
+  },
+
   // 获取书籍章节列表
   getBookChapters: (bookId, params = {}) => {
     const queryParams = new URLSearchParams()
-    if (params.skip) queryParams.append('skip', params.skip)
-    if (params.limit) queryParams.append('limit', params.limit)
+    if (params.skip !== undefined) queryParams.append('skip', params.skip)
+    if (params.limit !== undefined) queryParams.append('limit', params.limit)
     if (params.status_filter) queryParams.append('status_filter', params.status_filter)
+    if (params.fields) queryParams.append('fields', params.fields)
+    if (params.exclude_content !== undefined) queryParams.append('exclude_content', params.exclude_content)
+    if (params.sort_by) queryParams.append('sort_by', params.sort_by)
+    if (params.sort_order) queryParams.append('sort_order', params.sort_order)
 
     const queryString = queryParams.toString()
     const url = queryString
@@ -982,6 +991,14 @@ export const monitorAPI = {
   // 获取性能历史
   getPerformanceHistory: (hours = 24) =>
     apiClient.get(`/monitor/performance-history?hours=${hours}`)
+}
+
+// 智能检测API
+export const intelligentDetection = (chapterId, enableAiDetection = true) => {
+  return apiClient.post(`/content-preparation/detect/${chapterId}`, {
+    use_ai: enableAiDetection,
+    auto_fix: false
+  })
 }
 
 // 智能分析API (Mock)
@@ -1396,7 +1413,15 @@ const api = {
   deleteEnvironmentMixing: environmentMixingAPI.deleteMixing,
   getEnvironmentMixingDetail: environmentMixingAPI.getMixingDetail,
   updateEnvironmentMixing: environmentMixingAPI.updateMixing,
-  ...musicGenerationAPI
+  ...musicGenerationAPI,
+
+  // 智能检测API
+  intelligentDetection: (chapterId, enableAiDetection = true) => {
+    return apiClient.post(`/content-preparation/detect/${chapterId}`, {
+      use_ai: enableAiDetection,
+      auto_fix: false
+    })
+  }
 }
 
 export default api

@@ -352,7 +352,7 @@
                           :pagination="false"
                           :scroll="{ x: 800 }"
                         >
-                          <template #bodyCell="{ column, record, index }">
+                          <template #bodyCell="{ column, record }">
                             <template v-if="column.key === 'scene'">
                               <div class="scene-cell">
                                 <span class="scene-icon">{{
@@ -643,8 +643,8 @@
                   <a-button
                     size="large"
                     @click="
-                      currentStep = 0
-                      mixingProgress = 0
+                      currentStep = 0;
+                      mixingProgress = 0;
                     "
                   >
                     重新配置
@@ -663,13 +663,10 @@
   import { ref, reactive, computed, watch, onMounted } from 'vue'
   import { message, notification } from 'ant-design-vue'
   import {
-    SearchOutlined,
     BulbOutlined,
     ReloadOutlined,
     LeftOutlined,
-    LinkOutlined,
     PlayCircleOutlined,
-    SwapOutlined,
     SoundOutlined,
     CheckOutlined,
     BookOutlined,
@@ -677,7 +674,6 @@
   } from '@ant-design/icons-vue'
 
   import { booksAPI, chaptersAPI, readerAPI } from '@/api'
-  import { getAudioService } from '@/utils/audioService'
 
   // Props
   const props = defineProps({
@@ -702,7 +698,6 @@
   const analysisProgress = ref(0)
   const matchingProgress = ref(0)
   const mixingProgress = ref(0)
-  const loadingChapters = ref(false)
   const bookLoading = ref(false)
   const chapterLoading = ref(false)
 
@@ -713,7 +708,6 @@
   const books = ref([])
   const projects = ref([])
   const chapters = ref([])
-  const analyzedChapters = ref([])
   const projectLoading = ref(false)
 
   // 🚀 新增：详细分析展开面板
@@ -784,13 +778,7 @@
     return Math.ceil(baseTime + tracks * 0.5)
   })
 
-  const hasSelectedPrompts = computed(() => {
-    return smartPrompts.value?.smart_prompts?.some((p) => p.selected) || false
-  })
 
-  const selectedPromptsCount = computed(() => {
-    return smartPrompts.value?.smart_prompts?.filter((p) => p.selected).length || 0
-  })
 
   // 方法
   const getIntensityColor = (intensity) => {
@@ -803,14 +791,7 @@
     return colors[intensity] || 'default'
   }
 
-  const getPriorityColor = (priority) => {
-    const colors = {
-      高: 'red',
-      中: 'orange',
-      低: 'green'
-    }
-    return colors[priority] || 'default'
-  }
+
 
   const getProjectStatusColor = (status) => {
     const colors = {
@@ -1131,7 +1112,6 @@
 
       message.success('章节智能分析完成！AI已生成真实的环境音配置')
     } catch (error) {
-      clearInterval(progressInterval)
       console.error('章节分析失败:', error)
 
       // 显示具体错误信息
@@ -1150,147 +1130,11 @@
     }
   }
 
-  const proceedToMatching = async () => {
-    matching.value = true
-    matchingProgress.value = 0
-
-    // 模拟匹配进度
-    const progressInterval = setInterval(() => {
-      if (matchingProgress.value < 90) {
-        matchingProgress.value += Math.random() * 15
-      }
-    }, 300)
-
-    await new Promise((resolve) => setTimeout(resolve, 2000))
-
-    clearInterval(progressInterval)
-    matchingProgress.value = 100
-    matching.value = false
-
-    matchingResult.value = {
-      matched_count: 10,
-      need_generation_count: 5,
-      accuracy: 85
-    }
-
-    message.success('环境音匹配完成！')
-  }
-
   const proceedToConfig = () => {
     currentStep.value = 2
   }
 
-  const saveConfig = async () => {
-    try {
-      saving.value = true
 
-      // 构建配置数据
-      const configData = {
-        chapters: selectedChapterIds.value,
-        book_id: selectedBook.value,
-        analysis_result: analysisResult.value,
-        mixing_config: mixingConfig,
-        created_at: new Date().toISOString()
-      }
-
-      // 模拟保存API调用
-      await new Promise((resolve) => setTimeout(resolve, 1000))
-
-      configSaved.value = true
-      message.success('混音配置已保存！')
-    } catch (error) {
-      console.error('保存配置失败:', error)
-      message.error('保存配置失败: ' + error.message)
-    } finally {
-      saving.value = false
-    }
-  }
-
-  const proceedToGeneration = async () => {
-    generatingPrompts.value = true
-    currentStep.value = 2
-
-    await new Promise((resolve) => setTimeout(resolve, 1500))
-
-    smartPrompts.value = {
-      soundscape_recommendation: {
-        primary_elements: ['鸟鸣', '风声', '脚步声'],
-        secondary_elements: ['水声', '叶片摩擦'],
-        overall_duration: 2400,
-        ambient_layers: ['前景', '中景', '背景']
-      },
-      smart_prompts: Array.from({ length: 5 }, (_, i) => ({
-        title: `环境音 ${i + 1}`,
-        prompt: `gentle wind through trees, birds chirping softly ${i + 1}`,
-        duration: 120,
-        priority: ['高', '中', '低'][i % 3],
-        selected: true,
-        dynamic_elements: ['风声变化', '鸟鸣节奏'],
-        fade_settings: { fade_in: 2, fade_out: 2 },
-        generation_tips: { complexity: '中等' }
-      }))
-    }
-
-    generatingPrompts.value = false
-  }
-
-  const selectAllPrompts = () => {
-    if (smartPrompts.value?.smart_prompts) {
-      smartPrompts.value.smart_prompts.forEach((prompt) => {
-        prompt.selected = true
-      })
-    }
-  }
-
-  const selectNonePrompts = () => {
-    if (smartPrompts.value?.smart_prompts) {
-      smartPrompts.value.smart_prompts.forEach((prompt) => {
-        prompt.selected = false
-      })
-    }
-  }
-
-  const startBatchGeneration = async () => {
-    currentStep.value = 3
-
-    const selectedPrompts = smartPrompts.value.smart_prompts.filter((p) => p.selected)
-    batchProgress.total = selectedPrompts.length
-    batchProgress.completed = 0
-    batchProgress.status = 'active'
-
-    for (let i = 0; i < selectedPrompts.length; i++) {
-      batchProgress.currentTask = {
-        title: selectedPrompts[i].title,
-        progress: 0
-      }
-
-      // 模拟单个任务进度
-      for (let progress = 0; progress <= 100; progress += 20) {
-        batchProgress.currentTask.progress = progress
-        await new Promise((resolve) => setTimeout(resolve, 200))
-      }
-
-      batchProgress.completed++
-      generationLogs.value.push({
-        time: new Date().toLocaleTimeString(),
-        message: `${selectedPrompts[i].title} 生成完成`,
-        type: 'success'
-      })
-    }
-
-    batchProgress.status = 'success'
-    batchProgress.currentTask = null
-    message.success('批量生成完成！')
-  }
-
-  const proceedToMixing = () => {
-    currentStep.value = 4
-  }
-
-  const cancelBatchGeneration = () => {
-    batchProgress.status = 'exception'
-    message.warning('批量生成已取消')
-  }
 
   const startMixing = async () => {
     try {

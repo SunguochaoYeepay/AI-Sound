@@ -21,7 +21,7 @@ export default defineConfig(({ mode }) => {
     resolve: {
       alias: {
         '@': resolve(__dirname, 'src'),
-        'pinia': resolve(__dirname, 'node_modules/pinia/dist/pinia.mjs')
+        // 'pinia': resolve(__dirname, 'node_modules/pinia/dist/pinia.mjs')
       }
     },
     server: {
@@ -40,7 +40,10 @@ export default defineConfig(({ mode }) => {
         clientPort: mode === 'development' ? 3000 : 443,
         protocol: mode === 'development' ? 'ws' : 'wss'
       },
-      proxy: {
+      optimizeDeps: {
+          exclude: ['vue']
+        },
+        proxy: {
         // API路由（包含音频）- 最高优先级
         '/api': {
           target: API_TARGET,

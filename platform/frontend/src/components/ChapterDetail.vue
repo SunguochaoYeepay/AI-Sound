@@ -69,15 +69,17 @@
   const loadingAnalysis = ref(false)
   const analysisData = ref(null)
 
-  // 加载分析数据
+  // 加载分析数据 - 总是获取最新数据
   const loadAnalysisData = async () => {
     if (!props.chapter?.id) return
 
     loadingAnalysis.value = true
     try {
-      const response = await booksAPI.getPreparationResult(props.chapter.id)
+      // 🔥 强制刷新：总是获取最新数据，不使用缓存
+      const response = await booksAPI.getPreparationResult(props.chapter.id, { force_refresh: true })
       if (response.data && response.data.success) {
         analysisData.value = response.data.data
+        console.log('[ChapterDetail] 加载最新分析数据成功')
       } else {
         analysisData.value = null
         message.error(response.data?.message || '加载分析数据失败')

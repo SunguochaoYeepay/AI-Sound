@@ -69,7 +69,7 @@
 <script setup>
   import { ref, computed, onMounted } from 'vue'
   import { useRouter, useRoute } from 'vue-router'
-  import { message } from 'ant-design-vue'
+  import { message, Modal } from 'ant-design-vue'
   import { booksAPI } from '@/api'
   import BookHeaderCard from '@/components/BookHeaderCard.vue'
   import ChapterList from '@/components/ChapterList.vue'
@@ -136,7 +136,8 @@
     try {
       const response = await booksAPI.getBookChapters(book.value.id, {
         sort_by: 'chapter_number',
-        sort_order: 'asc'
+        sort_order: 'asc',
+        exclude_content: false  // 🔥 关键修复：确保获取章节内容
       })
       if (response.data && response.data.success) {
         const chaptersData = response.data.data || []
@@ -146,12 +147,15 @@
           title: chapter.chapter_title || `第${chapter.chapter_number}章`,
           wordCount: chapter.word_count || 0,
           status: chapter.analysis_status,
-          content: chapter.content,
-          // 🔥 修复：添加book_id字段，用于批量创建角色
-          book_id: book.value.id
+          content: chapter.content,  // 🔥 确保包含章节内容
+          // 修复：添加book_id字段，用于批量创建角色
+          book_id: book.value.id,
+          // 添加完整的章节信息
+          chapter_number: chapter.chapter_number,
+          chapter_title: chapter.chapter_title || `第${chapter.chapter_number}章`
         }))
 
-        // 🔥 优化：不再一次性加载所有章节的准备状态
+        // 优化：不再一次性加载所有章节的准备状态
         // 改为按需加载，在章节选择时加载对应状态
         console.log('📊 章节加载完成，准备状态将按需加载')
       }
@@ -218,19 +222,33 @@
   }
 
   // 章节检测
-  const detectChapters = async () => {
+  const detectChapters = async (forceReprocess = false) => {
     if (!book.value?.id) return
 
     detectingChapters.value = true
     try {
-      const response = await booksAPI.detectChapters(book.value.id, { force_reprocess: false })
+      const response = await booksAPI.detectChapters(book.value.id, { force_reprocess: forceReprocess })
       if (response.data && response.data.success) {
         message.success('章节检测完成')
         await Promise.all([loadChapters(), loadBook()])
       }
     } catch (error) {
       console.error('章节检测失败:', error)
-      message.error('章节检测失败')
+      
+      // 🔥 修复：如果是因为已有章节导致的错误，提示用户是否强制重新处理
+      if (error.response?.status === 400 && error.response?.data?.message?.includes('force_reprocess=true')) {
+        Modal.confirm({
+          title: '检测到已有章节',
+          content: '书籍已有章节数据，是否强制重新检测？这将覆盖现有的章节信息。',
+          okText: '强制重新检测',
+          cancelText: '取消',
+          onOk: () => {
+            detectChapters(true)
+          }
+        })
+      } else {
+        message.error('章节检测失败')
+      }
     } finally {
       detectingChapters.value = false
     }
@@ -248,7 +266,7 @@
       if (response.data && response.data.success) {
         message.success(`章节 "${chapter.title}" 智能准备完成`)
         // 更新章节准备状态
-        await loadAllChapterPreparationStatus()
+        await loadChapterPreparationStatus(chapter.id)
         // 如果是当前选中的章节，加载分析数据
         if (selectedChapterId.value === chapter.id) {
           // loadAnalysisData(chapter.id) // Removed as per edit hint
@@ -335,7 +353,7 @@
         }
 
         // 重新加载章节准备状态
-        await loadAllChapterPreparationStatus()
+        await loadChapterPreparationStatus(selectedChapter.value.id)
       } else {
         message.error(response.data?.message || '保存失败')
       }

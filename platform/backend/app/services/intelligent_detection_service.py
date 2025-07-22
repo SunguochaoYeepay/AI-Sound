@@ -5,6 +5,9 @@ from app.models.book_chapter import BookChapter
 from app.models.analysis_result import AnalysisResult
 from app.database import get_db
 from sqlalchemy.orm import Session
+import logging
+
+logger = logging.getLogger(__name__)
 
 @dataclass
 class DetectionIssue:
@@ -81,9 +84,40 @@ class IntelligentDetectionService:
             
             analysis_result = db.query(AnalysisResult).filter(
                 AnalysisResult.chapter_id == chapter_id
-            ).first()
+            ).order_by(AnalysisResult.created_at.desc()).first()
             
-            if not analysis_result or not analysis_result.synthesis_plan or 'synthesis_plan' not in analysis_result.synthesis_plan:
+            if not analysis_result:
+                return DetectionResult(
+                    chapter_id=chapter_id,
+                    total_issues=0,
+                    issues_by_severity={'low': 0, 'medium': 0, 'high': 0},
+                    fixable_issues=0,
+                    issues=[],
+                    detection_time=self._get_current_time()
+                )
+            
+            # 🔥 修复：优先读取用户编辑后的数据
+            segments = []
+            
+            # 首先尝试从final_config读取最新的用户编辑数据
+            if analysis_result.final_config:
+                try:
+                    import json
+                    final_config_data = json.loads(analysis_result.final_config)
+                    if 'synthesis_json' in final_config_data and 'synthesis_plan' in final_config_data['synthesis_json']:
+                        segments = final_config_data['synthesis_json']['synthesis_plan']
+                        logger.info(f"[智能检测] 使用用户编辑后的数据进行检测，段落数: {len(segments)}")
+                except Exception as e:
+                    logger.warning(f"[智能检测] 解析final_config失败: {str(e)}")
+            
+            # 如果没有用户编辑数据，使用原始synthesis_plan
+            if not segments and analysis_result.synthesis_plan and 'synthesis_plan' in analysis_result.synthesis_plan:
+                segments = analysis_result.synthesis_plan['synthesis_plan']
+                logger.info(f"[智能检测] 使用原始synthesis_plan数据进行检测，段落数: {len(segments)}")
+            
+            # 如果仍然没有数据，返回空结果
+            if not segments:
+                logger.warning(f"[智能检测] 章节 {chapter_id} 没有可用的合成计划数据")
                 return DetectionResult(
                     chapter_id=chapter_id,
                     total_issues=0,
@@ -94,9 +128,6 @@ class IntelligentDetectionService:
                 )
             
             issues = []
-            
-            # 获取合成计划中的segments
-            segments = analysis_result.synthesis_plan['synthesis_plan']
             
             # 基础检测
             issues.extend(self._detect_basic_issues(segments))
@@ -113,6 +144,8 @@ class IntelligentDetectionService:
                 issues_by_severity[issue.severity] += 1
                 if issue.fixable:
                     fixable_issues += 1
+            
+            logger.info(f"[智能检测] 章节 {chapter_id} 检测完成，发现 {len(issues)} 个问题")
             
             return DetectionResult(
                 chapter_id=chapter_id,
@@ -132,7 +165,8 @@ class IntelligentDetectionService:
         
         for index, segment in enumerate(segments):
             text = segment.get('text', '').strip()
-            character = segment.get('character', '')
+            # 🔥 修复：使用正确的字段名
+            character = segment.get('speaker', '') or segment.get('character', '')  # 优先使用speaker，fallback到character
             voice_type = segment.get('voice_type', '')
             text_type = segment.get('text_type', 'dialogue')
             
@@ -417,6 +451,11 @@ class IntelligentDetectionService:
                 stats['fixable'] += 1
         
         return stats
+    
+    def _get_current_time(self) -> str:
+        """获取当前时间字符串"""
+        from datetime import datetime
+        return datetime.utcnow().isoformat()
         
     def detect_issues(self, chapter: BookChapter, use_ai: bool = True) -> Dict[str, Any]:
         """检测章节问题

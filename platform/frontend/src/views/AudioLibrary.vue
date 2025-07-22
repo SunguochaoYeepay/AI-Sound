@@ -661,7 +661,7 @@
   // 生命周期
   onMounted(() => {
     // 使用立即执行的异步函数处理初始化
-    ;(async () => {
+    (async () => {
       try {
         await Promise.all([refreshAudioList(), loadStats(), loadProjectList()])
       } catch (error) {
