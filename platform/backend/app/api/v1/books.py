@@ -43,7 +43,7 @@ def detect_chapters_from_content(content: str) -> List[dict]:
     
     # 章节标题检测模式
     chapter_patterns = [
-        r'^#{1,6}\s+',  # Markdown标题 # ## ### 等
+        r'^#{1,6}\s*',  # Markdown标题 # ## ### 等（空格可选）
         r'^第[一二三四五六七八九十\d]+[章节回]',  # 第一章、第1章、第一节等
         r'^Chapter\s+\d+',  # Chapter 1
         r'^\d+\.',  # 1.
@@ -1497,4 +1497,4 @@ async def _sync_character_voice_to_synthesis_plans(
         import traceback
         logger.error(f"详细错误信息: {traceback.format_exc()}")
         db.rollback()
-        return 0 
+        return 0

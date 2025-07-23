@@ -2,15 +2,13 @@
   <div class="synthesis-segment-editor">
     <!-- 头部工具栏 -->
     <div class="editor-toolbar">
+
+      
       <div class="toolbar-left">
-        <h4>📝 合成片段配置</h4>
-        <a-tag color="blue" v-if="segments.length > 0">
+        <a-space>
+           <a-tag color="blue" v-if="segments.length > 0">
           共 {{ segments.length }} 个片段
         </a-tag>
-      </div>
-      
-      <div class="toolbar-right">
-        <a-space>
           <a-button size="small" @click="addSegment">
             <template #icon><PlusOutlined /></template>
             添加片段
@@ -382,8 +380,8 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: 16px;
-  border-bottom: 1px solid #f0f0f0;
-  background: #fafafa;
+  border-bottom: 1px solid var(--ant-border-color-split);
+  background: var(--ant-background-color-base);
 }
 
 .toolbar-left {
@@ -394,7 +392,7 @@ onMounted(() => {
 
 .toolbar-left h4 {
   margin: 0;
-  color: #1f2937;
+  color: var(--ant-heading-color);
 }
 
 .segments-container {
@@ -417,21 +415,21 @@ onMounted(() => {
 }
 
 .segment-item {
-  border: 1px solid #e8e8e8;
+  border: 1px solid var(--ant-border-color-base);
   border-radius: 8px;
   padding: 16px;
-  background: #fff;
+  background: var(--ant-component-background);
   transition: all 0.2s ease;
 }
 
 .segment-item:hover {
-  border-color: #1890ff;
-  box-shadow: 0 2px 8px rgba(24, 144, 255, 0.1);
+  border-color: var(--ant-primary-color);
+  box-shadow: 0 2px 8px var(--ant-primary-color-shadow);
 }
 
 .segment-highlighted {
-  border-color: #52c41a;
-  background: #f6ffed;
+  border-color: var(--ant-success-color);
+  background: var(--ant-success-bg);
 }
 
 .segment-dimmed {
@@ -453,7 +451,7 @@ onMounted(() => {
 
 .segment-number {
   font-weight: 600;
-  color: #1890ff;
+  color: var(--ant-primary-color);
   min-width: 40px;
 }
 
@@ -478,18 +476,18 @@ onMounted(() => {
 }
 
 .empty-warning {
-  border-color: #ff7875 !important;
-  background-color: #fff2f0 !important;
+  border-color: var(--ant-error-color) !important;
+  background-color: var(--ant-error-bg) !important;
 }
 
 .empty-hint {
   margin-top: 8px;
   padding: 8px 12px;
-  background: #fff7e6;
-  border: 1px solid #ffd591;
+  background: var(--ant-warning-bg);
+  border: 1px solid var(--ant-warning-color-border);
   border-radius: 4px;
   font-size: 12px;
-  color: #d46b08;
+  color: var(--ant-warning-color);
 }
 
 /* 响应式设计 */
@@ -510,4 +508,4 @@ onMounted(() => {
     opacity: 1; /* 移动端始终显示 */
   }
 }
-</style> 
+</style>

@@ -23,9 +23,7 @@
           清除结果
         </a-button>
         
-        <a-tooltip title="检测语音配置、角色匹配、文本完整性等问题">
-          <QuestionCircleOutlined class="help-icon" />
-        </a-tooltip>
+       
       </div>
     </div>
 
@@ -642,13 +640,9 @@ defineExpose({
 </script>
 
 <style scoped>
-.intelligent-detector {
-  margin-bottom: 16px;
-}
 
-.detector-header {
-  margin-bottom: 12px;
-}
+
+
 
 .detector-controls {
   display: flex;
@@ -657,7 +651,7 @@ defineExpose({
 }
 
 .help-icon {
-  color: #8c8c8c;
+  color: var(--ant-text-color-secondary);
   cursor: help;
 }
 
@@ -668,7 +662,7 @@ defineExpose({
 .issues-detail {
   margin-top: 12px;
   padding: 12px;
-  background: #fafafa;
+  background: var(--ant-background-color-base);
   border-radius: 6px;
 }
 
@@ -678,20 +672,20 @@ defineExpose({
 
 .issue-details {
   font-size: 12px;
-  color: #666;
+  color: var(--ant-text-color-secondary);
 }
 
 .suggestion {
   margin-top: 4px;
   padding: 4px 8px;
-  background: #e6f7ff;
-  border-left: 3px solid #1890ff;
+  background: var(--ant-primary-1);
+  border-left: 3px solid var(--ant-primary-color);
   border-radius: 2px;
 }
 
 .fixing-progress {
   padding: 12px;
-  background: #f0f2f5;
+  background: var(--ant-background-color-base);
   border-radius: 6px;
   margin-top: 12px;
 }
@@ -699,7 +693,7 @@ defineExpose({
 .progress-text {
   margin-top: 8px;
   text-align: center;
-  color: #666;
+  color: var(--ant-text-color-secondary);
   font-size: 12px;
 }
-</style> 
+</style>

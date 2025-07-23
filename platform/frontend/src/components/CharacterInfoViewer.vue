@@ -100,19 +100,7 @@
           <a-space>
             <a-button
               size="small"
-              @click="$emit('highlight-character', character.name)"
-              :type="highlightedCharacter === character.name ? 'primary' : 'default'"
-            >
-              {{
-                highlightedCharacter === character.name ? '🔍 取消高亮' : '🔍 高亮片段'
-              }}
-            </a-button>
-            <a-button size="small" @click="$emit('export-segments', character.name)">
-              📋 导出片段
-            </a-button>
-            <a-button
-              size="small"
-              @click="$emit('test-voice', character.name)"
+              @click="handleTestVoice(character)"
               :loading="testingVoice === character.name"
             >
               🔊 试听
@@ -125,7 +113,9 @@
 </template>
 
 <script setup>
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { message } from 'ant-design-vue'
+import { playVoicePreview } from '@/utils/audioService'
 
 // Props
 const props = defineProps({
@@ -137,14 +127,6 @@ const props = defineProps({
     type: Number,
     default: 0
   },
-  highlightedCharacter: {
-    type: String,
-    default: null
-  },
-  testingVoice: {
-    type: String,
-    default: null
-  },
   batchCreating: {
     type: Boolean,
     default: false
@@ -155,11 +137,11 @@ const props = defineProps({
   }
 })
 
+// 本地状态
+const testingVoice = ref(null)
+
 // Emits
 const emit = defineEmits([
-  'highlight-character',
-  'export-segments', 
-  'test-voice',
   'batch-create',
   'refresh-library'
 ])
@@ -184,6 +166,32 @@ const handleBatchCreateClick = () => {
   
   console.log('[CharacterInfoViewer] 发送batch-create事件')
   emit('batch-create')
+}
+
+// 试听角色声音
+const handleTestVoice = async (character) => {
+  if (testingVoice.value === character.name) {
+    return // 防止重复点击
+  }
+  
+  try {
+    testingVoice.value = character.name
+    
+    // 检查角色是否有配置的声音
+    if (!character.voice_id && !character.character_id) {
+      message.warning(`角色"${character.name}"尚未配置声音，无法试听`)
+      return
+    }
+    
+    // 使用统一的播放组件播放角色声音
+    await playVoicePreview(character.voice_id || character.character_id, character.name)
+    
+  } catch (error) {
+    console.error('试听角色声音失败:', error)
+    message.error(`试听角色"${character.name}"的声音失败`)
+  } finally {
+    testingVoice.value = null
+  }
 }
 
 // 组件挂载时的调试信息
@@ -269,16 +277,16 @@ const getCharacterStatusText = (character) => {
   align-items: center;
   margin-bottom: 16px;
   padding-bottom: 12px;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--ant-border-color-split);
 }
 
 .characters-title h4 {
   margin: 0;
-  color: #262626;
+  color: var(--ant-heading-color);
 }
 
 .character-stats {
-  color: #8c8c8c;
+  color: var(--ant-text-color-secondary);
   font-size: 14px;
 }
 
@@ -291,16 +299,16 @@ const getCharacterStatusText = (character) => {
 }
 
 .character-card {
-  background: #fff;
-  border: 1px solid #f0f0f0;
+  background: var(--ant-component-background);
+  border: 1px solid var(--ant-border-color-split);
   border-radius: 8px;
   padding: 16px;
   transition: all 0.3s ease;
 }
 
 .character-card:hover {
-  border-color: #d9d9d9;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border-color: var(--ant-border-color-base);
+  box-shadow: 0 2px 8px var(--ant-shadow-color);
 }
 
 .character-header {
@@ -326,14 +334,14 @@ const getCharacterStatusText = (character) => {
 .name-text {
   font-size: 16px;
   font-weight: 500;
-  color: #262626;
+  color: var(--ant-heading-color);
   margin-right: 8px;
 }
 
 .character-rank {
   font-size: 12px;
-  color: #8c8c8c;
-  background: #f5f5f5;
+  color: var(--ant-text-color-secondary);
+  background: var(--ant-background-color-base);
   padding: 2px 6px;
   border-radius: 4px;
 }
@@ -347,7 +355,7 @@ const getCharacterStatusText = (character) => {
 .character-stats-detail {
   margin: 12px 0;
   padding: 12px;
-  background: #fafafa;
+  background: var(--ant-background-color-base);
   border-radius: 6px;
 }
 

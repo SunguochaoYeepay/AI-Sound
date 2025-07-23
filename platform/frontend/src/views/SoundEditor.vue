@@ -212,7 +212,14 @@
 
   // 组件卸载时清理样式
   onUnmounted(() => {
-    document.body.classList.remove('sound-editor-fullscreen')
+    try {
+      // 确保body类总是被移除，即使组件异常卸载
+      if (document.body && document.body.classList) {
+        document.body.classList.remove('sound-editor-fullscreen')
+      }
+    } catch (error) {
+      console.error('Error during cleanup:', error)
+    }
   })
 
   const handleProjectChange = (project) => {
@@ -221,9 +228,17 @@
 
   // 组件挂载时加载设置
   onMounted(() => {
-    const savedSettings = localStorage.getItem('soundEditorSettings')
-    if (savedSettings) {
-      Object.assign(settings, JSON.parse(savedSettings))
+    try {
+      const savedSettings = localStorage.getItem('soundEditorSettings')
+      if (savedSettings) {
+        const parsed = JSON.parse(savedSettings)
+        if (parsed && typeof parsed === 'object') {
+          Object.assign(settings, parsed)
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load settings:', error)
+      localStorage.removeItem('soundEditorSettings')
     }
   })
 </script>

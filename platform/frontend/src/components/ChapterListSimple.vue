@@ -58,34 +58,13 @@
         >
           <a-menu-item
             v-for="chapter in paginatedChapters"
-            :key="chapter.id"
+            :key="String(chapter.id)"
             class="chapter-menu-item"
           >
             <div class="chapter-item-content">
               <div class="chapter-main">
                 <div class="chapter-number">第{{ chapter.chapter_number }}章</div>
                 <div class="chapter-title">{{ chapter.chapter_title }}</div>
-              </div>
-
-              <div class="chapter-meta">
-                <div class="chapter-stats">
-                  <span class="word-count">{{ chapter.word_count || 0 }} 字</span>
-                </div>
-
-                <!-- 智能准备状态 -->
-                <div class="preparation-status">
-                  <a-tag
-                    v-if="chapterPreparationStatus[chapter.id]"
-                    :color="getPreparationStatusColor(chapterPreparationStatus[chapter.id])"
-                    size="small"
-                  >
-                    {{ getPreparationStatusText(chapterPreparationStatus[chapter.id]) }}
-                  </a-tag>
-                  <a-tag v-else-if="chapter.status === 'completed'" color="green" size="small">
-                    已准备
-                  </a-tag>
-                  <a-tag v-else color="default" size="small"> 未准备 </a-tag>
-                </div>
               </div>
             </div>
           </a-menu-item>
@@ -183,7 +162,9 @@
       const response = await booksAPI.getBookChapters(props.bookId, {
         skip: 0,
         limit: 10000, // 一次性加载所有章节
-        exclude_content: true
+        exclude_content: true,
+        sort_by: 'chapter_number',
+        sort_order: 'asc'
       })
 
       if (response.data?.success) {
@@ -191,11 +172,11 @@
         totalChapters.value = response.data.total || 0
         emit('update:total-chapters', totalChapters.value)
 
-        // 如果有章节且没有选中的，选中第一个
-        if (chapters.value.length > 0 && !props.selectedChapterId) {
-          emit('selectChapter', chapters.value[0])
-          selectedKeys.value = [chapters.value[0].id]
+        // 如果已有选中的章节ID，确保selectedKeys正确设置
+        if (props.selectedChapterId) {
+          selectedKeys.value = [String(props.selectedChapterId)]
         }
+        // 注意：不在这里自动选中第一个章节，让父组件控制选中逻辑
       }
     } catch (error) {
       console.error('加载章节失败:', error)
@@ -216,6 +197,7 @@
   const handleMenuSelect = ({ key }) => {
     const chapter = chapters.value.find(c => c.id == key)
     if (chapter) {
+      selectedKeys.value = [key]
       emit('selectChapter', chapter)
     }
   }
@@ -231,6 +213,8 @@
     if (status?.preparation_started) return '准备中'
     return '未准备'
   }
+
+
 
   // 生命周期
   onMounted(async () => {
@@ -251,7 +235,9 @@
     () => props.selectedChapterId,
     (newId) => {
       if (newId) {
-        selectedKeys.value = [newId]
+        selectedKeys.value = [String(newId)]
+      } else {
+        selectedKeys.value = []
       }
     },
     { immediate: true }
@@ -268,18 +254,19 @@
 <style scoped>
   .chapter-list-simple {
     height: 100%;
+    overflow: hidden;
   }
 
   .chapter-card {
     display: flex;
     flex-direction: column;
+    height: 100%;
   }
 
   .chapter-header {
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    width: 100%;
+    gap: 8px;
   }
 
   .chapter-header h3 {
@@ -289,8 +276,7 @@
   }
 
   .chapter-count {
-    color: #666;
-    font-weight: normal;
+    color: var(--ant-color-text-secondary);
     font-size: 14px;
   }
 
@@ -301,6 +287,8 @@
   .chapters-container {
     flex: 1;
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
   }
 
   .loading-state,
@@ -308,14 +296,15 @@
     display: flex;
     justify-content: center;
     align-items: center;
-    min-height: 200px;
+    padding: 32px;
   }
 
   .chapter-menu {
     border: none;
     background: transparent;
-    max-height: 600px;
+    flex: 1;
     overflow-y: auto;
+    width: 100%;
   }
 
   .chapter-menu-item {
@@ -327,66 +316,55 @@
   }
 
   .chapter-menu-item:hover {
-    background-color: #f5f5f5;
+    background: var(--ant-color-bg-elevated);
   }
 
   .chapter-menu-item.ant-menu-item-selected {
-    background-color: #e6f7ff;
-    border-right: 3px solid #1890ff;
+    background: var(--ant-color-primary-1);
+    color: var(--ant-color-primary);
   }
 
   .chapter-item-content {
     display: flex;
-    justify-content: space-between;
     align-items: center;
+    justify-content: space-between;
     width: 100%;
   }
 
   .chapter-main {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    overflow: hidden;
     flex: 1;
     min-width: 0;
   }
 
-  .chapter-number {
-    font-size: 12px;
-    color: #666;
-    margin-bottom: 4px;
+  .chapter-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
   }
+
+
 
   .chapter-title {
     font-size: 14px;
     font-weight: 500;
-    color: #333;
+    color: var(--ant-color-text);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  .chapter-meta {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 4px;
-  }
-
-  .chapter-stats {
-    font-size: 12px;
-    color: #999;
-  }
-
-  .word-count {
-    margin-right: 8px;
-  }
-
-  .preparation-status {
-    display: flex;
-    gap: 4px;
+    flex: 1;
+    min-width: 0;
   }
 
   .pagination-section {
     margin-top: 16px;
     text-align: center;
-    padding: 16px 0;
-    border-top: 1px solid #f0f0f0;
+    padding: 16px;
+    border-top: 1px solid var(--ant-color-border);
+    background: var(--ant-color-bg-container);
   }
 </style>

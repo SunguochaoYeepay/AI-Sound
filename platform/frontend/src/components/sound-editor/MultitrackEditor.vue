@@ -1473,9 +1473,34 @@
     stopAudioPlayback()
     stopPreviewAudio()
 
-    // 清理定时器
+    // 清理所有定时器
     if (autoSaveTimer) {
       clearTimeout(autoSaveTimer)
+      autoSaveTimer = null
+    }
+    if (playInterval) {
+      clearInterval(playInterval)
+      playInterval = null
+    }
+
+    // 确保音频元素完全清理
+    if (currentAudio) {
+      currentAudio.pause()
+      currentAudio.src = ''
+      currentAudio.load()
+      currentAudio = null
+    }
+    
+    if (previewAudioElement) {
+      previewAudioElement.pause()
+      previewAudioElement.src = ''
+      previewAudioElement.load()
+      previewAudioElement = null
+    }
+
+    // 清理临时预览文件
+    if (currentPreviewFile) {
+      currentPreviewFile = null
     }
 
     // 移除全局键盘事件监听

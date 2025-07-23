@@ -17,8 +17,8 @@
             left: 0;
             right: 0;
             padding: 16px;
-            border-top: 1px solid #f0f0f0;
-            background: white;
+            border-top: 1px solid var(--ant-border-color-split);
+            background: var(--ant-component-background);
             z-index: 1000;
           "
         >
@@ -137,8 +137,8 @@
             left: 0;
             right: 0;
             padding: 16px;
-            border-top: 1px solid #f0f0f0;
-            background: white;
+            border-top: 1px solid var(--ant-border-color-split);
+            background: var(--ant-component-background);
             z-index: 1000;
           "
         >
@@ -608,7 +608,7 @@ defineExpose({
 }
 
 .characters-table {
-  border: 1px solid #f0f0f0;
+  border: 1px solid var(--ant-border-color-split);
   border-radius: 6px;
 }
 
@@ -640,7 +640,7 @@ defineExpose({
 
 .summary-info h4 {
   margin-bottom: 8px;
-  color: #1890ff;
+  color: var(--ant-primary-color);
 }
 
 .summary-info p {
@@ -648,7 +648,7 @@ defineExpose({
 }
 
 .summary-note {
-  color: #666;
+  color: var(--ant-text-color-secondary);
   font-size: 14px;
 }
 
@@ -666,11 +666,11 @@ defineExpose({
 
 .unified-audio-config h3 {
   margin-bottom: 8px;
-  color: #1890ff;
+  color: var(--ant-primary-color);
 }
 
 .config-description {
-  color: #666;
+  color: var(--ant-text-color-secondary);
   margin-bottom: 20px;
   line-height: 1.6;
 }
@@ -689,8 +689,8 @@ defineExpose({
   left: 0;
   right: 0;
   padding: 16px;
-  border-top: 1px solid #f0f0f0;
-  background: white;
+  border-top: 1px solid var(--ant-border-color-split);
+  background: var(--ant-component-background);
   z-index: 1000;
 }
 </style>

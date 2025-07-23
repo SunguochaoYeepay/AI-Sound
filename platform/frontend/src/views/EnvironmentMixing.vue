@@ -283,7 +283,7 @@
 </template>
 
 <script setup>
-  import { ref, reactive, onMounted, computed } from 'vue'
+  import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
   import { useRouter } from 'vue-router'
   import { message, Modal } from 'ant-design-vue'
   import {
@@ -341,15 +341,27 @@
     await loadStats()
   })
 
+  // 清理资源
+  onUnmounted(() => {
+    // 停止正在播放的音频
+    if (playingId.value) {
+      getAudioService().stop()
+      playingId.value = null
+    }
+  })
+
   // 加载项目列表
   const loadProjects = async () => {
     try {
       const response = await api.getProjects()
       if (response.data.success) {
-        projects.value = response.data.data || []
+        projects.value = Array.isArray(response.data.data) ? response.data.data : []
+      } else {
+        projects.value = []
       }
     } catch (error) {
       console.error('加载项目列表失败:', error)
+      projects.value = []
     }
   }
 
@@ -506,6 +518,7 @@
   // 辅助函数
   const getProjectName = (projectId) => {
     if (!projectId) return '未知项目'
+    if (!Array.isArray(projects.value)) return `项目 ${projectId}`
     const project = projects.value.find((p) => p.id === projectId)
     return project ? project.name : `项目 ${projectId}`
   }

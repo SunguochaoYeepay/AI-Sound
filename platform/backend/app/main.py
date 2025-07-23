@@ -44,6 +44,13 @@ app.add_middleware(
 # 挂载静态文件目录
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+# 挂载音频文件目录
+import os
+AUDIO_DIR = os.getenv("AUDIO_DIR", "data/audio")
+if not os.path.exists(AUDIO_DIR):
+    os.makedirs(AUDIO_DIR, exist_ok=True)
+app.mount("/audio", StaticFiles(directory=AUDIO_DIR), name="audio")
+
 # 导入路由
 from app.api.v1 import api_router
 app.include_router(api_router, prefix="/api/v1")

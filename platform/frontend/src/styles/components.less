@@ -1,0 +1,89 @@
+/* 章节列表组件样式 */
+.chapter-list-simple {
+  height: 100%;
+  overflow: hidden;
+}
+
+.chapter-card {
+  height: 100%;
+  border-radius: 8px;
+}
+
+.chapters-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.chapter-menu {
+  flex: 1;
+  overflow-y: auto;
+  width: 100%;
+  border-right: none;
+}
+
+.chapter-menu-item {
+  padding: 12px 24px;
+  margin: 4px 12px;
+  border-radius: 6px;
+  transition: all 0.3s;
+  display: flex;
+  align-items: center;
+}
+
+.chapter-menu-item:hover {
+  background: var(--ant-color-bg-elevated);
+}
+
+.chapter-menu-item.ant-menu-item-selected {
+  background: var(--ant-color-primary-1);
+  color: var(--ant-color-primary);
+}
+
+.chapter-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ant-color-text);
+}
+
+.chapter-title span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chapter-stats {
+  font-size: 12px;
+  color: var(--ant-color-text-secondary);
+  flex-shrink: 0;
+}
+
+.pagination-section {
+  padding: 16px;
+  border-top: 1px solid var(--ant-color-border);
+  background: var(--ant-color-bg-container);
+}
+
+/* 暗黑模式适配 */
+[data-theme='dark'] .chapter-menu-item:hover {
+  background: var(--ant-color-bg-elevated);
+}
+
+[data-theme='dark'] .chapter-menu-item.ant-menu-item-selected {
+  background: var(--ant-color-primary-1);
+  color: var(--ant-color-primary);
+}
+
+[data-theme='dark'] .chapter-stats {
+  color: var(--ant-color-text-secondary);
+}
+
+[data-theme='dark'] .pagination-section {
+  border-top-color: var(--ant-color-border);
+  background: var(--ant-color-bg-container);
+}

@@ -4067,7 +4067,7 @@
   [data-theme='dark'] .character-preview-item,
   [data-theme='dark'] .created-character-item,
   [data-theme='dark'] .config-card {
-    background: #1f1f1f !important;
+    background: #434343 !important;
     border-color: #434343 !important;
     color: #fff !important;
   }

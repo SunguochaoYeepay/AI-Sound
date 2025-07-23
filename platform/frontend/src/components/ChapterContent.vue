@@ -251,8 +251,8 @@
 
   .content-stats {
     padding: 16px;
-    background: #f1f5f9;
-    border-bottom: 1px solid #e5e7eb;
+    background: var(--ant-color-bg-elevated);
+    border-bottom: 1px solid var(--ant-color-split);
   }
 
   .content-area {
@@ -276,7 +276,7 @@
   .paragraph {
     margin-bottom: 16px;
     text-align: justify;
-    color: #374151;
+    color: var(--ant-color-text);
     font-size: 15px;
     text-indent: 2em;
   }
@@ -297,7 +297,7 @@
   }
 
   .no-content p {
-    color: #6b7280;
+    color: var(--ant-color-text-secondary);
     margin: 8px 0 16px 0;
   }
 
@@ -313,8 +313,8 @@
     justify-content: space-between;
     align-items: center;
     padding: 12px 16px;
-    background: #fef3cd;
-    border-bottom: 1px solid #f59e0b;
+    background: var(--ant-color-warning-bg);
+    border-bottom: 1px solid var(--ant-color-warning);
   }
 
   .edit-info {
@@ -324,7 +324,7 @@
 
   .edit-tip {
     font-size: 12px;
-    color: #92400e;
+    color: var(--ant-color-warning-text);
   }
 
   .edit-actions {
@@ -344,14 +344,16 @@
     font-family: 'Courier New', monospace;
     font-size: 14px;
     line-height: 1.6;
-    border: 1px solid #d1d5db;
+    border: 1px solid var(--ant-color-border);
     border-radius: 6px;
     resize: none;
+    background-color: var(--ant-color-bg-container);
+    color: var(--ant-color-text);
   }
 
   .content-editor:focus {
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    border-color: var(--ant-color-primary);
+    box-shadow: 0 0 0 3px var(--ant-color-primary-1);
   }
 
   /* 滚动条样式 */
@@ -360,16 +362,16 @@
   }
 
   .preview-mode::-webkit-scrollbar-track {
-    background: #f1f5f9;
+    background: var(--ant-color-bg-elevated);
     border-radius: 4px;
   }
 
   .preview-mode::-webkit-scrollbar-thumb {
-    background: #cbd5e1;
+    background: var(--ant-color-text-quaternary);
     border-radius: 4px;
   }
 
   .preview-mode::-webkit-scrollbar-thumb:hover {
-    background: #94a3b8;
+    background: var(--ant-color-text-tertiary);
   }
 </style>

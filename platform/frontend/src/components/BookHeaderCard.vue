@@ -147,9 +147,9 @@
   }
 
   .header-card {
-    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    background: var(--ant-component-background);
     border-radius: 12px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 12px var(--ant-shadow-color);
   }
 
   .header-content {
@@ -167,7 +167,7 @@
     font-size: 24px;
     font-weight: 600;
     margin: 0 0 8px 0;
-    color: #1f2937;
+    color: var(--ant-heading-color);
   }
 
   .meta-info {
@@ -179,7 +179,7 @@
 
   .meta-info > span {
     font-size: 14px;
-    color: #6b7280;
+    color: var(--ant-text-color-secondary);
   }
 
   .header-actions {
@@ -197,19 +197,19 @@
   .stat-item {
     text-align: center;
     padding: 12px;
-    background: #f8fafc;
+    background: var(--ant-background-color-base);
     border-radius: 8px;
   }
 
   .stat-value {
     font-size: 18px;
     font-weight: 600;
-    color: #1f2937;
+    color: var(--ant-heading-color);
   }
 
   .stat-label {
     font-size: 12px;
-    color: #6b7280;
+    color: var(--ant-text-color-secondary);
     margin-top: 4px;
   }
 
@@ -220,12 +220,12 @@
   .book-description h4 {
     margin: 0 0 8px 0;
     font-size: 14px;
-    color: #374151;
+    color: var(--ant-heading-color);
   }
 
   .book-description p {
     margin: 0;
-    color: #6b7280;
+    color: var(--ant-text-color-secondary);
     line-height: 1.6;
   }
 
@@ -236,6 +236,6 @@
   .book-tags h4 {
     margin: 0 0 8px 0;
     font-size: 14px;
-    color: #374151;
+    color: var(--ant-heading-color);
   }
 </style>

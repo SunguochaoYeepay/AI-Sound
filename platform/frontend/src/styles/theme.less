@@ -1,0 +1,89 @@
+/* 全局主题变量 */
+:root {
+  --primary-color: #1890ff;
+  --primary-color-rgb: 24, 144, 255;
+  --secondary-color: #0891b2;
+  --ant-component-background: #ffffff;
+}
+
+/* 暗黑主题变量 */
+[data-theme='dark'] {
+  --primary-color: #1890ff;
+  --primary-color-rgb: 24, 144, 255;
+  --secondary-color: #0891b2;
+  --ant-component-background: #141414;
+}
+
+/* 全局滚动条样式 */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--ant-color-bg-container);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--ant-color-text-quaternary);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--ant-color-text-tertiary);
+}
+
+/* 全局卡片样式 */
+.ant-card {
+  border-radius: 8px;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03);
+  transition: all 0.3s;
+}
+
+/* 暗黑模式下的卡片样式 */
+[data-theme='dark'] .ant-card {
+  background: var(--ant-color-bg-container);
+  border-color: var(--ant-color-border);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* 全局按钮样式 */
+.ant-btn {
+  border-radius: 6px;
+  transition: all 0.3s;
+}
+
+.ant-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(var(--primary-color-rgb), 0.2);
+}
+
+/* 全局输入框样式 */
+.ant-input,
+.ant-input-affix-wrapper {
+  border-radius: 6px;
+  transition: all 0.3s;
+}
+
+.ant-input:hover,
+.ant-input-affix-wrapper:hover {
+  border-color: var(--primary-color);
+}
+
+.ant-input:focus,
+.ant-input-affix-wrapper-focused {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 2px rgba(var(--primary-color-rgb), 0.2);
+}
+
+/* 暗黑模式下的输入框样式 */
+[data-theme='dark'] .ant-input,
+[data-theme='dark'] .ant-input-affix-wrapper {
+  background: var(--ant-color-bg-container);
+  border-color: var(--ant-color-border);
+  color: var(--ant-color-text);
+}
+
+[data-theme='dark'] .ant-input::placeholder,
+[data-theme='dark'] .ant-input-affix-wrapper .ant-input::placeholder {
+  color: var(--ant-color-text-quaternary);
+}

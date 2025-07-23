@@ -155,6 +155,12 @@
           chapter_title: chapter.chapter_title || `第${chapter.chapter_number}章`
         }))
 
+        // 🔥 修复：如果没有选中章节且有章节数据，选中第一个章节
+        if (!selectedChapterId.value && chapters.value.length > 0) {
+          selectedChapterId.value = chapters.value[0].id
+          await loadChapterPreparationStatus(selectedChapterId.value)
+        }
+
         // 优化：不再一次性加载所有章节的准备状态
         // 改为按需加载，在章节选择时加载对应状态
         console.log('📊 章节加载完成，准备状态将按需加载')
@@ -376,6 +382,7 @@
 <style scoped>
   .book-detail-container {
     min-height: 100vh;
+    background-color: var(--ant-color-bg-container);
   }
 
   .loading-wrapper {
@@ -387,6 +394,7 @@
 
   .detail-content {
     min-height: 100vh;
+    color: var(--ant-color-text);
   }
 
   .main-content {
@@ -406,6 +414,7 @@
   }
 
   .main-content .ant-col {
+    background-color: var(--ant-color-bg-container);
   }
 
   /* 响应式设计 */

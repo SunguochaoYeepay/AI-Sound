@@ -7,6 +7,10 @@ import timezone from 'dayjs/plugin/timezone'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import 'dayjs/locale/zh-cn'
 
+// 导入全局样式
+import './styles/theme.less'
+import './styles/components.less'
+
 import App from './App.vue'
 import router from './router/index.js'
 import pinia from './stores/index.js'

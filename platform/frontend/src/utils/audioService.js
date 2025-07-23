@@ -101,26 +101,41 @@ export class AudioService {
    */
   async playVoicePreview(voiceId, voiceName, sampleText = '这是一段试听文本') {
     try {
+      // 创建FormData对象，因为后端API期望Form数据
+      const formData = new FormData()
+      formData.append('voice_id', voiceId.toString())
+      formData.append('text', sampleText)
+      formData.append('time_step', '20')
+      formData.append('p_weight', '1.0')
+      formData.append('t_weight', '1.0')
+
       // 调用TTS API生成试听音频
       const response = await fetch('/api/v1/tts/preview', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          voice_id: voiceId,
-          text: sampleText,
-          format: 'wav'
-        })
+        body: formData
       })
 
       if (!response.ok) {
+        const errorText = await response.text()
+        console.error('TTS API错误响应:', errorText)
         throw new Error('生成试听音频失败')
       }
 
-      const blob = await response.blob()
-      const audioUrl = URL.createObjectURL(blob)
+      const result = await response.json()
+      
+      if (!result.success) {
+        throw new Error(result.message || '生成试听音频失败')
+      }
 
+      // 确保audioUrl能正确通过代理访问
+      // 后端返回的是 /audio/filename.wav，前端代理会将其重写为 /api/v1/audio/filename.wav
+      let audioUrl = result.audioUrl
+      if (audioUrl && audioUrl.startsWith('/audio/')) {
+        // 保持原样，让vite代理处理重写
+        audioUrl = result.audioUrl
+      }
+
+      // 使用返回的音频URL
       const audioInfo = {
         id: `voice_preview_${voiceId}_${Date.now()}`,
         title: `${voiceName} - 试听`,
@@ -130,15 +145,15 @@ export class AudioService {
           voiceId,
           voiceName,
           sampleText,
+          processingTime: result.processingTime,
           onEnded: () => {
-            // 清理blob URL
-            URL.revokeObjectURL(audioUrl)
             console.log(`声音 ${voiceName} 试听完成`)
           }
         }
       }
 
       await this.store.playAudio(audioInfo)
+      message.success(`正在播放：${voiceName} 试听`)
     } catch (error) {
       console.error('播放声音试听失败:', error)
       message.error('播放声音试听失败: ' + error.message)

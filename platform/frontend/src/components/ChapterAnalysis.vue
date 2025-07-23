@@ -13,8 +13,7 @@
         <a-tabs v-model="activeTab" type="card">
           <template #rightExtra>
             <a-space>
-
-              <a-button
+               <a-button
                 type="primary"
                 @click="$emit('refresh')"
                 size="small"
@@ -22,6 +21,15 @@
                 :disabled="isPreparationDisabled"
               >
                 🤖 智能准备
+              </a-button>
+              
+              <a-button
+                v-if="bookId && chapterId"
+                type="default"
+                @click="showDetectionDrawer"
+                size="small"
+              >
+                🔍 智能检测
               </a-button>
 
               <a-button
@@ -37,19 +45,6 @@
 
           <!-- 合成片段tab -->
           <a-tab-pane key="segments" tab="📝 合成片段">
-            <IntelligentDetector
-              v-if="bookId && chapterId"
-              :book-id="bookId"
-              :chapter-id="chapterId"
-              :segments="editableSegments"
-              :characters="allAvailableCharacters"
-              @segments-updated="handleSegmentsUpdate"
-              @locate-segment="locateToSegment"
-              @auto-save-fixes="handleAutoSaveFixes"
-              ref="intelligentDetectorRef"
-              style="margin-bottom: 16px; padding: 0 16px"
-            />
-
             <SynthesisSegmentEditor
               :segments="editableSegments"
               :characters="allAvailableCharacters"
@@ -76,16 +71,9 @@
           <a-tab-pane key="characters" tab="🎭 角色信息">
             <CharacterInfoViewer
               :characters="editableCharacters"
-              :segments="editableSegments"
-              :highlighted-character="highlightedCharacter"
-              :testing-voice="testingVoice"
-              :missing-characters-count="missingCharactersCount"
               :batch-creating="batchCreating"
               :loading-book-characters="loadingBookCharacters"
               :total-segments="editableSegments.length"
-              @highlight-character="handleHighlightCharacter"
-              @export-segments="handleExportSegments"
-              @test-voice="handleTestVoice"
               @batch-create="showBatchCreateModal"
               @refresh-library="refreshCharacterLibrary"
             />
@@ -99,7 +87,7 @@
       <a-empty description="该章节暂无智能分析数据" :image="false">
         <div class="empty-icon">🤖</div>
         <p>请先对章节进行智能准备</p>
-        <a-button type="primary" @click="$emit('refresh')"> 🎭 开始智能准备 </a-button>
+        <a-button type="primary" @click="$emit('refresh')" :loading="preparingChapter"> 🎭 开始智能准备 </a-button>
       </a-empty>
     </div>
 
@@ -113,11 +101,33 @@
       @characters-created="handleCharactersCreated"
       @refresh-library="refreshCharacterLibrary"
     />
+
+    <!-- 智能检测抽屉 -->
+    <a-drawer
+      v-model:open="detectionDrawerVisible"
+      title="🔍 智能检测"
+      placement="right"
+      :width="600"
+      :closable="true"
+      :mask-closable="true"
+    >
+      <IntelligentDetector
+        v-if="detectionDrawerVisible && bookId && chapterId"
+        ref="intelligentDetectorRef"
+        :book-id="bookId"
+        :chapter-id="chapterId"
+        :segments="editableSegments"
+        :characters="allAvailableCharacters"
+        @segments-updated="handleSegmentsUpdate"
+        @locate-segment="locateToSegment"
+        @auto-save-fixes="handleAutoSaveFixes"
+      />
+    </a-drawer>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, nextTick } from 'vue'
+import { ref, reactive, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { message } from 'ant-design-vue'
 import { charactersAPI } from '@/api'
 import SynthesisSegmentEditor from './SynthesisSegmentEditor.vue'
@@ -155,8 +165,7 @@ const emit = defineEmits(['refresh', 'save'])
 const activeTab = ref('segments')
 const saving = ref(false)
 const hasChanges = ref(false)
-const highlightedCharacter = ref(null)
-const testingVoice = ref(null)
+
 
 
 
@@ -167,6 +176,7 @@ const loadingBookCharacters = ref(false)
 const bookCharacters = ref([])
 const batchCreating = ref(false)
 const batchCreateModalVisible = ref(false)
+const detectionDrawerVisible = ref(false)
 
 // 组件引用
 const intelligentDetectorRef = ref(null)
@@ -496,53 +506,18 @@ const handleAutoSaveFixes = async () => {
   }
 }
 
+const showDetectionDrawer = async () => {
+  detectionDrawerVisible.value = true
+  // 等待组件渲染完成后自动触发检测
+  await nextTick()
+  if (intelligentDetectorRef.value && intelligentDetectorRef.value.runDetection) {
+    intelligentDetectorRef.value.runDetection()
+  }
+}
+
 
 
 // 角色相关事件处理方法
-const handleHighlightCharacter = (characterName) => {
-  if (highlightedCharacter.value === characterName) {
-    highlightedCharacter.value = null
-    message.info('取消高亮')
-  } else {
-    highlightedCharacter.value = characterName
-    message.info(`高亮角色"${characterName}"的片段`)
-    activeTab.value = 'segments'
-  }
-}
-
-const handleExportSegments = (characterName) => {
-  const characterSegments = editableSegments.value
-    .filter((segment) => segment.speaker === characterName)
-    .map((segment, index) => `${index + 1}. ${segment.text}`)
-    .join('\n\n')
-
-  if (characterSegments) {
-    const blob = new Blob([`角色"${characterName}"的片段：\n\n${characterSegments}`], {
-      type: 'text/plain;charset=utf-8'
-    })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `第${props.chapter?.number}章_${characterName}_片段.txt`
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    URL.revokeObjectURL(url)
-    message.success(`角色"${characterName}"的片段导出成功`)
-  } else {
-    message.warning(`角色"${characterName}"没有片段`)
-  }
-}
-
-const handleTestVoice = (characterName) => {
-  testingVoice.value = characterName
-  message.info(`正在测试角色"${characterName}"的语音...`)
-  
-  setTimeout(() => {
-    testingVoice.value = null
-    message.success(`角色"${characterName}"的语音测试完成`)
-  }, 2000)
-}
 
 const showBatchCreateModal = () => {
   console.log('[ChapterAnalysis] 尝试显示批量创建模态框')
@@ -741,8 +716,8 @@ onMounted(() => {
 }
 
 .segment-highlighted {
-  background: #e6f7ff;
-  border-left: 3px solid #1890ff;
+  background: var(--ant-primary-1);
+  border-left: 3px solid var(--ant-primary-color);
 }
 
 .no-analysis {
@@ -761,7 +736,7 @@ onMounted(() => {
 }
 
 .no-analysis p {
-  color: #6b7280;
+  color: var(--ant-text-color-secondary);
   margin: 8px 0 16px 0;
 }
 </style>

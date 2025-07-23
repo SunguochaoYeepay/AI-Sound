@@ -146,3 +146,6 @@ api.include_router(tts_router, tags=["TTS"])
 # Temporarily commented out due to missing model dependencies
 # api.include_router(smart_editing_router, prefix="/smart-editing", tags=["Smart Editing"])
 # api.include_router(collaboration_router, prefix="/collaboration", tags=["Collaboration"])
+
+# 为了兼容main.py中的导入，创建别名
+api_router = api

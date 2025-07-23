@@ -182,7 +182,7 @@ const saveJsonChanges = () => {
 .json-header {
   margin-bottom: 16px;
   padding: 8px 0;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--ant-border-color-split);
 }
 
 .json-editor {
@@ -194,19 +194,19 @@ const saveJsonChanges = () => {
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
   font-size: 12px;
   line-height: 1.5;
-  background-color: #f8f9fa;
-  border: 1px solid #e9ecef;
+  background-color: var(--ant-background-color-base);
+  border: 1px solid var(--ant-border-color-base);
   border-radius: 4px;
   resize: none;
 }
 
 .json-display.editable {
-  background-color: #fff;
-  border-color: #d9d9d9;
+  background-color: var(--ant-component-background);
+  border-color: var(--ant-border-color-base);
 }
 
 .json-display.editable:focus {
-  border-color: #40a9ff;
-  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
+  border-color: var(--ant-primary-color-hover);
+  box-shadow: 0 0 0 2px var(--ant-primary-color-outline);
 }
 </style>

@@ -5,7 +5,21 @@
       <template #title>
         <div v-if="chapter" class="chapter-header">
           <div class="chapter-info">
-            <h2 class="chapter-title">第{{ chapter.chapter_number }}章 {{ chapter.chapter_title }}</h2>
+            <h2 class="chapter-title">第{{ chapter.chapter_number }}章 {{ chapter.chapter_title }} 
+               <span class="word-count">{{ getActualWordCount() }} 字</span>
+               <a-tag
+                v-if="chapterPreparationStatus"
+                :color="getPreparationStatusColor(chapterPreparationStatus)"
+                size="small"
+              >
+                {{ getPreparationStatusText(chapterPreparationStatus) }}
+              </a-tag>
+              <a-tag v-else-if="chapter.status === 'completed'" color="green" size="small">
+                已准备
+              </a-tag>
+              <a-tag v-else color="default" size="small"> 未准备 </a-tag>
+          </h2>
+           
           </div>
           <div class="chapter-actions">
             <a-radio-group v-model:value="activeView" button-style="solid" size="small">
@@ -112,6 +126,18 @@
     { immediate: true }
   )
 
+  // 监听智能准备状态变化
+  watch(
+    () => props.preparingChapter,
+    async (newPreparing, oldPreparing) => {
+      // 当从准备中变为准备完成时，自动刷新分析数据
+      if (oldPreparing === true && newPreparing === false && props.chapter?.id) {
+        console.log('[ChapterDetail] 智能准备完成，自动刷新分析数据')
+        await loadAnalysisData()
+      }
+    }
+  )
+
   // 处理智能准备
   const handlePrepareChapter = () => {
     emit('prepare')
@@ -133,6 +159,26 @@
       loadAnalysisData()
     }
   })
+
+  // 准备状态处理函数
+  const getPreparationStatusColor = (status) => {
+    if (status?.preparation_complete) return 'green'
+    if (status?.preparation_started) return 'blue'
+    return 'default'
+  }
+
+  const getPreparationStatusText = (status) => {
+    if (status?.preparation_complete) return '已准备'
+    if (status?.preparation_started) return '准备中'
+    return '未准备'
+  }
+
+  // 计算实际字数
+  const getActualWordCount = () => {
+    if (!props.chapter?.content) return 0
+    // 移除空格、换行符等，计算实际字符数
+    return props.chapter.content.replace(/\s/g, '').length
+  }
 </script>
 
 <style scoped>
@@ -167,11 +213,23 @@
     margin: 0;
     font-size: 18px;
     line-height: 1.4;
-    color: var(--primary-color);
+    color: var(--ant-color-text);
   }
 
   .chapter-meta {
-    margin-top: 4px;
+    margin-top: 8px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+    background: var(--ant-color-fill-quaternary);
+    border-radius: 6px;
+    border: 1px solid var(--ant-color-border-secondary);
+  }
+
+  .word-count {
+    font-size: 14px;
+    color: var(--ant-color-text-secondary);
   }
 
   .chapter-actions {
@@ -188,12 +246,12 @@
       padding: 0 12px;
 
       &.ant-radio-button-wrapper-checked {
-        background: var(--primary-color);
-        border-color: var(--primary-color);
+        background: var(--ant-color-primary);
+        border-color: var(--ant-color-primary);
 
         &:hover {
-          background: var(--primary-color);
-          border-color: var(--primary-color);
+          background: var(--ant-color-primary-hover);
+          border-color: var(--ant-color-primary-hover);
         }
       }
     }

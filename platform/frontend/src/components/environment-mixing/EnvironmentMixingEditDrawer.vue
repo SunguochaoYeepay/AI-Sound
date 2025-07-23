@@ -218,7 +218,8 @@
     },
     mixingId: {
       type: Number,
-      required: true
+      required: false,
+      default: null
     }
   })
 
