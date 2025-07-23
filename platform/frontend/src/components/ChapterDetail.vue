@@ -49,6 +49,7 @@
           :preparation-status="chapterPreparationStatus"
           @refresh="handlePrepareChapter"
           @save="handleAnalysisSave"
+          @reload-chapter="handleReloadChapter"
         />
       </div>
     </a-card>
@@ -151,6 +152,12 @@
   // 处理分析结果保存
   const handleAnalysisSave = (data) => {
     emit('save-analysis', data)
+  }
+
+  // 处理重新加载章节
+  const handleReloadChapter = async () => {
+    console.log('[ChapterDetail] 收到重新加载章节请求')
+    await loadAnalysisData()
   }
 
   // 监听视图切换

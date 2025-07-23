@@ -500,6 +500,10 @@ const handleAutoSaveFixes = async () => {
   try {
     await saveChanges()
     message.success('智能修复结果已自动保存')
+    
+    // 重新加载章节数据以获取修复后的最新内容
+    console.log('[ChapterAnalysis] 重新加载章节数据')
+    emit('reload-chapter')
   } catch (error) {
     console.error('[ChapterAnalysis] 自动保存失败:', error)
     message.error('自动保存失败，请手动点击保存按钮')

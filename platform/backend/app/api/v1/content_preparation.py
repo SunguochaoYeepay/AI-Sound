@@ -684,6 +684,62 @@ class DetectionRequest(BaseModel):
     use_ai: bool = True
     auto_fix: bool = False
 
+class SingleSegmentDetectionRequest(BaseModel):
+    """单段落检测请求模型"""
+    segment_text: str
+    segment_index: Optional[int] = 0
+
+
+@router.post("/detect/segment")
+async def detect_single_segment(
+    request: SingleSegmentDetectionRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    🔥 新增：单段落智能检测
+    专门用于检测单个段落是否需要拆分（如"太监假尖着嗓子喊道：陛下！楚军已逼近函谷关！"）
+    
+    Args:
+        request: 单段落检测请求
+            - segment_text: 要检测的段落文本
+            - segment_index: 段落索引（可选）
+    
+    Returns:
+        检测结果，包含拆分建议
+    """
+    try:
+        # 创建检测服务
+        detection_service = IntelligentDetectionService()
+        
+        # 执行单段落检测
+        issues = await detection_service.detect_single_segment_issues(
+            request.segment_text, 
+            request.segment_index
+        )
+        
+        return {
+            "success": True,
+            "segment_text": request.segment_text,
+            "issues": [
+                {
+                    "issue_type": issue.issue_type,
+                    "severity": issue.severity,
+                    "segment_index": issue.segment_index,
+                    "description": issue.description,
+                    "suggestion": issue.suggestion,
+                    "context": issue.context,
+                    "fixable": issue.fixable,
+                    "fix_data": issue.fix_data
+                } for issue in issues
+            ],
+            "total_issues": len(issues),
+            "split_needed": len(issues) > 0
+        }
+        
+    except Exception as e:
+        logger.error(f"单段落检测失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"单段落检测失败: {str(e)}")
+
 
 @router.post("/detect/{chapter_id}")
 async def detect_chapter_issues(
@@ -905,8 +961,55 @@ async def apply_detection_fixes(
                         fix_data_content = issue.get('fix_data', {})
                         if fix_data_content:
                             logger.info(f"应用修复数据到片段 {segment_index}: {fix_data_content}")
-                            current_segments[segment_index].update(fix_data_content)
-                            fixed_count += 1
+                            
+                            # 🔥 关键修复：根据action类型正确应用修复
+                            action = fix_data_content.get('action')
+                            success = False
+                            
+                            # 🔥 移除assign_voice_type：不再检测语音类型问题
+                            if action == 'assign_voice_type':
+                                # 已移除：voice_type不影响核心合成功能
+                                success = True
+                                logger.info(f"跳过语音类型设置（已移除检测）")
+                            
+                            elif action == 'clean_special_chars':
+                                # 清理特殊字符
+                                text = current_segments[segment_index]['text']
+                                chars_to_clean = fix_data_content.get('chars', [])
+                                for char in chars_to_clean:
+                                    text = text.replace(char, '')
+                                current_segments[segment_index]['text'] = text.strip()
+                                success = True
+                                logger.info(f"清理特殊字符: {chars_to_clean}")
+                            
+                            elif action == 'set_character':
+                                # 设置角色
+                                character = fix_data_content.get('character', '')
+                                text_type = fix_data_content.get('text_type', 'dialogue')
+                                current_segments[segment_index]['speaker'] = character
+                                current_segments[segment_index]['character'] = character  # 兼容性
+                                current_segments[segment_index]['text_type'] = text_type
+                                if text_type == 'dialogue' and character:
+                                    if not current_segments[segment_index].get('voice_type'):
+                                        current_segments[segment_index]['voice_type'] = 'default'
+                                success = True
+                                logger.info(f"设置角色: '{character}', 文本类型: {text_type}")
+                            
+                            elif action == 'set_narration':
+                                # 设置为旁白
+                                current_segments[segment_index]['text_type'] = 'narration'
+                                current_segments[segment_index]['speaker'] = ''
+                                current_segments[segment_index]['character'] = ''
+                                current_segments[segment_index]['voice_type'] = ''
+                                success = True
+                                logger.info("设置为旁白")
+                            
+                            else:
+                                logger.warning(f"未知的修复动作: {action}")
+                                success = False
+                            
+                            if success:
+                                fixed_count += 1
                         else:
                             logger.warning(f"问题 {i+1} 的修复数据为空")
                     else:
@@ -936,15 +1039,53 @@ async def apply_detection_fixes(
             # 更新synthesis_plan本身
             analysis_result.synthesis_plan = synthesis_plan_copy
             
-            # 同时更新final_config
-            final_config = synthesis_plan_copy.copy()
-            final_config.update({
-                'total_segments': len(current_segments),
-                'last_updated': datetime.now().isoformat(),
-                'updated_by': 'single_issue_fix'
-            })
-            
-            analysis_result.final_config = final_config
+            # 🔥 关键修复：正确更新final_config，保持与检测逻辑一致的数据结构和格式
+            if analysis_result.final_config:
+                try:
+                    # 如果已有final_config，解析并更新
+                    if isinstance(analysis_result.final_config, str):
+                        final_config_data = json.loads(analysis_result.final_config)
+                    else:
+                        final_config_data = analysis_result.final_config
+                    
+                    # 确保有正确的数据结构
+                    if 'synthesis_json' not in final_config_data:
+                        final_config_data['synthesis_json'] = {}
+                    
+                    # 更新synthesis_plan数据
+                    final_config_data['synthesis_json']['synthesis_plan'] = current_segments
+                    final_config_data['synthesis_json']['total_segments'] = len(current_segments)
+                    final_config_data['last_updated'] = datetime.now().isoformat()
+                    final_config_data['updated_by'] = 'detection_fix'
+                    
+                    # 保存为JSON字符串
+                    analysis_result.final_config = json.dumps(final_config_data, ensure_ascii=False)
+                    logger.info(f"[修复同步] 已更新final_config数据结构，段落数: {len(current_segments)}")
+                    
+                except Exception as e:
+                    logger.error(f"[修复同步] 更新final_config失败: {str(e)}，回退到创建新结构")
+                    # 创建新的final_config结构
+                    final_config_data = {
+                        'synthesis_json': {
+                            'synthesis_plan': current_segments,
+                            'total_segments': len(current_segments)
+                        },
+                        'last_updated': datetime.now().isoformat(),
+                        'updated_by': 'detection_fix'
+                    }
+                    analysis_result.final_config = json.dumps(final_config_data, ensure_ascii=False)
+            else:
+                # 如果没有final_config，创建新的结构
+                final_config_data = {
+                    'synthesis_json': {
+                        'synthesis_plan': current_segments,
+                        'total_segments': len(current_segments)
+                    },
+                    'last_updated': datetime.now().isoformat(),
+                    'updated_by': 'detection_fix'
+                }
+                analysis_result.final_config = json.dumps(final_config_data, ensure_ascii=False)
+                logger.info(f"[修复同步] 创建新final_config数据结构，段落数: {len(current_segments)}")
             db.commit()
             
             logger.info(f"单个问题修复成功，修复了 {fixed_count} 个问题")

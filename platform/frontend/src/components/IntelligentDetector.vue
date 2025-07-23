@@ -153,10 +153,9 @@ import { ref, computed } from 'vue'
 import { message } from 'ant-design-vue'
 import { 
   SearchOutlined, 
-  ClearOutlined, 
-  QuestionCircleOutlined 
+  ClearOutlined
 } from '@ant-design/icons-vue'
-import { intelligentDetection } from '@/api'
+import { intelligentDetection, applyDetectionFixes } from '@/api'
 
 // Props
 const props = defineProps({
@@ -298,52 +297,41 @@ const applyAutoFix = async () => {
 
   try {
     const fixableIssues = detectionResult.value.issues.filter(issue => issue.fixable)
-    let updatedSegments = [...props.segments]
-    let totalFixed = 0
     
-    for (let i = 0; i < fixableIssues.length; i++) {
-      const issue = fixableIssues[i]
-      const fixResult = await fixSingleIssueInBatch(issue, updatedSegments)
-      
-      if (fixResult.fixed) {
-        updatedSegments = fixResult.segments
-        totalFixed++
-      }
-      
-      fixedCount.value++
-      fixProgress.value = Math.round((fixedCount.value / totalFixableCount.value) * 100)
-      
-      // 添加小延迟，让用户看到进度
-      await new Promise(resolve => setTimeout(resolve, 100))
-    }
-    
-    // 一次性更新所有片段
-    if (totalFixed > 0) {
-      emit('segments-updated', updatedSegments)
+    if (fixableIssues.length === 0) {
+      message.warning('没有可自动修复的问题')
+      return
     }
 
-    message.success(`自动修复完成，已修复 ${totalFixed} 个问题，正在自动保存...`)
+    // 调用后端API应用修复
+    const fixData = {
+      issues: fixableIssues
+    }
     
-    // 🔥 新增：自动保存修复结果
-    setTimeout(async () => {
-      try {
-        // 触发父组件保存
-        emit('auto-save-fixes')
-        
-        // 然后重新运行检测
-        setTimeout(() => {
-          runDetection()
-        }, 2000)
-      } catch (error) {
-        console.error('[智能检测] 自动保存失败:', error)
-        message.warning('修复完成，请手动点击保存按钮')
-        
-        // 仍然重新运行检测
-        setTimeout(() => {
-          runDetection()
-        }, 1000)
-      }
-    }, 500)
+    const response = await applyDetectionFixes(props.chapterId, fixData)
+    
+    if (response.data.success) {
+      message.success(`已自动修复 ${response.data.data.fixed_count} 个问题，正在自动保存...`)
+      
+      // 🔥 新增：自动保存修复结果
+      setTimeout(async () => {
+        try {
+          // 触发父组件保存
+          emit('auto-save-fixes')
+          
+          // 🔥 移除自动检测：改为手工检测
+          // 用户可手动点击检测按钮重新检测
+        } catch (error) {
+          console.error('[智能检测] 自动保存失败:', error)
+          message.warning('修复完成，请手动点击保存按钮')
+          
+                      // 🔥 移除自动检测：改为手工检测
+            // 用户可手动点击检测按钮重新检测
+        }
+      }, 500)
+    } else {
+      message.error(response.data.message || '自动修复失败')
+    }
     
   } catch (error) {
     console.error('[智能检测] 自动修复失败:', error)
@@ -353,127 +341,8 @@ const applyAutoFix = async () => {
   }
 }
 
-// 批量修复中的单个问题修复
-const fixSingleIssueInBatch = async (issue, segments) => {
-  try {
-    console.log('[智能检测] 批量修复问题:', issue)
-    
-    // 根据问题类型应用修复
-    const updatedSegments = [...segments]
-    let fixed = false
-    
-    const issueType = issue.issue_type || issue.type
-    switch (issueType) {
-      case 'missing_speaker':
-        // 为缺失说话人的片段设置默认说话人
-        if (issue.segment_index !== undefined) {
-          updatedSegments[issue.segment_index].speaker = issue.suggested_speaker || '旁白'
-          fixed = true
-        }
-        break
-        
-      case 'character_mismatch':
-        // 处理角色相关问题（可能是角色缺失或语音类型缺失）
-        if (issue.segment_index !== undefined) {
-          const segment = updatedSegments[issue.segment_index]
-          
-          // 检查问题类型：是角色缺失还是语音类型缺失
-          if (issue.description && issue.description.includes('未配置语音类型')) {
-            // 语音类型缺失 - 为角色配置默认语音类型
-            // 🔥 优先使用真实角色名，而不是"未知角色"
-            const realSpeaker = segment.voice_name || segment.speaker || '旁白'
-            
-            // 确保speaker和voice_name同步
-            if (segment.voice_name && segment.speaker === '未知角色') {
-              segment.speaker = segment.voice_name
-            }
-            
-            if (realSpeaker === '旁白') {
-              segment.voice_type = 'narrator'
-            } else if (realSpeaker.includes('女') || realSpeaker.includes('妹') || realSpeaker.includes('姐')) {
-              segment.voice_type = 'female'
-            } else if (realSpeaker.includes('男') || realSpeaker.includes('哥') || realSpeaker.includes('兄')) {
-              segment.voice_type = 'male'
-            } else if (realSpeaker.includes('帝') || realSpeaker.includes('王') || realSpeaker.includes('君')) {
-              segment.voice_type = 'male'  // 帝王类角色通常是男性
-            } else {
-              segment.voice_type = 'neutral'  // 默认中性语音
-            }
-            
-            // 如果有character_id但没有voice_id，设置voice_id
-            if (segment.character_id && !segment.voice_id) {
-              segment.voice_id = segment.character_id.toString()
-            }
-            
-            fixed = true
-          } else {
-            // 角色缺失 - 根据文本内容推断说话人
-            if (issue.suggested_speaker) {
-              segment.speaker = issue.suggested_speaker
-              segment.voice_name = issue.suggested_speaker
-            } else if (segment.voice_name) {
-              // 如果有voice_name但speaker是未知角色，使用voice_name
-              segment.speaker = segment.voice_name
-            } else if (segment.text_type === 'dialogue') {
-              segment.speaker = '未知角色'
-            } else {
-              segment.speaker = '旁白'
-            }
-            fixed = true
-          }
-        }
-        break
-        
-      case 'invalid_character':
-        // 将无效角色替换为有效角色
-        if (issue.segment_index !== undefined && issue.suggested_speaker) {
-          updatedSegments[issue.segment_index].speaker = issue.suggested_speaker
-          fixed = true
-        }
-        break
-        
-      case 'empty_text':
-        // 为空文本片段设置占位文本
-        if (issue.segment_index !== undefined) {
-          updatedSegments[issue.segment_index].text = issue.suggested_text || '[请补充文本内容]'
-          fixed = true
-        }
-        break
-        
-      case 'duplicate_segment':
-        // 删除重复片段
-        if (issue.segment_index !== undefined && issue.segment_index > 0) {
-          updatedSegments.splice(issue.segment_index, 1)
-          fixed = true
-        }
-        break
-        
-      default:
-        // 对于未知的问题类型，尝试通用修复
-        console.warn('[智能检测] 未知问题类型:', issueType, issue)
-        if (issue.segment_index !== undefined && issue.suggested_speaker) {
-          updatedSegments[issue.segment_index].speaker = issue.suggested_speaker
-          fixed = true
-        } else if (issue.segment_index !== undefined && !updatedSegments[issue.segment_index].speaker) {
-          updatedSegments[issue.segment_index].speaker = '旁白'
-          fixed = true
-        }
-        break
-    }
-    
-    if (fixed) {
-      console.log(`[智能检测] 批量修复成功: ${issueType} (片段 ${issue.segment_index})`)
-    } else {
-      console.warn(`[智能检测] 批量修复失败: ${issueType}`, issue)
-    }
-    
-    return { fixed, segments: updatedSegments }
-    
-  } catch (error) {
-    console.error('[智能检测] 批量修复问题时出错:', error)
-    return { fixed: false, segments }
-  }
-}
+// 🔥 移除未使用的批量修复函数（fixSingleIssueInBatch）
+// 简化逻辑：只保留必要的单个问题修复功能
 
 // 修复单个问题
 const fixSingleIssue = async (issue, showMessage = true) => {
@@ -572,6 +441,54 @@ const fixSingleIssue = async (issue, showMessage = true) => {
         }
         break
         
+      case 'special_characters':
+        // 清理特殊字符（如"——"符号）
+        if (issue.segment_index !== undefined) {
+          const segment = updatedSegments[issue.segment_index]
+          // 移除"——"符号和其他特殊字符
+          segment.text = segment.text.replace(/[———]/g, '')
+          fixed = true
+        }
+        break
+        
+      case 'character_detection_issue':
+        // 处理角色检测问题
+        if (issue.segment_index !== undefined && issue.fix_data && issue.fix_data.action) {
+          const segment = updatedSegments[issue.segment_index]
+          
+          switch (issue.fix_data.action) {
+            case 'set_character':
+              // 设置角色和文本类型
+              if (issue.fix_data.character) {
+                segment.speaker = issue.fix_data.character
+                segment.character = issue.fix_data.character
+              }
+              if (issue.fix_data.text_type) {
+                segment.text_type = issue.fix_data.text_type
+                // 为对话类型设置默认语音类型
+                if (issue.fix_data.text_type === 'dialogue' && !segment.voice_type) {
+                  segment.voice_type = 'neutral'
+                }
+              }
+              fixed = true
+              break
+              
+            case 'set_narration':
+              // 设置为旁白
+              segment.text_type = 'narration'
+              segment.speaker = '旁白'
+              segment.character = null
+              segment.voice_type = null
+              fixed = true
+              break
+              
+            default:
+              console.warn('[智能检测] 未知的角色检测修复类型:', issue.fix_data.action)
+              break
+          }
+        }
+        break
+        
       default:
         // 对于未知的问题类型，尝试通用修复
         console.warn('[智能检测] 未知问题类型:', issueType, issue)
@@ -596,10 +513,8 @@ const fixSingleIssue = async (issue, showMessage = true) => {
           if (showMessage) {
             message.success(`问题修复成功并已保存: ${issue.description || issueType}`)
           }
-          // 保存后重新检测
-          setTimeout(() => {
-            runDetection()
-          }, 1000)
+          // 🔥 移除自动检测：改为手工检测
+          // 修复完成，用户可手动点击检测按钮重新检测
         } catch (error) {
           console.error('[智能检测] 单条修复自动保存失败:', error)
           if (showMessage) {

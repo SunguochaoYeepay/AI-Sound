@@ -1001,6 +1001,19 @@ export const intelligentDetection = (chapterId, enableAiDetection = true) => {
   })
 }
 
+// 应用智能检测修复
+export const applyDetectionFixes = (chapterId, fixData) => {
+  return apiClient.post(`/content-preparation/detect/fix/${chapterId}`, fixData)
+}
+
+// 🔥 新增：单段落智能检测
+export const detectSingleSegment = (segmentText, segmentIndex = 0) => {
+  return apiClient.post('/content-preparation/detect/segment', {
+    segment_text: segmentText,
+    segment_index: segmentIndex
+  })
+}
+
 // 智能分析API (Mock)
 export const intelligentAnalysisAPI = {
   // 分析项目角色和文本

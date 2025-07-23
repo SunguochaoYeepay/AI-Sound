@@ -65,12 +65,8 @@ class IntelligentDetectionService:
                 'description': '旁白内容被标记为对话',
                 'severity': 'medium',
                 'fixable': True
-            },
-            'inconsistent_voice_type': {
-                'description': '同一角色使用了不同的语音类型',
-                'severity': 'low',
-                'fixable': True
             }
+            # 🔥 已移除：'inconsistent_voice_type' - 语音类型检测不重要
         }
     
     async def detect_chapter_issues(self, chapter_id: int, enable_ai_detection: bool = True) -> DetectionResult:
@@ -223,18 +219,8 @@ class IntelligentDetectionService:
                     fix_data={'action': 'assign_character'}
                 ))
             
-            # 检测语音类型问题
-            if character and not voice_type:
-                issues.append(DetectionIssue(
-                    issue_type='character_mismatch',
-                    severity='medium',
-                    segment_index=index,
-                    description=f'角色 "{character}" 未配置语音类型',
-                    suggestion='请为角色配置合适的语音类型',
-                    context=f'角色: {character}',
-                    fixable=True,
-                    fix_data={'action': 'assign_voice_type', 'character': character}
-                ))
+            # 🔥 已移除语音类型检测：voice_type不影响TTS合成
+            # 用户反馈：语音类型检测不重要，已完全移除
         
         return issues
     
@@ -282,6 +268,42 @@ class IntelligentDetectionService:
                     fixable=True,
                     fix_data={'action': 'change_to_narration'}
                 ))
+        
+        return issues
+    
+    async def detect_single_segment_issues(self, segment_text: str, segment_index: int = 0) -> List[DetectionIssue]:
+        """🔥 单段落智能检测 - 专门用于拆分混合文本"""
+        issues = []
+        
+        try:
+            # 初始化角色检测器
+            from app.detectors.character_detectors import ProgrammaticCharacterDetector
+            character_detector = ProgrammaticCharacterDetector()
+            
+            # 检测是否需要拆分
+            analysis_result = character_detector.analyze_text_segments(segment_text)
+            detected_segments = analysis_result.get('segments', [])
+            
+            # 如果检测出多个段落，说明需要拆分
+            if len(detected_segments) > 1:
+                issues.append(DetectionIssue(
+                    issue_type='segment_split_needed',
+                    severity='medium',
+                    segment_index=segment_index,
+                    description=f'检测到混合文本，建议拆分为 {len(detected_segments)} 个段落',
+                    suggestion='点击查看拆分建议',
+                    context=segment_text[:100] + ('...' if len(segment_text) > 100 else ''),
+                    fixable=True,
+                    fix_data={
+                        'action': 'split_segment',
+                        'suggested_segments': detected_segments
+                    }
+                ))
+            
+            logger.info(f"[单段落检测] 检测段落长度: {len(segment_text)}, 建议拆分数: {len(detected_segments)}")
+            
+        except Exception as e:
+            logger.error(f"[单段落检测] 检测失败: {str(e)}")
         
         return issues
     

@@ -1438,6 +1438,10 @@
 
       synthesisStarting.value = true
 
+      // 🎯 设置合成类型
+      synthesisType.value = 'voice'
+      synthesisStatus.value = 'running'
+
       // 重新启动选中章节的合成
       const response = await api.startGeneration(project.value.id, {
         chapter_ids: selectedChapter.value ? [selectedChapter.value] : undefined,
@@ -1445,9 +1449,108 @@
       })
 
       if (response.data.success) {
-        message.success('重新开始合成音频')
+        message.success('🎤 重新开始合成音频')
         synthesisRunning.value = true
         progressDrawerVisible.value = true // 显示进度抽屉
+
+        // 🔥 重置完成提醒标志
+        hasShownCompletionMessage.value = false
+
+        // 🔧 确保WebSocket连接正常
+        if (websocketStatus.value !== 'connected') {
+          console.log('🔄 重新合成开始前，WebSocket未连接，重新初始化')
+          initWebSocket()
+
+          // 等待连接建立后再继续
+          setTimeout(() => {
+            if (websocketStatus.value !== 'connected') {
+              console.warn('⚠️ WebSocket连接建立超时，将依赖轮询获取进度')
+            }
+          }, 3000)
+        } else {
+          // 即使已连接，也重新订阅主题确保订阅正常
+          const subscribeMsg = {
+            type: 'subscribe',
+            topic: `synthesis_${project.value.id}`
+          }
+          console.log('🔄 重新合成开始，重新确认订阅:', subscribeMsg)
+          try {
+            // 🔥 修复：检查websocket是否存在且连接正常
+            if (websocket && websocket.readyState === WebSocket.OPEN) {
+              websocket.send(JSON.stringify(subscribeMsg))
+
+              // 延迟再次订阅，确保成功
+              setTimeout(() => {
+                if (websocket && websocket.readyState === WebSocket.OPEN) {
+                  websocket.send(JSON.stringify(subscribeMsg))
+                  console.log('📡 第二次订阅确认')
+                } else {
+                  console.log('⚠️ WebSocket连接不可用，跳过第二次订阅')
+                }
+              }, 500)
+            } else {
+              console.log('⚠️ WebSocket未连接或不可用，跳过订阅')
+            }
+          } catch (error) {
+            console.error('❌ 重新订阅失败:', error)
+          }
+        }
+
+        // 🔧 初始化进度数据
+        progressData.value = {
+          progress: 0,
+          status: 'processing',
+          completed_segments: 0,
+          total_segments: 0,
+          failed_segments: 0,
+          current_processing: '🎤 正在重新合成音频...',
+          synthesis_type: 'voice' // 标记合成类型
+        }
+
+        // 🔧 1秒后更新当前章节进度（不影响其他章节）
+        setTimeout(() => {
+          loadCurrentChapterProgress()
+        }, 1000)
+
+        // 🔧 启动定期刷新进度（防止WebSocket消息丢失）
+        if (progressRefreshInterval) {
+          clearInterval(progressRefreshInterval)
+        }
+        progressRefreshInterval = setInterval(async () => {
+          if (synthesisRunning.value) {
+            // 🔥 只检查当前章节状态，不影响其他章节
+            await loadCurrentChapterProgress()
+
+            // 🔥 基于章节进度检查是否已完成（防止WebSocket消息丢失）
+            const chapterProgress = currentChapterProgress.value
+            const isChapterCompleted =
+              chapterProgress.total > 0 && chapterProgress.completed === chapterProgress.total
+
+            if (isChapterCompleted) {
+              console.log('🎯 轮询检测到章节重新合成完成:', chapterProgress)
+
+              // 显示完成提醒（避免重复）
+              if (!hasShownCompletionMessage.value) {
+                message.success('✅ 章节重新合成完成！', 5)
+                hasShownCompletionMessage.value = true
+              }
+
+              // 更新状态
+              synthesisRunning.value = false
+
+              // 停止轮询
+              if (progressRefreshInterval) {
+                clearInterval(progressRefreshInterval)
+                progressRefreshInterval = null
+              }
+
+              // 自动关闭进度抽屉
+              setTimeout(() => {
+                progressDrawerVisible.value = false
+              }, 3000)
+            }
+          }
+        }, 3000) // 每3秒检查一次
       }
     } catch (error) {
       console.error('Failed to restart synthesis:', error)
@@ -1474,6 +1577,10 @@
 
       synthesisStarting.value = true
 
+      // 🎯 设置合成类型
+      synthesisType.value = 'voice'
+      synthesisStatus.value = 'running'
+
       // 继续合成剩余章节（不重新开始已完成的部分）
       const response = await api.startGeneration(project.value.id, {
         chapter_ids: selectedChapter.value ? [selectedChapter.value] : undefined,
@@ -1481,9 +1588,108 @@
       })
 
       if (response.data.success) {
-        message.success('继续合成剩余章节')
+        message.success('🎤 继续合成剩余章节')
         synthesisRunning.value = true
         progressDrawerVisible.value = true // 显示进度抽屉
+
+        // 🔥 重置完成提醒标志
+        hasShownCompletionMessage.value = false
+
+        // 🔧 确保WebSocket连接正常
+        if (websocketStatus.value !== 'connected') {
+          console.log('🔄 继续合成开始前，WebSocket未连接，重新初始化')
+          initWebSocket()
+
+          // 等待连接建立后再继续
+          setTimeout(() => {
+            if (websocketStatus.value !== 'connected') {
+              console.warn('⚠️ WebSocket连接建立超时，将依赖轮询获取进度')
+            }
+          }, 3000)
+        } else {
+          // 即使已连接，也重新订阅主题确保订阅正常
+          const subscribeMsg = {
+            type: 'subscribe',
+            topic: `synthesis_${project.value.id}`
+          }
+          console.log('🔄 继续合成开始，重新确认订阅:', subscribeMsg)
+          try {
+            // 🔥 修复：检查websocket是否存在且连接正常
+            if (websocket && websocket.readyState === WebSocket.OPEN) {
+              websocket.send(JSON.stringify(subscribeMsg))
+
+              // 延迟再次订阅，确保成功
+              setTimeout(() => {
+                if (websocket && websocket.readyState === WebSocket.OPEN) {
+                  websocket.send(JSON.stringify(subscribeMsg))
+                  console.log('📡 第二次订阅确认')
+                } else {
+                  console.log('⚠️ WebSocket连接不可用，跳过第二次订阅')
+                }
+              }, 500)
+            } else {
+              console.log('⚠️ WebSocket未连接或不可用，跳过订阅')
+            }
+          } catch (error) {
+            console.error('❌ 重新订阅失败:', error)
+          }
+        }
+
+        // 🔧 初始化进度数据
+        progressData.value = {
+          progress: 0,
+          status: 'processing',
+          completed_segments: 0,
+          total_segments: 0,
+          failed_segments: 0,
+          current_processing: '🎤 正在继续合成音频...',
+          synthesis_type: 'voice' // 标记合成类型
+        }
+
+        // 🔧 1秒后更新当前章节进度（不影响其他章节）
+        setTimeout(() => {
+          loadCurrentChapterProgress()
+        }, 1000)
+
+        // 🔧 启动定期刷新进度（防止WebSocket消息丢失）
+        if (progressRefreshInterval) {
+          clearInterval(progressRefreshInterval)
+        }
+        progressRefreshInterval = setInterval(async () => {
+          if (synthesisRunning.value) {
+            // 🔥 只检查当前章节状态，不影响其他章节
+            await loadCurrentChapterProgress()
+
+            // 🔥 基于章节进度检查是否已完成（防止WebSocket消息丢失）
+            const chapterProgress = currentChapterProgress.value
+            const isChapterCompleted =
+              chapterProgress.total > 0 && chapterProgress.completed === chapterProgress.total
+
+            if (isChapterCompleted) {
+              console.log('🎯 轮询检测到章节继续合成完成:', chapterProgress)
+
+              // 显示完成提醒（避免重复）
+              if (!hasShownCompletionMessage.value) {
+                message.success('✅ 章节继续合成完成！', 5)
+                hasShownCompletionMessage.value = true
+              }
+
+              // 更新状态
+              synthesisRunning.value = false
+
+              // 停止轮询
+              if (progressRefreshInterval) {
+                clearInterval(progressRefreshInterval)
+                progressRefreshInterval = null
+              }
+
+              // 自动关闭进度抽屉
+              setTimeout(() => {
+                progressDrawerVisible.value = false
+              }, 3000)
+            }
+          }
+        }, 3000) // 每3秒检查一次
       }
     } catch (error) {
       console.error('Failed to resume synthesis:', error)

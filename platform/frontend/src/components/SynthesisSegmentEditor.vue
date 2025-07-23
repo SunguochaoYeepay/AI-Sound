@@ -111,6 +111,15 @@
                   <template #icon><CopyOutlined /></template>
                 </a-button>
                 <a-button 
+                  @click="detectSegmentSplit(index)" 
+                  title="智能检测"
+                  :loading="detectingSegments.has(index)"
+                  type="primary"
+                  ghost
+                >
+                  <template #icon><SearchOutlined /></template>
+                </a-button>
+                <a-button 
                   @click="deleteSegment(index)" 
                   danger 
                   :disabled="segments.length <= 1"
@@ -145,14 +154,16 @@
 
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
-import { message } from 'ant-design-vue'
+import { message, Modal } from 'ant-design-vue'
+import { detectSingleSegment } from '@/api'
 import {
   PlusOutlined,
   ReloadOutlined,
   ArrowUpOutlined,
   ArrowDownOutlined,
   CopyOutlined,
-  DeleteOutlined
+  DeleteOutlined,
+  SearchOutlined
 } from '@ant-design/icons-vue'
 
 // Props
@@ -185,6 +196,7 @@ const emit = defineEmits([
 // 响应式数据
 const filterCharacter = ref(null)
 const loadingCharacters = ref(false)
+const detectingSegments = ref(new Set()) // 正在检测的段落索引集合
 
 // 内部片段数据
 const internalSegments = ref([])
@@ -314,6 +326,96 @@ const moveSegmentDown = (index) => {
   internalSegments.value[index] = internalSegments.value[index + 1]
   internalSegments.value[index + 1] = temp
   emitChange()
+}
+
+// 🔥 单段落智能检测
+const detectSegmentSplit = async (index) => {
+  const segment = internalSegments.value[index]
+  if (!segment || !segment.text?.trim()) {
+    message.warning('该段落没有文本内容，无法检测')
+    return
+  }
+
+  console.log(`[段落检测] 开始检测段落 ${index}: ${segment.text.substring(0, 50)}...`)
+  
+  // 设置检测状态
+  detectingSegments.value.add(index)
+  
+  try {
+    const response = await detectSingleSegment(segment.text, index)
+    const result = response.data
+
+    if (result.success && result.issues && result.issues.length > 0) {
+      const issue = result.issues[0] // 取第一个问题
+      
+      if (issue.issue_type === 'segment_split_needed' && issue.fix_data?.suggested_segments) {
+        // 显示拆分建议
+        showSplitSuggestion(index, issue.fix_data.suggested_segments, issue.description)
+      } else {
+        message.info('该段落无需拆分')
+      }
+    } else {
+      message.info('该段落无需拆分')
+    }
+  } catch (error) {
+    console.error('[段落检测] 检测失败:', error)
+    message.error('检测失败: ' + (error.response?.data?.message || error.message))
+  } finally {
+    // 清除检测状态
+    detectingSegments.value.delete(index)
+  }
+}
+
+// 显示拆分建议
+const showSplitSuggestion = (originalIndex, suggestedSegments, description) => {
+  console.log('[段落检测] 收到拆分建议:', suggestedSegments)
+  
+  // 创建确认对话框
+  Modal.confirm({
+    title: '🔍 检测到混合文本',
+    content: `${description}\n\n是否要拆分为 ${suggestedSegments.length} 个段落？`,
+    okText: '拆分',
+    cancelText: '取消',
+    onOk: () => {
+      applySplitSuggestion(originalIndex, suggestedSegments)
+    }
+  })
+}
+
+// 应用拆分建议
+const applySplitSuggestion = (originalIndex, suggestedSegments) => {
+  try {
+    const originalSegment = internalSegments.value[originalIndex]
+    
+    // 创建新的段落数组
+    const newSegments = suggestedSegments.map((suggested, subIndex) => ({
+      ...originalSegment, // 继承原段落的其他属性
+      id: `segment_${Date.now()}_${subIndex}`,
+      segment_id: originalSegment.segment_id + subIndex,
+      text: suggested.text || '',
+      speaker: suggested.speaker || '旁白',
+      text_type: suggested.text_type || 'narration',
+      confidence: suggested.confidence || 0.9,
+      detection_rule: 'ai_split_detection',
+      _forceUpdate: Date.now()
+    }))
+    
+    // 替换原段落
+    internalSegments.value.splice(originalIndex, 1, ...newSegments)
+    
+    // 重新编号所有段落
+    internalSegments.value.forEach((segment, index) => {
+      segment.segment_id = index + 1
+    })
+    
+    emitChange()
+    message.success(`已拆分为 ${newSegments.length} 个段落`)
+    
+    console.log('[段落检测] 拆分应用成功:', newSegments)
+  } catch (error) {
+    console.error('[段落检测] 应用拆分失败:', error)
+    message.error('拆分失败')
+  }
 }
 
 // 说话人变化处理
