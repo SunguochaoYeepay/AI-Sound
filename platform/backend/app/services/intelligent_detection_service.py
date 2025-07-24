@@ -280,8 +280,8 @@ class IntelligentDetectionService:
                 # 3. 包含动作或场景描述
                 has_narration_content = any(word in text for word in ['只见', '此时', '突然', '然后', '他们', '抬起', '看着', '等着', '意识到', '一起', '向', '扑', '都', '血红', '眼睛', '尸体', '放脱', '点头', '摇头', '走向', '愉快', '聊着'])
                 
-                # 4. 文本足够长可能包含多种内容
-                is_potentially_mixed = len(text) > 25
+                # 4. 文本足够长可能包含多种内容（提高阈值）
+                is_potentially_mixed = len(text) > 40
                 
                 # 🔍 调试信息
                 logger.info(f"[AI增强检测] 段落{index+1}特征: 长度={len(text)}, "
@@ -289,29 +289,38 @@ class IntelligentDetectionService:
                            f"场景描述={has_narration_content}, 潜在混合={is_potentially_mixed}, "
                            f"文本='{text[:50]}...'")
                 
-                # 🎯 新的判断逻辑：降低门槛，让大模型来最终判断
+                # 🎯 严格准入逻辑：只检测明显的混合文本，大幅减少LLM调用
                 should_check = False
                 reason = ""
                 
-                # 策略1：有角色动作且文本较长
-                if has_speaker_action and len(text) > 20:
-                    should_check = True
-                    reason = "角色动作+较长文本"
+                # 🚫 快速排除：明显不需要检测的情况
+                if len(text) < 20:
+                    should_check = False
+                    reason = "文本过短"
                 
-                # 策略2：有引号且有场景描述
-                elif has_quotes and has_narration_content:
+                # 🔥 核心策略：同时包含对话标记和叙述内容的混合文本
+                elif has_quotes and has_speaker_action and len(text) > 40:
+                    # 必须同时有：引号 + 说话动作 + 足够长度
                     should_check = True
-                    reason = "引号+场景描述"
+                    reason = "引号+说话动作+较长文本"
                 
-                # 策略3：文本很长，可能包含多种内容
-                elif len(text) > 50:
+                # 🔥 明确的混合标志：包含完整的对话格式但很长
+                elif ('说道：' in text or '说：' in text) and has_narration_content and len(text) > 50:
+                    # 必须同时有：对话标记 + 叙述词汇 + 中等长度
                     should_check = True
-                    reason = "长文本"
+                    reason = "对话标记+叙述内容+中等长度"
                 
-                # 策略4：包含多个动作词汇
-                elif len([word for word in ['抬起', '看着', '走向', '聊着', '点头', '摇头'] if word in text]) >= 2:
+                # 🔥 超长文本且包含多种内容标志
+                elif len(text) > 120 and has_quotes and has_narration_content:
+                    # 必须同时有：超长 + 引号 + 叙述内容
                     should_check = True
-                    reason = "多个动作"
+                    reason = "超长文本+引号+叙述内容"
+                
+                # 🔥 复杂混合：多个动作+引号+足够长度
+                elif (len([word for word in ['抬起', '看着', '走向', '聊着', '点头', '摇头', '推开', '闯出', '扑过'] if word in text]) >= 2 
+                      and has_quotes and len(text) > 45):
+                    should_check = True
+                    reason = "多个动作+引号+长文本"
                 
                 if should_check:
                     suspicious_segments.append((index, text))
@@ -321,7 +330,7 @@ class IntelligentDetectionService:
         
         # 🔥 第二步：只对可疑段落使用大模型深度分析
         if suspicious_segments:
-            logger.info(f"[AI增强检测] 发现 {len(suspicious_segments)} 个可疑段落，启用大模型深度分析")
+            logger.info(f"[AI增强检测] 发现 {len(suspicious_segments)} 个可疑段落，启用大模型深度分析 (共{len(segments)}个段落，筛选率：{len(suspicious_segments)/len(segments)*100:.1f}%)")
             
             try:
                 from app.detectors.ollama_character_detector import OllamaCharacterDetector
@@ -331,11 +340,16 @@ class IntelligentDetectionService:
                 logger.warning(f"[AI增强检测] 大模型检测器初始化失败，跳过深度分析: {str(e)}")
             
             if mixed_text_detector:
+                import time
+                start_time = time.time()
+                processed_count = 0
+                
                 for index, text in suspicious_segments:
                     try:
                         # 使用大模型分析这个可疑段落
                         analysis_result = await mixed_text_detector._analyze_single_text(text)
                         detected_segments = analysis_result.get('segments', [])
+                        processed_count += 1
                         
                         # 如果检测出多个段落，说明这是混合文本
                         if len(detected_segments) > 1:
@@ -356,6 +370,12 @@ class IntelligentDetectionService:
                         
                     except Exception as e:
                         logger.warning(f"[AI增强检测] 段落{index+1}深度分析失败: {str(e)}")
+                
+                # 性能统计
+                end_time = time.time()
+                total_time = end_time - start_time
+                avg_time = total_time / processed_count if processed_count > 0 else 0
+                logger.info(f"[AI增强检测] 大模型分析完成，处理{processed_count}个段落，耗时{total_time:.2f}秒，平均{avg_time:.2f}秒/段落")
         
         # 原有的基础AI检测逻辑
         for index, segment in enumerate(segments):

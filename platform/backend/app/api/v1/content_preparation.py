@@ -1110,6 +1110,25 @@ async def apply_detection_fixes(
                                     logger.warning(f"引号内容拆分失败：缺少quoted_text数据")
                                     success = False
                             
+                            elif action == 'change_to_narration':
+                                # 🔥 新增：将对话段落改为旁白
+                                logger.info(f"开始将段落 {segment_index} 从对话改为旁白")
+                                current_segments[segment_index]['text_type'] = 'narration'
+                                current_segments[segment_index]['speaker'] = '旁白'
+                                current_segments[segment_index]['character'] = ''
+                                current_segments[segment_index]['voice_type'] = ''
+                                success = True
+                                logger.info(f"成功将段落改为旁白: '{current_segments[segment_index]['text'][:30]}...'")
+                            
+                            elif action == 'change_to_dialogue':
+                                # 🔥 新增：将旁白段落改为对话
+                                logger.info(f"开始将段落 {segment_index} 从旁白改为对话")
+                                current_segments[segment_index]['text_type'] = 'dialogue'
+                                current_segments[segment_index]['speaker'] = '未知角色'  # 需要进一步识别
+                                current_segments[segment_index]['voice_type'] = 'neutral'
+                                success = True
+                                logger.info(f"成功将段落改为对话: '{current_segments[segment_index]['text'][:30]}...'")    
+                            
                             else:
                                 logger.warning(f"未知的修复动作: {action}")
                                 success = False

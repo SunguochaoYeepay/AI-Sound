@@ -993,17 +993,17 @@ export const monitorAPI = {
     apiClient.get(`/monitor/performance-history?hours=${hours}`)
 }
 
-// 智能检测API
+// 智能检测API - 🔥 修复：使用长超时时间的llmAnalysisClient
 export const intelligentDetection = (chapterId, enableAiDetection = true) => {
-  return apiClient.post(`/content-preparation/detect/${chapterId}`, {
+  return llmAnalysisClient.post(`/content-preparation/detect/${chapterId}`, {
     use_ai: enableAiDetection,
     auto_fix: false
   })
 }
 
-// 应用智能检测修复
+// 应用智能检测修复 - 🔥 修复：使用长超时时间的llmAnalysisClient
 export const applyDetectionFixes = (chapterId, fixData) => {
-  return apiClient.post(`/content-preparation/detect/fix/${chapterId}`, fixData)
+  return llmAnalysisClient.post(`/content-preparation/detect/fix/${chapterId}`, fixData)
 }
 
 // 🔥 新增：单段落智能检测

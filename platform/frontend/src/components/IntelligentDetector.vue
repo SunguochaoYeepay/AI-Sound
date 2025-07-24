@@ -493,6 +493,31 @@ const fixSingleIssue = async (issue, showMessage = true) => {
         }
         break
         
+      // 🔥 新增：旁白内容被标记为对话的修复
+      case 'narration_as_dialogue':
+        if (issue.segment_index !== undefined && issue.fix_data?.action === 'change_to_narration') {
+          const segment = updatedSegments[issue.segment_index]
+          segment.text_type = 'narration'
+          segment.speaker = '旁白'
+          segment.character = null
+          segment.voice_type = null
+          fixed = true
+          console.log(`[智能检测] 已将段落 ${issue.segment_index + 1} 从对话改为旁白`)
+        }
+        break
+        
+      // 🔥 新增：对话内容被标记为旁白的修复
+      case 'dialogue_as_narration':
+        if (issue.segment_index !== undefined && issue.fix_data?.action === 'change_to_dialogue') {
+          const segment = updatedSegments[issue.segment_index]
+          segment.text_type = 'dialogue'
+          segment.speaker = '未知角色'
+          segment.voice_type = 'neutral'
+          fixed = true
+          console.log(`[智能检测] 已将段落 ${issue.segment_index + 1} 从旁白改为对话`)
+        }
+        break
+        
       // 🔥 新增：混合文本拆分处理
       case 'segment_split_needed':
         if (issue.segment_index !== undefined && issue.fix_data?.suggested_segments) {
