@@ -3,31 +3,53 @@
     <a-card :bordered="false" class="chapter-card">
       <template #title>
         <div class="chapter-header">
-          <h3>
-            📚 章节列表 <span class="chapter-count">共{{ totalChapters }}章</span>
-          </h3>
+          <div class="title-section">
+            <a-button
+              type="text"
+              size="small"
+              @click="toggleCollapse"
+              :title="collapsed ? '展开章节列表' : '收起章节列表'"
+              class="collapse-btn"
+            >
+              <template #icon>
+                <MenuUnfoldOutlined v-if="collapsed" />
+                <MenuFoldOutlined v-else />
+              </template>
+             
+            </a-button>
+            <h3 v-if="!collapsed">
+              章节列表 <span class="chapter-count">共{{ totalChapters }}章</span>
+            </h3>
+          </div>
         </div>
       </template>
 
       <template #extra>
-        <a-button @click="$emit('detectChapters')" :loading="detectingChapters" size="small">
-          🔍 重新检测
+        <a-button 
+          v-if="!collapsed"
+          @click="$emit('detectChapters')" 
+          :loading="detectingChapters" 
+          size="small"
+        >
+          🔍 重置
         </a-button>
       </template>
 
-      <!-- 搜索框 -->
-      <div class="search-section">
-        <a-input-search
-          v-model:value="searchKeyword"
-          placeholder="搜索章节标题..."
-          @search="handleSearch"
-          allowClear
-          :loading="loading"
-        />
-      </div>
+      <!-- 章节列表内容 -->
+      <div v-show="!collapsed" class="chapter-content">
+        <!-- 搜索框 -->
+        <div class="search-section">
+          <a-input-search
+            v-model:value="searchKeyword"
+            placeholder="搜索章节标题..."
+            @search="handleSearch"
+            allowClear
+            :loading="loading"
+          />
+        </div>
 
-      <!-- 使用标准 Ant Menu 组件 -->
-      <div class="chapters-container">
+        <!-- 使用标准 Ant Menu 组件 -->
+        <div class="chapters-container">
         <div v-if="loading" class="loading-state">
           <a-spin tip="加载章节中..." />
         </div>
@@ -70,18 +92,23 @@
           </a-menu-item>
         </a-menu>
 
-        <!-- 分页组件 -->
-        <div v-if="totalChapters > pageSize" class="pagination-section">
-          <a-pagination
-            v-model:current="currentPage"
-            v-model:page-size="pageSize"
-            :total="filteredChapters.length"
-            :show-size-changer="false"
-            :show-quick-jumper="true"
-            :show-total="(total, range) => `第 ${range[0]}-${range[1]} 条，共 ${total} 条`"
-            size="small"
-            @change="handlePageChange"
-          />
+          <!-- 加载更多按钮 -->
+          <div v-if="hasMore" class="load-more-section">
+            <a-button
+              type="default"
+              size="small"
+              @click="loadMore"
+              :loading="loading"
+              block
+            >
+              点击加载更多 (还有 {{ filteredChapters.length - displayedCount }} 章)
+            </a-button>
+          </div>
+          
+          <!-- 显示统计信息 -->
+          <div v-if="filteredChapters.length > 0" class="chapter-stats">
+            已显示 {{ Math.min(displayedCount, filteredChapters.length) }} / {{ filteredChapters.length }} 章
+          </div>
         </div>
       </div>
     </a-card>
@@ -90,6 +117,7 @@
 
 <script setup>
   import { ref, computed, watch, onMounted } from 'vue'
+  import { MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons-vue'
   import { booksAPI } from '@/api'
   import { message } from 'ant-design-vue'
 
@@ -120,12 +148,13 @@
     'selectChapter',
     'prepareChapter',
     'detectChapters',
-    'update:total-chapters'
+    'update:total-chapters',
+    'toggle-collapse'
   ])
 
   // 分页配置
-  const pageSize = ref(50) // 每页显示50个章节
-  const currentPage = ref(1)
+  const pageSize = ref(50) // 每次加载50个章节
+  const displayedCount = ref(50) // 当前显示的章节数量
 
   // 响应式数据
   const loading = ref(false)
@@ -133,6 +162,7 @@
   const chapters = ref([])
   const totalChapters = ref(0)
   const selectedKeys = ref([])
+  const collapsed = ref(false) // 收起状态
 
   // 计算属性
   const filteredChapters = computed(() => {
@@ -147,9 +177,12 @@
   })
 
   const paginatedChapters = computed(() => {
-    const start = (currentPage.value - 1) * pageSize.value
-    const end = start + pageSize.value
-    return filteredChapters.value.slice(start, end)
+    return filteredChapters.value.slice(0, displayedCount.value)
+  })
+
+  // 是否还有更多章节可以加载
+  const hasMore = computed(() => {
+    return displayedCount.value < filteredChapters.value.length
   })
 
   // 方法
@@ -187,11 +220,14 @@
   }
 
   const handleSearch = () => {
-    currentPage.value = 1 // 搜索时重置到第一页
+    displayedCount.value = pageSize.value // 搜索时重置显示数量
   }
 
-  const handlePageChange = (page) => {
-    currentPage.value = page
+  const loadMore = () => {
+    displayedCount.value = Math.min(
+      displayedCount.value + pageSize.value,
+      filteredChapters.value.length
+    )
   }
 
   const handleMenuSelect = ({ key }) => {
@@ -200,6 +236,11 @@
       selectedKeys.value = [key]
       emit('selectChapter', chapter)
     }
+  }
+
+  const toggleCollapse = () => {
+    collapsed.value = !collapsed.value
+    emit('toggle-collapse', collapsed.value)
   }
 
   const getPreparationStatusColor = (status) => {
@@ -246,7 +287,7 @@
   watch(
     () => searchKeyword.value,
     () => {
-      currentPage.value = 1 // 搜索变化时重置页码
+      displayedCount.value = pageSize.value // 搜索变化时重置显示数量
     }
   )
 </script>
@@ -255,6 +296,26 @@
   .chapter-list-simple {
     height: 100%;
     overflow: hidden;
+  }
+
+  .chapter-header {
+    width: 100%;
+  }
+
+  .title-section {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .collapse-btn {
+    border: none;
+    box-shadow: none;
+    padding: 4px 8px;
+  }
+
+  .chapter-content {
+    transition: all 0.3s ease;
   }
 
   .chapter-card {
@@ -360,11 +421,19 @@
     min-width: 0;
   }
 
-  .pagination-section {
+  .load-more-section {
     margin-top: 16px;
-    text-align: center;
     padding: 16px;
     border-top: 1px solid var(--ant-color-border);
+    background: var(--ant-color-bg-container);
+  }
+
+  .chapter-stats {
+    margin-top: 8px;
+    padding: 8px 16px;
+    text-align: center;
+    font-size: 12px;
+    color: var(--ant-color-text-secondary);
     background: var(--ant-color-bg-container);
   }
 </style>

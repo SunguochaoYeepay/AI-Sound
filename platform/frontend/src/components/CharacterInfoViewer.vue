@@ -341,7 +341,7 @@ const getCharacterStatusText = (character) => {
 .character-rank {
   font-size: 12px;
   color: var(--ant-text-color-secondary);
-  background: var(--ant-background-color-base);
+  background: var(--ant-color-bg-container);
   padding: 2px 6px;
   border-radius: 4px;
 }
@@ -355,7 +355,7 @@ const getCharacterStatusText = (character) => {
 .character-stats-detail {
   margin: 12px 0;
   padding: 12px;
-  background: var(--ant-background-color-base);
+  background: var(--ant-color-bg-container);
   border-radius: 6px;
 }
 

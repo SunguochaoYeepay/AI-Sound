@@ -577,7 +577,7 @@ defineExpose({
 .issues-detail {
   margin-top: 12px;
   padding: 12px;
-  background: var(--ant-background-color-base);
+  background: var(--ant-color-bg-container);
   border-radius: 6px;
 }
 
@@ -600,7 +600,7 @@ defineExpose({
 
 .fixing-progress {
   padding: 12px;
-  background: var(--ant-background-color-base);
+  background: var(--ant-color-bg-container);
   border-radius: 6px;
   margin-top: 12px;
 }

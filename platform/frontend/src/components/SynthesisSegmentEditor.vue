@@ -2,13 +2,54 @@
   <div class="synthesis-segment-editor">
     <!-- 头部工具栏 -->
     <div class="editor-toolbar">
-
-      
+      <!-- 左侧：筛选区域 -->
       <div class="toolbar-left">
+        <a-space wrap>
+          <span class="filter-label">🎭 角色筛选：</span>
+          <a-select
+            v-model:value="filterCharacter"
+            placeholder="选择角色"
+            style="width: 150px"
+            allowClear
+            size="small"
+            show-search
+            :filter-option="filterCharacterOption"
+          >
+            <a-select-option v-for="char in characterStats" :key="char.name" :value="char.name">
+              <div class="character-filter-option">
+                <span>{{ char.name }}</span>
+                <a-tag size="small" :color="getCharacterColor(char.name)">{{ char.count }}</a-tag>
+              </div>
+            </a-select-option>
+          </a-select>
+          
+          <span class="filter-label">🔍 内容搜索：</span>
+          <a-input
+            v-model:value="searchContent"
+            placeholder="搜索说话内容..."
+            style="width: 200px"
+            allowClear
+            size="small"
+            @change="handleSearchChange"
+          >
+            <template #prefix>
+              <SearchOutlined />
+            </template>
+          </a-input>
+        </a-space>
+      </div>
+      
+      <!-- 右侧：片段统计和操作按钮 -->
+      <div class="toolbar-right">
         <a-space>
-           <a-tag color="blue" v-if="segments.length > 0">
-          共 {{ segments.length }} 个片段
-        </a-tag>
+          <a-tag color="blue" v-if="segments.length > 0">
+            <span v-if="filteredSegments.length === segments.length">
+              共 {{ segments.length }} 个片段
+            </span>
+            <span v-else>
+              显示 {{ filteredSegments.length }} / {{ segments.length }} 个片段
+            </span>
+          </a-tag>
           <a-button size="small" @click="addSegment">
             <template #icon><PlusOutlined /></template>
             添加片段
@@ -17,17 +58,6 @@
             <template #icon><ReloadOutlined /></template>
             刷新角色
           </a-button>
-          <a-select
-            v-model:value="filterCharacter"
-            placeholder="筛选角色"
-            style="width: 120px"
-            allowClear
-            size="small"
-          >
-            <a-select-option v-for="char in availableCharacters" :key="char.name" :value="char.name">
-              {{ char.name }}
-            </a-select-option>
-          </a-select>
         </a-space>
       </div>
     </div>
@@ -42,18 +72,18 @@
 
       <div v-else class="segments-list">
         <div
-          v-for="(segment, index) in filteredSegments"
+          v-for="(segment, filteredIndex) in filteredSegments"
           :key="segment.id"
           class="segment-item"
           :class="{
-            'segment-highlighted': filterCharacter && segment.speaker === filterCharacter,
-            'segment-dimmed': filterCharacter && segment.speaker !== filterCharacter
+            'segment-highlighted': (filterCharacter && segment.speaker === filterCharacter) || (searchContent && segment.text && segment.text.toLowerCase().includes(searchContent.toLowerCase())),
+            'segment-dimmed': false
           }"
         >
           <!-- 片段头部 -->
           <div class="segment-header">
             <div class="segment-info">
-              <span class="segment-number">#{{ index + 1 }}</span>
+              <span class="segment-number">#{{ getOriginalIndex(segment) + 1 }}</span>
               
               <!-- 说话人选择 -->
               <a-select
@@ -97,30 +127,30 @@
             <!-- 操作按钮 -->
             <div class="segment-actions">
               <a-button-group size="small">
-                <a-button @click="moveSegmentUp(index)" :disabled="index === 0" title="上移">
+                <a-button @click="moveSegmentUp(getOriginalIndex(segment))" :disabled="getOriginalIndex(segment) === 0" title="上移">
                   <template #icon><ArrowUpOutlined /></template>
                 </a-button>
                 <a-button 
-                  @click="moveSegmentDown(index)" 
-                  :disabled="index === segments.length - 1" 
+                  @click="moveSegmentDown(getOriginalIndex(segment))" 
+                  :disabled="getOriginalIndex(segment) === segments.length - 1" 
                   title="下移"
                 >
                   <template #icon><ArrowDownOutlined /></template>
                 </a-button>
-                <a-button @click="duplicateSegment(index)" title="复制">
+                <a-button @click="duplicateSegment(getOriginalIndex(segment))" title="复制">
                   <template #icon><CopyOutlined /></template>
                 </a-button>
                 <a-button 
-                  @click="detectSegmentSplit(index)" 
+                  @click="detectSegmentSplit(getOriginalIndex(segment))" 
                   title="智能检测"
-                  :loading="detectingSegments.has(index)"
+                  :loading="detectingSegments.has(getOriginalIndex(segment))"
                   type="primary"
                   ghost
                 >
                   <template #icon><SearchOutlined /></template>
                 </a-button>
                 <a-button 
-                  @click="deleteSegment(index)" 
+                  @click="deleteSegment(getOriginalIndex(segment))" 
                   danger 
                   :disabled="segments.length <= 1"
                   title="删除"
@@ -195,6 +225,7 @@ const emit = defineEmits([
 
 // 响应式数据
 const filterCharacter = ref(null)
+const searchContent = ref('')
 const loadingCharacters = ref(false)
 const detectingSegments = ref(new Set()) // 正在检测的段落索引集合
 
@@ -208,18 +239,60 @@ const availableCharacters = computed(() => {
     { name: '未知角色', voice_type: 'neutral', is_voice_configured: false }
   ]
   
-  return [...baseCharacters, ...props.characters]
+  // 去重处理：过滤掉props.characters中与基础角色重名的角色
+  const uniqueCharacters = props.characters.filter(char => 
+    !baseCharacters.some(base => base.name === char.name)
+  )
+  
+  return [...baseCharacters, ...uniqueCharacters]
+})
+
+// 角色统计
+const characterStats = computed(() => {
+  const stats = {}
+  internalSegments.value.forEach(segment => {
+    const speaker = segment.speaker || '未分配'
+    stats[speaker] = (stats[speaker] || 0) + 1
+  })
+  
+  return Object.entries(stats)
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count)
 })
 
 // 过滤后的片段
 const filteredSegments = computed(() => {
-  if (!filterCharacter.value) {
-    return internalSegments.value
+  let filtered = internalSegments.value
+  
+  // 按角色筛选
+  if (filterCharacter.value) {
+    filtered = filtered.filter(segment => 
+      segment.speaker === filterCharacter.value
+    )
   }
-  return internalSegments.value.filter(segment => 
-    segment.speaker === filterCharacter.value
-  )
+  
+  // 按内容搜索
+  if (searchContent.value && searchContent.value.trim()) {
+    const searchTerm = searchContent.value.trim().toLowerCase()
+    filtered = filtered.filter(segment => 
+      segment.text && segment.text.toLowerCase().includes(searchTerm)
+    )
+  }
+  
+  return filtered
 })
+
+// 获取指定角色的片段数量
+const getCharacterCount = (characterName) => {
+  return internalSegments.value.filter(segment => 
+    segment.speaker === characterName
+  ).length
+}
+
+// 获取段落在原始数组中的索引
+const getOriginalIndex = (segment) => {
+  return internalSegments.value.findIndex(s => s.id === segment.id)
+}
 
 // 初始化数据
 const initSegments = () => {
@@ -438,6 +511,12 @@ const handleTextChange = () => {
   emitChange()
 }
 
+// 搜索内容变化处理
+const handleSearchChange = () => {
+  // 搜索内容变化时，filteredSegments会自动重新计算
+  console.log('[SynthesisSegmentEditor] 搜索内容变化:', searchContent.value)
+}
+
 // 刷新角色
 const refreshCharacters = async () => {
   loadingCharacters.value = true
@@ -454,6 +533,11 @@ const refreshCharacters = async () => {
 // 角色搜索过滤
 const filterSpeakerOption = (input, option) => {
   return option.children[0].children.toLowerCase().includes(input.toLowerCase())
+}
+
+// 角色筛选搜索过滤
+const filterCharacterOption = (input, option) => {
+  return option.children[0].children[0].children.toLowerCase().includes(input.toLowerCase())
 }
 
 // 获取角色颜色
@@ -483,13 +567,16 @@ onMounted(() => {
   align-items: center;
   padding: 16px;
   border-bottom: 1px solid var(--ant-border-color-split);
-  background: var(--ant-background-color-base);
+  background: var(--ant-color-bg-container);
+  flex-wrap: wrap;
+  gap: 16px;
 }
 
 .toolbar-left {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-wrap: wrap;
 }
 
 .toolbar-left h4 {
@@ -497,10 +584,30 @@ onMounted(() => {
   color: var(--ant-heading-color);
 }
 
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.filter-label {
+  font-weight: 500;
+  color: var(--ant-text-color);
+  white-space: nowrap;
+}
+
+.character-filter-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 8px;
+}
+
 .segments-container {
   flex: 1;
   overflow-y: auto;
-  padding: 16px;
+  padding: 16px 0;
 }
 
 .empty-state {
@@ -536,6 +643,24 @@ onMounted(() => {
 
 .segment-dimmed {
   opacity: 0.6;
+}
+
+/* 搜索高亮样式 */
+.segment-item.segment-highlighted .segment-content {
+  position: relative;
+}
+
+.segment-item.segment-highlighted .segment-content::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, transparent, var(--ant-primary-color-bg), transparent);
+  opacity: 0.1;
+  pointer-events: none;
+  border-radius: 4px;
 }
 
 .segment-header {
@@ -598,6 +723,27 @@ onMounted(() => {
     flex-direction: column;
     gap: 12px;
     align-items: flex-start;
+  }
+  
+  .toolbar-left,
+  .toolbar-right {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+  
+  .filter-label {
+    width: auto;
+    margin-bottom: 4px;
+  }
+  
+  .toolbar-left .ant-input {
+    width: 100% !important;
+    max-width: 300px;
+  }
+  
+  .toolbar-left .ant-select {
+    width: 100% !important;
+    max-width: 200px;
   }
   
   .segment-header {

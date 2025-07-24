@@ -17,7 +17,7 @@
 
         <div class="header-actions">
           <a-space>
-            <a-button @click="$emit('goBack')"> ← 返回列表 </a-button>
+           
             <a-button type="primary" @click="$emit('editBook')"> ✏️ 编辑 </a-button>
             <!-- <a-button @click="$emit('createProject')" :disabled="!book.content">
               🎯 创建项目
@@ -197,7 +197,7 @@
   .stat-item {
     text-align: center;
     padding: 12px;
-    background: var(--ant-background-color-base);
+    background: var(--ant-color-bg-container);
     border-radius: 8px;
   }
 

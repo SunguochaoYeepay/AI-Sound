@@ -11,7 +11,7 @@
 
       <template #extra>
         <a-button @click="$emit('detectChapters')" :loading="detectingChapters" size="small">
-          🔍 重新检测
+          🔍 重置
         </a-button>
       </template>
 

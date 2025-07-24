@@ -24,22 +24,25 @@
       <div class="main-content">
         <a-row :gutter="24">
           <!-- 左侧：章节列表 -->
-          <a-col :span="4">
-            <ChapterList
-              :book-id="book.id"
-              :selected-chapter-id="selectedChapterId"
-              :chapter-preparation-status="chapterPreparationStatus"
-              :preparing-chapters="preparingChapters"
-              :detecting-chapters="detectingChapters"
-              @select-chapter="selectChapter"
-              @prepare-chapter="prepareChapterForSynthesis"
-              @detect-chapters="detectChapters"
-              @update:total-chapters="updateTotalChapters"
-            />
+          <a-col :span="chapterListCollapsed ? 1 : 4" class="chapter-list-col">
+            <div class="chapter-list-container">
+              <ChapterList
+                :book-id="book.id"
+                :selected-chapter-id="selectedChapterId"
+                :chapter-preparation-status="chapterPreparationStatus"
+                :preparing-chapters="preparingChapters"
+                :detecting-chapters="detectingChapters"
+                @select-chapter="selectChapter"
+                @prepare-chapter="prepareChapterForSynthesis"
+                @detect-chapters="detectChapters"
+                @update:total-chapters="updateTotalChapters"
+                @toggle-collapse="handleChapterListToggle"
+              />
+            </div>
           </a-col>
 
           <!-- 右侧：章节详情 -->
-          <a-col :span="20">
+          <a-col :span="chapterListCollapsed ? 23 : 20">
             <ChapterDetail
               :chapter="selectedChapter"
               :chapter-preparation-status="selectedChapterPreparationStatus"
@@ -85,6 +88,7 @@
   const preparingChapters = ref(new Set())
   const chapterPreparationStatus = ref({})
   // characterManagementVisible已移除，改为直接跳转
+  const chapterListCollapsed = ref(false) // 章节列表收起状态
 
   const book = ref(null)
   const chapters = ref([])
@@ -293,6 +297,11 @@
     }
   }
 
+  // 处理章节列表收起/展开
+  const handleChapterListToggle = (collapsed) => {
+    chapterListCollapsed.value = collapsed
+  }
+
   // 页面操作
   const goBack = () => {
     router.push('/books')
@@ -417,6 +426,19 @@
     background-color: var(--ant-color-bg-container);
   }
 
+  /* 章节列表收起展开样式 */
+  .chapter-list-col {
+    transition: all 0.3s ease;
+  }
+
+  .chapter-list-container {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+
+
+
   /* 响应式设计 */
   @media (max-width: 768px) {
     .detail-content {
@@ -430,6 +452,10 @@
     .main-content .ant-col {
       height: auto;
       margin-bottom: 16px;
+    }
+
+    .collapse-toggle {
+      justify-content: center;
     }
   }
 </style>

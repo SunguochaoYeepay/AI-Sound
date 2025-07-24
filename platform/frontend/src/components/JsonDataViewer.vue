@@ -1,27 +1,29 @@
 <template>
   <div class="json-view">
     <div class="json-header">
-      <a-space>
-        <a-button
-          size="small"
-          @click="toggleJsonEditMode"
-          :type="jsonEditMode ? 'primary' : 'default'"
-        >
-          {{ jsonEditMode ? '📖 预览模式' : '✏️ 编辑模式' }}
-        </a-button>
-        <a-button size="small" @click="copyJson"> 📋 复制JSON </a-button>
-        <a-button size="small" @click="formatJson"> 🎨 格式化 </a-button>
-        <a-button size="small" @click="downloadJson"> 💾 下载JSON </a-button>
-        <a-button
-          v-if="jsonEditMode"
-          size="small"
-          @click="saveJsonChanges"
-          type="primary"
-          :disabled="!hasJsonChanges"
-        >
-          💾 保存JSON
-        </a-button>
-      </a-space>
+      <div class="json-header-content">
+        <a-space>
+          <a-button
+            size="small"
+            @click="toggleJsonEditMode"
+            :type="jsonEditMode ? 'primary' : 'default'"
+          >
+            {{ jsonEditMode ? '📖 预览模式' : '✏️ 编辑模式' }}
+          </a-button>
+          <a-button size="small" @click="copyJson"> 📋 复制JSON </a-button>
+          <a-button size="small" @click="formatJson"> 🎨 格式化 </a-button>
+          <a-button size="small" @click="downloadJson"> 💾 下载JSON </a-button>
+          <a-button
+            v-if="jsonEditMode"
+            size="small"
+            @click="saveJsonChanges"
+            type="primary"
+            :disabled="!hasJsonChanges"
+          >
+            💾 保存JSON
+          </a-button>
+        </a-space>
+      </div>
     </div>
 
     <div class="json-editor">
@@ -185,6 +187,11 @@ const saveJsonChanges = () => {
   border-bottom: 1px solid var(--ant-border-color-split);
 }
 
+.json-header-content {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .json-editor {
   flex: 1;
   overflow: hidden;
@@ -194,7 +201,7 @@ const saveJsonChanges = () => {
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
   font-size: 12px;
   line-height: 1.5;
-  background-color: var(--ant-background-color-base);
+  background-color: var(--ant-color-bg-container);
   border: 1px solid var(--ant-border-color-base);
   border-radius: 4px;
   resize: none;
