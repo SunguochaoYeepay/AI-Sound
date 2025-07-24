@@ -156,7 +156,7 @@ class AITTSOptimizer:
                 api_url = f"{ollama_url}/api/generate"
                 
                 payload = {
-                    "model": "qwen3:30b",
+                    "model": "qwen2.5:14b",
                     "prompt": prompt,
                     "stream": False,
                     "options": {

@@ -355,7 +355,9 @@
     try {
       const response = await api.getProjects()
       if (response.data.success) {
-        projects.value = Array.isArray(response.data.data) ? response.data.data : []
+        // 处理API返回的数据结构：{success: true, data: {projects: [...]}}
+        const projectsData = response.data.data.projects || response.data.data
+        projects.value = Array.isArray(projectsData) ? projectsData : []
       } else {
         projects.value = []
       }

@@ -371,57 +371,33 @@ class ProgrammaticCharacterDetector:
     def detect_mixed_text(self, text: str) -> Optional[Dict]:
         """检测混合文本（叙述+对话）- 专门处理需要拆分的情况"""
         
-        # 🔥 新增：专门检测"角色名+动作+说话动词+冒号+对话内容"格式
-        # 这种格式需要拆分为旁白部分和对话部分
+        # 🔥 修复：专门检测"角色名+动作+说话动词+冒号+对话内容"格式
+        # 匹配模式：角色名 + 可能的修饰词 + 说话动词 + 冒号 + 对话内容
         split_pattern = r'^([一-龯]{2,6}[^，。！？]*?[说道讲叫喊问答回复表示][:：])(.+)$'
         match = re.search(split_pattern, text.strip())
         
         if match:
-            action_part = match.group(1).strip()  # "太监假尖着嗓子喊道："
-            dialogue_part = match.group(2).strip()  # "陛下！楚军已逼近函谷关！"
+            action_part = match.group(1).strip()  # "苏婉咬着牙说道："
+            dialogue_part = match.group(2).strip()  # "当时我一看就急了..."
             
-            # 从动作部分提取角色名
+            # 提取角色名
             speaker_match = re.search(r'^([一-龯]{2,6})', action_part)
             if speaker_match:
-                raw_speaker = speaker_match.group(1)
-                # 🔥 修复：提取纯粹的角色名，去掉可能的修饰词
-                speaker_name = self._extract_character_name_from_action(raw_speaker) or raw_speaker[:2]
+                speaker_name = speaker_match.group(1)
                 
-                # 验证是否为有效角色名
-                if self.is_valid_character_name(speaker_name):
-                    # 🎯 关键：标记为需要拆分的混合文本
+                # 🔥 重要：如果对话部分长度足够，且不是纯粹的旁白，则认为是混合文本
+                if len(dialogue_part) > 5 and not self._is_pure_narration(dialogue_part):
+                    logger.debug(f"[混合文本检测] 识别混合文本: '{action_part}' + '{dialogue_part[:30]}...'")
+                    
                     return {
                         'speaker': speaker_name,
-                        'confidence': 0.95,
-                        'rule': 'mixed_separation_split_needed',
-                        'text_type': 'mixed',  # 标记为混合类型
+                        'confidence': 0.9,
+                        'rule': 'mixed_text',
+                        'text_type': 'mixed',
                         'action_part': action_part,
                         'dialogue_part': dialogue_part
                     }
         
-        # 原有的引号模式检测逻辑
-        action_patterns = [
-            # 模式1: 角色名+修饰词+说话动词+冒号+引号
-            r'([一-龯]{2,6})[^，。！？]*?[说道讲叫喊问答回复表示][:：]\s*[""''「」『』]',
-            # 模式2: 角色名+自言自语+冒号+引号 (特殊处理)
-            r'([一-龯]{2,6})[^，。！？]*?自言自语道[:：]\s*[""''「」『』]'
-        ]
-        
-        for pattern in action_patterns:
-            match = re.search(pattern, text)
-            if match:
-                potential_speaker = match.group(1)
-                
-                # 从潜在说话者中提取真正的角色名
-                speaker_name = self._extract_character_name_from_action(potential_speaker)
-                
-                if speaker_name and self.is_valid_character_name(speaker_name):
-                    return {
-                        'speaker': speaker_name,
-                        'confidence': 0.95,
-                        'rule': 'mixed_separation',
-                        'text_type': 'dialogue'
-                    }
         return None
     
     def detect_dialogue_features(self, text: str) -> Optional[Dict]:
@@ -544,7 +520,26 @@ class ProgrammaticCharacterDetector:
             # 没有明确对话特征，可能是误判
             return None  # 返回None表示不确定是对话
     
-    def _extract_character_name_from_action(self, action_text: str) -> Optional[str]:
+    def _is_pure_narration(self, text: str) -> bool:
+        """判断文本是否是纯粹的旁白描述"""
+        
+        # 旁白特征词汇
+        narration_indicators = [
+            '只见', '此时', '这时', '忽然', '突然', '只听', '只闻', 
+            '他们', '小华', '抬起', '看着', '意识到', '一起', '向', '扑'
+        ]
+        
+        # 如果包含明显的旁白特征词汇，认为是旁白
+        narration_count = sum(1 for word in narration_indicators if word in text)
+        
+        # 对话特征词汇（第一人称表述）
+        dialogue_indicators = ['我', '你', '他', '她', '当时我', '我一看', '我刚']
+        dialogue_count = sum(1 for word in dialogue_indicators if word in text)
+        
+        # 如果旁白特征明显多于对话特征，认为是纯旁白
+        return narration_count > dialogue_count and narration_count >= 2
+    
+    def _extract_character_name_from_action(self, raw_text: str) -> Optional[str]:
         """从说话动作文本中提取角色名"""
         # 常见的角色名模式
         character_patterns = [
@@ -562,7 +557,7 @@ class ProgrammaticCharacterDetector:
         ]
         
         for pattern in character_patterns:
-            match = re.search(pattern, action_text)
+            match = re.search(pattern, raw_text)
             if match:
                 candidate = match.group(1)
                 # 验证候选角色名

@@ -64,6 +64,7 @@ class OllamaCharacterDetector:
         if self.base_model_name != "auto":
             # 如果用户手动指定模型，直接使用
             selected_model = self.base_model_name
+            self.logger.info(f"🎯 使用指定模型: {selected_model}")
         else:
             text_length = len(text)
             strategy = self.model_selection_strategy
@@ -399,6 +400,10 @@ class OllamaCharacterDetector:
     
     async def _analyze_single_text(self, text: str) -> Dict:
         """单次分析文本（不分块）"""
+        
+        # 🔥 修复：在分析前选择最优模型
+        self._select_optimal_model(text)
+        
         max_retries = 3
         response = None
         

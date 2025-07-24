@@ -276,13 +276,23 @@ class IntelligentDetectionService:
         issues = []
         
         try:
-            # 初始化角色检测器
-            from app.detectors.character_detectors import ProgrammaticCharacterDetector
-            character_detector = ProgrammaticCharacterDetector()
-            
-            # 检测是否需要拆分
-            analysis_result = character_detector.analyze_text_segments(segment_text)
-            detected_segments = analysis_result.get('segments', [])
+            # 🔥 修复：优先使用大模型进行单段落检测
+            try:
+                from app.detectors.ollama_character_detector import OllamaCharacterDetector
+                character_detector = OllamaCharacterDetector()
+                logger.info(f"[单段落检测] 使用Ollama AI进行智能检测")
+                
+                # 使用大模型分析单段落
+                analysis_result = await character_detector._analyze_single_text(segment_text)
+                detected_segments = analysis_result.get('segments', [])
+                
+            except Exception as e:
+                logger.warning(f"[单段落检测] 大模型检测失败，回退到编程规则: {str(e)}")
+                # 回退到编程规则检测器
+                from app.detectors.character_detectors import ProgrammaticCharacterDetector
+                character_detector = ProgrammaticCharacterDetector()
+                analysis_result = character_detector.analyze_text_segments(segment_text)
+                detected_segments = analysis_result.get('segments', [])
             
             # 如果检测出多个段落，说明需要拆分
             if len(detected_segments) > 1:
@@ -300,7 +310,7 @@ class IntelligentDetectionService:
                     }
                 ))
             
-            logger.info(f"[单段落检测] 检测段落长度: {len(segment_text)}, 建议拆分数: {len(detected_segments)}")
+            logger.info(f"[单段落检测] 检测段落长度: {len(segment_text)}, 检测到段落数: {len(detected_segments)}, {'需要拆分' if len(detected_segments) > 1 else '无需拆分'}")
             
         except Exception as e:
             logger.error(f"[单段落检测] 检测失败: {str(e)}")
