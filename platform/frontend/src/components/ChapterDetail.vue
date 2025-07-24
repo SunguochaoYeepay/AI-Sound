@@ -47,7 +47,8 @@
           :loading="loadingAnalysis"
           :preparing-chapter="preparingChapter"
           :preparation-status="chapterPreparationStatus"
-          @refresh="handlePrepareChapter"
+          @refresh="handleRefreshAnalysisData"
+          @prepare-chapter="handlePrepareChapter"
           @save="handleAnalysisSave"
           @reload-chapter="handleReloadChapter"
         />
@@ -142,6 +143,12 @@
   // 处理智能准备
   const handlePrepareChapter = () => {
     emit('prepare')
+  }
+
+  // 🔥 新增：处理分析数据刷新（不触发智能准备）
+  const handleRefreshAnalysisData = async () => {
+    console.log('[ChapterDetail] 收到刷新分析数据请求')
+    await loadAnalysisData()
   }
 
   // 处理内容保存

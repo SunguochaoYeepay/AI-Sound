@@ -125,12 +125,28 @@ class IntelligentDetectionService:
             
             issues = []
             
+            # 🔍 调试：显示段落数据详情
+            logger.info(f"[智能检测] 准备检测章节 {chapter_id}，段落数: {len(segments)}")
+            if segments:
+                # 显示前3个段落的示例数据
+                for i, segment in enumerate(segments[:3]):
+                    logger.info(f"[智能检测] 段落{i+1}示例: text='{segment.get('text', '')[:50]}...', "
+                               f"speaker='{segment.get('speaker', '')}', "
+                               f"text_type='{segment.get('text_type', '')}'")
+            
             # 基础检测
-            issues.extend(self._detect_basic_issues(segments))
+            basic_issues = self._detect_basic_issues(segments)
+            issues.extend(basic_issues)
+            logger.info(f"[智能检测] 基础检测完成，发现 {len(basic_issues)} 个问题")
             
             # AI增强检测（如果启用）
             if enable_ai_detection:
-                issues.extend(await self._detect_ai_issues(segments))
+                logger.info(f"[智能检测] 开始AI增强检测...")
+                ai_issues = await self._detect_ai_issues(segments)
+                issues.extend(ai_issues)
+                logger.info(f"[智能检测] AI增强检测完成，发现 {len(ai_issues)} 个问题")
+            else:
+                logger.info(f"[智能检测] AI增强检测已禁用")
             
             # 统计结果
             issues_by_severity = {'low': 0, 'medium': 0, 'high': 0}
@@ -141,7 +157,7 @@ class IntelligentDetectionService:
                 if issue.fixable:
                     fixable_issues += 1
             
-            logger.info(f"[智能检测] 章节 {chapter_id} 检测完成，发现 {len(issues)} 个问题")
+            logger.info(f"[智能检测] 章节 {chapter_id} 检测完成，总计发现 {len(issues)} 个问题")
             
             return DetectionResult(
                 chapter_id=chapter_id,
@@ -228,47 +244,162 @@ class IntelligentDetectionService:
         """AI增强检测"""
         issues = []
         
+        # 🔥 优化：使用编程规则进行初步筛选，只对可疑段落使用大模型
+        logger.info(f"[AI增强检测] 开始智能检测 {len(segments)} 个段落")
+        
+        # 初始化编程规则检测器（用于快速预筛选）
+        try:
+            from app.detectors.character_detectors import ProgrammaticCharacterDetector
+            rule_detector = ProgrammaticCharacterDetector()
+            logger.info(f"[AI增强检测] 编程规则检测器初始化成功")
+        except Exception as e:
+            logger.warning(f"[AI增强检测] 编程规则检测器初始化失败: {str(e)}")
+            rule_detector = None
+        
+        # 大模型检测器（仅在需要时初始化）
+        mixed_text_detector = None
+        suspicious_segments = []
+        
         for index, segment in enumerate(segments):
             text = segment.get('text', '').strip()
             text_type = segment.get('text_type', 'dialogue')
             
             if not text:
                 continue
+            
+            # �� 第一步：使用编程规则快速筛选可疑段落  
+            if rule_detector and len(text) > 15:  # 只检测足够长的文本
+                # 🔥 降低门槛：只要有一定特征就交给大模型判断
+                
+                # 1. 有角色动作描述（扩展匹配范围）
+                has_speaker_action = re.search(r'([一-龯]{2,6})[^，。！？]*?[说道讲叫喊问答回复表示抬举点头摇头看着][:：]', text)
+                
+                # 2. 包含引号对话
+                has_quotes = '"' in text or '"' in text or '"' in text
+                
+                # 3. 包含动作或场景描述
+                has_narration_content = any(word in text for word in ['只见', '此时', '突然', '然后', '他们', '抬起', '看着', '等着', '意识到', '一起', '向', '扑', '都', '血红', '眼睛', '尸体', '放脱', '点头', '摇头', '走向', '愉快', '聊着'])
+                
+                # 4. 文本足够长可能包含多种内容
+                is_potentially_mixed = len(text) > 25
+                
+                # 🔍 调试信息
+                logger.info(f"[AI增强检测] 段落{index+1}特征: 长度={len(text)}, "
+                           f"角色动作={bool(has_speaker_action)}, 引号={has_quotes}, "
+                           f"场景描述={has_narration_content}, 潜在混合={is_potentially_mixed}, "
+                           f"文本='{text[:50]}...'")
+                
+                # 🎯 新的判断逻辑：降低门槛，让大模型来最终判断
+                should_check = False
+                reason = ""
+                
+                # 策略1：有角色动作且文本较长
+                if has_speaker_action and len(text) > 20:
+                    should_check = True
+                    reason = "角色动作+较长文本"
+                
+                # 策略2：有引号且有场景描述
+                elif has_quotes and has_narration_content:
+                    should_check = True
+                    reason = "引号+场景描述"
+                
+                # 策略3：文本很长，可能包含多种内容
+                elif len(text) > 50:
+                    should_check = True
+                    reason = "长文本"
+                
+                # 策略4：包含多个动作词汇
+                elif len([word for word in ['抬起', '看着', '走向', '聊着', '点头', '摇头'] if word in text]) >= 2:
+                    should_check = True
+                    reason = "多个动作"
+                
+                if should_check:
+                    suspicious_segments.append((index, text))
+                    logger.info(f"[AI增强检测] ✅ 段落{index+1}标记为可疑 ({reason}): '{text[:50]}...'")
+                else:
+                    logger.info(f"[AI增强检测] ❌ 段落{index+1}未标记为可疑: 不符合任何检测策略")
         
-        # 检测引号内容但标记为旁白
-        if text_type == 'narration' and ('"' in text or '"' in text or '"' in text):
-            quote_content = re.search(r'["""]([^"""]*?)["""]', text)
-            if quote_content and len(quote_content.group(1).strip()) > 5:
-                issues.append(DetectionIssue(
-                    issue_type='quoted_content_as_narration',
-                    severity='medium',
-                    segment_index=index,
-                    description='包含引号对话内容但被标记为旁白',
-                    suggestion='建议将引号内容分离为独立的对话片段',
-                    context=quote_content.group(1)[:50],
-                    fixable=True,
-                    fix_data={
-                        'action': 'split_quoted_content',
-                        'quoted_text': quote_content.group(1)
-                    }
-                ))
+        # 🔥 第二步：只对可疑段落使用大模型深度分析
+        if suspicious_segments:
+            logger.info(f"[AI增强检测] 发现 {len(suspicious_segments)} 个可疑段落，启用大模型深度分析")
+            
+            try:
+                from app.detectors.ollama_character_detector import OllamaCharacterDetector
+                mixed_text_detector = OllamaCharacterDetector()
+                logger.info(f"[AI增强检测] 大模型检测器初始化成功")
+            except Exception as e:
+                logger.warning(f"[AI增强检测] 大模型检测器初始化失败，跳过深度分析: {str(e)}")
+            
+            if mixed_text_detector:
+                for index, text in suspicious_segments:
+                    try:
+                        # 使用大模型分析这个可疑段落
+                        analysis_result = await mixed_text_detector._analyze_single_text(text)
+                        detected_segments = analysis_result.get('segments', [])
+                        
+                        # 如果检测出多个段落，说明这是混合文本
+                        if len(detected_segments) > 1:
+                            issues.append(DetectionIssue(
+                                issue_type='segment_split_needed',
+                                severity='medium',
+                                segment_index=index,
+                                description=f'检测到混合文本，建议拆分为 {len(detected_segments)} 个段落',
+                                suggestion='点击查看拆分建议',
+                                context=text[:100] + ('...' if len(text) > 100 else ''),
+                                fixable=True,
+                                fix_data={
+                                    'action': 'split_segment', 
+                                    'suggested_segments': detected_segments
+                                }
+                            ))
+                            logger.info(f"[AI增强检测] 发现混合文本 (段落{index+1}): {len(detected_segments)}个子段落")
+                        
+                    except Exception as e:
+                        logger.warning(f"[AI增强检测] 段落{index+1}深度分析失败: {str(e)}")
         
-        # 检测旁白内容但标记为对话
-        if text_type == 'dialogue' and not any(char in text for char in ['"', '"', '"', '说', '道', '问', '答']):
-            # 简单的旁白特征检测
-            narration_indicators = ['只见', '突然', '此时', '然后', '接着', '于是', '这时']
-            if any(indicator in text for indicator in narration_indicators):
-                issues.append(DetectionIssue(
-                    issue_type='narration_as_dialogue',
-                    severity='medium',
-                    segment_index=index,
-                    description='疑似旁白内容被标记为对话',
-                    suggestion='建议将此片段标记为旁白',
-                    context=text[:50],
-                    fixable=True,
-                    fix_data={'action': 'change_to_narration'}
-                ))
+        # 原有的基础AI检测逻辑
+        for index, segment in enumerate(segments):
+            text = segment.get('text', '').strip()
+            text_type = segment.get('text_type', 'dialogue')
+            
+            if not text:
+                continue
+                
+            # 检测引号内容但标记为旁白
+            if text_type == 'narration' and ('"' in text or '"' in text or '"' in text):
+                quote_content = re.search(r'["""]([^"""]*?)["""]', text)
+                if quote_content and len(quote_content.group(1).strip()) > 5:
+                    issues.append(DetectionIssue(
+                        issue_type='quoted_content_as_narration',
+                        severity='medium',
+                        segment_index=index,
+                        description='包含引号对话内容但被标记为旁白',
+                        suggestion='建议将引号内容分离为独立的对话片段',
+                        context=quote_content.group(1)[:50],
+                        fixable=True,
+                        fix_data={
+                            'action': 'split_quoted_content',
+                            'quoted_text': quote_content.group(1)
+                        }
+                    ))
+            
+            # 检测旁白内容但标记为对话
+            if text_type == 'dialogue' and not any(char in text for char in ['"', '"', '"', '说', '道', '问', '答']):
+                # 简单的旁白特征检测
+                narration_indicators = ['只见', '突然', '此时', '然后', '接着', '于是', '这时']
+                if any(indicator in text for indicator in narration_indicators):
+                    issues.append(DetectionIssue(
+                        issue_type='narration_as_dialogue',
+                        severity='medium',
+                        segment_index=index,
+                        description='疑似旁白内容被标记为对话',
+                        suggestion='建议将此片段标记为旁白',
+                        context=text[:50],
+                        fixable=True,
+                        fix_data={'action': 'change_to_narration'}
+                    ))
         
+        logger.info(f"[AI增强检测] 智能检测完成，发现 {len([i for i in issues if i.issue_type == 'segment_split_needed'])} 个混合文本问题")
         return issues
     
     async def detect_single_segment_issues(self, segment_text: str, segment_index: int = 0) -> List[DetectionIssue]:

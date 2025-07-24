@@ -922,12 +922,29 @@ async def apply_detection_fixes(
                 raise HTTPException(status_code=400, detail="合成计划格式错误")
             
             # 应用单个问题的修复
-            # 🔧 修复：正确获取segments数据，支持两种数据结构
-            current_segments = analysis_result.synthesis_plan.get('synthesis_plan', [])
-            if not current_segments:
-                # 兼容旧的数据结构
-                current_segments = analysis_result.synthesis_plan.get('segments', [])
-            logger.info(f"当前片段数量: {len(current_segments)}")
+            # 🔥 关键修复：修复时使用与检测相同的数据源（优先final_config）
+            current_segments = []
+            
+            # 首先尝试从final_config读取最新数据（与检测逻辑保持一致）
+            if analysis_result.final_config:
+                try:
+                    import json
+                    final_config_data = json.loads(analysis_result.final_config)
+                    if 'synthesis_json' in final_config_data and 'synthesis_plan' in final_config_data['synthesis_json']:
+                        current_segments = final_config_data['synthesis_json']['synthesis_plan']
+                        logger.info(f"[修复数据源] 使用final_config数据，段落数: {len(current_segments)}")
+                except Exception as e:
+                    logger.warning(f"[修复数据源] 解析final_config失败: {str(e)}")
+            
+            # 如果没有final_config数据，使用synthesis_plan
+            if not current_segments and analysis_result.synthesis_plan:
+                current_segments = analysis_result.synthesis_plan.get('synthesis_plan', [])
+                if not current_segments:
+                    # 兼容旧的数据结构
+                    current_segments = analysis_result.synthesis_plan.get('segments', [])
+                logger.info(f"[修复数据源] 使用synthesis_plan数据，段落数: {len(current_segments)}")
+            
+            logger.info(f"[修复] 当前片段数量: {len(current_segments)}")
 
             # 如果没有片段数据，则无需尝试修复任何问题
             if not current_segments:
@@ -1004,6 +1021,95 @@ async def apply_detection_fixes(
                                 success = True
                                 logger.info("设置为旁白")
                             
+                            elif action == 'split_segment':
+                                # 🔥 新增：处理段落拆分
+                                suggested_segments = fix_data_content.get('suggested_segments', [])
+                                if suggested_segments and len(suggested_segments) > 1:
+                                    logger.info(f"开始拆分段落 {segment_index}，拆分为 {len(suggested_segments)} 个子段落")
+                                    
+                                    # 获取原段落的基础信息
+                                    original_segment = current_segments[segment_index]
+                                    
+                                    # 创建新的段落数组
+                                    new_segments = []
+                                    for sub_index, suggested in enumerate(suggested_segments):
+                                        new_segment = {
+                                            **original_segment,  # 继承原段落的其他属性
+                                            'text': suggested.get('text', ''),
+                                            'speaker': suggested.get('speaker', '旁白'),
+                                            'text_type': suggested.get('text_type', 'narration'),
+                                            'confidence': suggested.get('confidence', 0.9),
+                                            'detection_rule': 'ai_split_detection',
+                                            'segment_id': original_segment.get('segment_id', segment_index + 1) + sub_index * 0.1
+                                        }
+                                        new_segments.append(new_segment)
+                                        logger.debug(f"创建子段落 {sub_index + 1}: '{new_segment['text'][:30]}...' -> {new_segment['speaker']}")
+                                    
+                                    # 替换原段落
+                                    current_segments[segment_index:segment_index + 1] = new_segments
+                                    
+                                    # 重新编号所有段落
+                                    for idx, segment in enumerate(current_segments):
+                                        segment['segment_id'] = idx + 1
+                                    
+                                    success = True
+                                    logger.info(f"成功拆分段落，新段落数: {len(current_segments)}")
+                                else:
+                                    logger.warning(f"段落拆分失败：缺少有效的拆分建议数据")
+                                    success = False
+                            
+                            elif action == 'split_quoted_content':
+                                # 🔥 新增：处理引号内容拆分
+                                quoted_text = fix_data_content.get('quoted_text', '')
+                                if quoted_text:
+                                    logger.info(f"开始处理引号内容拆分，段落 {segment_index}")
+                                    
+                                    # 获取原段落
+                                    original_segment = current_segments[segment_index]
+                                    original_text = original_segment['text']
+                                    
+                                    # 创建两个新段落：旁白部分和对话部分
+                                    new_segments = []
+                                    
+                                    # 1. 提取引号前的旁白部分
+                                    narration_part = original_text.replace(quoted_text, '').strip('：""').strip()
+                                    if narration_part:
+                                        narrator_segment = {
+                                            **original_segment,
+                                            'text': narration_part,
+                                            'speaker': '旁白',
+                                            'text_type': 'narration',
+                                            'confidence': 0.9,
+                                            'detection_rule': 'quote_split_detection'
+                                        }
+                                        new_segments.append(narrator_segment)
+                                        logger.debug(f"创建旁白段落: '{narration_part[:30]}...'")
+                                    
+                                    # 2. 创建对话部分
+                                    dialogue_segment = {
+                                        **original_segment,
+                                        'text': quoted_text,
+                                        'speaker': '未知角色',  # 需要进一步识别说话人
+                                        'text_type': 'dialogue',
+                                        'confidence': 0.8,
+                                        'detection_rule': 'quote_split_detection'
+                                    }
+                                    new_segments.append(dialogue_segment)
+                                    logger.debug(f"创建对话段落: '{quoted_text[:30]}...'")
+                                    
+                                    # 替换原段落
+                                    current_segments[segment_index:segment_index + 1] = new_segments
+                                    
+                                    # 重新编号所有段落
+                                    for idx, segment in enumerate(current_segments):
+                                        segment['segment_id'] = idx + 1
+                                    
+                                    success = True
+                                    logger.info(f"成功拆分引号内容，新段落数: {len(current_segments)}")
+                                else:
+                                    logger.warning(f"引号内容拆分失败：缺少quoted_text数据")
+                                    success = False
+                            
                             else:
                                 logger.warning(f"未知的修复动作: {action}")
                                 success = False
@@ -1026,7 +1132,7 @@ async def apply_detection_fixes(
             import json
             from datetime import datetime
             
-            # 🔧 修复：正确更新synthesis_plan数据结构
+            # 🔥 关键修复：同时更新synthesis_plan和final_config确保数据一致性
             synthesis_plan_copy = analysis_result.synthesis_plan.copy() if analysis_result.synthesis_plan else {}
             
             # 更新synthesis_plan中的segments数据
@@ -1038,6 +1144,7 @@ async def apply_detection_fixes(
             
             # 更新synthesis_plan本身
             analysis_result.synthesis_plan = synthesis_plan_copy
+            logger.info(f"[修复保存] 已更新synthesis_plan，段落数: {len(current_segments)}")
             
             # 🔥 关键修复：正确更新final_config，保持与检测逻辑一致的数据结构和格式
             if analysis_result.final_config:
@@ -1060,10 +1167,10 @@ async def apply_detection_fixes(
                     
                     # 保存为JSON字符串
                     analysis_result.final_config = json.dumps(final_config_data, ensure_ascii=False)
-                    logger.info(f"[修复同步] 已更新final_config数据结构，段落数: {len(current_segments)}")
+                    logger.info(f"[修复保存] 已更新final_config数据结构，段落数: {len(current_segments)}")
                     
                 except Exception as e:
-                    logger.error(f"[修复同步] 更新final_config失败: {str(e)}，回退到创建新结构")
+                    logger.error(f"[修复保存] 更新final_config失败: {str(e)}，回退到创建新结构")
                     # 创建新的final_config结构
                     final_config_data = {
                         'synthesis_json': {
@@ -1085,7 +1192,7 @@ async def apply_detection_fixes(
                     'updated_by': 'detection_fix'
                 }
                 analysis_result.final_config = json.dumps(final_config_data, ensure_ascii=False)
-                logger.info(f"[修复同步] 创建新final_config数据结构，段落数: {len(current_segments)}")
+                logger.info(f"[修复保存] 创建新final_config数据结构，段落数: {len(current_segments)}")
             db.commit()
             
             logger.info(f"单个问题修复成功，修复了 {fixed_count} 个问题")

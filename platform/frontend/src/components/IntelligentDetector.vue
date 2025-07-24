@@ -178,7 +178,7 @@ const props = defineProps({
 })
 
 // Emits
-const emit = defineEmits(['segments-updated', 'locate-segment', 'auto-save-fixes'])
+const emit = defineEmits(['segments-updated', 'locate-segment', 'auto-save-fixes', 'refresh-chapter-data'])
 
 // 响应式数据
 const detecting = ref(false)
@@ -311,24 +311,28 @@ const applyAutoFix = async () => {
     const response = await applyDetectionFixes(props.chapterId, fixData)
     
     if (response.data.success) {
-      message.success(`已自动修复 ${response.data.data.fixed_count} 个问题，正在自动保存...`)
+      message.success(`已自动修复 ${response.data.data.fixed_count} 个问题，正在刷新数据...`)
       
-      // 🔥 新增：自动保存修复结果
+      // 🔥 修复：自动修复后重新获取最新数据
       setTimeout(async () => {
         try {
-          // 触发父组件保存
+          // 1. 触发父组件保存
           emit('auto-save-fixes')
           
-          // 🔥 移除自动检测：改为手工检测
-          // 用户可手动点击检测按钮重新检测
-        } catch (error) {
-          console.error('[智能检测] 自动保存失败:', error)
-          message.warning('修复完成，请手动点击保存按钮')
+          // 2. 🔥 关键修复：重新获取最新的章节数据来刷新界面
+          emit('refresh-chapter-data')
           
-                      // 🔥 移除自动检测：改为手工检测
-            // 用户可手动点击检测按钮重新检测
+          // 3. 清空检测结果，让用户重新点击检测按钮
+          detectionResult.value = null
+          showDetails.value = false
+          
+          message.success('修复完成并已刷新数据，请重新点击智能检测查看结果')
+          
+        } catch (error) {
+          console.error('[智能检测] 修复后刷新失败:', error)
+          message.warning('修复完成，但数据刷新失败，请手动刷新页面')
         }
-      }, 500)
+      }, 1000) // 延长等待时间确保后端数据保存完成
     } else {
       message.error(response.data.message || '自动修复失败')
     }
@@ -489,6 +493,38 @@ const fixSingleIssue = async (issue, showMessage = true) => {
         }
         break
         
+      // 🔥 新增：混合文本拆分处理
+      case 'segment_split_needed':
+        if (issue.segment_index !== undefined && issue.fix_data?.suggested_segments) {
+          const originalSegment = updatedSegments[issue.segment_index]
+          const suggestedSegments = issue.fix_data.suggested_segments
+          
+          // 创建新的段落数组
+          const newSegments = suggestedSegments.map((suggested, subIndex) => ({
+            ...originalSegment, // 继承原段落的其他属性
+            id: `segment_${Date.now()}_${subIndex}`,
+            segment_id: originalSegment.segment_id + subIndex,
+            text: suggested.text || '',
+            speaker: suggested.speaker || '旁白',
+            text_type: suggested.text_type || 'narration',
+            confidence: suggested.confidence || 0.9,
+            detection_rule: 'ai_split_detection',
+            _forceUpdate: Date.now()
+          }))
+          
+          // 替换原段落
+          updatedSegments.splice(issue.segment_index, 1, ...newSegments)
+          
+          // 重新编号所有段落
+          updatedSegments.forEach((segment, index) => {
+            segment.segment_id = index + 1
+          })
+          
+          fixed = true
+          console.log(`[智能检测] 已拆分段落 ${issue.segment_index + 1} 为 ${newSegments.length} 个子段落`)
+        }
+        break
+      
       default:
         // 对于未知的问题类型，尝试通用修复
         console.warn('[智能检测] 未知问题类型:', issueType, issue)

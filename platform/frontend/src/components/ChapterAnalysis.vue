@@ -87,7 +87,7 @@
       <a-empty description="该章节暂无智能分析数据" :image="false">
         <div class="empty-icon">🤖</div>
         <p>请先对章节进行智能准备</p>
-        <a-button type="primary" @click="$emit('refresh')" :loading="preparingChapter"> 🎭 开始智能准备 </a-button>
+        <a-button type="primary" @click="$emit('prepare-chapter')" :loading="preparingChapter"> 🎭 开始智能准备 </a-button>
       </a-empty>
     </div>
 
@@ -121,13 +121,14 @@
         @segments-updated="handleSegmentsUpdate"
         @locate-segment="locateToSegment"
         @auto-save-fixes="handleAutoSaveFixes"
+        @refresh-chapter-data="handleRefreshChapterData"
       />
     </a-drawer>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import { message } from 'ant-design-vue'
 import { charactersAPI } from '@/api'
 import SynthesisSegmentEditor from './SynthesisSegmentEditor.vue'
@@ -159,7 +160,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['refresh', 'save'])
+const emit = defineEmits(['refresh', 'save', 'reload-chapter', 'prepare-chapter'])
 
 // 响应式数据
 const activeTab = ref('segments')
@@ -496,17 +497,33 @@ const locateToSegment = (segmentIndex) => {
 }
 
 const handleAutoSaveFixes = async () => {
-  console.log('[ChapterAnalysis] 智能检测触发自动保存')
+  console.log('[ChapterAnalysis] 智能修复完成，直接刷新数据')
   try {
-    await saveChanges()
-    message.success('智能修复结果已自动保存')
-    
-    // 重新加载章节数据以获取修复后的最新内容
-    console.log('[ChapterAnalysis] 重新加载章节数据')
+    // 🔥 关键修复：修复后不需要保存，后端已经保存了
+    // 只需要重新加载最新数据到前端组件
+    console.log('[ChapterAnalysis] 重新加载章节数据以获取修复后的结果')
     emit('reload-chapter')
+    
+    // 延迟显示成功消息，确保数据加载完成
+    setTimeout(() => {
+      message.success('智能修复完成，数据已刷新')
+    }, 500)
   } catch (error) {
-    console.error('[ChapterAnalysis] 自动保存失败:', error)
-    message.error('自动保存失败，请手动点击保存按钮')
+    console.error('[ChapterAnalysis] 刷新数据失败:', error)
+    message.error('修复完成，但数据刷新失败，请手动刷新页面')
+  }
+}
+
+// 🔥 新增：处理修复后的数据刷新
+const handleRefreshChapterData = async () => {
+  console.log('[ChapterAnalysis] 智能修复完成，刷新章节数据')
+  try {
+    // 触发父组件重新获取最新的章节数据
+    emit('refresh')
+    message.success('数据已刷新，修复结果已生效')
+  } catch (error) {
+    console.error('[ChapterAnalysis] 刷新章节数据失败:', error)
+    message.warning('数据刷新失败，请手动刷新页面')
   }
 }
 
