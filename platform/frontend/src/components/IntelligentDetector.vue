@@ -23,6 +23,16 @@
           清除结果
         </a-button>
         
+        <a-button 
+          v-if="ignoredIssues.size > 0" 
+          @click="resetIgnoredIssues"
+          type="dashed"
+          size="small"
+        >
+          <template #icon><EyeInvisibleOutlined /></template>
+          重置忽略状态 ({{ ignoredIssues.size }})
+        </a-button>
+        
        
       </div>
     </div>
@@ -99,14 +109,27 @@
                 </template>
                 <template #description>
                   <div class="issue-details">
-                    <div v-if="issue.segment_index !== undefined">
+                    <div v-if="issue.segment_index !== undefined" class="detail-item">
                       <strong>片段位置:</strong> 第 {{ issue.segment_index + 1 }} 个片段
                     </div>
-                    <div v-if="issue.character_name">
+                    <div v-if="issue.character_name" class="detail-item">
                       <strong>相关角色:</strong> {{ issue.character_name }}
                     </div>
-                    <div v-if="issue.suggestion" class="suggestion">
-                      <strong>建议:</strong> {{ issue.suggestion }}
+                    <div v-if="issue.issue_type" class="detail-item">
+                      <strong>问题类型:</strong> {{ getIssueTypeText(issue.issue_type) }}
+                    </div>
+                    <div v-if="issue.context" class="detail-item">
+                      <strong>问题内容:</strong> 
+                      <div class="context-content">{{ issue.context }}</div>
+                    </div>
+                    <div v-if="issue.description" class="detail-item">
+                      <strong>详细描述:</strong> {{ issue.description }}
+                    </div>
+                    <div v-if="issue.suggestion" class="detail-item suggestion">
+                      <strong>修复建议:</strong> {{ issue.suggestion }}
+                    </div>
+                    <div v-if="issue.fix_data" class="detail-item">
+                      <strong>修复方案:</strong> {{ getFixDataText(issue.fix_data) }}
                     </div>
                   </div>
                 </template>
@@ -121,14 +144,15 @@
                 >
                   修复此问题
                 </a-button>
+                
                 <a-button 
-                  v-if="issue.segment_index !== undefined"
                   type="link" 
                   size="small"
-                  @click="locateSegment(issue.segment_index)"
+                  @click="ignoreIssue(issue)"
                 >
-                  定位片段
+                  忽略
                 </a-button>
+
               </template>
             </a-list-item>
           </template>
@@ -149,11 +173,12 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch, readonly } from 'vue'
 import { message } from 'ant-design-vue'
 import { 
   SearchOutlined, 
-  ClearOutlined
+  ClearOutlined,
+  EyeInvisibleOutlined
 } from '@ant-design/icons-vue'
 import { intelligentDetection, applyDetectionFixes } from '@/api'
 
@@ -178,7 +203,7 @@ const props = defineProps({
 })
 
 // Emits
-const emit = defineEmits(['segments-updated', 'locate-segment', 'auto-save-fixes', 'refresh-chapter-data'])
+const emit = defineEmits(['segments-updated', 'auto-save-fixes', 'refresh-chapter-data'])
 
 // 响应式数据
 const detecting = ref(false)
@@ -186,6 +211,7 @@ const detectionResult = ref(null)
 const showDetails = ref(false)
 const applyingFix = ref(false)
 const fixingIssues = ref(new Set())
+const ignoredIssues = ref(new Set()) // 存储被忽略的问题ID
 const fixProgress = ref(0)
 const fixedCount = ref(0)
 const totalFixableCount = ref(0)
@@ -213,6 +239,45 @@ const getIssueSeverityText = (severity) => {
     case 'info': return '信息'
     default: return '未知'
   }
+}
+
+// 获取问题类型文本
+const getIssueTypeText = (issueType) => {
+  const typeMap = {
+    'character_mismatch': '角色配置不匹配',
+    'empty_content': '内容为空',
+    'long_segment': '片段过长',
+    'special_characters': '特殊字符',
+    'quoted_content_as_narration': '对话标记为旁白',
+    'narration_as_dialogue': '旁白标记为对话',
+    'inconsistent_voice_type': '语音类型不一致'
+  }
+  return typeMap[issueType] || issueType
+}
+
+// 获取修复数据文本
+const getFixDataText = (fixData) => {
+  if (!fixData) return '无'
+  
+  if (typeof fixData === 'string') {
+    return fixData
+  }
+  
+  if (typeof fixData === 'object') {
+    const parts = []
+    if (fixData.new_speaker) {
+      parts.push(`角色: ${fixData.new_speaker}`)
+    }
+    if (fixData.new_text_type) {
+      parts.push(`类型: ${fixData.new_text_type === 'dialogue' ? '对话' : '旁白'}`)
+    }
+    if (fixData.new_text) {
+      parts.push(`内容: ${fixData.new_text.substring(0, 50)}${fixData.new_text.length > 50 ? '...' : ''}`)
+    }
+    return parts.join(', ') || '自动修复'
+  }
+  
+  return '自动修复'
 }
 
 // 运行智能检测
@@ -256,6 +321,19 @@ const runDetection = async () => {
         }
       }
 
+      // 🔥 新增：过滤掉已忽略的问题
+      if (detectionResult.value.issues && detectionResult.value.issues.length > 0) {
+        const originalCount = detectionResult.value.issues.length
+        detectionResult.value.issues = detectionResult.value.issues.filter(issue => 
+          !ignoredIssues.value.has(issue.id)
+        )
+        const filteredCount = detectionResult.value.issues.length
+        
+        if (originalCount > filteredCount) {
+          console.log(`[智能检测] 已过滤 ${originalCount - filteredCount} 个被忽略的问题`)
+        }
+      }
+
       console.log('[智能检测] 处理后的结果:', detectionResult.value)
       
       if (detectionResult.value.issues.length === 0) {
@@ -275,14 +353,44 @@ const runDetection = async () => {
   }
 }
 
-// 清除检测结果
+// 清空检测结果
 const clearDetectionResult = () => {
   detectionResult.value = null
   showDetails.value = false
-  fixProgress.value = 0
-  fixedCount.value = 0
-  totalFixableCount.value = 0
 }
+
+// 忽略问题
+const ignoreIssue = (issue) => {
+  ignoredIssues.value.add(issue.id)
+  message.success('已忽略该问题，下次检测时将跳过')
+  
+  // 从当前检测结果中移除该问题
+  if (detectionResult.value && detectionResult.value.issues) {
+    detectionResult.value.issues = detectionResult.value.issues.filter(item => item.id !== issue.id)
+    
+    // 如果没有问题了，隐藏详情
+    if (detectionResult.value.issues.length === 0) {
+      showDetails.value = false
+      message.info('所有问题已处理完毕')
+    }
+  }
+}
+
+// 重置忽略状态（重新智能准备时调用）
+ const resetIgnoredIssues = () => {
+   const ignoredCount = ignoredIssues.value.size
+   ignoredIssues.value.clear()
+   if (ignoredCount > 0) {
+     message.info(`已重置 ${ignoredCount} 个被忽略的问题状态`)
+   }
+ }
+
+ // 清空进度相关数据
+ const clearProgress = () => {
+   fixProgress.value = 0
+   fixedCount.value = 0
+   totalFixableCount.value = 0
+ }
 
 // 应用自动修复
 const applyAutoFix = async () => {
@@ -601,17 +709,16 @@ const fixSingleIssue = async (issue, showMessage = true) => {
   }
 }
 
-// 定位到指定片段
-const locateSegment = (segmentIndex) => {
-  emit('locate-segment', segmentIndex)
-  message.info(`已定位到第 ${segmentIndex + 1} 个片段`)
-}
+
 
 // 暴露方法给父组件
 defineExpose({
   runDetection,
   clearDetectionResult,
-  hasIssues
+  hasIssues,
+  ignoreIssue,
+  resetIgnoredIssues,
+  ignoredIssues: readonly(ignoredIssues)
 })
 </script>
 
@@ -638,8 +745,61 @@ defineExpose({
 .issues-detail {
   margin-top: 12px;
   padding: 12px;
-  background: var(--ant-color-bg-container);
+}
+
+.detail-item {
+  margin-bottom: 8px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--ant-border-color);
+}
+
+.detail-item:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+}
+
+.detail-item strong {
+  color: var(--ant-primary-color);
+  margin-right: 8px;
+  min-width: 80px;
+  display: inline-block;
+}
+
+.context-content {
+  background: var(--ant-color-bg-layout);
+  padding: 8px 12px;
+  border-radius: 4px;
+  margin-top: 4px;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.4;
+  max-height: 100px;
+  overflow-y: auto;
+  border-left: 3px solid var(--ant-primary-color);
+}
+
+.suggestion {
+  background: var(--ant-success-color-bg);
+  border-left: 3px solid var(--ant-success-color);
+  padding: 8px 12px;
+  border-radius: 4px;
+}
+
+.suggestion strong {
+  color: var(--ant-success-color);
+}
+
+.issue-title {
+  font-weight: 500;
+  color: var(--ant-text-color);
+}
+
+.issue-details {
+  margin-top: 8px;
+  padding: 8px;
+  background: var(--ant-color-bg-layout);
   border-radius: 6px;
+  border: 1px solid var(--ant-border-color);
 }
 
 .issue-title {

@@ -107,7 +107,7 @@
       v-model:open="detectionDrawerVisible"
       title="🔍 智能检测"
       placement="right"
-      :width="600"
+      :width="900"
       :closable="true"
       :mask-closable="true"
     >
