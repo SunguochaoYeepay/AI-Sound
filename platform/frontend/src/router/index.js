@@ -169,6 +169,15 @@ const routes = [
     name: 'MusicLibrary',
     component: MusicLibrary
   },
+  {
+    path: '/image-generation',
+    name: 'ImageGeneration',
+    component: () => import('../views/ImageGeneration.vue'),
+    meta: {
+      title: '🖼️ 图片生成',
+      requiresAuth: true
+    }
+  },
 
   // 音频编辑器路由（新增）
   {

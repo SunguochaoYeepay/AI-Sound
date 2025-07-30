@@ -262,6 +262,9 @@ class AdvancedCharacterDetector:
             # 推断性别
             gender = self._infer_gender(name, data['contexts'])
             
+            # 🔥 新增：分析外貌特征
+            appearance = self._analyze_appearance(name, data['contexts'])
+            
             # 生成角色配置
             character_config = {
                 'name': name,
@@ -279,6 +282,14 @@ class AdvancedCharacterDetector:
                     'personality_description': personality['description'],
                     'personality_confidence': personality['confidence'],
                     'description': f'{name}，{gender}角色，{personality["description"]}，在文本中出现{data["frequency"]}次。',
+                    # 🔥 新增：外貌描述信息
+                    'appearance_description': appearance['full_description'],
+                    'age_range': appearance['age_range'],
+                    'build_type': appearance['build_type'],
+                    'clothing_style': appearance['clothing_style'],
+                    'distinctive_features': appearance['distinctive_features'],
+                    'avatar_prompt': appearance['avatar_prompt'],
+                    'consistency_tag': f"{name}_{gender}_{personality['trait']}_{appearance['age_range']}",
                     'recommended_tts_params': self._get_tts_params(personality['trait']),
                     'voice_type': f'{gender}_{personality["trait"]}',
                     'color': self._get_character_color(personality['trait'])
@@ -382,3 +393,165 @@ class AdvancedCharacterDetector:
         """判断段落是否包含对话"""
         dialogue_indicators = ['"', '"', '"', '：', ':', '说', '道', '问', '答', '叫', '喊']
         return any(indicator in segment for indicator in dialogue_indicators) 
+
+    def _analyze_appearance(self, name: str, contexts: list):
+        """🔥 新增：分析角色外貌特征"""
+        # 年龄关键词分析
+        age_keywords = {
+            'child': ['小孩', '孩子', '童子', '小童', '幼儿', '娃娃'],
+            'young': ['年轻', '少年', '少女', '青年', '小伙', '姑娘', '青春'],
+            'middle': ['中年', '壮年', '成年', '大人'],
+            'elder': ['老人', '长者', '老翁', '老妪', '老爷爷', '老奶奶', '白发', '白须']
+        }
+        
+        # 身材关键词分析
+        build_keywords = {
+            'slim': ['瘦', '苗条', '纤细', '单薄', '清瘦'],
+            'average': ['中等', '普通', '一般'],
+            'sturdy': ['壮实', '健壮', '魁梧', '高大', '强壮', '威武'],
+            'plump': ['丰满', '圆润', '胖', '富态']
+        }
+        
+        # 服装风格关键词
+        clothing_keywords = {
+            'ancient': ['长袍', '汉服', '古装', '襦裙', '道袍', '官服', '布衣'],
+            'modern': ['西装', '衬衫', '牛仔裤', '运动服', '休闲装'],
+            'formal': ['正装', '礼服', '晚礼服', '制服'],
+            'casual': ['便装', '家常服', '粗布衣']
+        }
+        
+        # 分析年龄
+        age_range = 'young'  # 默认
+        age_scores = {age: 0 for age in age_keywords.keys()}
+        
+        for context in contexts:
+            for age, keywords in age_keywords.items():
+                for keyword in keywords:
+                    if keyword in context:
+                        age_scores[age] += 1
+        
+        if max(age_scores.values()) > 0:
+            age_range = max(age_scores, key=age_scores.get)
+        
+        # 分析身材
+        build_type = 'average'  # 默认
+        build_scores = {build: 0 for build in build_keywords.keys()}
+        
+        for context in contexts:
+            for build, keywords in build_keywords.items():
+                for keyword in keywords:
+                    if keyword in context:
+                        build_scores[build] += 1
+        
+        if max(build_scores.values()) > 0:
+            build_type = max(build_scores, key=build_scores.get)
+        
+        # 分析服装风格
+        clothing_style = 'ancient'  # 默认古代风格
+        clothing_scores = {style: 0 for style in clothing_keywords.keys()}
+        
+        for context in contexts:
+            for style, keywords in clothing_keywords.items():
+                for keyword in keywords:
+                    if keyword in context:
+                        clothing_scores[style] += 1
+        
+        if max(clothing_scores.values()) > 0:
+            clothing_style = max(clothing_scores, key=clothing_scores.get)
+        
+        # 提取特殊特征
+        distinctive_features = self._extract_distinctive_features(contexts)
+        
+        # 生成完整描述
+        age_desc = {
+            'child': '年幼', 
+            'young': '年轻', 
+            'middle': '中年', 
+            'elder': '年长'
+        }[age_range]
+        
+        build_desc = {
+            'slim': '身材纤细',
+            'average': '身材匀称', 
+            'sturdy': '身材魁梧',
+            'plump': '身材丰满'
+        }[build_type]
+        
+        clothing_desc = {
+            'ancient': '古典服饰',
+            'modern': '现代装扮',
+            'formal': '正式着装', 
+            'casual': '休闲装扮'
+        }[clothing_style]
+        
+        full_description = f"{age_desc}，{build_desc}，{clothing_desc}"
+        if distinctive_features:
+            full_description += f"，{distinctive_features}"
+        
+        # 生成头像生成提示词
+        avatar_prompt = self._generate_avatar_prompt(name, age_range, build_type, clothing_style, distinctive_features)
+        
+        return {
+            'age_range': age_range,
+            'build_type': build_type,  
+            'clothing_style': clothing_style,
+            'distinctive_features': distinctive_features,
+            'full_description': full_description,
+            'avatar_prompt': avatar_prompt
+        }
+    
+    def _extract_distinctive_features(self, contexts: list):
+        """提取特殊外貌特征"""
+        feature_keywords = [
+            '美貌', '俊美', '英俊', '美丽', '漂亮', '丑陋',
+            '长发', '短发', '白发', '黑发', '卷发',
+            '大眼', '小眼', '明眸', '凤眼',
+            '高鼻', '挺鼻', '蒜鼻',
+            '红唇', '薄唇', '厚唇',
+            '白皮', '黑皮', '古铜色',
+            '疤痕', '胎记', '酒窝', '雀斑'
+        ]
+        
+        found_features = []
+        for context in contexts:
+            for feature in feature_keywords:
+                if feature in context and feature not in found_features:
+                    found_features.append(feature)
+        
+        return '，'.join(found_features) if found_features else ''
+    
+    def _generate_avatar_prompt(self, name: str, age_range: str, build_type: str, clothing_style: str, distinctive_features: str):
+        """生成头像生成的AI提示词"""
+        age_prompts = {
+            'child': 'child, young face, innocent expression',
+            'young': 'young adult, youthful appearance',
+            'middle': 'middle-aged, mature features',
+            'elder': 'elderly, aged features, wise expression'
+        }
+        
+        build_prompts = {
+            'slim': 'slim build, delicate features',
+            'average': 'average build, balanced proportions',
+            'sturdy': 'strong build, robust features',
+            'plump': 'full figure, rounded features'
+        }
+        
+        clothing_prompts = {
+            'ancient': 'traditional Chinese clothing, hanfu, ancient style',
+            'modern': 'modern clothing, contemporary style',
+            'formal': 'formal attire, elegant dress',
+            'casual': 'casual wear, comfortable clothing'
+        }
+        
+        prompt_parts = [
+            f"portrait of {name}",
+            age_prompts.get(age_range, 'young adult'),
+            build_prompts.get(build_type, 'average build'),
+            clothing_prompts.get(clothing_style, 'traditional clothing'),
+            "high quality, detailed, professional portrait"
+        ]
+        
+        if distinctive_features:
+            prompt_parts.insert(-1, distinctive_features.replace('，', ', '))
+        
+        return ', '.join(prompt_parts) 

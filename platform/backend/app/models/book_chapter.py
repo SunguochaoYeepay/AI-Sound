@@ -38,6 +38,7 @@ class BookChapter(Base):
     analysis_results = relationship("AnalysisResult", back_populates="chapter", cascade="all, delete-orphan")
     synthesis_tasks = relationship("SynthesisTask", back_populates="chapter")
     characters = relationship("Character", back_populates="chapter")
+    image_generation_tasks = relationship("ImageGenerationTask", back_populates="chapter", cascade="all, delete-orphan")
     
     # 索引
     __table_args__ = (

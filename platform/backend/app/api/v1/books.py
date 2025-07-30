@@ -1367,6 +1367,53 @@ async def _sync_character_voice_to_synthesis_plans(
                 for segment in segments:
                     speaker = segment.get('speaker', '')
                     
+                    # 🔥 特殊处理：旁白段落应该分配正确的旁白角色ID
+                    if speaker == '旁白':
+                        # 查找旁白角色的Character记录
+                        narrator_character = None
+                        if '旁白' in character_mappings:
+                            narrator_character = character_mappings['旁白']
+                        
+                        if narrator_character:
+                            # 旁白角色存在，分配正确的character_id
+                            old_character_id = segment.get('character_id')
+                            old_voice_id = segment.get('voice_id')
+                            old_voice_name = segment.get('voice_name', '')
+                            
+                            new_character_id = narrator_character.id
+                            new_voice_name = '旁白'
+                            
+                            # 检查是否需要更新
+                            character_id_changed = old_character_id != new_character_id
+                            voice_id_exists = old_voice_id is not None
+                            voice_name_wrong = old_voice_name != new_voice_name
+                            
+                            if character_id_changed or voice_id_exists or voice_name_wrong:
+                                segment['character_id'] = new_character_id
+                                segment['voice_name'] = new_voice_name
+                                
+                                # 清除voice_id避免ID空间冲突
+                                if 'voice_id' in segment:
+                                    del segment['voice_id']
+                                
+                                plan_updated = True
+                                logger.info(f"✅ [旁白同步] 分配旁白角色ID: character_id={new_character_id}, voice_name='{new_voice_name}' (清除voice_id={old_voice_id})")
+                        else:
+                            # 旁白角色不存在，保持voice_name但清除错误的ID分配
+                            old_character_id = segment.get('character_id')
+                            old_voice_id = segment.get('voice_id')
+                            old_voice_name = segment.get('voice_name', '')
+                            
+                            if old_character_id is not None or old_voice_id is not None or old_voice_name != '旁白':
+                                if 'character_id' in segment:
+                                    del segment['character_id']
+                                if 'voice_id' in segment:
+                                    del segment['voice_id']
+                                segment['voice_name'] = '旁白'
+                                plan_updated = True
+                                logger.warning(f"⚠️ [旁白警告] 未找到旁白角色记录，清除错误ID分配: character_id={old_character_id}, voice_id={old_voice_id} -> voice_name='旁白'")
+                        continue
+                    
                     # 🔥 智能角色匹配：支持精确匹配和模糊匹配
                     matched_character = None
                     matched_voice_profile = None

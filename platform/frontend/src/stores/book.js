@@ -25,8 +25,12 @@ export const useBookStore = defineStore('book', () => {
     loading.value = true
     try {
       const result = await bookAPI.getBooks(params)
+      console.log('fetchBooks API 结果:', result)
       if (result.success) {
-        books.value = result.data.items || result.data || []
+        // 确保获取正确的数组数据 - 后端返回的结构是 {success: true, data: [...], pagination: {...}}
+        const booksData = Array.isArray(result.data?.data) ? result.data.data : (result.data?.items || [])
+        console.log('提取的书籍数据:', booksData)
+        books.value = booksData
       }
       return result
     } finally {
@@ -48,8 +52,12 @@ export const useBookStore = defineStore('book', () => {
     chaptersLoading.value = true
     try {
       const result = await chapterAPI.getChapters(bookId, params)
+      console.log('fetchChapters API 结果:', result)
       if (result.success) {
-        chapters.value = result.data.items || result.data || []
+        // 确保获取正确的数组数据 - 后端返回的结构是 {success: true, data: [...], pagination: {...}}
+        const chaptersData = Array.isArray(result.data?.data) ? result.data.data : (result.data?.items || [])
+        console.log('提取的章节数据:', chaptersData)
+        chapters.value = chaptersData
       }
       return result
     } finally {

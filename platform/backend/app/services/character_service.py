@@ -34,17 +34,35 @@ class CharacterService:
                     existing_character.description = char_data.get('description', existing_character.description)
                     created_characters.append(existing_character)
                 else:
+                    # 获取推荐配置
+                    recommended_config = char_data.get('recommended_config', {})
+                    
                     # 创建新角色记录
                     new_character = Character(
                         name=character_name,
-                        description=char_data.get('description', ''),
+                        description=recommended_config.get('description', char_data.get('description', '')),
                         book_id=book_id,
                         chapter_id=chapter_id,
-                        voice_profile=char_data.get('voice_profile'),
-                        voice_config=char_data.get('voice_config')
+                        voice_type=recommended_config.get('voice_type', 'custom'),
+                        color=recommended_config.get('color', '#8b5cf6')
                     )
+                    
+                    # 设置TTS参数（特别是旁白角色的默认参数）
+                    if 'recommended_tts_params' in recommended_config:
+                        new_character.set_voice_parameters(recommended_config['recommended_tts_params'])
+                    elif character_name == '旁白':
+                        # 旁白角色的默认TTS参数
+                        new_character.set_voice_parameters({
+                            'time_step': 32,
+                            'p_weight': 1.4,
+                            't_weight': 3.0
+                        })
+                        new_character.voice_type = 'narrator'
+                        new_character.color = '#6c757d'
+                    
                     self.db.add(new_character)
                     created_characters.append(new_character)
+                    logger.info(f"✅ [角色创建] 创建角色 '{character_name}' (ID将在提交后分配)")
             
             self.db.commit()
             logger.info(f"为章节 {chapter_id} 创建了 {len(created_characters)} 个角色记录")
@@ -179,4 +197,4 @@ class CharacterService:
             logger.error(f"应用匹配失败: {str(e)}")
             raise e
 
-    # ... existing methods ... 
+    # ... existing methods ...

@@ -982,11 +982,18 @@ class OllamaCharacterDetector:
 1. 按句子分段，识别每段的说话者
 2. 区分对话、旁白、心理独白
 3. 保持角色名称一致性
+4. 🔥 新增：分析角色外貌特征
 
 关键原则：
 - 引号内容 = 角色对话
 - 描述动作 = 旁白
 - "角色说：'话语'" = 分为两段：动作(旁白) + 话语(角色)
+
+角色外貌分析要求：
+- 年龄特征：child(幼儿)/young(年轻)/middle(中年)/elder(老年)
+- 身材特征：slim(纤细)/average(匀称)/sturdy(魁梧)/plump(丰满)
+- 服装风格：ancient(古装)/modern(现代)/formal(正装)/casual(休闲)
+- 特殊特征：发型、五官、皮肤、疤痕等描述
 
 输出JSON格式：
 {{
@@ -994,7 +1001,21 @@ class OllamaCharacterDetector:
     {{"order": 1, "text": "文本内容", "speaker": "说话者", "text_type": "dialogue/narration/inner_monologue", "confidence": 0.9}}
   ],
   "characters": [
-    {{"name": "角色名", "frequency": 出现次数, "gender": "male/female/neutral", "personality": "calm/brave/gentle", "is_main_character": true/false, "confidence": 0.8}}
+    {{
+      "name": "角色名", 
+      "frequency": 出现次数, 
+      "gender": "male/female/neutral", 
+      "personality": "calm/brave/gentle", 
+      "is_main_character": true/false, 
+      "confidence": 0.8,
+      "appearance": {{
+        "age_range": "young/middle/elder/child",
+        "build_type": "slim/average/sturdy/plump", 
+        "clothing_style": "ancient/modern/formal/casual",
+        "distinctive_features": "外貌特征描述",
+        "full_description": "完整外貌描述"
+      }}
+    }}
   ]
 }}
 
@@ -1124,6 +1145,7 @@ class OllamaCharacterDetector:
                         'order': seg_data.get('order', i + 1),
                         'text': seg_data.get('text', ''),
                         'speaker': speaker,
+                        'voice_name': speaker,  # 🔥 修复：确保voice_name与speaker一致
                         'confidence': seg_data.get('confidence', 0.8),
                         'detection_rule': 'ollama_ai',
                         'text_type': text_type
@@ -1258,4 +1280,4 @@ class OllamaCharacterDetector:
             
         except Exception as e:
             logger.error(f"AI性别推断异常: {str(e)}")
-            return 'unknown' 
+            return 'unknown'

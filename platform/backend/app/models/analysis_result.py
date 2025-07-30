@@ -60,6 +60,7 @@ class AnalysisResult(Base):
     session = relationship("AnalysisSession", back_populates="analysis_results")
     chapter = relationship("BookChapter", back_populates="analysis_results")
     synthesis_tasks = relationship("SynthesisTask", back_populates="analysis_result")
+    image_generation_tasks = relationship("ImageGenerationTask", back_populates="analysis_result", cascade="all, delete-orphan")
     
     # 索引
     __table_args__ = (

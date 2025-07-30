@@ -42,6 +42,9 @@ from .music_generation import (
     MusicGenerationSettings, MusicGenerationStatus, MusicSceneType, FadeMode
 )
 
+# 🖼️ 图片生成相关模型
+from .image_generation import ImageGenerationTask, ImageGenerationPreset
+
 __all__ = [
     'Base',
     'BaseModel', 
@@ -100,5 +103,8 @@ __all__ = [
     'MusicGenerationSettings',
     'MusicGenerationStatus',
     'MusicSceneType',
-    'FadeMode'
+    'FadeMode',
+    # 🖼️ 图片生成模型
+    'ImageGenerationTask',
+    'ImageGenerationPreset',
 ]

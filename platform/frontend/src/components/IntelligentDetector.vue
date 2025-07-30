@@ -633,17 +633,29 @@ const fixSingleIssue = async (issue, showMessage = true) => {
           const suggestedSegments = issue.fix_data.suggested_segments
           
           // 创建新的段落数组
-          const newSegments = suggestedSegments.map((suggested, subIndex) => ({
-            ...originalSegment, // 继承原段落的其他属性
-            id: `segment_${Date.now()}_${subIndex}`,
-            segment_id: originalSegment.segment_id + subIndex,
-            text: suggested.text || '',
-            speaker: suggested.speaker || '旁白',
-            text_type: suggested.text_type || 'narration',
-            confidence: suggested.confidence || 0.9,
-            detection_rule: 'ai_split_detection',
-            _forceUpdate: Date.now()
-          }))
+          const newSegments = suggestedSegments.map((suggested, subIndex) => {
+            const speaker = suggested.speaker || '旁白'
+            const newSegment = {
+              ...originalSegment, // 继承原段落的其他属性
+              id: `segment_${Date.now()}_${subIndex}`,
+              segment_id: originalSegment.segment_id + subIndex,
+              text: suggested.text || '',
+              speaker: speaker,
+              voice_name: speaker, // 🔥 修复：确保voice_name与speaker一致
+              text_type: suggested.text_type || 'narration',
+              confidence: suggested.confidence || 0.9,
+              detection_rule: 'ai_split_detection',
+              _forceUpdate: Date.now()
+            }
+            
+            // 🔥 关键修复：旁白段落不应该有character_id或voice_id
+            if (speaker === '旁白') {
+              delete newSegment.character_id
+              delete newSegment.voice_id
+            }
+            
+            return newSegment
+          })
           
           // 替换原段落
           updatedSegments.splice(issue.segment_index, 1, ...newSegments)

@@ -341,6 +341,81 @@ export const systemAPI = {
   }
 }
 
+/**
+ * 图片生成API
+ */
+export const imageGenerationAPI = {
+  // 创建图片生成任务
+  async createImageTasks(data) {
+    return apiRequest(() => apiClient.post(`${API_V2_PREFIX}/image-generation/tasks/create`, data))
+  },
+
+  // 开始单个图片生成
+  async generateSingleImage(taskId) {
+    return apiRequest(() => apiClient.post(`${API_V2_PREFIX}/image-generation/tasks/${taskId}/generate`))
+  },
+
+  // 批量生成图片
+  async batchGenerateImages(data) {
+    return apiRequest(() => apiClient.post(`${API_V2_PREFIX}/image-generation/tasks/batch-generate`, data))
+  },
+
+  // 获取章节图片生成状态
+  async getChapterImageStatus(chapterId) {
+    return apiRequest(() => apiClient.get(`${API_V2_PREFIX}/image-generation/chapters/${chapterId}/status`))
+  },
+
+  // 获取图片生成任务详情
+  async getImageTask(taskId) {
+    return apiRequest(() => apiClient.get(`${API_V2_PREFIX}/image-generation/tasks/${taskId}`))
+  },
+
+  // 任务评分
+  async rateImageTask(taskId, rating) {
+    return apiRequest(() => apiClient.put(`${API_V2_PREFIX}/image-generation/tasks/${taskId}/rating`, { rating }))
+  },
+
+  // 任务审核
+  async approveImageTask(taskId, approved) {
+    return apiRequest(() => apiClient.put(`${API_V2_PREFIX}/image-generation/tasks/${taskId}/approve`, { approved }))
+  },
+
+  // 删除任务
+  async deleteImageTask(taskId) {
+    return apiRequest(() => apiClient.delete(`${API_V2_PREFIX}/image-generation/tasks/${taskId}`))
+  },
+
+  // 获取预设列表
+  async getImagePresets(params = {}) {
+    return apiRequest(() => apiClient.get(`${API_V2_PREFIX}/image-generation/presets`, { params }))
+  },
+
+  // 创建预设
+  async createImagePreset(data) {
+    return apiRequest(() => apiClient.post(`${API_V2_PREFIX}/image-generation/presets`, data))
+  },
+
+  // 获取预设详情
+  async getImagePreset(presetId) {
+    return apiRequest(() => apiClient.get(`${API_V2_PREFIX}/image-generation/presets/${presetId}`))
+  },
+
+  // 测试ComfyUI连接
+  async testComfyuiConnection() {
+    return apiRequest(() => apiClient.get(`${API_V2_PREFIX}/image-generation/comfyui/test-connection`))
+  },
+
+  // 获取ComfyUI模型列表
+  async getComfyuiModels() {
+    return apiRequest(() => apiClient.get(`${API_V2_PREFIX}/image-generation/comfyui/models`))
+  },
+
+  // 🔥 新增：搜索角色（用于图片生成一致性）
+  async searchCharacters(params = {}) {
+    return apiRequest(() => apiClient.get(`/api/v1/characters`, { params }))
+  }
+}
+
 // 导出所有API
 export default {
   book: bookAPI,
@@ -349,5 +424,6 @@ export default {
   synthesis: synthesisAPI,
   preset: presetAPI,
   project: projectAPI,
-  system: systemAPI
+  system: systemAPI,
+  imageGeneration: imageGenerationAPI
 }

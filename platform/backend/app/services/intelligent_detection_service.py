@@ -299,28 +299,43 @@ class IntelligentDetectionService:
                     reason = "文本过短"
                 
                 # 🔥 核心策略：同时包含对话标记和叙述内容的混合文本
-                elif has_quotes and has_speaker_action and len(text) > 40:
+                elif has_quotes and has_speaker_action and len(text) > 30:
                     # 必须同时有：引号 + 说话动作 + 足够长度
                     should_check = True
                     reason = "引号+说话动作+较长文本"
                 
-                # 🔥 明确的混合标志：包含完整的对话格式但很长
-                elif ('说道：' in text or '说：' in text) and has_narration_content and len(text) > 50:
-                    # 必须同时有：对话标记 + 叙述词汇 + 中等长度
+                # 🔥 明确的混合标志：包含完整的对话格式
+                elif (re.search(r'[说道喊叫问答回复表示][:：]', text)) and has_narration_content:
+                    # 必须同时有：对话标记 + 叙述词汇
                     should_check = True
-                    reason = "对话标记+叙述内容+中等长度"
+                    reason = "对话标记+叙述内容"
                 
-                # 🔥 超长文本且包含多种内容标志
-                elif len(text) > 120 and has_quotes and has_narration_content:
-                    # 必须同时有：超长 + 引号 + 叙述内容
+                # 🔥 长文本且包含多种内容标志
+                elif len(text) > 80 and has_quotes and has_narration_content:
+                    # 必须同时有：较长 + 引号 + 叙述内容
                     should_check = True
-                    reason = "超长文本+引号+叙述内容"
+                    reason = "长文本+引号+叙述内容"
                 
                 # 🔥 复杂混合：多个动作+引号+足够长度
                 elif (len([word for word in ['抬起', '看着', '走向', '聊着', '点头', '摇头', '推开', '闯出', '扑过'] if word in text]) >= 2 
-                      and has_quotes and len(text) > 45):
+                      and has_quotes and len(text) > 35):
                     should_check = True
                     reason = "多个动作+引号+长文本"
+                
+                # 🔥 新增：包含引号且有叙述内容的中等长度文本
+                elif has_quotes and has_narration_content and len(text) > 30:
+                    should_check = True
+                    reason = "引号+叙述内容+中等长度"
+                
+                # 🔥 新增：包含对话动作的较长文本
+                elif has_speaker_action and len(text) > 40:
+                    should_check = True
+                    reason = "对话动作+较长文本"
+                
+                # 🔥 新增：包含对话标记的文本（降低门槛）
+                elif re.search(r'[说道喊叫问答回复表示][:：]', text) and len(text) > 15:
+                    should_check = True
+                    reason = "对话标记+基本长度"
                 
                 if should_check:
                     suspicious_segments.append((index, text))

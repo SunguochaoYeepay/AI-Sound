@@ -1871,6 +1871,16 @@ async def batch_create_characters(
             gender = char_data.get('gender', '')
             personality = char_data.get('personality', '')
             
+            # 🔥 新增：提取外貌特征信息
+            appearance_info = char_data.get('recommended_config', {})
+            age_range = appearance_info.get('age_range', 'young')
+            build_type = appearance_info.get('build_type', 'average')
+            clothing_style = appearance_info.get('clothing_style', 'ancient')
+            distinctive_features = appearance_info.get('distinctive_features', '')
+            appearance_description = appearance_info.get('appearance_description', '')
+            avatar_prompt = appearance_info.get('avatar_prompt', '')
+            consistency_tag = appearance_info.get('consistency_tag', f"{name}_{gender}_{personality}_{age_range}")
+            
             # 根据性别设置默认声音类型
             voice_type = 'custom'
             if gender and gender.lower() in ['男', 'male', '男性']:
@@ -1958,6 +1968,14 @@ async def batch_create_characters(
                 chapter_id=chapter_id,
                 voice_type=voice_type,
                 color='#8b5cf6',
+                # 🔥 新增：外貌特征字段
+                age_range=age_range,
+                build_type=build_type,
+                clothing_style=clothing_style,
+                distinctive_features=distinctive_features,
+                appearance_description=appearance_description,
+                avatar_prompt=avatar_prompt,
+                consistency_tag=consistency_tag,
                 voice_parameters=json.dumps(voice_params, ensure_ascii=False),
                 tags=json.dumps(tags, ensure_ascii=False),
                 # 🔥 新增：文件路径和状态
@@ -2196,3 +2214,207 @@ def calculate_similarity(str1: str, str2: str) -> float:
     
     similarity = 1.0 - (dp[len1][len2] / max_len)
     return similarity
+
+@router.post("/generate-avatar/{character_id}")
+async def generate_character_avatar(
+    character_id: int,
+    custom_prompt: str = Form("", description="自定义提示词（可选）"),
+    style_preference: str = Form("realistic", description="风格偏好: realistic, anime, cartoon, artistic"),
+    image_size: str = Form("512x512", description="图片尺寸: 512x512, 768x768, 1024x1024"),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """🔥 新增：为指定角色生成头像"""
+    try:
+        # 获取角色信息
+        character = db.query(Character).filter(Character.id == character_id).first()
+        if not character:
+            return {
+                "success": False,
+                "message": f"角色ID {character_id} 不存在"
+            }
+        
+        # 构建头像生成提示词
+        if custom_prompt:
+            # 使用自定义提示词
+            avatar_prompt = custom_prompt
+        elif character.avatar_prompt:
+            # 使用预设的头像提示词
+            avatar_prompt = character.avatar_prompt
+        else:
+            # 基于角色信息生成提示词
+            avatar_prompt = _build_avatar_prompt_from_character(character)
+        
+        # 根据风格偏好调整提示词
+        avatar_prompt = _enhance_prompt_with_style(avatar_prompt, style_preference)
+        
+        logger.info(f"🎨 为角色 {character.name} 生成头像，提示词: {avatar_prompt}")
+        
+        # 调用图片生成服务
+        try:
+            from app.clients.comfyui_client import ComfyUIClient
+            comfyui = ComfyUIClient()
+            
+            # 解析图片尺寸
+            width, height = map(int, image_size.split('x'))
+            
+            # 生成图片
+            image_path = await comfyui.generate_image(
+                prompt=avatar_prompt,
+                negative_prompt="blurry, low quality, distorted, deformed, ugly, bad anatomy",
+                width=width,
+                height=height,
+                steps=20,
+                cfg=7.0,
+                seed=None  # 随机种子
+            )
+            
+            if image_path:
+                # 保存生成的头像到角色专用目录
+                avatar_filename = f"avatar_{character.name}_{character.id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+                avatar_dir = os.path.join("platform", "storage", "avatars")
+                os.makedirs(avatar_dir, exist_ok=True)
+                avatar_path = os.path.join(avatar_dir, avatar_filename)
+                
+                # 复制生成的图片到头像目录
+                import shutil
+                shutil.copy2(image_path, avatar_path)
+                
+                # 更新角色的头像路径
+                character.avatar_path = avatar_path
+                db.commit()
+                
+                return {
+                    "success": True,
+                    "message": f"成功为角色 {character.name} 生成头像",
+                    "data": {
+                        "character_name": character.name,
+                        "avatar_path": avatar_path,
+                        "avatar_url": f"/api/v1/characters/avatar/{character.id}",
+                        "prompt_used": avatar_prompt,
+                        "style": style_preference,
+                        "size": image_size,
+                        "consistency_tag": character.consistency_tag
+                    }
+                }
+            else:
+                return {
+                    "success": False,
+                    "message": "图片生成返回空路径"
+                }
+                
+        except Exception as e:
+            logger.error(f"调用图片生成服务失败: {str(e)}")
+            return {
+                "success": False,
+                "message": f"图片生成服务不可用: {str(e)}"
+            }
+            
+    except Exception as e:
+        logger.error(f"生成角色头像失败: {str(e)}")
+        return {
+            "success": False,
+            "message": f"生成头像失败: {str(e)}"
+        }
+
+@router.get("/avatar/{character_id}")
+async def get_character_avatar(
+    character_id: int,
+    db: Session = Depends(get_db)
+):
+    """获取角色头像"""
+    try:
+        character = db.query(Character).filter(Character.id == character_id).first()
+        if not character or not character.avatar_path:
+            # 返回默认头像或404
+            raise HTTPException(status_code=404, detail="头像不存在")
+        
+        # 检查文件是否存在
+        if not os.path.exists(character.avatar_path):
+            raise HTTPException(status_code=404, detail="头像文件不存在")
+        
+        from fastapi.responses import FileResponse
+        return FileResponse(
+            character.avatar_path,
+            media_type="image/png",
+            filename=f"{character.name}_avatar.png"
+        )
+        
+    except Exception as e:
+        logger.error(f"获取角色头像失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取头像失败: {str(e)}")
+
+def _build_avatar_prompt_from_character(character: Character) -> str:
+    """基于角色信息构建头像生成提示词"""
+    prompt_parts = [
+        f"portrait of {character.name}",
+        "professional headshot",
+        "high quality",
+        "detailed face"
+    ]
+    
+    # 添加年龄特征
+    if character.age_range:
+        age_prompts = {
+            'child': 'child, young face, innocent expression',
+            'young': 'young adult, youthful appearance',
+            'middle': 'middle-aged, mature features',
+            'elder': 'elderly, aged features, wise expression'
+        }
+        prompt_parts.append(age_prompts.get(character.age_range, 'young adult'))
+    
+    # 添加身材特征
+    if character.build_type:
+        build_prompts = {
+            'slim': 'slim build, delicate features',
+            'average': 'average build, balanced proportions',
+            'sturdy': 'strong build, robust features', 
+            'plump': 'full figure, rounded features'
+        }
+        prompt_parts.append(build_prompts.get(character.build_type, 'average build'))
+    
+    # 添加服装风格
+    if character.clothing_style:
+        clothing_prompts = {
+            'ancient': 'traditional Chinese clothing, hanfu, ancient style',
+            'modern': 'modern clothing, contemporary style',
+            'formal': 'formal attire, elegant dress',
+            'casual': 'casual wear, comfortable clothing'
+        }
+        prompt_parts.append(clothing_prompts.get(character.clothing_style, 'traditional clothing'))
+    
+    # 添加特殊特征
+    if character.distinctive_features:
+        # 将中文特征转换为英文描述
+        features_cn_to_en = {
+            '美貌': 'beautiful', '俊美': 'handsome', '英俊': 'handsome',
+            '美丽': 'beautiful', '漂亮': 'pretty',
+            '长发': 'long hair', '短发': 'short hair', '白发': 'white hair', 
+            '黑发': 'black hair', '卷发': 'curly hair',
+            '大眼': 'large eyes', '小眼': 'small eyes', '明眸': 'bright eyes',
+            '高鼻': 'high nose', '挺鼻': 'straight nose',
+            '红唇': 'red lips', '薄唇': 'thin lips', '厚唇': 'full lips',
+            '白皮': 'fair skin', '黑皮': 'dark skin', '古铜色': 'bronze skin'
+        }
+        
+        features_en = []
+        for feature in character.distinctive_features.split('，'):
+            feature = feature.strip()
+            if feature in features_cn_to_en:
+                features_en.append(features_cn_to_en[feature])
+        
+        if features_en:
+            prompt_parts.extend(features_en)
+    
+    return ', '.join(prompt_parts)
+
+def _enhance_prompt_with_style(prompt: str, style: str) -> str:
+    """根据风格偏好增强提示词"""
+    style_enhancements = {
+        'realistic': 'photorealistic, professional photography, studio lighting',
+        'anime': 'anime style, manga style, clean line art, vibrant colors',
+        'cartoon': 'cartoon style, colorful, friendly, stylized',
+        'artistic': 'artistic style, painterly, expressive, creative'
+    }
+    
+    enhancement = style_enhancements.get(style, style_enhancements['realistic'])
+    return f"{prompt}, {enhancement}"

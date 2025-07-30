@@ -35,6 +35,8 @@ from .background_music import router as background_music_router
 # 🎵 Import music generation router
 from .music_generation import router as music_generation_router
 from .music_generation_async import router as music_generation_async_router
+# 🖼️ Import image generation router
+from .image_generation import router as image_generation_router
 # Import TTS router
 from .tts import router as tts_router
 # Temporarily commented out due to missing model dependencies
@@ -141,6 +143,35 @@ api.include_router(background_music_router, prefix="/background-music", tags=["B
 # 🎵 Register music generation router
 api.include_router(music_generation_router, tags=["Music Generation"])
 api.include_router(music_generation_async_router, tags=["Async Music Generation"])
+# 🖼️ Register image generation router
+api.include_router(image_generation_router, tags=["Image Generation"])
+
+# 🔥 新增：兼容的图片文件访问路由
+@api.get("/files/image_generation/{filename}")
+async def get_image_file_compat(filename: str):
+    """兼容的图片文件访问接口"""
+    from fastapi.responses import FileResponse
+    from fastapi import HTTPException
+    import os
+    
+    try:
+        # 构建图片文件路径
+        file_path = os.path.join("storage", "audio_editor", "exports", "image_generation", filename)
+        
+        # 检查文件是否存在
+        if not os.path.exists(file_path):
+            raise HTTPException(status_code=404, detail="图片文件不存在")
+        
+        # 返回文件
+        return FileResponse(
+            path=file_path,
+            media_type="image/png",
+            filename=filename,
+            headers={"Content-Disposition": f"inline; filename={filename}"}
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取图片文件失败: {str(e)}")
 # Register TTS router
 api.include_router(tts_router, tags=["TTS"])
 # Temporarily commented out due to missing model dependencies

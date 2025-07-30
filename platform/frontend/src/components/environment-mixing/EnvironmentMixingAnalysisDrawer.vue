@@ -44,6 +44,8 @@
             placeholder="选择朗读项目（必选）"
             style="width: 100%; margin-bottom: 16px"
             :loading="projectLoading"
+            :disabled="projects.length === 0"
+            @focus="() => console.log('项目选择器获得焦点，当前项目数:', projects.length)"
           >
             <a-select-option v-for="project in projects" :key="project.id" :value="project.id">
               <div style="display: flex; justify-content: space-between; align-items: center">
@@ -933,10 +935,28 @@
       } else if (Array.isArray(response)) {
         // 格式4: [...]
         booksData = response
+      } else if (response?.data?.books) {
+        // 格式5: {data: {books: [...]}}
+        booksData = response.data.books
+      } else {
+        console.warn('未知的响应格式:', response)
+        booksData = []
       }
 
       console.log('Processed books data:', booksData)
-      books.value = booksData || []
+      books.value = Array.isArray(booksData) ? booksData : []
+      
+      // 确保书籍数据有id字段
+      if (books.value.length > 0) {
+        console.log('书籍列表加载成功，共', books.value.length, '本书')
+        books.value.forEach(book => {
+          if (!book.id) {
+            console.warn('书籍缺少id字段:', book)
+          }
+        })
+      } else {
+        console.warn('没有加载到任何书籍')
+      }
     } catch (error) {
       console.error('加载书籍失败:', error)
       notification.error({
@@ -957,8 +977,31 @@
       return
     }
 
-    // 并行加载项目和章节
-    await Promise.all([loadProjects(), loadChapters()])
+    console.log(`开始加载书籍 ${selectedBook.value} 的项目和章节...`)
+    
+    try {
+      // 并行加载项目和章节
+      const [projectsResult, chaptersResult] = await Promise.allSettled([
+        loadProjects(), 
+        loadChapters()
+      ])
+      
+      // 检查加载结果
+      if (projectsResult.status === 'rejected') {
+        console.error('项目加载失败:', projectsResult.reason)
+      } else {
+        console.log('项目加载成功，共找到', projects.value.length, '个项目')
+      }
+      
+      if (chaptersResult.status === 'rejected') {
+        console.error('章节加载失败:', chaptersResult.reason)
+      } else {
+        console.log('章节加载成功，共找到', chapters.value.length, '个章节')
+      }
+      
+    } catch (error) {
+      console.error('加载项目或章节时发生错误:', error)
+    }
   }
 
   const loadProjects = async () => {
@@ -970,22 +1013,43 @@
 
       console.log('Projects API response:', response)
 
-      // 处理响应数据
+      // 处理响应数据 - 兼容不同的API返回格式
       let projectsData = []
       if (response?.data?.success && response.data.data) {
-        projectsData = response.data.data
+        // 格式1: {data: {success: true, data: {projects: [...]}}}
+        if (response.data.data.projects) {
+          projectsData = response.data.data.projects
+        } else {
+          projectsData = response.data.data
+        }
       } else if (response?.data && Array.isArray(response.data)) {
+        // 格式2: {data: [...]}
         projectsData = response.data
       } else if (Array.isArray(response)) {
+        // 格式3: [...]
         projectsData = response
+      } else if (response?.data?.projects) {
+        // 格式4: {data: {projects: [...]}}
+        projectsData = response.data.projects
+      } else if (response?.success && response.data) {
+        // 格式5: {success: true, data: [...]}
+        projectsData = response.data
+      } else {
+        console.warn('未知的响应格式:', response)
+        projectsData = []
       }
 
       console.log('Processed projects data:', projectsData)
-      projects.value = projectsData || []
+      projects.value = Array.isArray(projectsData) ? projectsData : []
 
-      // 如果只有一个项目，自动选择（章节已经在书籍选择时加载了）
+      // 如果只有一个项目，自动选择
       if (projects.value.length === 1) {
         selectedProject.value = projects.value[0].id
+      }
+
+      // 如果没有项目，显示提示信息
+      if (projects.value.length === 0) {
+        console.warn(`书籍 ${selectedBook.value} 没有关联的朗读项目`)
       }
     } catch (error) {
       console.error('加载朗读项目失败:', error)

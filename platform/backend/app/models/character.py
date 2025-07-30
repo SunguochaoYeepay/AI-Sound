@@ -19,6 +19,15 @@ class Character(BaseModel):
     voice_type = Column(String(50), default="custom", comment="声音类型: male, female, child, elder, custom")
     color = Column(String(20), default="#8b5cf6", comment="显示颜色")
     
+    # 🔥 新增：外貌特征字段
+    age_range = Column(String(20), comment="年龄范围: child, young, middle, elder")
+    build_type = Column(String(20), comment="身材类型: slim, average, sturdy, plump")
+    clothing_style = Column(String(20), comment="服装风格: ancient, modern, formal, casual")
+    distinctive_features = Column(Text, comment="特殊外貌特征")
+    appearance_description = Column(Text, comment="完整外貌描述")
+    avatar_prompt = Column(Text, comment="头像生成AI提示词")
+    consistency_tag = Column(String(100), comment="视觉一致性标签")
+    
     # 文件路径
     avatar_path = Column(String(500), comment="头像图片路径")
     reference_audio_path = Column(String(500), comment="参考音频路径")
@@ -112,8 +121,8 @@ class Character(BaseModel):
         
         # 生成文件URL
         if self.avatar_path:
-            filename = os.path.basename(self.avatar_path)
-            result['avatarUrl'] = f"/api/v1/avatars/{filename}"
+            # 🔥 修正：使用正确的API接口路径
+            result['avatarUrl'] = f"/api/v1/characters/avatar/{self.id}"
         else:
             result['avatarUrl'] = None
             

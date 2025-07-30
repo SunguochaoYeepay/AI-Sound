@@ -568,6 +568,24 @@
               </a-button>
             </a-upload>
 
+            <!-- 🔥 新增：AI生成头像按钮 -->
+            <a-space style="margin-left: 8px">
+              <a-button 
+                size="small" 
+                type="default"
+                :loading="avatarGenerating"
+                @click="showGenerateAvatarModal = true"
+                :disabled="!editingVoice.name"
+              >
+                <template #icon>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                  </svg>
+                </template>
+                AI生成头像
+              </a-button>
+            </a-space>
+
             <!-- 移除头像按钮 -->
             <a-button
               v-if="editingVoice.avatarUrl || editingVoice.avatarPreview"
@@ -1397,6 +1415,63 @@
         </div>
       </div>
     </a-drawer>
+
+    <!-- 🔥 新增：AI生成头像模态框 -->
+    <a-modal
+      v-model:open="showGenerateAvatarModal"
+      title="AI生成角色头像"
+      width="600"
+      :maskClosable="false"
+      @ok="generateAvatar"
+      @cancel="cancelGenerateAvatar"
+      :confirmLoading="avatarGenerating"
+      okText="生成头像"
+      cancelText="取消"
+    >
+      <div class="avatar-generation-form">
+        <a-form layout="vertical">
+          <a-form-item label="角色名称">
+            <a-input :value="editingVoice.name" disabled />
+          </a-form-item>
+          
+          <a-form-item label="风格偏好">
+            <a-radio-group v-model:value="avatarGenConfig.style" class="style-radio-group">
+              <a-radio value="realistic">写实风格</a-radio>
+              <a-radio value="anime">动漫风格</a-radio>
+              <a-radio value="cartoon">卡通风格</a-radio>
+              <a-radio value="artistic">艺术风格</a-radio>
+            </a-radio-group>
+          </a-form-item>
+          
+          <a-form-item label="图片尺寸">
+            <a-select v-model:value="avatarGenConfig.size">
+              <a-select-option value="512x512">512x512 (标准)</a-select-option>
+              <a-select-option value="768x768">768x768 (高清)</a-select-option>
+              <a-select-option value="1024x1024">1024x1024 (超高清)</a-select-option>
+            </a-select>
+          </a-form-item>
+          
+          <a-form-item label="自定义提示词（可选）">
+            <a-textarea 
+              v-model:value="avatarGenConfig.customPrompt"
+              placeholder="如果您有特定的外貌要求，可以在这里描述..."
+              :rows="3"
+            />
+            <div class="tips">
+              <small>留空将使用基于角色描述的智能提示词</small>
+            </div>
+          </a-form-item>
+          
+          <!-- 预览当前角色信息 -->
+          <a-form-item label="当前角色信息预览">
+            <div class="character-preview">
+              <p><strong>描述：</strong>{{ editingVoice.description || '暂无描述' }}</p>
+              <p><strong>声音类型：</strong>{{ getVoiceTypeLabel(editingVoice.type) }}</p>
+            </div>
+          </a-form-item>
+        </a-form>
+      </div>
+    </a-modal>
   </div>
 </template>
 
@@ -2101,6 +2176,72 @@
     editingVoice.value.avatarFile = null
     editingVoice.value.avatarFileList = []
     editingVoice.value.removeAvatar = true // 标记需要删除头像
+  }
+
+  // 🔥 新增：AI头像生成相关方法
+  const generateAvatar = async () => {
+    if (!editingVoice.value.name) {
+      message.error('请先输入角色名称')
+      return
+    }
+
+    try {
+      avatarGenerating.value = true
+      
+      // 构建请求数据
+      const formData = new FormData()
+      if (avatarGenConfig.customPrompt) {
+        formData.append('custom_prompt', avatarGenConfig.customPrompt)
+      }
+      formData.append('style_preference', avatarGenConfig.style)
+      formData.append('image_size', avatarGenConfig.size)
+
+      // 如果是编辑已存在的角色，直接调用API
+      if (editingVoice.value.id) {
+        const response = await fetch(`/api/v1/characters/generate-avatar/${editingVoice.value.id}`, {
+          method: 'POST',
+          body: formData
+        })
+
+        const result = await response.json()
+        
+        if (result.success) {
+          // 更新头像预览
+          editingVoice.value.avatarUrl = result.data.avatar_url
+          editingVoice.value.avatarPreview = result.data.avatar_url
+          
+          message.success('头像生成成功！')
+          showGenerateAvatarModal.value = false
+        } else {
+          message.error(`头像生成失败: ${result.message}`)
+        }
+      } else {
+        // 新角色，先临时保存角色信息
+        message.info('新角色需要先保存才能生成头像，请先保存角色信息')
+      }
+
+    } catch (error) {
+      console.error('生成头像失败:', error)
+      message.error('头像生成失败，请检查网络连接')
+    } finally {
+      avatarGenerating.value = false
+    }
+  }
+
+  const cancelGenerateAvatar = () => {
+    showGenerateAvatarModal.value = false
+    avatarGenConfig.customPrompt = ''
+  }
+
+  const getVoiceTypeLabel = (type) => {
+    const typeMap = {
+      'male': '男声',
+      'female': '女声', 
+      'child': '童声',
+      'elder': '老人声',
+      'custom': '自定义'
+    }
+    return typeMap[type] || '未知'
   }
 
   const handleEditLatentChange = (info) => {
@@ -3031,6 +3172,22 @@
   const goBack = () => {
     router.go(-1) // 返回上一页
   }
+
+  // 文件上传相关状态
+  const uploadConfig = reactive({
+    unifiedFile: null,
+    unifiedLatentFile: null,
+    useUnifiedFile: false
+  })
+
+  // 🔥 新增：AI头像生成相关状态
+  const showGenerateAvatarModal = ref(false)
+  const avatarGenerating = ref(false)
+  const avatarGenConfig = reactive({
+    style: 'realistic',
+    size: '512x512',
+    customPrompt: ''
+  })
 </script>
 
 <style scoped>

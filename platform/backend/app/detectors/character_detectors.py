@@ -223,6 +223,7 @@ class ProgrammaticCharacterDetector:
                     'order': len(segments) + 1,
                     'text': action_part,
                     'speaker': '旁白',
+                    'voice_name': '旁白',  # 🔥 修复：确保voice_name与speaker一致
                     'confidence': 0.95,
                     'detection_rule': 'mixed_split_action',
                     'text_type': 'narration'
@@ -233,6 +234,7 @@ class ProgrammaticCharacterDetector:
                     'order': len(segments) + 1,
                     'text': dialogue_part,
                     'speaker': speaker_name,
+                    'voice_name': speaker_name,  # 🔥 修复：确保voice_name与speaker一致
                     'confidence': 0.95,
                     'detection_rule': 'mixed_split_dialogue',
                     'text_type': 'dialogue'
@@ -246,6 +248,7 @@ class ProgrammaticCharacterDetector:
                     'order': len(segments) + 1,  # 重新编号，确保连续性
                     'text': sentence + '。',
                     'speaker': segment_info['speaker'],
+                    'voice_name': segment_info['speaker'],  # 🔥 修复：确保voice_name与speaker一致
                     'confidence': segment_info['confidence'],
                     'detection_rule': segment_info['rule'],
                     'text_type': segment_info['text_type']
