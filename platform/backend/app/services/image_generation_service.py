@@ -60,7 +60,34 @@ class ImageGenerationService:
             
             # 3. 解析分析结果
             analysis_data = analysis_result.get_analysis_data()
-            segments = analysis_data.get('segments', [])
+            
+            # 🔥 修复：正确获取segments数据
+            # 数据可能在不同的位置，按优先级尝试获取
+            segments = []
+            
+            # 优先从 segments 字段获取（兼容旧格式）
+            if 'segments' in analysis_data:
+                segments = analysis_data['segments']
+                logger.info(f"从 segments 字段获取到 {len(segments)} 个段落")
+            
+            # 如果没有，尝试从 synthesis_plan 字段获取
+            elif 'synthesis_plan' in analysis_data:
+                segments = analysis_data['synthesis_plan']
+                logger.info(f"从 synthesis_plan 字段获取到 {len(segments)} 个段落")
+            
+            # 如果还没有，尝试从 synthesis_json.synthesis_plan 获取
+            elif 'synthesis_json' in analysis_data and isinstance(analysis_data['synthesis_json'], dict):
+                synthesis_json = analysis_data['synthesis_json']
+                if 'synthesis_plan' in synthesis_json:
+                    segments = synthesis_json['synthesis_plan']
+                    logger.info(f"从 synthesis_json.synthesis_plan 字段获取到 {len(segments)} 个段落")
+            
+            # 确保segments是列表格式
+            if not isinstance(segments, list):
+                logger.warning(f"segments数据格式错误，期望list，实际{type(segments)}")
+                segments = []
+            
+            logger.info(f"最终获取到 {len(segments)} 个段落用于图片生成")
             
             # 4. 🔥 新增：获取角色一致性配置
             character_consistency = generation_config.get('character_consistency', {}) if generation_config else {}
@@ -90,18 +117,35 @@ class ImageGenerationService:
             # 6. 创建图片生成任务
             created_tasks = []
             for i, segment in enumerate(image_worthy_segments):
+                # 提取段落信息用于生成prompt和保存到数据库
+                text = segment.get('text', '')
+                segment_type = segment.get('text_type', 'narration')
+                
+                # 提取各种描述信息
+                scene_description = self._extract_scene_description(text)
+                character_info = self._extract_character_info(text)
+                emotional_tone = self._analyze_emotional_tone(text)
+                style_keywords = self._extract_style_keywords(text, segment_type)
+                
+                # 生成prompt
+                generated_prompt = self._generate_image_prompt(segment, chapter, generation_config)
+                
                 task_data = {
                     'chapter_id': chapter_id,
                     'analysis_result_id': analysis_result.id,
                     'segment_index': segment.get('order', i),
-                    'segment_text': segment.get('text', ''),
-                    'segment_type': segment.get('text_type', 'narration'),
-                    'prompt': self._generate_image_prompt(segment, chapter, generation_config),
+                    'segment_text': text,
+                    'segment_type': segment_type,
+                    'prompt': generated_prompt,
                     'negative_prompt': generation_config.get('negative_prompt', '') if generation_config else '',
-                    'generation_config': generation_config or {},
+                    'generation_params': generation_config or {},
                     'status': 'pending',
                     'character_consistency_enabled': character_consistency.get('enabled', False),
-                    'character_id': selected_character.id if selected_character else None
+                    'character_id': selected_character.id if selected_character else None,
+                    'scene_description': scene_description,
+                    'character_info': character_info,
+                    'emotional_tone': emotional_tone,
+                    'style_keywords': style_keywords
                 }
                 
                 # 创建任务记录
@@ -111,10 +155,15 @@ class ImageGenerationService:
                     segment_index=task_data['segment_index'],
                     segment_text=task_data['segment_text'][:1000],  # 限制长度
                     segment_type=task_data['segment_type'],
-                    prompt=task_data['prompt'][:2000],  # 限制长度
+                    generated_prompt=task_data['prompt'][:2000],  # 限制长度
                     negative_prompt=task_data['negative_prompt'][:1000],
-                    generation_config=task_data['generation_config'],
-                    status='pending'
+                    generation_params=task_data['generation_params'],
+                    status='pending',
+                    # 🔥 修复：保存提取的描述信息到数据库字段
+                    scene_description=scene_description[:500] if scene_description else None,
+                    character_info=json.dumps(character_info, ensure_ascii=False) if character_info else None,
+                    emotional_tone=emotional_tone,
+                    style_keywords=', '.join(style_keywords) if style_keywords else None
                 )
                 
                 self.db.add(task)
@@ -219,6 +268,76 @@ class ImageGenerationService:
         
         return suitable_segments
     
+    def _is_segment_image_worthy(self, segment: Dict) -> bool:
+        """判断单个段落是否适合生成图片"""
+        text = segment.get('text', '').strip()
+        text_type = segment.get('text_type', 'dialogue')
+        
+        # 跳过过短的文本
+        if len(text) < 10:
+            return False
+        
+        # 优先选择叙述性段落和场景描述
+        if text_type in ['narrative', 'description', 'scene', 'narration']:
+            return True
+        
+        # 检查是否包含场景描述关键词
+        scene_keywords = [
+            '只见', '此时', '突然', '眼前', '四周', '远处', '天空', '大地', '山峰', '森林',
+            '城堡', '宫殿', '房间', '街道', '广场', '花园', '湖泊', '河流', '海边',
+            '夜晚', '黎明', '黄昏', '月光', '阳光', '星空', '雪花', '雨滴', '雾气',
+            '教室', '图书馆', '学校', '办公室', '客厅', '卧室', '厨房', '餐厅', '商店', '超市',
+            '医院', '银行', '公园', '车站', '机场', '酒店', '咖啡馆', '商场', '电影院',
+            '早上', '中午', '下午', '傍晚', '晚上', '深夜', '春天', '夏天', '秋天', '冬天',
+            '晴天', '阴天', '雨天', '雪天', '风', '雷', '闪电',
+            '里面', '外面', '上面', '下面', '前面', '后面', '左边', '右边', '旁边', '中间',
+            '角落', '窗边', '门口', '楼上', '楼下', '地上', '桌上', '床上'
+        ]
+        
+        if any(keyword in text for keyword in scene_keywords):
+            return True
+        
+        # 检查是否包含动作描述
+        action_keywords = [
+            '走向', '奔跑', '飞翔', '站在', '坐在', '躺在', '望着', '眺望', 
+            '举起', '挥动', '伸出', '指向', '拥抱', '亲吻', '战斗', '追逐',
+            '走', '跑', '跳', '爬', '坐', '站', '躺', '蹲', '弯腰', '转身', '回头',
+            '抬头', '低头', '点头', '摇头', '摆手', '招手', '挥手', '握手',
+            '笑', '哭', '笑容', '微笑', '大笑', '皱眉', '瞪眼', '眨眼', '闭眼', '张嘴',
+            '吃', '喝', '看', '听', '说', '读', '写', '画', '唱', '跳舞', '打字',
+            '开门', '关门', '开窗', '关窗', '打开', '关闭', '拿起', '放下', '递给',
+            '进入', '走出', '离开', '到达', '经过', '穿过', '越过', '跨过', '爬上', '走下'
+        ]
+        
+        if any(keyword in text for keyword in action_keywords):
+            return True
+        
+        # 检查是否包含人物描述或情绪表达
+        character_keywords = [
+            '表情', '神情', '脸色', '眼神', '目光', '笑容', '泪水', '汗水',
+            '高兴', '开心', '快乐', '兴奋', '惊喜', '满意', '愉快',
+            '伤心', '难过', '痛苦', '悲伤', '失望', '沮丧', '绝望',
+            '愤怒', '生气', '恼火', '不满', '抱怨', '愤恨',
+            '害怕', '恐惧', '紧张', '担心', '焦虑', '不安', '慌张',
+            '惊讶', '吃惊', '震惊', '意外', '困惑', '疑惑', '奇怪'
+        ]
+        
+        if any(keyword in text for keyword in character_keywords):
+            return True
+        
+        # 对于对话，如果长度足够且包含描述性内容，也可以考虑
+        if text_type == 'dialogue' and len(text) >= 15:
+            description_indicators = [
+                '从前', '曾经', '那时', '当时', '后来', '接着', '然后', '于是',
+                '记得', '想起', '回忆', '描述', '形容', '像', '似乎', '仿佛',
+                '山', '水', '树', '花', '草', '动物', '建筑', '景色', '风景'
+            ]
+            
+            if any(indicator in text for indicator in description_indicators):
+                return True
+        
+        return False
+    
     async def _create_single_image_generation_task(
         self,
         chapter_id: int,
@@ -258,6 +377,8 @@ class ImageGenerationService:
             character_info=scene_analysis['character_info'],
             emotional_tone=scene_analysis['emotional_tone'],
             style_keywords=scene_analysis['style_keywords'],
+            original_prompt=scene_analysis.get('original_prompt', ''),
+            backend_added_tags=scene_analysis.get('backend_added_tags', []),
             generated_prompt=scene_analysis['generated_prompt'],
             negative_prompt=scene_analysis['negative_prompt'],
             comfyui_workflow=preset.default_workflow if preset else None,
@@ -343,42 +464,17 @@ class ImageGenerationService:
             style_keywords = self._extract_style_keywords(text, segment_type)
             analysis['style_keywords'] = style_keywords
             
-            # 5. 生成简单提示词（比之前稍微改进）
-            prompt_parts = []
+            # 5. 使用新的提示词生成方法
+            segment_data = {
+                'text': text,
+                'text_type': segment_type
+            }
             
-            # 优化的提示词构建
-            if '林渊' in text:
-                prompt_parts.append('young Chinese man in ancient clothing')
+            prompt_result = self._generate_image_prompt(segment_data, None, None)
             
-            if '胸甲' in text or '汉' in text:
-                prompt_parts.append('ancient Chinese armor with Han dynasty insignia')
-            
-            if '穿越' in text or '突然意识到' in text:
-                prompt_parts.append('dramatic moment of realization, shocked expression')
-            
-            if scene_description:
-                prompt_parts.append(scene_description)
-            
-            if character_info:
-                for char_name, char_desc in character_info.items():
-                    if char_desc:
-                        prompt_parts.append(f"{char_desc}")
-            
-            if emotional_tone:
-                prompt_parts.append(f"mood: {emotional_tone}")
-            
-            if style_keywords:
-                prompt_parts.extend(style_keywords)
-            
-            # 添加默认的质量标签
-            quality_tags = [
-                "cinematic lighting", "dramatic scene", "historical accuracy",
-                "detailed costume", "professional photography", "high quality", 
-                "masterpiece", "best quality", "detailed"
-            ]
-            prompt_parts.extend(quality_tags)
-            
-            analysis['generated_prompt'] = ", ".join(prompt_parts)
+            analysis['original_prompt'] = prompt_result['original_prompt']
+            analysis['backend_added_tags'] = prompt_result['backend_added_tags']
+            analysis['generated_prompt'] = prompt_result['generated_prompt']
             
             return analysis
     
@@ -516,6 +612,88 @@ class ImageGenerationService:
             style_keywords.append('atmospheric weather')
         
         return style_keywords
+    
+    def _generate_image_prompt(self, segment: Dict, chapter: Any, generation_config: Dict = None) -> Dict[str, Any]:
+        """生成图片提示词，返回原始提示词和后端添加的标签"""
+        try:
+            text = segment.get('text', '')
+            segment_type = segment.get('text_type', 'narration')
+            
+            # 提取场景描述
+            scene_description = self._extract_scene_description(text)
+            
+            # 提取角色信息
+            character_info = self._extract_character_info(text)
+            
+            # 分析情感色调
+            emotional_tone = self._analyze_emotional_tone(text)
+            
+            # 提取风格关键词
+            style_keywords = self._extract_style_keywords(text, segment_type)
+            
+            # 构建原始提示词（不包含质量标签）
+            original_prompt_parts = []
+            
+            # 添加场景描述
+            if scene_description and scene_description != 'general scene':
+                original_prompt_parts.append(scene_description)
+            
+            # 添加角色描述
+            if character_info:
+                for char_name, char_desc in character_info.items():
+                    original_prompt_parts.append(char_desc)
+            
+            # 添加情感色调
+            if emotional_tone != 'neutral':
+                emotion_mapping = {
+                    'angry': 'dramatic, intense atmosphere',
+                    'sad': 'melancholic, somber mood',
+                    'happy': 'bright, cheerful atmosphere',
+                    'peaceful': 'serene, calm atmosphere',
+                    'mysterious': 'mysterious, enigmatic mood',
+                    'romantic': 'romantic, soft lighting',
+                    'epic': 'epic, grand scale',
+                    'dark': 'dark, ominous atmosphere'
+                }
+                if emotional_tone in emotion_mapping:
+                    original_prompt_parts.append(emotion_mapping[emotional_tone])
+            
+            # 添加风格关键词
+            if style_keywords:
+                original_prompt_parts.extend(style_keywords)
+            
+            # 如果有生成配置，添加额外的风格
+            if generation_config:
+                style = generation_config.get('style', '')
+                if style:
+                    original_prompt_parts.append(style)
+            
+            # 定义后端自动添加的质量标签
+            backend_quality_tags = [
+                "high quality", "detailed", "masterpiece", "best quality",
+                "professional photography", "cinematic lighting"
+            ]
+            
+            # 构建完整提示词
+            all_prompt_parts = original_prompt_parts + backend_quality_tags
+            
+            original_prompt = ", ".join(original_prompt_parts) if original_prompt_parts else "beautiful scene"
+            generated_prompt = ", ".join(all_prompt_parts)
+            
+            return {
+                'original_prompt': original_prompt,
+                'backend_added_tags': backend_quality_tags,
+                'generated_prompt': generated_prompt
+            }
+            
+        except Exception as e:
+            logger.error(f"生成图片提示词失败: {str(e)}")
+            # 返回基础提示词
+            return {
+                'original_prompt': "beautiful scene",
+                'backend_added_tags': ["high quality", "detailed", "masterpiece"],
+                'generated_prompt': "beautiful scene, high quality, detailed, masterpiece"
+            }
     
     async def generate_single_image(self, task_id: int) -> Dict[str, Any]:
         """生成单张图片"""

@@ -97,6 +97,13 @@ class TaskApprovalRequest(BaseModel):
     approved: bool = Field(..., description="是否通过审核")
 
 
+class TaskDescriptionUpdateRequest(BaseModel):
+    """任务描述更新请求"""
+    scene_description: Optional[str] = Field(None, description="场景描述")
+    emotional_tone: Optional[str] = Field(None, description="情感色调")
+    generated_prompt: Optional[str] = Field(None, description="生成的提示词")
+
+
 @router.post("/tasks/create", response_model=Dict[str, Any])
 async def create_image_generation_tasks(
     request: ImageGenerationTaskCreateRequest,
@@ -264,6 +271,8 @@ async def get_image_generation_task(
                 "character_info": task.character_info,
                 "emotional_tone": task.emotional_tone,
                 "style_keywords": task.style_keywords,
+                "original_prompt": task.original_prompt,
+                "backend_added_tags": task.backend_added_tags,
                 "generated_prompt": task.generated_prompt,
                 "negative_prompt": task.negative_prompt,
                 "status": task.status,
@@ -345,6 +354,45 @@ async def approve_task(
     except Exception as e:
         logger.error(f"审核任务失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"审核任务失败: {str(e)}")
+
+
+@router.put("/tasks/{task_id}/description")
+async def update_task_description(
+    task_id: int,
+    request: TaskDescriptionUpdateRequest,
+    db: Session = Depends(get_db)
+):
+    """更新任务描述信息"""
+    
+    try:
+        task = db.query(ImageGenerationTask).filter(ImageGenerationTask.id == task_id).first()
+        if not task:
+            raise HTTPException(status_code=404, detail=f"图片生成任务 {task_id} 不存在")
+        
+        # 更新字段
+        if request.scene_description is not None:
+            task.scene_description = request.scene_description
+        if request.emotional_tone is not None:
+            task.emotional_tone = request.emotional_tone
+        if request.generated_prompt is not None:
+            task.generated_prompt = request.generated_prompt
+        
+        db.commit()
+        
+        return {
+            "success": True,
+            "message": "任务描述更新成功",
+            "data": {
+                "task_id": task_id,
+                "scene_description": task.scene_description,
+                "emotional_tone": task.emotional_tone,
+                "generated_prompt": task.generated_prompt
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"更新任务描述失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"更新任务描述失败: {str(e)}")
 
 
 @router.delete("/tasks/{task_id}")

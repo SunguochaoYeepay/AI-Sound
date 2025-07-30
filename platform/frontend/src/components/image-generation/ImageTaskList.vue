@@ -7,6 +7,7 @@
       :pagination="pagination"
       :scroll="{ x: 1200 }"
       row-key="id"
+      :row-selection="rowSelection"
     >
       <!-- 段落内容 -->
       <template #bodyCell="{ column, record }">
@@ -252,6 +253,24 @@ const editForm = ref({
   generated_prompt: ''
 })
 const currentEditRecord = ref(null)
+const selectedRowKeys = ref([])
+
+// Row selection configuration
+const rowSelection = {
+  selectedRowKeys: selectedRowKeys,
+  onChange: (selectedKeys) => {
+    selectedRowKeys.value = selectedKeys
+    // 更新任务的选择状态
+    props.tasks.forEach(task => {
+      task.selected = selectedKeys.includes(task.id)
+    })
+  },
+  onSelectAll: (selected, selectedRows, changeRows) => {
+    props.tasks.forEach(task => {
+      task.selected = selected
+    })
+  }
+}
 
 // Table configuration
 const columns = [
@@ -327,9 +346,7 @@ const onGenerate = (taskId) => {
   emit('generate', taskId)
 }
 
-const onRate = (taskId, rating) => {
-  emit('rate', taskId, rating)
-}
+// 移除了评分功能
 
 const onPreview = (task) => {
   previewTask.value = task
@@ -342,12 +359,6 @@ const onViewDetails = (task) => {
 
 const handleMenuClick = async ({ key }, record) => {
   switch (key) {
-    case 'approve':
-      emit('approve', record.id, true)
-      break
-    case 'reject':
-      emit('approve', record.id, false)
-      break
     case 'download':
       downloadImage(record.generated_image_url, `image_${record.id}`)
       break
@@ -411,8 +422,24 @@ const onEditDescription = (record) => {
 
 const onSaveDescription = async () => {
   try {
-    // 这里应该调用API保存描述
-    // await updateTaskDescription(editForm.value)
+    // 调用API保存描述
+    const response = await fetch(`/api/v1/image-generation/tasks/${editForm.value.id}/description`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        scene_description: editForm.value.scene_description,
+        emotional_tone: editForm.value.emotional_tone,
+        generated_prompt: editForm.value.generated_prompt
+      })
+    })
+    
+    if (!response.ok) {
+      throw new Error('保存失败')
+    }
+    
+    const result = await response.json()
     
     // 更新本地数据
     if (currentEditRecord.value) {
@@ -475,6 +502,26 @@ const onCancelEdit = () => {
   .text-gray {
     color: #999;
   }
+}
+
+.combined-description {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.description-content {
+  flex: 1;
+  color: #666;
+  font-size: 13px;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.description-content:hover {
+  color: #1890ff;
 }
 
 .preview-content {

@@ -107,8 +107,6 @@
             </a-button>
             <template #overlay>
               <a-menu @click="handleBatchAction">
-                <a-menu-item key="approve">批量通过</a-menu-item>
-                <a-menu-item key="reject">批量拒绝</a-menu-item>
                 <a-menu-item key="delete">批量删除</a-menu-item>
               </a-menu>
             </template>
@@ -164,42 +162,46 @@
       <ImageGenerationStats :stats="generationStats" />
     </a-card>
     
-    <!-- 配置抽屉 -->
+    <!-- 统一抽屉 -->
     <a-drawer
-      v-model:open="configDrawerVisible"
-      title="FluxKontext 生成配置"
+      v-model:open="unifiedDrawerVisible"
+      :title="drawerTitle"
       placement="right"
-      width="520"
-      @close="onConfigDrawerClose"
+      width="600"
+      @close="onDrawerClose"
     >
-      <!-- 🔥 新增：角色一致性配置 -->
-      <div class="character-consistency-section" style="margin-bottom: 24px;">
-        <a-divider orientation="left">角色一致性设置</a-divider>
-        
-        <a-form layout="vertical">
-          <a-form-item label="启用角色一致性">
-            <a-switch 
-              v-model:checked="characterConsistency.enabled"
-              checkedChildren="开"
-              unCheckedChildren="关"
-              @change="onCharacterConsistencyToggle"
-            />
-            <div class="form-hint">
-              <small>开启后，生成的图片将保持角色外貌一致性</small>
-            </div>
-          </a-form-item>
-          
-          <template v-if="characterConsistency.enabled">
-            <a-form-item label="选择角色">
-              <a-select
-                v-model:value="characterConsistency.selectedCharacterId"
-                placeholder="选择要保持一致性的角色"
-                style="width: 100%"
-                :loading="loadingCharacters"
-                show-search
-                :filter-option="false"
-                @search="searchCharacters"
-                @change="onCharacterSelect"
+      <!-- 抽屉内容切换 -->
+      <div class="drawer-tabs">
+        <a-tabs v-model:activeKey="activeDrawerTab" @change="onDrawerTabChange">
+          <a-tab-pane key="config" tab="生成配置">
+            <!-- 🔥 新增：角色一致性配置 -->
+            <div class="character-consistency-section" style="margin-bottom: 24px;">
+              <a-divider orientation="left">角色一致性设置</a-divider>
+              
+              <a-form layout="vertical">
+                <a-form-item label="启用角色一致性">
+                  <a-switch 
+                    v-model:checked="characterConsistency.enabled"
+                    checkedChildren="开"
+                    unCheckedChildren="关"
+                    @change="onCharacterConsistencyToggle"
+                  />
+                  <div class="form-hint">
+                    <small>开启后，生成的图片将保持角色外貌一致性</small>
+                  </div>
+                </a-form-item>
+                
+                <template v-if="characterConsistency.enabled">
+                  <a-form-item label="选择角色">
+                    <a-select
+                      v-model:value="characterConsistency.selectedCharacterId"
+                      placeholder="选择要保持一致性的角色"
+                      style="width: 100%"
+                      :loading="loadingCharacters"
+                      show-search
+                      :filter-option="false"
+                      @search="searchCharacters"
+                      @change="onCharacterSelect"
               >
                 <a-select-option 
                   v-for="character in availableCharacters" 
@@ -257,30 +259,26 @@
           </template>
         </a-form>
       </div>
-      
-      <FluxKontextConfig
-        v-model:config="generationConfig"
-        :presets="presets"
-        :character-consistency="characterConsistency"
-        @preset-change="onPresetChange"
-        @save="saveConfig"
-      />
+            
+            <FluxKontextConfig
+              v-model:config="generationConfig"
+              :presets="presets"
+              :character-consistency="characterConsistency"
+              @preset-change="onPresetChange"
+              @save="saveConfig"
+            />
+          </a-tab-pane>
+          
+          <a-tab-pane key="task-detail" tab="任务详情" v-if="selectedTask">
+            <ImageTaskDetail
+              :task="selectedTask"
+              @update="refreshTasks"
+              @close="closeTaskDetail"
+            />
+          </a-tab-pane>
+        </a-tabs>
+      </div>
     </a-drawer>
-    
-    <!-- 任务详情弹窗 -->
-    <a-modal
-      v-model:open="detailModalVisible"
-      title="任务详情"
-      width="800px"
-      :footer="null"
-    >
-      <ImageTaskDetail
-        v-if="selectedTask"
-        :task="selectedTask"
-        @update="refreshTasks"
-        @close="detailModalVisible = false"
-      />
-    </a-modal>
   </div>
 </template>
 
@@ -307,8 +305,8 @@ const selectedChapterId = ref(null)
 const creatingTasks = ref(false)
 const batchGenerating = ref(false)
 const loadingTasks = ref(false)
-const detailModalVisible = ref(false)
-const configDrawerVisible = ref(false) // 新增：配置抽屉显示状态
+const unifiedDrawerVisible = ref(false) // 统一抽屉显示状态
+const activeDrawerTab = ref('config') // 当前激活的抽屉标签页
 const selectedTask = ref(null)
 
 // 新增：图片任务和统计数据 - 直接使用store中的数据
@@ -398,18 +396,49 @@ const selectedCharacterInfo = ref(null)
 // 计算属性
 const hasImageTasks = computed(() => imageTasks.value.length > 0)
 
+// 计算抽屉标题
+const drawerTitle = computed(() => {
+  if (activeDrawerTab.value === 'task-detail' && selectedTask.value) {
+    return `任务详情 - 第${selectedTask.value.segment_index + 1}段`
+  }
+  return 'FluxKontext 生成配置'
+})
+
 // 方法定义
 const showConfigDrawer = () => {
-  configDrawerVisible.value = true
+  activeDrawerTab.value = 'config'
+  unifiedDrawerVisible.value = true
+}
+
+const showTaskDetail = (task) => {
+  selectedTask.value = task
+  activeDrawerTab.value = 'task-detail'
+  unifiedDrawerVisible.value = true
+}
+
+const closeTaskDetail = () => {
+  selectedTask.value = null
+  activeDrawerTab.value = 'config'
+}
+
+const onDrawerClose = () => {
+  unifiedDrawerVisible.value = false
+  if (activeDrawerTab.value === 'task-detail') {
+    closeTaskDetail()
+  }
+}
+
+const onDrawerTabChange = (key) => {
+  activeDrawerTab.value = key
 }
 
 const onConfigDrawerClose = () => {
-  configDrawerVisible.value = false
+  unifiedDrawerVisible.value = false
 }
 
 const saveConfig = () => {
   message.success('配置已保存')
-  configDrawerVisible.value = false
+  unifiedDrawerVisible.value = false
 }
 
 const onPresetChange = (preset) => {
@@ -657,8 +686,7 @@ const deleteImageTask = async (taskId) => {
 }
 
 const viewTaskDetails = (task) => {
-  selectedTask.value = task
-  detailModalVisible.value = true
+  showTaskDetail(task)
 }
 
 const refreshTasks = () => {
@@ -676,9 +704,24 @@ const handleBatchAction = async ({ key }) => {
   
   const taskIds = selectedTasks.map(t => t.id)
   
-  // TODO: 实现批量操作功能
-  console.log(`批量操作: ${key}, 任务ID:`, taskIds)
-  message.info(`批量${key}功能即将实现`)
+  if (key === 'delete') {
+    Modal.confirm({
+      title: '确认批量删除',
+      content: `确定要删除选中的 ${selectedTasks.length} 个任务吗？此操作不可恢复。`,
+      onOk: async () => {
+        try {
+          // 逐个删除任务
+          for (const taskId of taskIds) {
+            await imageStore.deleteImageTask(taskId)
+          }
+          message.success(`成功删除 ${selectedTasks.length} 个任务`)
+          await loadImageTasks(selectedChapterId.value)
+        } catch (error) {
+          message.error('批量删除失败: ' + error.message)
+        }
+      }
+    })
+  }
 }
 
 const testComfyuiConnection = async () => {
@@ -927,6 +970,39 @@ onUnmounted(() => {
   }
 }
 
+/* 统一抽屉样式 */
+.drawer-tabs {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.drawer-tabs .ant-tabs {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.drawer-tabs .ant-tabs-content-holder {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.drawer-tabs .ant-tabs-tabpane {
+  height: 100%;
+  padding: 0;
+}
+
+.drawer-tabs .ant-tabs-tab {
+  padding: 12px 16px;
+  font-weight: 500;
+}
+
+.drawer-tabs .ant-tabs-tab.ant-tabs-tab-active {
+  background: #f0f7ff;
+  border-radius: 6px 6px 0 0;
+}
+
 /* 暗黑模式适配 */
 [data-theme='dark'] .image-generation-container {
   background: #141414 !important;
@@ -943,5 +1019,10 @@ onUnmounted(() => {
   background: #1f1f1f !important;
   border: 1px solid #434343 !important;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+}
+
+[data-theme='dark'] .drawer-tabs .ant-tabs-tab.ant-tabs-tab-active {
+  background: #1f1f1f !important;
+  color: #1890ff !important;
 }
 </style>

@@ -34,7 +34,9 @@ class ImageGenerationTask(Base):
     
     # ComfyUI工作流
     comfyui_workflow = Column(JSON, comment="ComfyUI工作流配置")
-    generated_prompt = Column(Text, comment="最终生成的提示词")
+    original_prompt = Column(Text, comment="原始提示词（用户输入或AI生成的基础提示词）")
+    backend_added_tags = Column(JSON, comment="后端自动添加的质量标签")
+    generated_prompt = Column(Text, comment="最终生成的提示词（包含质量标签）")
     negative_prompt = Column(Text, comment="负面提示词")
     
     # 生成配置
@@ -118,4 +120,4 @@ class ImageGenerationPreset(Base):
     )
     
     def __repr__(self):
-        return f"<ImageGenerationPreset(id={self.id}, name='{self.name}', category='{self.category}')>" 
+        return f"<ImageGenerationPreset(id={self.id}, name='{self.name}', category='{self.category}')>"

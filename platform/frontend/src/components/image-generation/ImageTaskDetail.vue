@@ -73,17 +73,45 @@
         <!-- 提示词信息 -->
         <a-row :gutter="16" style="margin-top: 16px">
           <a-col :span="12">
-            <a-card title="正面提示词" size="small">
-              <div class="prompt-display">
-                {{ task.generated_prompt || '暂无' }}
+            <a-card title="提示词详情" size="small">
+              <!-- 原始提示词 -->
+              <div class="prompt-section" v-if="task.original_prompt">
+                <div class="prompt-label">原始提示词：</div>
+                <div class="prompt-display original-prompt">
+                  {{ task.original_prompt }}
+                </div>
               </div>
+              
+              <!-- 后端添加的标签 -->
+              <div class="prompt-section" v-if="task.backend_added_tags && task.backend_added_tags.length > 0">
+                <div class="prompt-label">后端添加的质量标签：</div>
+                <div class="tags-display">
+                  <a-tag 
+                    v-for="tag in task.backend_added_tags" 
+                    :key="tag"
+                    color="blue"
+                    style="margin-bottom: 4px"
+                  >
+                    {{ tag }}
+                  </a-tag>
+                </div>
+              </div>
+              
+              <!-- 完整提示词 -->
+              <div class="prompt-section">
+                <div class="prompt-label">完整提示词：</div>
+                <div class="prompt-display">
+                  {{ task.generated_prompt || '暂无' }}
+                </div>
+              </div>
+              
               <a-button 
                 size="small" 
                 @click="copyToClipboard(task.generated_prompt)"
                 style="margin-top: 8px"
                 v-if="task.generated_prompt"
               >
-                复制提示词
+                复制完整提示词
               </a-button>
             </a-card>
           </a-col>
@@ -99,7 +127,7 @@
                 style="margin-top: 8px"
                 v-if="task.negative_prompt"
               >
-                复制提示词
+                复制负面提示词
               </a-button>
             </a-card>
           </a-col>
@@ -465,6 +493,31 @@ watch(() => props.task, (newTask) => {
     border: 1px solid #e8e8e8;
   }
   
+  .prompt-section {
+    margin-bottom: 12px;
+    
+    &:last-child {
+      margin-bottom: 0;
+    }
+  }
+  
+  .prompt-label {
+    font-weight: 600;
+    color: #333;
+    margin-bottom: 6px;
+    font-size: 13px;
+  }
+  
+  .original-prompt {
+    background: #e6f7ff;
+    border-color: #91d5ff;
+  }
+  
+  .tags-display {
+    min-height: 32px;
+    line-height: 1.4;
+  }
+  
   .analysis-content {
     min-height: 40px;
     line-height: 1.4;
@@ -507,4 +560,4 @@ watch(() => props.task, (newTask) => {
 :deep(.ant-card-body) {
   padding: 12px;
 }
-</style> 
+</style>

@@ -249,4 +249,21 @@ class AnalysisResult(Base):
                 score += min(25, recommendation_count * 5)  # 最多25分
         
         self.confidence_score = min(100, score)
-        return self.confidence_score 
+        return self.confidence_score
+    
+    def get_analysis_data(self) -> Dict[str, Any]:
+        """获取分析数据，用于图片生成等功能"""
+        # 优先使用用户确认的最终配置
+        if self.final_config:
+            return self.final_config
+        
+        # 其次使用合成计划
+        if self.synthesis_plan:
+            return self.synthesis_plan
+        
+        # 最后使用原始分析结果
+        if self.original_analysis:
+            return self.original_analysis
+        
+        # 如果都没有，返回空字典
+        return {}
