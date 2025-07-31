@@ -103,18 +103,34 @@
                 </div>
               </div>
               
-              <!-- 完整提示词 -->
+              <!-- 中文提示词（编辑时显示） -->
               <div class="prompt-section">
-                <div class="prompt-label">完整提示词：</div>
-                <div v-if="!editingPrompt" class="prompt-display">
-                  {{ task.generated_prompt || '暂无' }}
+                <div class="prompt-label">完整提示词（中文）：</div>
+                <div v-if="!editingPrompt" class="prompt-display chinese-prompt">
+                  {{ task.generated_prompt_chinese || '暂无中文提示词' }}
                 </div>
                 <a-textarea
                   v-else
-                  v-model:value="editablePrompt.generated_prompt"
+                  v-model:value="editablePrompt.generated_prompt_chinese"
                   :rows="4"
-                  placeholder="请输入完整提示词"
+                  placeholder="请输入中文提示词，保存时将自动翻译为英文"
                 />
+              </div>
+              
+              <!-- 完整提示词（英文，只读显示） -->
+              <div class="prompt-section">
+                <div class="prompt-label">完整提示词（英文）：</div>
+                <div class="prompt-display">
+                  {{ task.generated_prompt || '暂无' }}
+                </div>
+                <div v-if="editingPrompt" class="prompt-hint">
+                  <a-alert 
+                    message="提示：保存中文提示词时将自动翻译为英文" 
+                    type="info" 
+                    show-icon 
+                    size="small"
+                  />
+                </div>
               </div>
               
               <a-space style="margin-top: 8px">
@@ -153,17 +169,36 @@
           
           <a-col :span="12">
             <a-card title="负面提示词" size="small">
-              <div class="prompt-display">
-                {{ task.negative_prompt || '暂无' }}
+              <div class="prompt-section">
+                <div class="prompt-label">负面提示词（英文）：</div>
+                <div class="prompt-display">
+                  {{ task.negative_prompt || '暂无' }}
+                </div>
               </div>
-              <a-button 
-                size="small" 
-                @click="copyToClipboard(task.negative_prompt)"
-                style="margin-top: 8px"
-                v-if="task.negative_prompt"
-              >
-                复制负面提示词
-              </a-button>
+              
+              <div class="prompt-section" v-if="task.negative_prompt_chinese">
+                <div class="prompt-label">负面提示词（中文）：</div>
+                <div class="prompt-display chinese-prompt">
+                  {{ task.negative_prompt_chinese }}
+                </div>
+              </div>
+              
+              <a-space style="margin-top: 8px">
+                <a-button 
+                  size="small" 
+                  @click="copyToClipboard(task.negative_prompt)"
+                  v-if="task.negative_prompt"
+                >
+                  复制英文负面提示词
+                </a-button>
+                <a-button 
+                  size="small" 
+                  @click="copyToClipboard(task.negative_prompt_chinese)"
+                  v-if="task.negative_prompt_chinese"
+                >
+                  复制中文负面提示词
+                </a-button>
+              </a-space>
             </a-card>
           </a-col>
         </a-row>
@@ -194,16 +229,19 @@
           
           <a-col :span="8">
             <a-card title="风格关键词" size="small">
-              <div class="analysis-content">
-                <a-tag 
-                  v-for="keyword in (task.style_keywords || [])" 
-                  :key="keyword"
-                  style="margin-bottom: 4px"
-                >
-                  {{ keyword }}
-                </a-tag>
-                <span v-if="!task.style_keywords || task.style_keywords.length === 0">
-                  暂无
+              <div class="style-keywords-container">
+                <div class="keywords-grid">
+                  <a-tag 
+                    v-for="keyword in processedStyleKeywords" 
+                    :key="keyword"
+                    class="style-keyword-tag"
+                    :color="getKeywordColor(keyword)"
+                  >
+                    {{ keyword }}
+                  </a-tag>
+                </div>
+                <span v-if="processedStyleKeywords.length === 0" class="no-keywords">
+                  暂无风格关键词
                 </span>
               </div>
             </a-card>
@@ -344,6 +382,16 @@
               {{ task.status === 'failed' ? '重新生成' : '开始生成' }}
             </a-button>
             
+            <!-- 为已完成的任务添加重新生成按钮 -->
+            <a-button 
+              v-if="task.status === 'completed'"
+              type="primary"
+              @click="onRegenerate"
+              :loading="generating"
+            >
+              重新生成
+            </a-button>
+            
             <a-button 
               v-if="task.generated_image_url"
               @click="downloadImage"
@@ -379,7 +427,7 @@ const props = defineProps({
 })
 
 // Emits
-const emit = defineEmits(['update', 'close'])
+const emit = defineEmits(['update', 'close', 'refresh'])
 
 // Store
 const imageStore = useImageGenerationStore()
@@ -391,10 +439,25 @@ const generating = ref(false)
 const editingPrompt = ref(false)
 const editablePrompt = ref({
   original_prompt: '',
-  generated_prompt: ''
+  generated_prompt: '',
+  generated_prompt_chinese: ''
 })
 
 // Computed properties
+const processedStyleKeywords = computed(() => {
+  if (!props.task.style_keywords) return []
+  
+  let keywords = []
+  
+  if (typeof props.task.style_keywords === 'string') {
+    keywords = props.task.style_keywords.split(',').map(k => k.trim()).filter(k => k.length > 0)
+  } else if (Array.isArray(props.task.style_keywords)) {
+    keywords = props.task.style_keywords.filter(k => k && k.trim().length > 0)
+  }
+  
+  return keywords
+})
+
 const parsedCharacterInfo = computed(() => {
   if (!props.task.character_info) return null
   
@@ -520,6 +583,41 @@ const getParamLabel = (key) => {
   return labels[key] || key
 }
 
+const getKeywordColor = (keyword) => {
+  const colorMap = {
+    'cinematic': 'orange',
+    'historical': 'gold',
+    'portrait': 'blue',
+    'fantasy': 'purple',
+    'anime': 'pink',
+    'realistic': 'green',
+    'artistic': 'cyan',
+    'modern': 'geekblue',
+    'vintage': 'volcano',
+    'elegant': 'magenta',
+    'dramatic': 'red',
+    'soft': 'lime',
+    'vibrant': 'gold',
+    'dark': 'black',
+    'bright': 'yellow',
+    'warm': 'orange',
+    'cool': 'blue',
+    'neutral': 'default'
+  }
+  
+  const lowerKeyword = keyword.toLowerCase()
+  for (const [key, color] of Object.entries(colorMap)) {
+    if (lowerKeyword.includes(key)) {
+      return color
+    }
+  }
+  
+  // 根据关键词内容动态生成颜色
+  const colors = ['blue', 'green', 'cyan', 'purple', 'pink', 'orange', 'gold', 'geekblue', 'magenta', 'volcano', 'lime', 'yellow']
+  const hash = keyword.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
+  return colors[hash % colors.length]
+}
+
 const formatDateTime = (dateString) => {
   if (!dateString) return null
   return new Date(dateString).toLocaleString()
@@ -572,7 +670,8 @@ const startEditPrompt = () => {
   editingPrompt.value = true
   editablePrompt.value = {
     original_prompt: props.task.original_prompt || '',
-    generated_prompt: props.task.generated_prompt || ''
+    generated_prompt: props.task.generated_prompt || '',
+    generated_prompt_chinese: props.task.generated_prompt_chinese || ''
   }
 }
 
@@ -580,22 +679,39 @@ const cancelEditPrompt = () => {
   editingPrompt.value = false
   editablePrompt.value = {
     original_prompt: '',
-    generated_prompt: ''
+    generated_prompt: '',
+    generated_prompt_chinese: ''
   }
 }
 
 const savePrompt = async () => {
   try {
     loading.value = true
+    
+    // 检查是否有中文提示词需要翻译
+    const updateData = {
+      original_prompt: editablePrompt.value.original_prompt
+    }
+    
+    // 如果有中文提示词，则发送中文提示词进行自动翻译
+    if (editablePrompt.value.generated_prompt_chinese && editablePrompt.value.generated_prompt_chinese.trim()) {
+      updateData.generated_prompt_chinese = editablePrompt.value.generated_prompt_chinese
+      updateData.auto_translate = true
+      message.loading('正在翻译中文提示词...', 0)
+    } else {
+      // 如果没有中文提示词，直接更新英文提示词
+      updateData.generated_prompt = editablePrompt.value.generated_prompt
+    }
+    
     // 调用API更新提示词
-    await imageStore.updateTaskPrompt(props.task.id, {
-      original_prompt: editablePrompt.value.original_prompt,
-      generated_prompt: editablePrompt.value.generated_prompt
-    })
+    await imageStore.updateTaskPrompt(props.task.id, updateData)
+    
+    message.destroy() // 清除loading消息
     message.success('提示词更新成功')
     editingPrompt.value = false
     emit('refresh')
   } catch (error) {
+    message.destroy() // 清除loading消息
     console.error('更新提示词失败:', error)
     message.error('更新提示词失败')
   } finally {
@@ -612,6 +728,20 @@ const onGenerate = async () => {
   } catch (error) {
     console.error('生成失败:', error)
     message.error('生成失败')
+  } finally {
+    generating.value = false
+  }
+}
+
+const onRegenerate = async () => {
+  try {
+    generating.value = true
+    await imageStore.regenerateImage(props.task.id)
+    message.success('重新生成请求已提交')
+    emit('refresh')
+  } catch (error) {
+    console.error('重新生成失败:', error)
+    message.error('重新生成失败')
   } finally {
     generating.value = false
   }
@@ -680,6 +810,16 @@ watch(() => props.task, (newTask) => {
     border-color: #91d5ff;
   }
   
+  .chinese-prompt {
+    background: #f6ffed;
+    border-color: #b7eb8f;
+    font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif;
+  }
+  
+  .prompt-hint {
+    margin-top: 8px;
+  }
+  
   .tags-display {
     min-height: 32px;
     line-height: 1.4;
@@ -688,6 +828,36 @@ watch(() => props.task, (newTask) => {
   .analysis-content {
     min-height: 40px;
     line-height: 1.4;
+  }
+
+  .style-keywords-container {
+    min-height: 40px;
+    
+    .keywords-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: flex-start;
+    }
+    
+    .style-keyword-tag {
+      margin: 0;
+      padding: 4px 8px;
+      font-size: 12px;
+      border-radius: 12px;
+      transition: all 0.2s ease;
+      
+      &:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      }
+    }
+    
+    .no-keywords {
+      color: #999;
+      font-size: 12px;
+      font-style: italic;
+    }
   }
   
   .character-info {
@@ -726,5 +896,51 @@ watch(() => props.task, (newTask) => {
 
 :deep(.ant-card-body) {
   padding: 12px;
+}
+
+/* 暗黑模式适配 */
+[data-theme='dark'] .image-task-detail {
+  .segment-text {
+    background: #1f1f1f;
+    color: #d9d9d9;
+    border: 1px solid #434343;
+  }
+  
+  .prompt-display {
+    background: #1f1f1f;
+    color: #d9d9d9;
+    border: 1px solid #434343;
+  }
+  
+  .original-prompt {
+    background: #111b26;
+    border-color: #177ddc;
+  }
+  
+  .style-keywords-container {
+    .keywords-grid {
+      .style-keyword-tag {
+        &:hover {
+          box-shadow: 0 2px 4px rgba(255, 255, 255, 0.1);
+        }
+      }
+      
+      .no-keywords {
+        color: #8c8c8c;
+      }
+    }
+  }
+  
+  .character-info {
+    :deep(.ant-descriptions-item-label) {
+      color: #177ddc;
+    }
+  }
+}
+
+[data-theme='dark'] .preview-content .prompt-display {
+  background: #1f1f1f;
+  color: #d9d9d9;
+  border: 1px solid #434343;
 }
 </style>
