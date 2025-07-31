@@ -1,7 +1,7 @@
 """add book chapter to characters v2
 
 Revision ID: 20250130_add_book_chapter_v2
-Revises: d4b17c87ccee
+Revises: 20250130_music_generation
 Create Date: 2025-01-30 12:00:00.000000
 
 """
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = '20250130_add_book_chapter_v2'
-down_revision = 'd4b17c87ccee'
+down_revision = '20250130_music_generation'
 branch_labels = None
 depends_on = None
 
@@ -64,4 +64,4 @@ def downgrade():
         op.drop_column('characters', 'chapter_id')
         op.drop_column('characters', 'book_id')
     except:
-        pass 
+        pass

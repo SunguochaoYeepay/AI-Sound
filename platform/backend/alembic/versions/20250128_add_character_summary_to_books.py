@@ -1,7 +1,7 @@
 """add character_summary to books
 
 Revision ID: add_character_summary_to_books
-Revises: 
+Revises: 20250127_create_collaboration_export_tables
 Create Date: 2025-01-28 10:00:00.000000
 
 """
@@ -11,7 +11,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision = 'add_character_summary_to_books'
-down_revision = None  # 需要根据实际情况修改
+down_revision = '20250127_create_collaboration_export_tables'
 branch_labels = None
 depends_on = None
 
@@ -24,4 +24,4 @@ def upgrade():
 
 def downgrade():
     """移除character_summary字段"""
-    op.drop_column('books', 'character_summary') 
+    op.drop_column('books', 'character_summary')

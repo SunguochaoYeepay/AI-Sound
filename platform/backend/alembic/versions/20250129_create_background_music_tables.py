@@ -1,7 +1,7 @@
 """创建背景音乐库表
 
 Revision ID: 20250129_create_background_music_tables
-Revises: 
+Revises: add_character_summary_to_books
 Create Date: 2025-01-29 14:00:00.000000
 
 """
@@ -11,7 +11,7 @@ from sqlalchemy.dialects import sqlite
 
 # revision identifiers, used by Alembic.
 revision = '20250129_create_background_music_tables'
-down_revision = None
+down_revision = 'add_character_summary_to_books'
 branch_labels = None
 depends_on = None
 

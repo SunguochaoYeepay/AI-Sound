@@ -1,8 +1,8 @@
-"""Add image generation tables
+"""add image generation tables
 
-Revision ID: add_image_generation_20250131
-Revises: 20250127_add_name_to_music_generation_tasks
-Create Date: 2025-01-31 00:00:00.000000
+Revision ID: 20250131_add_image_generation_tables
+Revises: 20250130_add_book_chapter_v2
+Create Date: 2025-01-31 10:00:00.000000
 
 """
 from alembic import op
@@ -10,8 +10,8 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision = 'add_image_generation_20250131'
-down_revision = '20250127_add_name_to_music_generation_tasks'
+revision = '20250131_add_image_generation_tables'
+down_revision = '20250130_add_book_chapter_v2'
 branch_labels = None
 depends_on = None
 
@@ -161,4 +161,4 @@ def downgrade():
     
     # 删除表
     op.drop_table('image_generation_presets')
-    op.drop_table('image_generation_tasks') 
+    op.drop_table('image_generation_tasks')
