@@ -1,10 +1,6 @@
 <template>
   <div class="task-image-generation-config">
-    <!-- 配置头部 -->
-    <div class="config-header">
-      <h3>🎯 任务生成配置</h3>
-      <p>此配置仅适用于当前生成任务，会继承书籍的通用配置</p>
-    </div>
+  
 
     <!-- 角色一致性配置 -->
     <div class="config-section">
