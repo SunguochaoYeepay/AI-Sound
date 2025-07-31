@@ -87,7 +87,7 @@
         <a-upload
           v-model:file-list="referenceImageList"
           :before-upload="beforeUpload"
-          :remove="removeReferenceImage"
+          @remove="removeReferenceImage"
           list-type="picture-card"
           :max-count="1"
         >
