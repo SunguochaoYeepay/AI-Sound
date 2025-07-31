@@ -158,8 +158,14 @@ class FFmpegService:
     """
     
     def __init__(self):
-        self.ffmpeg_path = self._find_ffmpeg()
-        self.ffprobe_path = self._find_ffprobe()
+        # 临时注释FFmpeg检查以测试其他功能
+        try:
+            self.ffmpeg_path = self._find_ffmpeg()
+            self.ffprobe_path = self._find_ffprobe()
+        except RuntimeError:
+            logger.warning("FFmpeg未找到，音频编辑功能将不可用")
+            self.ffmpeg_path = None
+            self.ffprobe_path = None
         
     def _find_ffmpeg(self) -> str:
         """查找FFmpeg可执行文件路径"""
@@ -1422,4 +1428,4 @@ async def health_check():
         "status": "healthy",
         "service": "sound-editor",
         "timestamp": datetime.now().isoformat()
-    } 
+    }

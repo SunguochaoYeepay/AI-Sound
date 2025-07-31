@@ -184,4 +184,4 @@ def init_database():
         
     except Exception as e:
         logger.error(f"数据库初始化失败: {e}")
-        raise 
+        raise

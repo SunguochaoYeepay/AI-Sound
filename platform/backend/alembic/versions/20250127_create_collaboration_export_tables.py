@@ -1,8 +1,8 @@
-"""create collaboration and export tables
+"""create collaboration export tables
 
 Revision ID: 20250127_create_collaboration_export_tables
-Revises: 20250127_create_audio_editor_tables
-Create Date: 2025-01-27 10:00:00.000000
+Revises: 20250128_remove_legacy_progress_fields
+Create Date: 2025-01-27 22:30:00.000000
 
 """
 from alembic import op
@@ -11,7 +11,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision = '20250127_create_collaboration_export_tables'
-down_revision = '20250127_create_audio_editor_tables'
+down_revision = '20250128_remove_legacy_progress_fields'
 branch_labels = None
 depends_on = None
 
@@ -117,4 +117,4 @@ def downgrade():
     op.drop_table('project_shares')
     op.drop_table('export_tasks')
     op.drop_table('edit_history')
-    op.drop_table('project_templates') 
+    op.drop_table('project_templates')

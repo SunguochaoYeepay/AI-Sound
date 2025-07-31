@@ -204,6 +204,36 @@ export const useImageGenerationStore = defineStore('imageGeneration', () => {
     }
   }
 
+  const updateTaskPrompt = async (taskId, promptData) => {
+    try {
+      loading.value = true
+      error.value = null
+      
+      const response = await imageGenerationAPI.updateTaskPrompt(taskId, promptData)
+      
+      if (response.success) {
+        // 更新本地任务数据
+        const taskIndex = imageTasks.value.findIndex(task => task.id === taskId)
+        if (taskIndex !== -1) {
+          if (promptData.original_prompt !== undefined) {
+            imageTasks.value[taskIndex].original_prompt = promptData.original_prompt
+          }
+          if (promptData.generated_prompt !== undefined) {
+            imageTasks.value[taskIndex].generated_prompt = promptData.generated_prompt
+          }
+        }
+        return response
+      } else {
+        throw new Error(response.message || '更新提示词失败')
+      }
+    } catch (err) {
+      error.value = err.message
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
   const deleteImageTask = async (taskId) => {
     try {
       loading.value = true
@@ -361,6 +391,7 @@ export const useImageGenerationStore = defineStore('imageGeneration', () => {
     getImageTask,
     rateImageTask,
     approveImageTask,
+    updateTaskPrompt,
     deleteImageTask,
     getImagePresets,
     createImagePreset,

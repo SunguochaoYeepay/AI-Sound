@@ -128,7 +128,7 @@ class ImageGenerationService:
                 style_keywords = self._extract_style_keywords(text, segment_type)
                 
                 # 生成prompt
-                generated_prompt = self._generate_image_prompt(segment, chapter, generation_config)
+                prompt_result = self._generate_image_prompt(segment, chapter, generation_config)
                 
                 task_data = {
                     'chapter_id': chapter_id,
@@ -136,7 +136,9 @@ class ImageGenerationService:
                     'segment_index': segment.get('order', i),
                     'segment_text': text,
                     'segment_type': segment_type,
-                    'prompt': generated_prompt,
+                    'prompt': prompt_result['generated_prompt'],
+                    'original_prompt': prompt_result['original_prompt'],
+                    'backend_added_tags': prompt_result['backend_added_tags'],
                     'negative_prompt': generation_config.get('negative_prompt', '') if generation_config else '',
                     'generation_params': generation_config or {},
                     'status': 'pending',
@@ -155,6 +157,8 @@ class ImageGenerationService:
                     segment_index=task_data['segment_index'],
                     segment_text=task_data['segment_text'][:1000],  # 限制长度
                     segment_type=task_data['segment_type'],
+                    original_prompt=task_data['original_prompt'][:2000] if task_data['original_prompt'] else None,
+                    backend_added_tags=task_data['backend_added_tags'] if isinstance(task_data['backend_added_tags'], list) else [],
                     generated_prompt=task_data['prompt'][:2000],  # 限制长度
                     negative_prompt=task_data['negative_prompt'][:1000],
                     generation_params=task_data['generation_params'],
@@ -745,7 +749,7 @@ class ImageGenerationService:
                 'reference_image': reference_image
             }
             
-            logger.info(f"开始生成图片，任务ID: {task_id}, 提示词: {generation_params['prompt'][:100]}...")
+            logger.info(f"开始生成图片，任务ID: {task_id}, 提示词长度: {len(generation_params['prompt'])} 字符")
             
             # 4. 调用FluxKontext生成
             try:

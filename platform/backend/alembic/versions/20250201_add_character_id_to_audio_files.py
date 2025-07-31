@@ -1,7 +1,7 @@
 """add character_id to audio_files
 
 Revision ID: 20250201_add_character_id_to_audio_files
-Revises: 20250129_add_ai_response_to_music_generation
+Revises: 20250131_add_book_image_generation_config
 Create Date: 2025-02-01 20:55:00.000000
 
 """
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = '20250201_add_character_id_to_audio_files'
-down_revision = '20250129_add_ai_response_to_music_generation'
+down_revision = '20250131_add_book_image_generation_config'
 branch_labels = None
 depends_on = None
 
@@ -25,4 +25,4 @@ def upgrade():
 def downgrade():
     """移除character_id字段"""
     op.drop_constraint('fk_audio_files_character_id', 'audio_files', type_='foreignkey')
-    op.drop_column('audio_files', 'character_id') 
+    op.drop_column('audio_files', 'character_id')

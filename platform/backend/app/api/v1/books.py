@@ -1545,3 +1545,88 @@ async def _sync_character_voice_to_synthesis_plans(
         logger.error(f"详细错误信息: {traceback.format_exc()}")
         db.rollback()
         return 0
+
+
+# ========== 图片生成配置API ==========
+
+@router.get("/{book_id}/image-generation-config")
+async def get_book_image_generation_config(
+    book_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    获取书籍的图片生成配置
+    """
+    try:
+        book = db.query(Book).filter(Book.id == book_id).first()
+        if not book:
+            raise HTTPException(status_code=404, detail="书籍不存在")
+        
+        config = book.get_image_generation_config()
+        
+        return {
+            "success": True,
+            "data": config
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取书籍图片生成配置失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取书籍图片生成配置失败: {str(e)}")
+
+
+@router.put("/{book_id}/image-generation-config")
+async def update_book_image_generation_config(
+    book_id: int,
+    config: dict,
+    db: Session = Depends(get_db)
+):
+    """
+    更新书籍的图片生成配置
+    
+    Args:
+        book_id: 书籍ID
+        config: 图片生成配置，包含以下字段：
+            - style: 风格
+            - steps: 步数
+            - guidance: 引导强度
+            - model: 模型
+            - seed: 种子
+            - batchSize: 批次大小
+    """
+    try:
+        book = db.query(Book).filter(Book.id == book_id).first()
+        if not book:
+            raise HTTPException(status_code=404, detail="书籍不存在")
+        
+        # 验证配置格式
+        allowed_keys = {'style', 'steps', 'guidance', 'model', 'seed', 'batchSize'}
+        if not isinstance(config, dict):
+            raise HTTPException(status_code=400, detail="配置必须是字典格式")
+        
+        # 过滤掉不允许的键
+        filtered_config = {k: v for k, v in config.items() if k in allowed_keys}
+        
+        # 更新配置
+        book.set_image_generation_config(filtered_config)
+        
+        # 强制SQLAlchemy检测JSON字段修改
+        flag_modified(book, 'image_generation_config')
+        
+        db.commit()
+        
+        logger.info(f"书籍 {book_id} 图片生成配置已更新: {filtered_config}")
+        
+        return {
+            "success": True,
+            "data": book.get_image_generation_config(),
+            "message": "图片生成配置更新成功"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"更新书籍图片生成配置失败: {str(e)}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"更新书籍图片生成配置失败: {str(e)}")

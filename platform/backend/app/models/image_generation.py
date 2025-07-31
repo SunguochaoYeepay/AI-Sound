@@ -3,7 +3,7 @@
 基于书籍智能准备结果生成配图
 """
 
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Index, JSON, Boolean
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Index, JSON, Boolean, ARRAY
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from typing import Dict, Any, Optional, List
@@ -35,7 +35,7 @@ class ImageGenerationTask(Base):
     # ComfyUI工作流
     comfyui_workflow = Column(JSON, comment="ComfyUI工作流配置")
     original_prompt = Column(Text, comment="原始提示词（用户输入或AI生成的基础提示词）")
-    backend_added_tags = Column(JSON, comment="后端自动添加的质量标签")
+    backend_added_tags = Column(ARRAY(String), comment="后端自动添加的质量标签")
     generated_prompt = Column(Text, comment="最终生成的提示词（包含质量标签）")
     negative_prompt = Column(Text, comment="负面提示词")
     

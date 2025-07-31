@@ -547,4 +547,34 @@ const onCancelEdit = () => {
 :deep(.ant-rate) {
   font-size: 14px;
 }
+
+/* 暗黑模式适配 */
+[data-theme='dark'] .image-task-list {
+  .no-image {
+    background: #1f1f1f;
+    color: #8c8c8c;
+  }
+  
+  .description-content {
+    color: #d9d9d9;
+  }
+  
+  .description-content:hover {
+    color: #1890ff;
+  }
+}
+
+[data-theme='dark'] .preview-content .prompt-display {
+  background: #1f1f1f;
+  color: #d9d9d9;
+  border: 1px solid #434343;
+}
+
+[data-theme='dark'] :deep(.ant-table-tbody > tr > td) {
+  border-bottom-color: #303030;
+}
+
+[data-theme='dark'] :deep(.ant-table-tbody > tr:hover > td) {
+  background: #1f1f1f;
+}
 </style>

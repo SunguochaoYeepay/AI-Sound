@@ -98,6 +98,16 @@ export const bookAPI = {
   // 获取书籍章节列表
   async getBookChapters(bookId, params = {}) {
     return apiRequest(() => apiClient.get(`${API_V2_PREFIX}/books/${bookId}/chapters`, { params }))
+  },
+
+  // 获取书籍图片生成配置
+  async getBookImageGenerationConfig(bookId) {
+    return apiRequest(() => apiClient.get(`${API_V2_PREFIX}/books/${bookId}/image-generation-config`))
+  },
+
+  // 更新书籍图片生成配置
+  async updateBookImageGenerationConfig(bookId, config) {
+    return apiRequest(() => apiClient.put(`${API_V2_PREFIX}/books/${bookId}/image-generation-config`, config))
   }
 }
 
@@ -383,6 +393,11 @@ export const imageGenerationAPI = {
   // 删除任务
   async deleteImageTask(taskId) {
     return apiRequest(() => apiClient.delete(`${API_V2_PREFIX}/image-generation/tasks/${taskId}`))
+  },
+
+  // 更新任务提示词
+  async updateTaskPrompt(taskId, data) {
+    return apiRequest(() => apiClient.put(`${API_V2_PREFIX}/image-generation/tasks/${taskId}/description`, data))
   },
 
   // 获取预设列表

@@ -77,9 +77,15 @@
               <!-- 原始提示词 -->
               <div class="prompt-section" v-if="task.original_prompt">
                 <div class="prompt-label">原始提示词：</div>
-                <div class="prompt-display original-prompt">
+                <div v-if="!editingPrompt" class="prompt-display original-prompt">
                   {{ task.original_prompt }}
                 </div>
+                <a-textarea
+                  v-else
+                  v-model:value="editablePrompt.original_prompt"
+                  :rows="2"
+                  placeholder="请输入原始提示词"
+                />
               </div>
               
               <!-- 后端添加的标签 -->
@@ -100,19 +106,48 @@
               <!-- 完整提示词 -->
               <div class="prompt-section">
                 <div class="prompt-label">完整提示词：</div>
-                <div class="prompt-display">
+                <div v-if="!editingPrompt" class="prompt-display">
                   {{ task.generated_prompt || '暂无' }}
                 </div>
+                <a-textarea
+                  v-else
+                  v-model:value="editablePrompt.generated_prompt"
+                  :rows="4"
+                  placeholder="请输入完整提示词"
+                />
               </div>
               
-              <a-button 
-                size="small" 
-                @click="copyToClipboard(task.generated_prompt)"
-                style="margin-top: 8px"
-                v-if="task.generated_prompt"
-              >
-                复制完整提示词
-              </a-button>
+              <a-space style="margin-top: 8px">
+                <a-button 
+                  v-if="!editingPrompt"
+                  size="small" 
+                  @click="startEditPrompt"
+                >
+                  编辑提示词
+                </a-button>
+                <a-button 
+                  v-else
+                  size="small" 
+                  type="primary"
+                  @click="savePrompt"
+                >
+                  保存
+                </a-button>
+                <a-button 
+                  v-if="editingPrompt"
+                  size="small" 
+                  @click="cancelEditPrompt"
+                >
+                  取消
+                </a-button>
+                <a-button 
+                  size="small" 
+                  @click="copyToClipboard(task.generated_prompt)"
+                  v-if="task.generated_prompt && !editingPrompt"
+                >
+                  复制完整提示词
+                </a-button>
+              </a-space>
             </a-card>
           </a-col>
           
@@ -180,16 +215,34 @@
           title="角色信息" 
           size="small" 
           style="margin-top: 16px"
-          v-if="task.character_info && Object.keys(task.character_info).length > 0"
+          v-if="parsedCharacterInfo && Object.keys(parsedCharacterInfo).length > 0"
         >
           <div class="character-info">
             <a-descriptions :column="1" size="small">
               <a-descriptions-item 
-                v-for="(description, name) in task.character_info" 
-                :key="name"
-                :label="name"
+                v-for="(character, index) in formattedCharacterInfo" 
+                :key="index"
+                :label="character.name || `角色 ${index + 1}`"
               >
-                {{ description }}
+                <div v-if="character.description">
+                  <div><strong>描述:</strong> {{ character.description }}</div>
+                </div>
+                <div v-if="character.appearance">
+                  <div><strong>外观:</strong> {{ character.appearance }}</div>
+                </div>
+                <div v-if="character.personality">
+                  <div><strong>性格:</strong> {{ character.personality }}</div>
+                </div>
+                <div v-if="character.age">
+                  <div><strong>年龄:</strong> {{ character.age }}</div>
+                </div>
+                <div v-if="character.gender">
+                  <div><strong>性别:</strong> {{ character.gender }}</div>
+                </div>
+                <!-- 显示其他属性 -->
+                <div v-for="(value, key) in character.otherProps" :key="key">
+                  <div><strong>{{ key }}:</strong> {{ value }}</div>
+                </div>
               </a-descriptions-item>
             </a-descriptions>
           </div>
@@ -285,7 +338,8 @@
             <a-button 
               v-if="task.status === 'pending' || task.status === 'failed'"
               type="primary"
-              @click="onRegenerate"
+              @click="onGenerate"
+              :loading="generating"
             >
               {{ task.status === 'failed' ? '重新生成' : '开始生成' }}
             </a-button>
@@ -312,8 +366,9 @@
 </template>
 
 <script setup>
-import { ref, watch, onMounted } from 'vue'
+import { ref, watch, onMounted, computed } from 'vue'
 import { message } from 'ant-design-vue'
+import { useImageGenerationStore } from '@/stores/imageGeneration'
 
 // Props
 const props = defineProps({
@@ -326,9 +381,79 @@ const props = defineProps({
 // Emits
 const emit = defineEmits(['update', 'close'])
 
+// Store
+const imageStore = useImageGenerationStore()
+
 // Reactive data
 const loading = ref(false)
 const userRating = ref(0)
+const generating = ref(false)
+const editingPrompt = ref(false)
+const editablePrompt = ref({
+  original_prompt: '',
+  generated_prompt: ''
+})
+
+// Computed properties
+const parsedCharacterInfo = computed(() => {
+  if (!props.task.character_info) return null
+  
+  try {
+    // 如果character_info是字符串，尝试解析JSON
+    if (typeof props.task.character_info === 'string') {
+      return JSON.parse(props.task.character_info)
+    }
+    // 如果已经是对象，直接返回
+    return props.task.character_info
+  } catch (error) {
+    console.warn('解析角色信息失败:', error)
+    return null
+  }
+})
+
+const formattedCharacterInfo = computed(() => {
+  if (!parsedCharacterInfo.value) return []
+  
+  // 如果是数组，直接处理
+  if (Array.isArray(parsedCharacterInfo.value)) {
+    return parsedCharacterInfo.value.map(character => formatCharacter(character))
+  }
+  
+  // 如果是对象，转换为数组
+  if (typeof parsedCharacterInfo.value === 'object') {
+    return Object.entries(parsedCharacterInfo.value).map(([name, info]) => {
+      if (typeof info === 'object') {
+        return formatCharacter({ name, ...info })
+      } else {
+        return formatCharacter({ name, description: info })
+      }
+    })
+  }
+  
+  return []
+})
+
+const formatCharacter = (character) => {
+  const knownProps = ['name', 'description', 'appearance', 'personality', 'age', 'gender']
+  const otherProps = {}
+  
+  // 分离已知属性和其他属性
+  Object.keys(character).forEach(key => {
+    if (!knownProps.includes(key)) {
+      otherProps[key] = character[key]
+    }
+  })
+  
+  return {
+    name: character.name,
+    description: character.description,
+    appearance: character.appearance,
+    personality: character.personality,
+    age: character.age,
+    gender: character.gender,
+    otherProps
+  }
+}
 
 // Methods
 const getStatusColor = (status) => {
@@ -443,11 +568,53 @@ const onApprove = (approved) => {
   })
 }
 
-const onRegenerate = () => {
-  emit('update', {
-    type: 'regenerate',
-    taskId: props.task.id
-  })
+const startEditPrompt = () => {
+  editingPrompt.value = true
+  editablePrompt.value = {
+    original_prompt: props.task.original_prompt || '',
+    generated_prompt: props.task.generated_prompt || ''
+  }
+}
+
+const cancelEditPrompt = () => {
+  editingPrompt.value = false
+  editablePrompt.value = {
+    original_prompt: '',
+    generated_prompt: ''
+  }
+}
+
+const savePrompt = async () => {
+  try {
+    loading.value = true
+    // 调用API更新提示词
+    await imageStore.updateTaskPrompt(props.task.id, {
+      original_prompt: editablePrompt.value.original_prompt,
+      generated_prompt: editablePrompt.value.generated_prompt
+    })
+    message.success('提示词更新成功')
+    editingPrompt.value = false
+    emit('refresh')
+  } catch (error) {
+    console.error('更新提示词失败:', error)
+    message.error('更新提示词失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+const onGenerate = async () => {
+  try {
+    generating.value = true
+    await imageStore.generateSingleImage(props.task.id)
+    message.success('生成请求已提交')
+    emit('refresh')
+  } catch (error) {
+    console.error('生成失败:', error)
+    message.error('生成失败')
+  } finally {
+    generating.value = false
+  }
 }
 
 const onRefresh = () => {

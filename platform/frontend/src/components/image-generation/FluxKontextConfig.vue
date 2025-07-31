@@ -22,9 +22,9 @@
       </a-select>
     </div>
 
-    <!-- 生成参数 -->
+    <!-- 简化的生成参数 -->
     <div class="config-section">
-      <h3>⚙️ 生成参数</h3>
+      <h3>⚙️ 基础参数</h3>
       
       <!-- 风格选择 -->
       <div class="param-item">
@@ -41,86 +41,62 @@
         </a-select>
       </div>
 
-      <!-- 采样步数 -->
+      <!-- 质量等级 -->
       <div class="param-item">
-        <label>采样步数</label>
-        <a-slider
-          v-model:value="localConfig.steps"
-          :min="10"
-          :max="50"
-          :step="5"
-          :marks="{ 10: '10', 20: '20', 30: '30', 50: '50' }"
-        />
-        <div class="param-value">{{ localConfig.steps }} 步</div>
-      </div>
-
-      <!-- Flux引导强度 -->
-      <div class="param-item">
-        <label>引导强度</label>
-        <a-slider
-          v-model:value="localConfig.guidance"
-          :min="1.0"
-          :max="5.0"
-          :step="0.1"
-          :marks="{ 1.0: '1.0', 2.5: '2.5', 5.0: '5.0' }"
-        />
-        <div class="param-value">{{ localConfig.guidance.toFixed(1) }}</div>
+        <label>生成质量</label>
+        <a-radio-group v-model:value="qualityLevel" @change="onQualityChange">
+          <a-radio-button value="fast">快速 (10步)</a-radio-button>
+          <a-radio-button value="balanced">平衡 (20步)</a-radio-button>
+          <a-radio-button value="high">高质量 (30步)</a-radio-button>
+        </a-radio-group>
       </div>
     </div>
 
-    <!-- FluxKontext特有功能 -->
-    <div class="config-section">
-      <h3>🎨 FluxKontext 特性</h3>
-      
-      <!-- 角色一致性 -->
-      <div class="param-item">
-        <a-switch
-          v-model:checked="localConfig.enableCharacterConsistency"
-          checked-children="开启"
-          un-checked-children="关闭"
-        />
-        <label style="margin-left: 8px">角色一致性</label>
-        <div class="param-desc">
-          使用参考图像保持角色外观一致
+    <!-- 高级参数折叠面板 -->
+    <a-collapse v-model:activeKey="advancedPanelKey" ghost>
+      <a-collapse-panel key="advanced" header="🔧 高级参数">
+        <!-- 采样步数 -->
+        <div class="param-item">
+          <label>采样步数</label>
+          <a-slider
+            v-model:value="localConfig.steps"
+            :min="10"
+            :max="50"
+            :step="5"
+            :marks="{ 10: '10', 20: '20', 30: '30', 50: '50' }"
+          />
+          <div class="param-value">{{ localConfig.steps }} 步</div>
         </div>
-      </div>
 
-      <!-- 参考图像上传 -->
-      <div class="param-item" v-if="localConfig.enableCharacterConsistency">
-        <label>参考图像</label>
-        <a-upload
-          v-model:file-list="referenceImageList"
-          :before-upload="beforeUpload"
-          :remove="removeReferenceImage"
-          list-type="picture-card"
-          :max-count="1"
-        >
-          <div v-if="referenceImageList.length < 1">
-            <plus-outlined />
-            <div style="margin-top: 8px">上传参考图</div>
+        <!-- Flux引导强度 -->
+        <div class="param-item">
+          <label>引导强度</label>
+          <a-slider
+            v-model:value="localConfig.guidance"
+            :min="1.0"
+            :max="5.0"
+            :step="0.1"
+            :marks="{ 1.0: '1.0', 2.5: '2.5', 5.0: '5.0' }"
+          />
+          <div class="param-value">{{ localConfig.guidance.toFixed(1) }}</div>
+        </div>
+        
+        <!-- 种子值 -->
+        <div class="param-item">
+          <label>随机种子</label>
+          <a-input-number
+            v-model:value="localConfig.seed"
+            placeholder="留空为随机"
+            style="width: 100%"
+            :min="-1"
+            :max="2147483647"
+          />
+          <div class="param-desc">
+            固定种子可以重现相同的生成结果
           </div>
-        </a-upload>
-        <div class="param-desc">
-          上传角色参考图像，系统会根据此图像保持角色一致性
         </div>
-      </div>
-    </div>
-
-    <!-- 模型信息 -->
-    <div class="config-section">
-      <h3>🚀 模型信息</h3>
-      <div class="model-info">
-        <div class="model-item">
-          <strong>模型:</strong> {{ localConfig.model }}
-        </div>
-        <div class="model-item">
-          <strong>类型:</strong> FluxKontext (专业级)
-        </div>
-        <div class="model-item">
-          <strong>优势:</strong> 高质量、自然语言理解、电影级效果
-        </div>
-      </div>
-    </div>
+      </a-collapse-panel>
+    </a-collapse>
 
     <!-- 操作按钮 -->
     <div class="action-buttons">
@@ -141,9 +117,8 @@
 </template>
 
 <script setup>
-import { ref, reactive, watch, computed } from 'vue'
+import { ref, reactive, watch, computed, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
-import { PlusOutlined } from '@ant-design/icons-vue'
 
 // Props
 const props = defineProps({
@@ -162,22 +137,46 @@ const emit = defineEmits(['update:config', 'preset-change', 'save'])
 
 // 响应式数据
 const selectedPresetId = ref(null)
-const referenceImageList = ref([])
+const qualityLevel = ref('balanced')
+const advancedPanelKey = ref([])
 
 // 本地配置副本
 const localConfig = reactive({
+  style: 'cinematic',
+  steps: 20,
+  guidance: 2.5,
+  model: 'flux1-dev-kontext_fp8_scaled',
+  seed: null,
+  batchSize: 1,
   ...props.config
 })
+
+// 根据步数设置质量等级
+const updateQualityLevel = () => {
+  if (localConfig.steps <= 15) {
+    qualityLevel.value = 'fast'
+  } else if (localConfig.steps <= 25) {
+    qualityLevel.value = 'balanced'
+  } else {
+    qualityLevel.value = 'high'
+  }
+}
 
 // 监听外部配置变化
 watch(() => props.config, (newConfig) => {
   Object.assign(localConfig, newConfig)
-}, { deep: true })
+  updateQualityLevel()
+}, { deep: true, immediate: true })
 
 // 监听本地配置变化，同步到外部
 watch(localConfig, (newConfig) => {
   emit('update:config', { ...newConfig })
 }, { deep: true })
+
+// 监听步数变化，更新质量等级
+watch(() => localConfig.steps, () => {
+  updateQualityLevel()
+})
 
 // 方法定义
 const onPresetChange = (presetId) => {
@@ -188,32 +187,22 @@ const onPresetChange = (presetId) => {
   }
 }
 
-const beforeUpload = (file) => {
-  const isImage = file.type.startsWith('image/')
-  if (!isImage) {
-    message.error('只能上传图片文件!')
-    return false
+const onQualityChange = (e) => {
+  const level = e.target.value
+  switch (level) {
+    case 'fast':
+      localConfig.steps = 10
+      localConfig.guidance = 2.0
+      break
+    case 'balanced':
+      localConfig.steps = 20
+      localConfig.guidance = 2.5
+      break
+    case 'high':
+      localConfig.steps = 30
+      localConfig.guidance = 3.0
+      break
   }
-  
-  const isLt10M = file.size / 1024 / 1024 < 10
-  if (!isLt10M) {
-    message.error('图片大小不能超过 10MB!')
-    return false
-  }
-  
-  // 转换为base64用于预览
-  const reader = new FileReader()
-  reader.onload = (e) => {
-    localConfig.referenceImage = e.target.result
-  }
-  reader.readAsDataURL(file)
-  
-  return false // 阻止自动上传
-}
-
-const removeReferenceImage = () => {
-  localConfig.referenceImage = null
-  referenceImageList.value = []
 }
 
 const resetToDefault = () => {
@@ -222,13 +211,12 @@ const resetToDefault = () => {
     steps: 20,
     guidance: 2.5,
     model: 'flux1-dev-kontext_fp8_scaled',
-    enableCharacterConsistency: false,
-    referenceImage: null
+    seed: null,
+    batchSize: 1
   }
   
   Object.assign(localConfig, defaultConfig)
   selectedPresetId.value = null
-  referenceImageList.value = []
   
   message.success('已重置为默认配置')
 }
@@ -236,6 +224,11 @@ const resetToDefault = () => {
 const handleSave = () => {
   emit('save')
 }
+
+// 组件挂载时初始化质量等级
+onMounted(() => {
+  updateQualityLevel()
+})
 </script>
 
 <style scoped lang="less">

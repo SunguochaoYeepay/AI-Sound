@@ -1,6 +1,6 @@
 """Add environment_sound_id to environment_track_configs
 
-Revision ID: add_environment_sound_id
+Revision ID: 20250125_add_environment_sound_id_to_tracks
 Revises: 20250125_env_gen_001
 Create Date: 2025-01-26 10:00:00.000000
 
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = '20250125_add_environment_sound_id_to_tracks'
-down_revision = '20250621_add_error_message'
+down_revision = '20250125_env_gen_001'
 branch_labels = None
 depends_on = None
 
@@ -42,4 +42,4 @@ def downgrade():
         pass
     
     # 删除字段
-    op.drop_column('environment_track_configs', 'environment_sound_id') 
+    op.drop_column('environment_track_configs', 'environment_sound_id')

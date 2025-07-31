@@ -173,99 +173,25 @@
       <!-- 抽屉内容切换 -->
       <div class="drawer-tabs">
         <a-tabs v-model:activeKey="activeDrawerTab" @change="onDrawerTabChange">
-          <a-tab-pane key="config" tab="生成配置">
-            <!-- 🔥 新增：角色一致性配置 -->
-            <div class="character-consistency-section" style="margin-bottom: 24px;">
-              <a-divider orientation="left">角色一致性设置</a-divider>
-              
-              <a-form layout="vertical">
-                <a-form-item label="启用角色一致性">
-                  <a-switch 
-                    v-model:checked="characterConsistency.enabled"
-                    checkedChildren="开"
-                    unCheckedChildren="关"
-                    @change="onCharacterConsistencyToggle"
-                  />
-                  <div class="form-hint">
-                    <small>开启后，生成的图片将保持角色外貌一致性</small>
-                  </div>
-                </a-form-item>
-                
-                <template v-if="characterConsistency.enabled">
-                  <a-form-item label="选择角色">
-                    <a-select
-                      v-model:value="characterConsistency.selectedCharacterId"
-                      placeholder="选择要保持一致性的角色"
-                      style="width: 100%"
-                      :loading="loadingCharacters"
-                      show-search
-                      :filter-option="false"
-                      @search="searchCharacters"
-                      @change="onCharacterSelect"
-              >
-                <a-select-option 
-                  v-for="character in availableCharacters" 
-                  :key="character.id" 
-                  :value="character.id"
-                >
-                  <div class="character-option">
-                    <img 
-                      v-if="character.avatar_url" 
-                      :src="character.avatar_url" 
-                      class="character-avatar-mini"
-                      alt="头像"
-                    />
-                    <div 
-                      v-else 
-                      class="character-avatar-placeholder"
-                      :style="{ background: character.color }"
-                    >
-                      {{ character.name[0] }}
-                    </div>
-                    <span class="character-name">{{ character.name }}</span>
-                    <a-tag v-if="character.consistency_tag" size="small" color="blue">
-                      {{ character.consistency_tag }}
-                    </a-tag>
-                  </div>
-                </a-select-option>
-              </a-select>
-            </a-form-item>
-            
-            <a-form-item label="一致性权重" v-if="characterConsistency.selectedCharacterId">
-              <a-slider
-                v-model:value="characterConsistency.weight"
-                :min="0.3"
-                :max="1.0"
-                :step="0.1"
-                :marks="{ 0.3: '弱', 0.6: '中', 0.9: '强' }"
-              />
-              <div class="form-hint">
-                <small>权重越高，角色特征越明显</small>
-              </div>
-            </a-form-item>
-            
-            <a-form-item label="角色提示词预览" v-if="selectedCharacterInfo">
-              <a-textarea 
-                :value="selectedCharacterInfo.avatar_prompt"
-                :rows="3"
-                disabled
-                style="background: #f5f5f5;"
-              />
-              <div class="character-info-preview">
-                <p><strong>外貌描述：</strong>{{ selectedCharacterInfo.appearance_description || '暂无' }}</p>
-                <p><strong>特殊特征：</strong>{{ selectedCharacterInfo.distinctive_features || '暂无' }}</p>
-              </div>
-            </a-form-item>
-          </template>
-        </a-form>
-      </div>
-            
-            <FluxKontextConfig
-              v-model:config="generationConfig"
+          <a-tab-pane key="book-config" tab="书籍配置">
+            <BookImageGenerationConfig
+              :book-id="selectedBookId"
+              v-model:config="bookGenerationConfig"
               :presets="presets"
-              :character-consistency="characterConsistency"
               @preset-change="onPresetChange"
-              @save="saveConfig"
+              @save="saveBookConfig"
+            />
+          </a-tab-pane>
+          
+          <a-tab-pane key="task-config" tab="任务配置">
+            <TaskImageGenerationConfig
+              :book-config="bookGenerationConfig"
+              v-model:task-config="taskGenerationConfig"
+              :available-characters="availableCharacters"
+              :loading-characters="loadingCharacters"
+              @character-select="onCharacterSelect"
+              @search-characters="searchCharacters"
+              @apply="applyTaskConfig"
             />
           </a-tab-pane>
           
@@ -287,13 +213,16 @@ import { ref, reactive, computed, onMounted, watch, onUnmounted } from 'vue'
 import { message, Modal } from 'ant-design-vue'
 import { DownOutlined, SettingOutlined } from '@ant-design/icons-vue'
 
-import FluxKontextConfig from '@/components/image-generation/FluxKontextConfig.vue'
+import BookImageGenerationConfig from '@/components/image-generation/BookImageGenerationConfig.vue'
+import TaskImageGenerationConfig from '@/components/image-generation/TaskImageGenerationConfig.vue'
+import CharacterConsistencyConfig from '@/components/image-generation/CharacterConsistencyConfig.vue'
 import ImageTaskList from '@/components/image-generation/ImageTaskList.vue'
 import ImageGenerationStats from '@/components/image-generation/ImageGenerationStats.vue'
 import ImageTaskDetail from '@/components/image-generation/ImageTaskDetail.vue'
 
 import { useImageGenerationStore } from '@/stores/imageGeneration'
 import { useBookStore } from '@/stores/book'
+import { bookAPI } from '@/api/v2.js'
 
 // Stores
 const imageStore = useImageGenerationStore()
@@ -306,7 +235,7 @@ const creatingTasks = ref(false)
 const batchGenerating = ref(false)
 const loadingTasks = ref(false)
 const unifiedDrawerVisible = ref(false) // 统一抽屉显示状态
-const activeDrawerTab = ref('config') // 当前激活的抽屉标签页
+const activeDrawerTab = ref('book-config') // 当前激活的抽屉标签页
 const selectedTask = ref(null)
 
 // 新增：图片任务和统计数据 - 直接使用store中的数据
@@ -334,14 +263,25 @@ watch(imageTasks, (newTasks, oldTasks) => {
 const comfyuiConnected = ref(false)
 const comfyuiAddress = ref('127.0.0.1:8188')
 
-// 生成配置 - 适配FluxKontext
-const generationConfig = reactive({
+// 书籍级别配置
+const bookGenerationConfig = reactive({
   style: 'cinematic', // 电影风格
   steps: 20,          // Flux推荐步数
   guidance: 2.5,      // Flux引导强度
   model: 'flux1-dev-kontext_fp8_scaled', // FluxKontext模型
-  enableCharacterConsistency: false,     // 角色一致性
-  referenceImage: null                   // 参考图像
+  seed: null,         // 随机种子
+  batchSize: 1        // 批次大小
+})
+
+// 任务级别配置
+const taskGenerationConfig = reactive({
+  characterConsistency: {
+    enabled: false,
+    selectedCharacterId: null,
+    weight: 0.6,
+    referenceImage: null
+  },
+  overrides: {} // 用于覆盖书籍配置的特定参数
 })
 
 // 预设配置
@@ -381,14 +321,6 @@ const presets = ref([
   }
 ])
 
-// 角色一致性配置
-const characterConsistency = reactive({
-  enabled: false,
-  selectedCharacterId: null,
-  weight: 0.6,
-  characters: [] // 用于存储所有可用的角色
-})
-
 const loadingCharacters = ref(false)
 const availableCharacters = ref([])
 const selectedCharacterInfo = ref(null)
@@ -401,12 +333,18 @@ const drawerTitle = computed(() => {
   if (activeDrawerTab.value === 'task-detail' && selectedTask.value) {
     return `任务详情 - 第${selectedTask.value.segment_index + 1}段`
   }
-  return 'FluxKontext 生成配置'
+  if (activeDrawerTab.value === 'book-config') {
+    return '书籍图片生成配置'
+  }
+  if (activeDrawerTab.value === 'task-config') {
+    return '任务图片生成配置'
+  }
+  return '图片生成配置'
 })
 
 // 方法定义
 const showConfigDrawer = () => {
-  activeDrawerTab.value = 'config'
+  activeDrawerTab.value = 'book-config'
   unifiedDrawerVisible.value = true
 }
 
@@ -418,7 +356,7 @@ const showTaskDetail = (task) => {
 
 const closeTaskDetail = () => {
   selectedTask.value = null
-  activeDrawerTab.value = 'config'
+  activeDrawerTab.value = 'book-config'
 }
 
 const onDrawerClose = () => {
@@ -436,14 +374,31 @@ const onConfigDrawerClose = () => {
   unifiedDrawerVisible.value = false
 }
 
-const saveConfig = () => {
-  message.success('配置已保存')
-  unifiedDrawerVisible.value = false
+// 保存书籍级别配置
+const saveBookConfig = async () => {
+  if (!selectedBookId.value) {
+    message.error('请先选择书籍')
+    return
+  }
+  
+  try {
+    await bookAPI.updateBookImageGenerationConfig(selectedBookId.value, bookGenerationConfig)
+    message.success('书籍配置已保存')
+  } catch (error) {
+    console.error('保存书籍配置失败:', error)
+    message.error('保存书籍配置失败: ' + error.message)
+  }
+}
+
+// 应用任务配置
+const applyTaskConfig = () => {
+  message.success('任务配置已应用')
+  activeDrawerTab.value = 'book-config'
 }
 
 const onPresetChange = (preset) => {
   if (preset && preset.config) {
-    Object.assign(generationConfig, preset.config)
+    Object.assign(bookGenerationConfig, preset.config)
     message.success(`已应用预设: ${preset.name}`)
   }
 }
@@ -483,8 +438,24 @@ const onBookChange = async (bookId) => {
   
   try {
     await booksStore.fetchChapters(bookId)
+    // 加载书籍的图片生成配置
+    await loadBookConfig(bookId)
   } catch (error) {
     message.error('加载章节列表失败: ' + error.message)
+  }
+}
+
+// 加载书籍级别配置
+const loadBookConfig = async (bookId) => {
+  try {
+    const config = await bookAPI.getBookImageGenerationConfig(bookId)
+    if (config) {
+      Object.assign(bookGenerationConfig, config)
+      console.log('已加载书籍配置:', config)
+    }
+  } catch (error) {
+    console.error('加载书籍配置失败:', error)
+    // 使用默认配置，不显示错误消息
   }
 }
 
@@ -636,16 +607,13 @@ const batchGenerate = async () => {
 }
 
 const generateSingleImage = async (taskId) => {
-  try {
-    await imageStore.generateSingleImage(taskId)
-    message.success('图片生成已开始')
-    
-    // 5秒后刷新任务状态
-    setTimeout(() => {
-      loadImageTasks(selectedChapterId.value)
-    }, 5000)
-  } catch (error) {
-    message.error('启动图片生成失败: ' + error.message)
+  // 找到对应的任务
+  const task = imageTasks.value.find(t => t.id === taskId)
+  if (task) {
+    // 打开详情抽屉
+    viewTaskDetails(task)
+  } else {
+    message.error('未找到对应的任务')
   }
 }
 
@@ -743,14 +711,14 @@ const testComfyuiConnection = async () => {
 // 角色一致性相关方法
 const searchCharacters = async (searchText) => {
   if (!searchText) {
-    characterConsistency.characters = []
+    availableCharacters.value = []
     return
   }
   
   loadingCharacters.value = true
   try {
     const response = await imageStore.searchCharacters({ search: searchText })
-    characterConsistency.characters = response.data?.data || []
+    availableCharacters.value = response.data?.data || []
   } catch (error) {
     message.error('搜索角色失败: ' + error.message)
   } finally {
@@ -759,22 +727,32 @@ const searchCharacters = async (searchText) => {
 }
 
 const onCharacterSelect = (characterId) => {
-  const character = characterConsistency.characters.find(c => c.id === characterId)
+  const character = availableCharacters.value.find(c => c.id === characterId)
   if (character) {
     selectedCharacterInfo.value = character
-    generationConfig.enableCharacterConsistency = true
-    generationConfig.referenceImage = null // 清空参考图像
+    taskGenerationConfig.characterConsistency.selectedCharacterId = characterId
+    taskGenerationConfig.characterConsistency.enabled = true
+    
+    // 如果有角色头像，设置为参考图片
+    if (character.avatar_url) {
+      taskGenerationConfig.characterConsistency.referenceImage = character.avatar_url
+      console.log('设置参考图片:', character.avatar_url)
+    }
   } else {
     selectedCharacterInfo.value = null
-    generationConfig.enableCharacterConsistency = false
-    generationConfig.referenceImage = null
+    taskGenerationConfig.characterConsistency.selectedCharacterId = null
+    taskGenerationConfig.characterConsistency.enabled = false
+    taskGenerationConfig.characterConsistency.referenceImage = null
   }
 }
 
 const onCharacterConsistencyToggle = (checked) => {
-  generationConfig.enableCharacterConsistency = checked
-  selectedCharacterInfo.value = null
-  generationConfig.referenceImage = null
+  taskGenerationConfig.characterConsistency.enabled = checked
+  if (!checked) {
+    selectedCharacterInfo.value = null
+    taskGenerationConfig.characterConsistency.selectedCharacterId = null
+    taskGenerationConfig.characterConsistency.referenceImage = null
+  }
 }
 
 // Lifecycle
@@ -786,6 +764,7 @@ onMounted(async () => {
   if (selectedBookId.value) {
     console.log('📚 已选择书籍:', selectedBookId.value)
     await booksStore.fetchChapters(selectedBookId.value)
+    await loadBookConfig(selectedBookId.value)
   }
   
   if (selectedChapterId.value) {
@@ -887,11 +866,12 @@ onUnmounted(() => {
 .character-option {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
-  border-radius: 6px;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 4px;
   cursor: pointer;
   transition: background-color 0.2s ease;
+  width: 100%;
 }
 
 .character-option:hover {
@@ -934,20 +914,36 @@ onUnmounted(() => {
 
 .character-info-preview {
   margin-top: 10px;
-  padding: 10px;
+  padding: 12px;
   background: #f5f5f5;
   border-radius: 6px;
   border: 1px solid #eee;
 }
 
-.character-info-preview p {
-  margin-bottom: 5px;
-  font-size: 13px;
-  color: #555;
+.character-info-item {
+  display: flex;
+  margin-bottom: 8px;
+  align-items: flex-start;
+  line-height: 1.5;
 }
 
-.character-info-preview strong {
+.character-info-item:last-child {
+  margin-bottom: 0;
+}
+
+.info-label {
+  font-weight: 600;
   color: #333;
+  font-size: 13px;
+  min-width: 80px;
+  flex-shrink: 0;
+}
+
+.info-content {
+  color: #555;
+  font-size: 13px;
+  flex: 1;
+  word-break: break-word;
 }
 
 .form-hint {
@@ -1024,5 +1020,31 @@ onUnmounted(() => {
 [data-theme='dark'] .drawer-tabs .ant-tabs-tab.ant-tabs-tab-active {
   background: #1f1f1f !important;
   color: #1890ff !important;
+}
+
+[data-theme='dark'] .character-info-preview {
+  background: #262626 !important;
+  border: 1px solid #434343 !important;
+}
+
+[data-theme='dark'] .info-label {
+  color: #fff !important;
+}
+
+[data-theme='dark'] .info-content {
+  color: #d9d9d9 !important;
+}
+
+[data-theme='dark'] .character-option:hover {
+  background-color: #262626 !important;
+}
+
+[data-theme='dark'] .character-option.selected {
+  background-color: #111b26 !important;
+  border: 1px solid #1890ff !important;
+}
+
+[data-theme='dark'] .character-name {
+  color: #fff !important;
 }
 </style>

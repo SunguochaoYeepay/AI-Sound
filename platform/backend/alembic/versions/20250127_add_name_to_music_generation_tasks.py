@@ -1,7 +1,7 @@
 """add name to music generation tasks
 
 Revision ID: 20250127_add_name_to_music_generation_tasks
-Revises: 20250127_create_audio_editor_tables
+Revises: 20250125_add_environment_sound_id_to_tracks
 Create Date: 2025-01-27 22:20:00.000000
 
 """
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = '20250127_add_name_to_music_generation_tasks'
-down_revision = '20250127_create_audio_editor_tables'
+down_revision = '20250125_add_environment_sound_id_to_tracks'
 branch_labels = None
 depends_on = None
 
@@ -32,4 +32,4 @@ def upgrade():
 
 def downgrade():
     """Remove name column from music_generation_tasks table"""
-    op.drop_column('music_generation_tasks', 'name') 
+    op.drop_column('music_generation_tasks', 'name')

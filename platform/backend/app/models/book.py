@@ -31,6 +31,9 @@ class Book(BaseModel):
     # 新增：角色汇总字段，存储整本书的角色信息汇总
     character_summary = Column(JSON, comment="角色汇总信息: {characters: [], voice_mappings: {}, last_updated: ''}")
     
+    # 新增：图片生成配置字段，存储书籍级别的通用配置
+    image_generation_config = Column(JSON, comment="图片生成配置: {style: '', steps: 20, guidance: 7.5, model: '', seed: -1, batchSize: 1}")
+    
     # 添加反向关联
     characters = relationship("Character", back_populates="book")
     
@@ -193,10 +196,59 @@ class Book(BaseModel):
         current_summary = self.get_character_summary()
         return len(current_summary.get('characters', []))
     
+    def get_image_generation_config(self) -> Dict[str, Any]:
+        """获取图片生成配置"""
+        if not self.image_generation_config:
+            return {
+                "style": "realistic",
+                "steps": 20,
+                "guidance": 7.5,
+                "model": "flux-dev",
+                "seed": -1,
+                "batchSize": 1
+            }
+        
+        # 处理字符串格式的数据
+        if isinstance(self.image_generation_config, str):
+            try:
+                return json.loads(self.image_generation_config)
+            except json.JSONDecodeError:
+                # 如果解析失败，返回默认配置
+                return {
+                    "style": "realistic",
+                    "steps": 20,
+                    "guidance": 7.5,
+                    "model": "flux-dev",
+                    "seed": -1,
+                    "batchSize": 1
+                }
+        
+        return self.image_generation_config
+    
+    def set_image_generation_config(self, config: Dict[str, Any]):
+        """设置图片生成配置"""
+        # 验证配置格式
+        default_config = {
+            "style": "realistic",
+            "steps": 20,
+            "guidance": 7.5,
+            "model": "flux-dev",
+            "seed": -1,
+            "batchSize": 1
+        }
+        
+        # 合并配置，保留默认值
+        merged_config = {**default_config, **config}
+        
+        # 设置配置并标记字段已修改
+        self.image_generation_config = merged_config
+        flag_modified(self, 'image_generation_config')
+    
     def to_dict(self):
         """转换为字典，包含特殊字段处理"""
         result = super().to_dict()
         result['tags'] = self.get_tags()
         result['chapters'] = self.get_chapters()
         result['character_summary'] = self.get_character_summary()
+        result['image_generation_config'] = self.get_image_generation_config()
         return result

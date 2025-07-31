@@ -11,7 +11,7 @@ from sqlalchemy import create_engine, text
 import asyncio
 
 # 直接使用数据库URL
-DATABASE_URL = "postgresql://ai_sound_user:ai_sound_password@localhost:5432/ai_sound_db"
+DATABASE_URL = "postgresql://ai_sound_user:ai_sound_password@localhost:5432/ai_sound"
 
 def add_prompt_fields():
     """手动添加提示词相关字段"""
