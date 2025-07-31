@@ -133,24 +133,13 @@
         :tasks="imageTasks"
         :loading="loadingTasks"
         @generate="generateSingleImage"
+        @regenerate="regenerateImage"
         @rate="rateImage"
         @approve="approveImage"
         @delete="deleteImageTask"
         @view-details="viewTaskDetails"
       />
       
-      <!-- 调试信息显示 -->
-      <div v-if="imageTasks.length === 0 && !loadingTasks" style="padding: 20px; border: 1px dashed #ccc; margin: 10px 0;">
-        <h4>🔍 调试信息：</h4>
-        <p><strong>selectedChapterId:</strong> {{ selectedChapterId }}</p>
-        <p><strong>imageTasks.length:</strong> {{ imageTasks.length }}</p>
-        <p><strong>loadingTasks:</strong> {{ loadingTasks }}</p>
-        <p><strong>store.imageTasks.length:</strong> {{ imageStore.imageTasks.length }}</p>
-        <p><strong>generationStats:</strong> {{ JSON.stringify(generationStats, null, 2) }}</p>
-        <button @click="loadImageTasks(selectedChapterId)" :disabled="!selectedChapterId">
-          🔄 手动重新加载
-        </button>
-      </div>
     </a-card>
     
     <!-- 生成统计 -->
@@ -550,6 +539,13 @@ const createImageTasks = async () => {
   
   creatingTasks.value = true
   try {
+    // 合并书籍配置和任务配置
+    const generationConfig = {
+      ...bookGenerationConfig,
+      character_consistency: taskGenerationConfig.characterConsistency,
+      ...taskGenerationConfig.overrides
+    }
+    
     const response = await imageStore.createImageTasks({
       chapter_id: selectedChapterId.value,
       generation_config: generationConfig
@@ -614,6 +610,16 @@ const generateSingleImage = async (taskId) => {
     viewTaskDetails(task)
   } else {
     message.error('未找到对应的任务')
+  }
+}
+
+const regenerateImage = async (taskId) => {
+  try {
+    await imageStore.regenerateImage(taskId)
+    message.success('重新生成请求已提交')
+    await loadImageTasks(selectedChapterId.value)
+  } catch (error) {
+    message.error('重新生成失败: ' + error.message)
   }
 }
 
@@ -715,9 +721,26 @@ const searchCharacters = async (searchText) => {
     return
   }
   
+  // 检查是否选择了书籍
+  if (!selectedBookId.value) {
+    message.warning('请先选择书籍')
+    return
+  }
+  
   loadingCharacters.value = true
   try {
-    const response = await imageStore.searchCharacters({ search: searchText })
+    // 构建搜索参数
+    const searchParams = { 
+      search: searchText,
+      book_id: selectedBookId.value
+    }
+    
+    // 如果选择了章节，则按章节筛选角色
+    if (selectedChapterId.value) {
+      searchParams.chapter_id = selectedChapterId.value
+    }
+    
+    const response = await imageStore.searchCharacters(searchParams)
     availableCharacters.value = response.data?.data || []
   } catch (error) {
     message.error('搜索角色失败: ' + error.message)

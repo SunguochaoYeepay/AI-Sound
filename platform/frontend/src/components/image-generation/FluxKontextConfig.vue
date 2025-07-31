@@ -319,4 +319,52 @@ onMounted(() => {
   width: 80px;
   height: 80px;
 }
+
+/* 暗黑模式适配 */
+[data-theme='dark'] .flux-kontext-config {
+  .config-section {
+    h3 {
+      color: #177ddc;
+    }
+  }
+
+  .preset-option {
+    .preset-name {
+      color: #d9d9d9;
+    }
+    
+    .preset-desc {
+      color: #8c8c8c;
+    }
+  }
+
+  .param-item {
+    label {
+      color: #d9d9d9;
+    }
+    
+    .param-value {
+      color: #177ddc;
+    }
+    
+    .param-desc {
+      color: #8c8c8c;
+    }
+  }
+
+  .model-info {
+    background: #1f1f1f;
+    border: 1px solid #434343;
+    
+    .model-item {
+      strong {
+        color: #d9d9d9;
+      }
+    }
+  }
+
+  .action-buttons {
+    border-top-color: #303030;
+  }
+}
 </style>

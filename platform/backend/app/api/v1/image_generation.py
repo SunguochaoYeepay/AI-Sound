@@ -13,6 +13,7 @@ import os
 
 from app.database import get_db
 from app.services.image_generation_service import ImageGenerationService
+from app.services.translation_service import TranslationService
 from app.models import ImageGenerationTask, ImageGenerationPreset, BookChapter
 from app.utils.exceptions import ServiceException
 from app.clients.comfyui_client import ComfyUIClient
@@ -63,6 +64,9 @@ class ImageGenerationTaskResponse(BaseModel):
     segment_text: str
     scene_description: Optional[str]
     generated_prompt: Optional[str]
+    generated_prompt_chinese: Optional[str]
+    negative_prompt: Optional[str]
+    negative_prompt_chinese: Optional[str]
     status: str
     image_url: Optional[str]
     created_at: Optional[str]
@@ -102,6 +106,8 @@ class TaskDescriptionUpdateRequest(BaseModel):
     scene_description: Optional[str] = Field(None, description="场景描述")
     emotional_tone: Optional[str] = Field(None, description="情感色调")
     generated_prompt: Optional[str] = Field(None, description="生成的提示词")
+    generated_prompt_chinese: Optional[str] = Field(None, description="中文提示词")
+    auto_translate: Optional[bool] = Field(True, description="是否自动翻译中文提示词为英文")
 
 
 @router.post("/tasks/create", response_model=Dict[str, Any])
@@ -274,7 +280,9 @@ async def get_image_generation_task(
                 "original_prompt": task.original_prompt,
                 "backend_added_tags": task.backend_added_tags,
                 "generated_prompt": task.generated_prompt,
+                "generated_prompt_chinese": task.generated_prompt_chinese,
                 "negative_prompt": task.negative_prompt,
+                "negative_prompt_chinese": task.negative_prompt_chinese,
                 "status": task.status,
                 "progress": task.progress,
                 "error_message": task.error_message,
@@ -292,7 +300,9 @@ async def get_image_generation_task(
         }
         
     except Exception as e:
-        logger.error(f"获取图片生成任务失败: {str(e)}")
+        import traceback
+        error_details = traceback.format_exc()
+        logger.error(f"获取图片生成任务失败: {str(e)}\n{error_details}")
         raise HTTPException(status_code=500, detail=f"获取任务失败: {str(e)}")
 
 
@@ -374,7 +384,31 @@ async def update_task_description(
             task.scene_description = request.scene_description
         if request.emotional_tone is not None:
             task.emotional_tone = request.emotional_tone
+        
+        # 处理提示词更新
+        if request.generated_prompt_chinese is not None:
+            # 保存中文提示词
+            task.generated_prompt_chinese = request.generated_prompt_chinese
+            logger.info(f"任务 {task_id} 保存中文提示词: {request.generated_prompt_chinese[:50]}...")
+            
+            # 如果启用自动翻译且有中文提示词，则翻译为英文
+            if request.auto_translate and request.generated_prompt_chinese.strip():
+                try:
+                    logger.info(f"任务 {task_id} 开始翻译中文提示词")
+                    translation_service = TranslationService()
+                    english_prompt = await translation_service.translate_chinese_to_english(
+                        request.generated_prompt_chinese
+                    )
+                    logger.info(f"任务 {task_id} 翻译结果: {english_prompt[:50]}...")
+                    task.generated_prompt = english_prompt
+                    logger.info(f"任务 {task_id} 中文提示词自动翻译完成")
+                except Exception as e:
+                    logger.warning(f"任务 {task_id} 提示词翻译失败: {str(e)}，保持原有英文提示词")
+                    # 翻译失败时不更新英文提示词
+        
+        # 直接更新英文提示词（如果提供）
         if request.generated_prompt is not None:
+            logger.info(f"任务 {task_id} 直接更新英文提示词: {request.generated_prompt[:50]}...")
             task.generated_prompt = request.generated_prompt
         
         db.commit()
@@ -386,12 +420,15 @@ async def update_task_description(
                 "task_id": task_id,
                 "scene_description": task.scene_description,
                 "emotional_tone": task.emotional_tone,
-                "generated_prompt": task.generated_prompt
+                "generated_prompt": task.generated_prompt,
+                "generated_prompt_chinese": task.generated_prompt_chinese
             }
         }
         
     except Exception as e:
-        logger.error(f"更新任务描述失败: {str(e)}")
+        import traceback
+        error_details = traceback.format_exc()
+        logger.error(f"更新任务描述失败: {str(e)}\n{error_details}")
         raise HTTPException(status_code=500, detail=f"更新任务描述失败: {str(e)}")
 
 

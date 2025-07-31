@@ -121,14 +121,14 @@ class ImageGenerationService:
                 text = segment.get('text', '')
                 segment_type = segment.get('text_type', 'narration')
                 
-                # 提取各种描述信息
-                scene_description = self._extract_scene_description(text)
-                character_info = self._extract_character_info(text)
-                emotional_tone = self._analyze_emotional_tone(text)
-                style_keywords = self._extract_style_keywords(text, segment_type)
+                # 使用AI导演生成专业提示词
+                prompt_result = await self._analyze_segment_for_image(text, segment_type)
                 
-                # 生成prompt
-                prompt_result = self._generate_image_prompt(segment, chapter, generation_config)
+                # 从AI导演结果中提取描述信息
+                scene_description = prompt_result.get('scene_description', '')
+                character_info = prompt_result.get('character_info', {})
+                emotional_tone = prompt_result.get('emotional_tone', '')
+                style_keywords = prompt_result.get('style_keywords', [])
                 
                 task_data = {
                     'chapter_id': chapter_id,
@@ -136,10 +136,12 @@ class ImageGenerationService:
                     'segment_index': segment.get('order', i),
                     'segment_text': text,
                     'segment_type': segment_type,
-                    'prompt': prompt_result['generated_prompt'],
-                    'original_prompt': prompt_result['original_prompt'],
-                    'backend_added_tags': prompt_result['backend_added_tags'],
-                    'negative_prompt': generation_config.get('negative_prompt', '') if generation_config else '',
+                    'prompt': prompt_result.get('generated_prompt', ''),
+                    'prompt_chinese': prompt_result.get('generated_prompt_chinese', '') or prompt_result.get('positive_chinese', ''),
+                    'original_prompt': text[:100],  # 使用原始文本作为原始提示词
+                    'backend_added_tags': [],  # AI导演已包含所有标签
+                    'negative_prompt': prompt_result.get('negative_prompt', ''),
+                    'negative_prompt_chinese': prompt_result.get('negative_prompt_chinese', ''),
                     'generation_params': generation_config or {},
                     'status': 'pending',
                     'character_consistency_enabled': character_consistency.get('enabled', False),
@@ -160,7 +162,9 @@ class ImageGenerationService:
                     original_prompt=task_data['original_prompt'][:2000] if task_data['original_prompt'] else None,
                     backend_added_tags=task_data['backend_added_tags'] if isinstance(task_data['backend_added_tags'], list) else [],
                     generated_prompt=task_data['prompt'][:2000],  # 限制长度
+                    generated_prompt_chinese=task_data.get('prompt_chinese', '')[:2000] if task_data.get('prompt_chinese') else None,
                     negative_prompt=task_data['negative_prompt'][:1000],
+                    negative_prompt_chinese=task_data.get('negative_prompt_chinese', '')[:1000] if task_data.get('negative_prompt_chinese') else None,
                     generation_params=task_data['generation_params'],
                     status='pending',
                     # 🔥 修复：保存提取的描述信息到数据库字段
@@ -384,7 +388,9 @@ class ImageGenerationService:
             original_prompt=scene_analysis.get('original_prompt', ''),
             backend_added_tags=scene_analysis.get('backend_added_tags', []),
             generated_prompt=scene_analysis['generated_prompt'],
+            generated_prompt_chinese=scene_analysis.get('generated_prompt_chinese', ''),
             negative_prompt=scene_analysis['negative_prompt'],
+            negative_prompt_chinese=scene_analysis.get('negative_prompt_chinese', ''),
             comfyui_workflow=preset.default_workflow if preset else None,
             generation_params=preset.default_params if preset else default_config.get('params', {}),
             image_width=default_config.get('width', 1024),
@@ -419,13 +425,16 @@ class ImageGenerationService:
             
             if result.get('success', False):
                 logger.info(f"AI导演分析成功，生成提示词: {result['generated_prompt'][:100]}...")
+                logger.info(f"AI导演生成中文提示词: {result.get('generated_prompt_chinese', '')[:50]}...")
                 return {
                     'scene_description': result.get('scene_description', ''),
                     'character_info': result.get('character_info', {}),
                     'emotional_tone': result.get('emotional_tone', ''),
                     'style_keywords': result.get('style_keywords', []),
                     'generated_prompt': result.get('generated_prompt', ''),
-                    'negative_prompt': result.get('negative_prompt', 'blurry, low quality, distorted, nsfw')
+                    'generated_prompt_chinese': result.get('generated_prompt_chinese', ''),
+                    'negative_prompt': result.get('negative_prompt', 'blurry, low quality, distorted, nsfw'),
+                    'negative_prompt_chinese': result.get('negative_prompt_chinese', '')
                 }
             else:
                 logger.warning(f"AI导演分析失败，使用降级方法: {result.get('error', 'Unknown error')}")
@@ -436,7 +445,9 @@ class ImageGenerationService:
                     'emotional_tone': result.get('emotional_tone', ''),
                     'style_keywords': result.get('style_keywords', []),
                     'generated_prompt': result.get('generated_prompt', ''),
-                    'negative_prompt': result.get('negative_prompt', 'blurry, low quality, distorted, nsfw')
+                    'generated_prompt_chinese': result.get('generated_prompt_chinese', ''),
+                    'negative_prompt': result.get('negative_prompt', 'blurry, low quality, distorted, nsfw'),
+                    'negative_prompt_chinese': result.get('negative_prompt_chinese', '')
                 }
             
         except Exception as e:
@@ -711,7 +722,7 @@ class ImageGenerationService:
             if not task:
                 raise ServiceException(f"图片生成任务 {task_id} 不存在")
             
-            if task.status not in ['pending', 'failed']:
+            if task.status not in ['pending', 'failed', 'completed']:
                 raise ServiceException(f"任务 {task_id} 状态为 {task.status}，无法重新生成")
             
             # 2. 更新任务状态
@@ -905,7 +916,9 @@ class ImageGenerationService:
                     'emotional_tone': task.emotional_tone,
                     'style_keywords': task.style_keywords,
                     'generated_prompt': task.generated_prompt,
+                    'generated_prompt_chinese': task.generated_prompt_chinese,
                     'negative_prompt': task.negative_prompt,
+                    'negative_prompt_chinese': task.negative_prompt_chinese,
                     'status': task.status,
                     'progress': task.progress,
                     'error_message': task.error_message,

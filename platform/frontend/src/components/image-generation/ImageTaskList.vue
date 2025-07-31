@@ -94,6 +94,16 @@
               重试
             </a-button>
             
+            <!-- 为已完成的任务添加重新生成按钮 -->
+            <a-button
+              v-if="record.status === 'completed'"
+              type="default"
+              size="small"
+              @click="onRegenerate(record.id)"
+            >
+              重新生成
+            </a-button>
+            
             <!-- 预览按钮 -->
             <a-button
               v-if="record.generated_image_url"
@@ -167,14 +177,24 @@
           <a-descriptions-item label="生成种子">
             {{ previewTask.generation_seed }}
           </a-descriptions-item>
-          <a-descriptions-item label="提示词" :span="2">
+          <a-descriptions-item label="英文提示词" :span="2">
             <div class="prompt-display">
               {{ previewTask.generated_prompt }}
             </div>
           </a-descriptions-item>
-          <a-descriptions-item label="负面提示词" :span="2">
+          <a-descriptions-item label="中文提示词" :span="2" v-if="previewTask.generated_prompt_chinese">
+            <div class="prompt-display chinese-prompt">
+              {{ previewTask.generated_prompt_chinese }}
+            </div>
+          </a-descriptions-item>
+          <a-descriptions-item label="英文负面提示词" :span="2">
             <div class="prompt-display">
               {{ previewTask.negative_prompt || '无' }}
+            </div>
+          </a-descriptions-item>
+          <a-descriptions-item label="中文负面提示词" :span="2" v-if="previewTask.negative_prompt_chinese">
+            <div class="prompt-display chinese-prompt">
+              {{ previewTask.negative_prompt_chinese }}
             </div>
           </a-descriptions-item>
         </a-descriptions>
@@ -240,7 +260,7 @@ watch(() => props.tasks, (newTasks) => {
 }, { immediate: true })
 
 // Emits
-const emit = defineEmits(['generate', 'rate', 'approve', 'delete', 'view-details'])
+const emit = defineEmits(['generate', 'regenerate', 'rate', 'approve', 'delete', 'view-details'])
 
 // Reactive data
 const previewVisible = ref(false)
@@ -291,6 +311,13 @@ const columns = [
     key: 'status',
     width: 120,
     align: 'center'
+  },
+  {
+    title: '中文提示词',
+    key: 'generated_prompt_chinese',
+    width: 250,
+    ellipsis: true,
+    customRender: ({ record }) => record.generated_prompt_chinese || '无'
   },
   {
     title: '图片描述',
@@ -344,6 +371,10 @@ const getStatusText = (status) => {
 
 const onGenerate = (taskId) => {
   emit('generate', taskId)
+}
+
+const onRegenerate = (taskId) => {
+  emit('regenerate', taskId)
 }
 
 // 移除了评分功能
@@ -533,6 +564,12 @@ const onCancelEdit = () => {
     line-height: 1.4;
     max-height: 100px;
     overflow-y: auto;
+  }
+  
+  .chinese-prompt {
+    background: #f6ffed;
+    border-color: #b7eb8f;
+    font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif;
   }
 }
 

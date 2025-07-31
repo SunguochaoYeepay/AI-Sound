@@ -350,4 +350,54 @@ onMounted(() => {
     border-top: 1px solid #f0f0f0;
   }
 }
+
+/* 暗黑模式适配 */
+[data-theme='dark'] .book-image-generation-config {
+  .config-header {
+    background: linear-gradient(135deg, #111b26 0%, #0f172a 100%);
+    border-left-color: #177ddc;
+    
+    h3 {
+      color: #177ddc;
+    }
+    
+    p {
+      color: #d9d9d9;
+    }
+  }
+
+  .config-section {
+    h4 {
+      color: #177ddc;
+    }
+  }
+
+  .preset-option {
+    .preset-name {
+      color: #d9d9d9;
+    }
+    
+    .preset-desc {
+      color: #8c8c8c;
+    }
+  }
+
+  .param-item {
+    label {
+      color: #d9d9d9;
+    }
+    
+    .param-value {
+      color: #177ddc;
+    }
+    
+    .param-desc {
+      color: #8c8c8c;
+    }
+  }
+
+  .action-buttons {
+    border-top-color: #303030;
+  }
+}
 </style>

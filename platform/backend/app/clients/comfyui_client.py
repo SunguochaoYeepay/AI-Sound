@@ -300,15 +300,18 @@ class ComfyUIClient:
                             try:
                                 message = message.decode('utf-8')
                             except UnicodeDecodeError:
-                                # 跳过无法解码的消息
-                                logger.warning(f"跳过无法解码的WebSocket消息")
+                                # 二进制消息可能是图片预览数据，静默跳过
                                 continue
+                        
+                        # 检查消息是否为空或只包含空白字符
+                        if not message or not message.strip():
+                            continue
                         
                         # 解析JSON
                         try:
                             data = json.loads(message)
-                        except json.JSONDecodeError as e:
-                            logger.warning(f"跳过无效的JSON消息: {e}")
+                        except json.JSONDecodeError:
+                            # 非JSON消息可能是ComfyUI的内部通信，静默跳过
                             continue
                         
                         if data.get('type') == 'executing' and data.get('data'):
@@ -326,13 +329,15 @@ class ComfyUIClient:
                     except asyncio.TimeoutError:
                         # 超时继续等待
                         continue
-                    except UnicodeDecodeError as e:
-                        # 编码错误，跳过这条消息
-                        logger.warning(f"WebSocket消息编码错误: {e}")
+                    except UnicodeDecodeError:
+                        # 编码错误，静默跳过（可能是二进制数据）
                         continue
                     except Exception as e:
-                        # 其他错误，记录但继续等待
-                        logger.warning(f"WebSocket消息处理错误: {e}")
+                        # 只记录严重错误，跳过常见的WebSocket通信异常
+                        if "connection" in str(e).lower() or "closed" in str(e).lower():
+                            logger.debug(f"WebSocket连接异常: {e}")
+                        else:
+                            logger.debug(f"WebSocket消息处理异常: {e}")
                         continue
                         
         except Exception as e:
@@ -547,4 +552,4 @@ class ComfyUIClient:
                 return False
         
         logger.info("工作流验证通过")
-        return True 
+        return True

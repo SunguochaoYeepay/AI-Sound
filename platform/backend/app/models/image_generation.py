@@ -37,7 +37,9 @@ class ImageGenerationTask(Base):
     original_prompt = Column(Text, comment="原始提示词（用户输入或AI生成的基础提示词）")
     backend_added_tags = Column(ARRAY(String), comment="后端自动添加的质量标签")
     generated_prompt = Column(Text, comment="最终生成的提示词（包含质量标签）")
+    generated_prompt_chinese = Column(Text, comment="中文提示词（用于前端显示）")
     negative_prompt = Column(Text, comment="负面提示词")
+    negative_prompt_chinese = Column(Text, comment="中文负面提示词（用于前端显示）")
     
     # 生成配置
     image_width = Column(Integer, default=1024, comment="图片宽度")

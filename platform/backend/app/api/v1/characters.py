@@ -125,6 +125,7 @@ async def get_characters(
     tags: str = Query("", description="标签过滤(逗号分隔)"),
     status: str = Query("", description="状态过滤"),
     book_id: int = Query(None, description="书籍ID筛选"),
+    chapter_id: int = Query(None, description="章节ID筛选"),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
     """获取角色列表"""
@@ -157,6 +158,10 @@ async def get_characters(
         # 书籍过滤
         if book_id:
             query = query.filter(Character.book_id == book_id)
+        
+        # 章节过滤
+        if chapter_id:
+            query = query.filter(Character.chapter_id == chapter_id)
         
         # 标签过滤
         if tags:
@@ -202,6 +207,8 @@ async def get_characters(
             base_query = base_query.filter(Character.quality_score >= quality_min)
         if book_id:
             base_query = base_query.filter(Character.book_id == book_id)
+        if chapter_id:
+            base_query = base_query.filter(Character.chapter_id == chapter_id)
         if tags:
             tag_list = [tag.strip() for tag in tags.split(',') if tag.strip()]
             for tag in tag_list:
@@ -230,6 +237,7 @@ async def get_characters(
                 "quality_min": quality_min,
                 "status": status,
                 "book_id": book_id,
+                "chapter_id": chapter_id,
                 "tags": tags
             }
         }

@@ -71,6 +71,31 @@ export const useImageGenerationStore = defineStore('imageGeneration', () => {
     }
   }
 
+  const regenerateImage = async (taskId) => {
+    try {
+      loading.value = true
+      error.value = null
+      
+      const response = await imageGenerationAPI.generateSingleImage(taskId)
+      
+      if (response.success) {
+        // 更新本地任务状态为处理中
+        const taskIndex = imageTasks.value.findIndex(task => task.id === taskId)
+        if (taskIndex !== -1) {
+          imageTasks.value[taskIndex].status = 'processing'
+        }
+        return response
+      } else {
+        throw new Error(response.message || '重新生成图片失败')
+      }
+    } catch (err) {
+      error.value = err.message
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
   const batchGenerateImages = async (data) => {
     try {
       loading.value = true
@@ -386,6 +411,7 @@ export const useImageGenerationStore = defineStore('imageGeneration', () => {
     // Actions
     createImageTasks,
     generateSingleImage,
+    regenerateImage,
     batchGenerateImages,
     getChapterImageStatus,
     getImageTask,

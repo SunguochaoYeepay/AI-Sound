@@ -18,7 +18,8 @@ class AIDirectorService:
     """AI导演服务 - 负责镜头语言规划和提示词生成"""
     
     def __init__(self):
-        self.ollama_url = "http://localhost:11434"  # 本地Ollama服务
+        import os
+        self.ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434")  # 从环境变量获取Ollama服务地址
         self.default_model = "qwen2.5:14b"  # 使用中文友好的模型
         
         # 镜头语言模板
@@ -90,7 +91,9 @@ class AIDirectorService:
                 'analysis': analysis_result,
                 'shot_planning': shot_planning,
                 'generated_prompt': final_prompt['positive'],
+                'generated_prompt_chinese': final_prompt['positive_chinese'],
                 'negative_prompt': final_prompt['negative'],
+                'negative_prompt_chinese': final_prompt['negative_chinese'],
                 'scene_description': analysis_result.get('scene_description', ''),
                 'character_info': analysis_result.get('characters', {}),
                 'emotional_tone': analysis_result.get('emotion', ''),
@@ -268,16 +271,21 @@ class AIDirectorService:
                                  analysis: Dict[str, Any], 
                                  shot_planning: Dict[str, Any], 
                                  style: str) -> Dict[str, str]:
-        """构建专业的Flux模型提示词"""
+        """构建专业的Flux模型提示词（中英文双语）"""
         
-        positive_parts = []
+        # 构建英文提示词
+        english_parts = []
+        chinese_parts = []
         
         # Flux模型更适合自然语言描述，我们构建更流畅的叙述性提示词
         
         # 1. 主要场景描述 - Flux的核心优势
         scene_desc = analysis.get('scene_description', '')
         if scene_desc:
-            positive_parts.append(scene_desc)
+            english_parts.append(scene_desc)
+            # 生成中文场景描述
+            chinese_scene = self._translate_scene_to_chinese(scene_desc, analysis)
+            chinese_parts.append(chinese_scene)
         
         # 2. 人物描述 - 结合外貌和动作
         characters = analysis.get('characters', {})
@@ -287,17 +295,24 @@ class AIDirectorService:
                 action = char_info.get('action', '')
                 emotion = char_info.get('emotion', '')
                 
-                # 构建完整的人物描述
-                char_description = []
-                if appearance:
-                    char_description.append(appearance)
-                if action:
-                    char_description.append(action)
-                if emotion:
-                    char_description.append(f"expressing {emotion}")
+                # 构建完整的人物描述（英文）
+                char_description_en = []
+                char_description_cn = []
                 
-                if char_description:
-                    positive_parts.append(', '.join(char_description))
+                if appearance:
+                    char_description_en.append(appearance)
+                    char_description_cn.append(self._translate_appearance_to_chinese(appearance))
+                if action:
+                    char_description_en.append(action)
+                    char_description_cn.append(self._translate_action_to_chinese(action))
+                if emotion:
+                    char_description_en.append(f"expressing {emotion}")
+                    char_description_cn.append(f"表现出{self._translate_emotion_to_chinese(emotion)}")
+                
+                if char_description_en:
+                    english_parts.append(', '.join(char_description_en))
+                if char_description_cn:
+                    chinese_parts.append('，'.join(char_description_cn))
         
         # 3. 环境描述 - Flux擅长环境渲染
         environment = analysis.get('environment', {})
@@ -306,87 +321,123 @@ class AIDirectorService:
             time_period = environment.get('time_period', '')
             atmosphere = environment.get('atmosphere', '')
             
-            # 构建环境描述
-            env_parts = []
-            if setting:
-                env_parts.append(setting)
-            if time_period:
-                env_parts.append(f"during {time_period}")
-            if atmosphere:
-                env_parts.append(f"with {atmosphere} atmosphere")
+            # 构建环境描述（英文）
+            env_parts_en = []
+            env_parts_cn = []
             
-            if env_parts:
-                positive_parts.append(', '.join(env_parts))
+            if setting:
+                env_parts_en.append(setting)
+                env_parts_cn.append(self._translate_setting_to_chinese(setting))
+            if time_period:
+                env_parts_en.append(f"during {time_period}")
+                env_parts_cn.append(f"在{self._translate_time_period_to_chinese(time_period)}")
+            if atmosphere:
+                env_parts_en.append(f"with {atmosphere} atmosphere")
+                env_parts_cn.append(f"营造{self._translate_atmosphere_to_chinese(atmosphere)}氛围")
+            
+            if env_parts_en:
+                english_parts.append(', '.join(env_parts_en))
+            if env_parts_cn:
+                chinese_parts.append('，'.join(env_parts_cn))
         
         # 4. 重要物体 - Flux对细节把控很好
         key_objects = analysis.get('key_objects', [])
         if key_objects:
-            positive_parts.append(f"featuring {', '.join(key_objects)}")
+            english_parts.append(f"featuring {', '.join(key_objects)}")
+            chinese_objects = [self._translate_object_to_chinese(obj) for obj in key_objects]
+            chinese_parts.append(f"包含{', '.join(chinese_objects)}")
         
         # 5. 镜头构图 - 电影化描述
         composition = shot_planning.get('composition', '')
         if composition:
-            positive_parts.append(composition)
+            english_parts.append(composition)
+            chinese_parts.append(self._translate_composition_to_chinese(composition))
         
         # 6. 光照描述 - Flux的强项
         lighting = shot_planning.get('lighting', '')
         if lighting:
-            positive_parts.append(lighting)
+            english_parts.append(lighting)
+            chinese_parts.append(self._translate_lighting_to_chinese(lighting))
         
         # 7. 色彩描述 - 自然语言化
         colors = shot_planning.get('color_palette', '')
         if colors:
-            positive_parts.append(colors)
+            english_parts.append(colors)
+            chinese_parts.append(self._translate_colors_to_chinese(colors))
         
         # 8. 风格描述 - 减少技术术语，增加艺术描述
         style_tags = shot_planning.get('style_tags', [])
         
-        # 为Flux优化的风格标签
-        flux_optimized_styles = []
+        # 为Flux优化的风格标签（英文和中文）
+        flux_optimized_styles_en = []
+        flux_optimized_styles_cn = []
+        
         for tag in style_tags:
             if tag == 'cinematic':
-                flux_optimized_styles.append('cinematic composition')
+                flux_optimized_styles_en.append('cinematic composition')
+                flux_optimized_styles_cn.append('电影级构图')
             elif tag == 'dramatic lighting':
-                flux_optimized_styles.append('dramatic lighting effects')
+                flux_optimized_styles_en.append('dramatic lighting effects')
+                flux_optimized_styles_cn.append('戏剧性光影效果')
             elif tag == 'historical':
-                flux_optimized_styles.append('historically accurate details')
+                flux_optimized_styles_en.append('historically accurate details')
+                flux_optimized_styles_cn.append('历史细节准确')
             elif tag == 'period authentic':
-                flux_optimized_styles.append('authentic period costume and setting')
+                flux_optimized_styles_en.append('authentic period costume and setting')
+                flux_optimized_styles_cn.append('时代服饰和场景真实')
             elif tag == 'detailed costumes':
-                flux_optimized_styles.append('intricate costume details')
+                flux_optimized_styles_en.append('intricate costume details')
+                flux_optimized_styles_cn.append('精致服装细节')
             elif tag == 'high contrast':
-                flux_optimized_styles.append('strong contrast and shadows')
+                flux_optimized_styles_en.append('strong contrast and shadows')
+                flux_optimized_styles_cn.append('强烈对比和阴影')
             elif tag in ['high quality', 'masterpiece', 'best quality']:
                 # Flux不需要这些质量标签，跳过
                 continue
             else:
-                flux_optimized_styles.append(tag)
+                flux_optimized_styles_en.append(tag)
+                flux_optimized_styles_cn.append(self._translate_style_to_chinese(tag))
         
-        positive_parts.extend(flux_optimized_styles)
+        english_parts.extend(flux_optimized_styles_en)
+        chinese_parts.extend(flux_optimized_styles_cn)
         
         # 9. Flux专用质量描述 - 更自然的表达
-        flux_quality_terms = [
+        flux_quality_terms_en = [
             "professional photography quality",
             "highly detailed and realistic", 
             "sharp focus and clarity"
         ]
-        positive_parts.extend(flux_quality_terms)
+        flux_quality_terms_cn = [
+            "专业摄影品质",
+            "高度细致逼真",
+            "清晰锐利焦点"
+        ]
+        
+        english_parts.extend(flux_quality_terms_en)
+        chinese_parts.extend(flux_quality_terms_cn)
         
         # 构建负面提示词 - Flux模型的负面提示更简洁
-        negative_prompt = [
+        negative_prompt_en = [
             'blurry', 'distorted', 'low quality', 'bad anatomy',
             'deformed', 'watermark', 'text overlay', 'signature'
         ]
+        negative_prompt_cn = [
+            '模糊', '扭曲', '低质量', '解剖错误',
+            '变形', '水印', '文字覆盖', '签名'
+        ]
         
         # 将所有部分连接成自然的句子
-        final_positive = ', '.join(positive_parts)
+        final_positive_en = ', '.join(english_parts)
+        final_positive_cn = '，'.join(chinese_parts)
         
         # 优化语法和流畅性
-        final_positive = self._optimize_prompt_grammar(final_positive)
+        final_positive_en = self._optimize_prompt_grammar(final_positive_en)
         
         return {
-            'positive': final_positive,
-            'negative': ', '.join(negative_prompt)
+            'positive': final_positive_en,
+            'positive_chinese': final_positive_cn,
+            'negative': ', '.join(negative_prompt_en),
+            'negative_chinese': '，'.join(negative_prompt_cn)
         }
     
     def _optimize_prompt_grammar(self, prompt: str) -> str:
@@ -408,38 +459,278 @@ class AIDirectorService:
         
         return ', '.join(unique_words)
     
-    def _fallback_prompt_generation(self, text: str, style: str) -> Dict[str, Any]:
-        """降级的提示词生成方法"""
+    def _translate_scene_to_chinese(self, scene_desc: str, analysis: Dict[str, Any]) -> str:
+        """将场景描述翻译为中文"""
+        # 基于分析结果生成中文场景描述
+        chinese_desc = []
         
-        # 简单的关键词提取
-        keywords = []
+        # 从原始文本中提取关键信息
+        if 'museum' in scene_desc.lower() or 'display' in scene_desc.lower():
+            chinese_desc.append('博物馆展示场景')
+        elif 'ancient' in scene_desc.lower():
+            chinese_desc.append('古代场景')
+        elif 'modern' in scene_desc.lower():
+            chinese_desc.append('现代场景')
+        
+        if 'man' in scene_desc.lower() and 'staring' in scene_desc.lower():
+            chinese_desc.append('男子凝视')
+        
+        if 'sword' in scene_desc.lower():
+            chinese_desc.append('剑类文物')
+        
+        if 'pendant' in scene_desc.lower():
+            chinese_desc.append('玉佩饰品')
+        
+        return '，'.join(chinese_desc) if chinese_desc else '戏剧性场景'
+    
+    def _translate_appearance_to_chinese(self, appearance: str) -> str:
+        """将外貌描述翻译为中文"""
+        translations = {
+            'young man': '年轻男子',
+            'modern attire': '现代服装',
+            'casual clothing': '休闲装',
+            'traditional costume': '传统服饰',
+            'ancient armor': '古代盔甲'
+        }
+        
+        for en, cn in translations.items():
+            if en in appearance.lower():
+                return cn
+        
+        return '人物外貌'
+    
+    def _translate_action_to_chinese(self, action: str) -> str:
+        """将动作描述翻译为中文"""
+        translations = {
+            'staring': '凝视',
+            'looking': '观看',
+            'touching': '触摸',
+            'holding': '握持',
+            'examining': '检视',
+            'gazing': '注视'
+        }
+        
+        for en, cn in translations.items():
+            if en in action.lower():
+                return cn
+        
+        return '动作'
+    
+    def _translate_emotion_to_chinese(self, emotion: str) -> str:
+        """将情感描述翻译为中文"""
+        translations = {
+            'nostalgic': '怀旧',
+            'contemplative': '沉思',
+            'shocked': '震惊',
+            'surprised': '惊讶',
+            'thoughtful': '深思',
+            'intense': '强烈',
+            'dramatic': '戏剧性'
+        }
+        
+        for en, cn in translations.items():
+            if en in emotion.lower():
+                return cn
+        
+        return '情感'
+    
+    def _translate_setting_to_chinese(self, setting: str) -> str:
+        """将场景设置翻译为中文"""
+        translations = {
+            'museum': '博物馆',
+            'exhibition hall': '展览厅',
+            'display room': '展示室',
+            'ancient palace': '古代宫殿',
+            'battlefield': '战场',
+            'courtyard': '庭院'
+        }
+        
+        for en, cn in translations.items():
+            if en in setting.lower():
+                return cn
+        
+        return '场景设置'
+    
+    def _translate_time_period_to_chinese(self, time_period: str) -> str:
+        """将时间段翻译为中文"""
+        translations = {
+            'han dynasty': '汉朝',
+            'ancient times': '古代',
+            'modern era': '现代',
+            'night': '夜晚',
+            'day': '白天',
+            'evening': '傍晚'
+        }
+        
+        for en, cn in translations.items():
+            if en in time_period.lower():
+                return cn
+        
+        return '时间段'
+    
+    def _translate_atmosphere_to_chinese(self, atmosphere: str) -> str:
+        """将氛围翻译为中文"""
+        translations = {
+            'mysterious': '神秘',
+            'dramatic': '戏剧性',
+            'peaceful': '宁静',
+            'tense': '紧张',
+            'nostalgic': '怀旧',
+            'solemn': '庄严'
+        }
+        
+        for en, cn in translations.items():
+            if en in atmosphere.lower():
+                return cn
+        
+        return '氛围'
+    
+    def _translate_object_to_chinese(self, obj: str) -> str:
+        """将物体翻译为中文"""
+        translations = {
+            'bronze sword': '青铜剑',
+            'jade pendant': '玉佩',
+            'armor': '盔甲',
+            'display case': '展示柜',
+            'glass case': '玻璃柜',
+            'ancient artifact': '古代文物'
+        }
+        
+        for en, cn in translations.items():
+            if en in obj.lower():
+                return cn
+        
+        return obj
+    
+    def _translate_composition_to_chinese(self, composition: str) -> str:
+        """将构图描述翻译为中文"""
+        translations = {
+            'close-up shot': '特写镜头',
+            'medium shot': '中景镜头',
+            'wide shot': '远景镜头',
+            'dramatic angle': '戏剧性角度',
+            'low angle': '低角度',
+            'high angle': '高角度'
+        }
+        
+        for en, cn in translations.items():
+            if en in composition.lower():
+                return cn
+        
+        return '构图'
+    
+    def _translate_lighting_to_chinese(self, lighting: str) -> str:
+        """将光照描述翻译为中文"""
+        translations = {
+            'dramatic lighting': '戏剧性光照',
+            'soft lighting': '柔和光照',
+            'natural lighting': '自然光照',
+            'harsh lighting': '强烈光照',
+            'focused light': '聚焦光线',
+            'warm tones': '暖色调'
+        }
+        
+        for en, cn in translations.items():
+            if en in lighting.lower():
+                return cn
+        
+        return '光照效果'
+    
+    def _translate_colors_to_chinese(self, colors: str) -> str:
+        """将色彩描述翻译为中文"""
+        translations = {
+            'earth tones': '大地色调',
+            'bronze': '青铜色',
+            'deep reds': '深红色',
+            'traditional chinese colors': '传统中国色彩',
+            'warm palette': '暖色调',
+            'natural color palette': '自然色彩',
+            'golden hour colors': '黄金时段色彩'
+        }
+        
+        for en, cn in translations.items():
+            if en in colors.lower():
+                return cn
+        
+        return '色彩搭配'
+    
+    def _translate_style_to_chinese(self, style: str) -> str:
+        """将风格标签翻译为中文"""
+        translations = {
+            'cinematic': '电影级',
+            'dramatic': '戏剧性',
+            'realistic': '写实',
+            'artistic': '艺术性',
+            'professional': '专业',
+            'detailed': '细致',
+            'high quality': '高质量'
+        }
+        
+        for en, cn in translations.items():
+            if en in style.lower():
+                return cn
+        
+        return style
+    
+    def _fallback_prompt_generation(self, text: str, style: str) -> Dict[str, Any]:
+        """降级的提示词生成方法（中英文双语）"""
+        
+        # 简单的关键词提取（英文）
+        keywords_en = []
+        keywords_cn = []
         
         # 检测人物
         if '林渊' in text:
-            keywords.append('young Chinese man')
+            keywords_en.append('young Chinese man')
+            keywords_cn.append('年轻中国男子')
         
         # 检测场景
         if '胸甲' in text or '汉' in text:
-            keywords.append('ancient Chinese armor with Han character')
+            keywords_en.append('ancient Chinese armor with Han character')
+            keywords_cn.append('刻有汉字的古代中国盔甲')
         
         if '穿越' in text:
-            keywords.append('time travel realization moment')
+            keywords_en.append('time travel realization moment')
+            keywords_cn.append('穿越时空的觉醒时刻')
+        
+        if '青铜剑' in text:
+            keywords_en.append('ancient bronze sword')
+            keywords_cn.append('古代青铜剑')
+        
+        if '玉佩' in text:
+            keywords_en.append('jade pendant')
+            keywords_cn.append('玉佩')
+        
+        if '展柜' in text:
+            keywords_en.append('display case, museum setting')
+            keywords_cn.append('展示柜，博物馆环境')
         
         # 检测情绪
         if '突然意识到' in text:
-            keywords.append('shocked expression, moment of realization')
+            keywords_en.append('shocked expression, moment of realization')
+            keywords_cn.append('震惊表情，觉醒时刻')
+        
+        if '盯着' in text:
+            keywords_en.append('intense gaze, focused attention')
+            keywords_cn.append('专注凝视，集中注意力')
         
         # 添加基础质量标签
-        keywords.extend([
+        keywords_en.extend([
             'cinematic', 'dramatic lighting', 'high quality',
             'detailed', 'masterpiece'
         ])
+        keywords_cn.extend([
+            '电影级', '戏剧性光照', '高质量',
+            '细致入微', '杰作'
+        ])
         
         return {
-            'generated_prompt': ', '.join(keywords),
+            'generated_prompt': ', '.join(keywords_en),
+            'generated_prompt_chinese': '，'.join(keywords_cn),
             'negative_prompt': 'blurry, low quality, distorted, nsfw',
+            'negative_prompt_chinese': '模糊，低质量，扭曲，不当内容',
             'scene_description': 'dramatic realization scene',
             'character_info': {'林渊': 'shocked young man'},
             'emotional_tone': 'dramatic surprise',
             'style_keywords': ['cinematic', 'dramatic']
-        } 
+        }

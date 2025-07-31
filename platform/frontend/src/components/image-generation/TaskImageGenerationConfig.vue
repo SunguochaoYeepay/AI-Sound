@@ -162,4 +162,24 @@ const handleApply = () => {
     border-top: 1px solid #f0f0f0;
   }
 }
+
+/* 暗黑模式适配 */
+[data-theme='dark'] .task-image-generation-config {
+  .config-header {
+    background: linear-gradient(135deg, #1f1f1f 0%, #141414 100%);
+    border-left-color: #d46b08;
+    
+    h3 {
+      color: #d46b08;
+    }
+    
+    p {
+      color: #d9d9d9;
+    }
+  }
+
+  .action-buttons {
+    border-top-color: #303030;
+  }
+}
 </style>
