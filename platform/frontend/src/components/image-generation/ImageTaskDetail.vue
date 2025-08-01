@@ -71,137 +71,52 @@
         </a-card>
         
         <!-- 提示词信息 -->
-        <a-row :gutter="16" style="margin-top: 16px">
-          <a-col :span="12">
-            <a-card title="提示词详情" size="small">
-              <!-- 原始提示词 -->
-              <div class="prompt-section" v-if="task.original_prompt">
-                <div class="prompt-label">原始提示词：</div>
-                <div v-if="!editingPrompt" class="prompt-display original-prompt">
-                  {{ task.original_prompt }}
-                </div>
-                <a-textarea
-                  v-else
-                  v-model:value="editablePrompt.original_prompt"
-                  :rows="2"
-                  placeholder="请输入原始提示词"
-                />
-              </div>
-              
-              <!-- 后端添加的标签 -->
-              <div class="prompt-section" v-if="task.backend_added_tags && task.backend_added_tags.length > 0">
-                <div class="prompt-label">后端添加的质量标签：</div>
-                <div class="tags-display">
-                  <a-tag 
-                    v-for="tag in task.backend_added_tags" 
-                    :key="tag"
-                    color="blue"
-                    style="margin-bottom: 4px"
-                  >
-                    {{ tag }}
-                  </a-tag>
-                </div>
-              </div>
-              
-              <!-- 中文提示词（编辑时显示） -->
-              <div class="prompt-section">
-                <div class="prompt-label">完整提示词（中文）：</div>
-                <div v-if="!editingPrompt" class="prompt-display chinese-prompt">
-                  {{ task.generated_prompt_chinese || '暂无中文提示词' }}
-                </div>
-                <a-textarea
-                  v-else
-                  v-model:value="editablePrompt.generated_prompt_chinese"
-                  :rows="4"
-                  placeholder="请输入中文提示词，保存时将自动翻译为英文"
-                />
-              </div>
-              
-              <!-- 完整提示词（英文，只读显示） -->
-              <div class="prompt-section">
-                <div class="prompt-label">完整提示词（英文）：</div>
-                <div class="prompt-display">
-                  {{ task.generated_prompt || '暂无' }}
-                </div>
-                <div v-if="editingPrompt" class="prompt-hint">
-                  <a-alert 
-                    message="提示：保存中文提示词时将自动翻译为英文" 
-                    type="info" 
-                    show-icon 
-                    size="small"
-                  />
-                </div>
-              </div>
-              
-              <a-space style="margin-top: 8px">
-                <a-button 
-                  v-if="!editingPrompt"
-                  size="small" 
-                  @click="startEditPrompt"
-                >
-                  编辑提示词
-                </a-button>
-                <a-button 
-                  v-else
-                  size="small" 
-                  type="primary"
-                  @click="savePrompt"
-                >
-                  保存
-                </a-button>
-                <a-button 
-                  v-if="editingPrompt"
-                  size="small" 
-                  @click="cancelEditPrompt"
-                >
-                  取消
-                </a-button>
-                <a-button 
-                  size="small" 
-                  @click="copyToClipboard(task.generated_prompt)"
-                  v-if="task.generated_prompt && !editingPrompt"
-                >
-                  复制完整提示词
-                </a-button>
-              </a-space>
-            </a-card>
-          </a-col>
+        <a-card title="中文提示词" size="small" style="margin-top: 16px">
+          <div class="prompt-section">
+            <div v-if="!editingPrompt" class="prompt-display chinese-prompt">
+              {{ task.generated_prompt_chinese || '暂无中文提示词' }}
+            </div>
+            <a-textarea
+              v-else
+              v-model:value="editablePrompt.generated_prompt_chinese"
+              :rows="4"
+              placeholder="请输入中文提示词，保存时将自动翻译为英文"
+            />
+          </div>
           
-          <a-col :span="12">
-            <a-card title="负面提示词" size="small">
-              <div class="prompt-section">
-                <div class="prompt-label">负面提示词（英文）：</div>
-                <div class="prompt-display">
-                  {{ task.negative_prompt || '暂无' }}
-                </div>
-              </div>
-              
-              <div class="prompt-section" v-if="task.negative_prompt_chinese">
-                <div class="prompt-label">负面提示词（中文）：</div>
-                <div class="prompt-display chinese-prompt">
-                  {{ task.negative_prompt_chinese }}
-                </div>
-              </div>
-              
-              <a-space style="margin-top: 8px">
-                <a-button 
-                  size="small" 
-                  @click="copyToClipboard(task.negative_prompt)"
-                  v-if="task.negative_prompt"
-                >
-                  复制英文负面提示词
-                </a-button>
-                <a-button 
-                  size="small" 
-                  @click="copyToClipboard(task.negative_prompt_chinese)"
-                  v-if="task.negative_prompt_chinese"
-                >
-                  复制中文负面提示词
-                </a-button>
-              </a-space>
-            </a-card>
-          </a-col>
-        </a-row>
+          <a-space style="margin-top: 8px">
+            <a-button 
+              v-if="!editingPrompt"
+              size="small" 
+              @click="startEditPrompt"
+            >
+              编辑提示词
+            </a-button>
+            <a-button 
+              v-else
+              size="small" 
+              type="primary"
+              @click="savePrompt"
+            >
+              保存
+            </a-button>
+            <a-button 
+              v-if="editingPrompt"
+              size="small" 
+              @click="cancelEditPrompt"
+            >
+              取消
+            </a-button>
+            <a-button 
+              size="small" 
+              @click="copyToClipboard(task.generated_prompt_chinese)"
+              v-if="task.generated_prompt_chinese && !editingPrompt"
+            >
+              复制中文提示词
+            </a-button>
+          </a-space>
+        </a-card>
+
         
         <!-- 分析结果 -->
         <a-row :gutter="16" style="margin-top: 16px">

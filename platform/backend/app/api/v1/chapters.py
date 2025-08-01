@@ -227,7 +227,7 @@ async def get_chapters(
             search_pattern = f"%{search}%"
             query = query.filter(
                 or_(
-                    BookChapter.title.like(search_pattern),
+                    BookChapter.chapter_title.like(search_pattern),
                     BookChapter.content.like(search_pattern)
                 )
             )
@@ -1031,4 +1031,4 @@ async def get_chapter_content_stats(
         
     except Exception as e:
         logger.error(f"章节 {chapter_id} 统计失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"统计失败: {str(e)}") 
+        raise HTTPException(status_code=500, detail=f"统计失败: {str(e)}")

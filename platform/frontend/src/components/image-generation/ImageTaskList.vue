@@ -52,24 +52,7 @@
           />
         </template>
         
-        <!-- 合并的图片描述 -->
-        <template v-else-if="column.key === 'combined_description'">
-          <div class="combined-description">
-            <a-tooltip :title="getCombinedDescription(record)">
-              <div class="description-content">
-                {{ getCombinedDescriptionShort(record) }}
-              </div>
-            </a-tooltip>
-            <a-button 
-              size="small" 
-              type="link" 
-              @click="onEditDescription(record)"
-              style="padding: 0; margin-left: 8px;"
-            >
-              编辑
-            </a-button>
-          </div>
-        </template>
+
         
         <!-- 操作 -->
         <template v-else-if="column.key === 'actions'">
@@ -132,9 +115,7 @@
                   <a-menu-item key="download" v-if="record.generated_image_url">
                     下载图片
                   </a-menu-item>
-                  <a-menu-item key="copy-description">
-                    复制描述
-                  </a-menu-item>
+
                   <a-menu-divider />
                   <a-menu-item key="delete" danger>
                     删除任务
@@ -177,61 +158,16 @@
           <a-descriptions-item label="生成种子">
             {{ previewTask.generation_seed }}
           </a-descriptions-item>
-          <a-descriptions-item label="英文提示词" :span="2">
-            <div class="prompt-display">
-              {{ previewTask.generated_prompt }}
-            </div>
-          </a-descriptions-item>
           <a-descriptions-item label="中文提示词" :span="2" v-if="previewTask.generated_prompt_chinese">
             <div class="prompt-display chinese-prompt">
               {{ previewTask.generated_prompt_chinese }}
-            </div>
-          </a-descriptions-item>
-          <a-descriptions-item label="英文负面提示词" :span="2">
-            <div class="prompt-display">
-              {{ previewTask.negative_prompt || '无' }}
-            </div>
-          </a-descriptions-item>
-          <a-descriptions-item label="中文负面提示词" :span="2" v-if="previewTask.negative_prompt_chinese">
-            <div class="prompt-display chinese-prompt">
-              {{ previewTask.negative_prompt_chinese }}
             </div>
           </a-descriptions-item>
         </a-descriptions>
       </div>
     </a-modal>
     
-    <!-- 编辑描述弹窗 -->
-    <a-modal
-      v-model:open="editModalVisible"
-      title="编辑图片描述"
-      width="600px"
-      @ok="onSaveDescription"
-      @cancel="onCancelEdit"
-    >
-      <a-form :model="editForm" layout="vertical">
-        <a-form-item label="场景描述">
-          <a-textarea
-            v-model:value="editForm.scene_description"
-            placeholder="请描述图片的场景内容"
-            :rows="3"
-          />
-        </a-form-item>
-        <a-form-item label="情感色调">
-          <a-input
-            v-model:value="editForm.emotional_tone"
-            placeholder="请描述图片的情感氛围"
-          />
-        </a-form-item>
-        <a-form-item label="提示词">
-          <a-textarea
-            v-model:value="editForm.generated_prompt"
-            placeholder="AI生成的英文提示词"
-            :rows="4"
-          />
-        </a-form-item>
-      </a-form>
-    </a-modal>
+
   </div>
 </template>
 
@@ -265,14 +201,7 @@ const emit = defineEmits(['generate', 'regenerate', 'rate', 'approve', 'delete',
 // Reactive data
 const previewVisible = ref(false)
 const previewTask = ref(null)
-const editModalVisible = ref(false)
-const editForm = ref({
-  id: null,
-  scene_description: '',
-  emotional_tone: '',
-  generated_prompt: ''
-})
-const currentEditRecord = ref(null)
+
 const selectedRowKeys = ref([])
 
 // Row selection configuration
@@ -319,12 +248,7 @@ const columns = [
     ellipsis: true,
     customRender: ({ record }) => record.generated_prompt_chinese || '无'
   },
-  {
-    title: '图片描述',
-    key: 'combined_description',
-    width: 300,
-    ellipsis: true
-  },
+
   {
     title: '创建时间',
     dataIndex: 'created_at',
@@ -393,9 +317,7 @@ const handleMenuClick = async ({ key }, record) => {
     case 'download':
       downloadImage(record.generated_image_url, `image_${record.id}`)
       break
-    case 'copy-description':
-      copyToClipboard(getCombinedDescription(record))
-      break
+
     case 'delete':
       emit('delete', record.id)
       break
@@ -425,75 +347,7 @@ const copyToClipboard = async (text) => {
   }
 }
 
-// 合并描述相关方法
-const getCombinedDescription = (record) => {
-  const parts = []
-  if (record.scene_description) parts.push(record.scene_description)
-  if (record.emotional_tone) parts.push(record.emotional_tone)
-  if (record.generated_prompt) parts.push(record.generated_prompt)
-  return parts.join(' | ') || '暂无描述'
-}
 
-const getCombinedDescriptionShort = (record) => {
-  const full = getCombinedDescription(record)
-  return full.length > 100 ? full.substring(0, 100) + '...' : full
-}
-
-// 编辑描述相关方法
-const onEditDescription = (record) => {
-  currentEditRecord.value = record
-  editForm.value = {
-    id: record.id,
-    scene_description: record.scene_description || '',
-    emotional_tone: record.emotional_tone || '',
-    generated_prompt: record.generated_prompt || ''
-  }
-  editModalVisible.value = true
-}
-
-const onSaveDescription = async () => {
-  try {
-    // 调用API保存描述
-    const response = await fetch(`/api/v1/image-generation/tasks/${editForm.value.id}/description`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        scene_description: editForm.value.scene_description,
-        emotional_tone: editForm.value.emotional_tone,
-        generated_prompt: editForm.value.generated_prompt
-      })
-    })
-    
-    if (!response.ok) {
-      throw new Error('保存失败')
-    }
-    
-    const result = await response.json()
-    
-    // 更新本地数据
-    if (currentEditRecord.value) {
-      Object.assign(currentEditRecord.value, editForm.value)
-    }
-    
-    message.success('描述更新成功')
-    editModalVisible.value = false
-  } catch (error) {
-    message.error('保存失败: ' + error.message)
-  }
-}
-
-const onCancelEdit = () => {
-  editModalVisible.value = false
-  editForm.value = {
-    id: null,
-    scene_description: '',
-    emotional_tone: '',
-    generated_prompt: ''
-  }
-  currentEditRecord.value = null
-}
 </script>
 
 <style scoped>
@@ -535,25 +389,7 @@ const onCancelEdit = () => {
   }
 }
 
-.combined-description {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
 
-.description-content {
-  flex: 1;
-  color: #666;
-  font-size: 13px;
-  line-height: 1.4;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.description-content:hover {
-  color: #1890ff;
-}
 
 .preview-content {
   .prompt-display {
@@ -592,13 +428,7 @@ const onCancelEdit = () => {
     color: #8c8c8c;
   }
   
-  .description-content {
-    color: #d9d9d9;
-  }
-  
-  .description-content:hover {
-    color: #1890ff;
-  }
+
 }
 
 [data-theme='dark'] .preview-content .prompt-display {
