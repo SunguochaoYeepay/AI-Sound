@@ -6,10 +6,12 @@
         <h1>🖼️ 图片生成</h1>
         <p>基于书籍智能准备结果生成配图</p>
       </div>
-      
     </div>
     
-    <!-- 章节选择 -->
+    <!-- 主要内容标签页 -->
+    <a-tabs v-model:activeKey="activeTab" class="main-tabs">
+      <a-tab-pane key="generation" tab="图片生成">
+        <!-- 章节选择 -->
     <a-card title="选择章节" class="section-card">
       <div class="chapter-selection">
         <a-row :gutter="16">
@@ -194,6 +196,12 @@
         </a-tabs>
       </div>
     </a-drawer>
+      </a-tab-pane>
+      
+      <a-tab-pane key="library" tab="图片库">
+        <ImageLibrary />
+      </a-tab-pane>
+    </a-tabs>
   </div>
 </template>
 
@@ -208,6 +216,7 @@ import CharacterConsistencyConfig from '@/components/image-generation/CharacterC
 import ImageTaskList from '@/components/image-generation/ImageTaskList.vue'
 import ImageGenerationStats from '@/components/image-generation/ImageGenerationStats.vue'
 import ImageTaskDetail from '@/components/image-generation/ImageTaskDetail.vue'
+import ImageLibrary from '@/components/ImageLibrary.vue'
 
 import { useImageGenerationStore } from '@/stores/imageGeneration'
 import { useBookStore } from '@/stores/book'
@@ -218,6 +227,7 @@ const imageStore = useImageGenerationStore()
 const booksStore = useBookStore()
 
 // 响应式数据
+const activeTab = ref('generation') // 主标签页状态
 const selectedBookId = ref(null)
 const selectedChapterId = ref(null)
 const creatingTasks = ref(false)
@@ -1114,5 +1124,36 @@ onUnmounted(() => {
 
 [data-theme='dark'] .character-name {
   color: #fff !important;
+}
+
+/* 主标签页样式 */
+.main-tabs {
+  margin-top: 20px;
+}
+
+.main-tabs .ant-tabs-content-holder {
+  padding: 20px 0;
+}
+
+.main-tabs .ant-tabs-tab {
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.main-tabs .ant-tabs-tab-active {
+  color: #1890ff;
+}
+
+/* 图片库标签页内容样式 */
+.main-tabs .ant-tabs-tabpane[data-node-key="library"] {
+  padding: 0;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .main-tabs .ant-tabs-tab {
+    font-size: 14px;
+    padding: 8px 16px;
+  }
 }
 </style>

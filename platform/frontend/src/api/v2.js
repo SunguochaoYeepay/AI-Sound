@@ -425,6 +425,11 @@ export const imageGenerationAPI = {
     return apiRequest(() => apiClient.get(`${API_V2_PREFIX}/image-generation/comfyui/models`))
   },
 
+  // 获取图片库列表
+  async getImageLibrary(params = {}) {
+    return apiRequest(() => apiClient.get(`${API_V2_PREFIX}/image-generation/library`, { params }))
+  },
+
   // 🔥 新增：搜索角色（用于图片生成一致性）
   async searchCharacters(params = {}) {
     return apiRequest(() => apiClient.get(`${API_V2_PREFIX}/characters`, { params }))

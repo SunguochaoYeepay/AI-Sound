@@ -17,6 +17,7 @@ from app.services.translation_service import TranslationService
 from app.models import ImageGenerationTask, ImageGenerationPreset, BookChapter
 from app.utils.exceptions import ServiceException
 from app.clients.comfyui_client import ComfyUIClient
+from sqlalchemy.orm import joinedload
 
 logger = logging.getLogger(__name__)
 
@@ -582,6 +583,87 @@ async def get_image_generation_preset(
     except Exception as e:
         logger.error(f"获取图片生成预设失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"获取预设失败: {str(e)}")
+
+
+@router.get("/library", response_model=Dict[str, Any])
+async def get_image_library(
+    page: int = Query(1, ge=1, description="页码"),
+    page_size: int = Query(20, ge=1, le=100, description="每页数量"),
+    book_id: Optional[int] = Query(None, description="书籍ID筛选"),
+    chapter_id: Optional[int] = Query(None, description="章节ID筛选"),
+    status: Optional[str] = Query(None, description="状态筛选"),
+    search: Optional[str] = Query(None, description="搜索关键词"),
+    db: Session = Depends(get_db)
+):
+    """获取图片库列表"""
+    
+    try:
+        # 构建查询
+        query = db.query(ImageGenerationTask).filter(
+            ImageGenerationTask.status == 'completed',
+            ImageGenerationTask.generated_image_url.isnot(None)
+        ).options(
+            joinedload(ImageGenerationTask.chapter).joinedload(BookChapter.book)
+        )
+        
+        # 应用筛选条件
+        if book_id:
+            query = query.join(BookChapter).filter(BookChapter.book_id == book_id)
+        
+        if chapter_id:
+            query = query.filter(ImageGenerationTask.chapter_id == chapter_id)
+        
+        if search:
+            query = query.filter(
+                ImageGenerationTask.segment_text.contains(search) |
+                ImageGenerationTask.scene_description.contains(search) |
+                ImageGenerationTask.generated_prompt.contains(search)
+            )
+        
+        # 获取总数
+        total_count = query.count()
+        
+        # 分页查询
+        offset = (page - 1) * page_size
+        tasks = query.order_by(ImageGenerationTask.completed_at.desc()).offset(offset).limit(page_size).all()
+        
+        # 构建响应数据
+        image_list = []
+        for task in tasks:
+            image_list.append({
+                "id": task.id,
+                "chapter_id": task.chapter_id,
+                "segment_index": task.segment_index,
+                "segment_text": task.segment_text[:100] + "..." if len(task.segment_text) > 100 else task.segment_text,
+                "scene_description": task.scene_description,
+                "generated_prompt": task.generated_prompt,
+                "image_url": task.generated_image_url,
+                "image_width": task.image_width,
+                "image_height": task.image_height,
+                "generation_model": task.generation_model,
+                "quality_score": task.quality_score,
+                "user_rating": task.user_rating,
+                "is_approved": task.is_approved,
+                "created_at": task.created_at.isoformat() if task.created_at else None,
+                "completed_at": task.completed_at.isoformat() if task.completed_at else None,
+                "chapter_title": task.chapter.chapter_title if task.chapter else None,
+                "book_title": task.chapter.book.title if task.chapter and task.chapter.book else None
+            })
+        
+        return {
+            "success": True,
+            "data": {
+                "images": image_list,
+                "total_count": total_count,
+                "page": page,
+                "page_size": page_size,
+                "total_pages": (total_count + page_size - 1) // page_size
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"获取图片库失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取图片库失败: {str(e)}")
 
 
 @router.get("/comfyui/test-connection")

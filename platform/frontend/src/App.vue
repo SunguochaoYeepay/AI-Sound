@@ -167,6 +167,17 @@
           <span style="font-weight: 500">图片生成</span>
         </a-menu-item>
 
+        <a-menu-item key="image-library" @click="navigateTo('image-library')">
+          <template #icon>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <path
+                d="M22 16V4c0-1.1-.9-2-2-2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2zm-11.5-6L9 12.5l2.5 3.01L15.5 11l4.5 6H8l2.5-3.5zM2 6v14c0 1.1.9 2 2 2h14v-2H4V6H2z"
+              />
+            </svg>
+          </template>
+          <span style="font-weight: 500">图片库</span>
+        </a-menu-item>
+
         <!-- 创作中心 -->
         <a-menu-divider class="menu-group-divider" />
         <div v-if="!collapsed" class="menu-group-title">🎬 创作中心</div>
@@ -458,6 +469,7 @@
       '/audio-library': 'audio-library',
       '/music-library': 'music-library', // 🎵 添加背景音乐路由映射
       '/image-generation': 'image-generation', // 🖼️ 添加图片生成路由映射
+      '/image-library': 'image-library', // 🖼️ 添加图片库路由映射
       '/novel-reader': 'novel-projects',
       '/novel-reader/create': 'novel-projects',
       '/novel-reader/edit': 'novel-projects',
@@ -516,6 +528,7 @@
       'audio-library': '/audio-library',
       'music-library': '/music-library', // 🎵 添加背景音乐路由映射
       'image-generation': '/image-generation', // 🖼️ 添加图片生成路由映射
+      'image-library': '/image-library', // 🖼️ 添加图片库路由映射
       'novel-projects': '/novel-reader',
       'environment-mixing': '/environment-mixing', // 环境混音页面
       'sound-editor': '/sound-editor', // 🎵 新增音频编辑器路由映射
@@ -547,6 +560,7 @@
       '/audio-library': '音频库',
       '/music-library': '背景音乐', // 🎵 添加背景音乐页面标题
       '/image-generation': '图片生成', // 🖼️ 添加图片生成页面标题
+      '/image-library': '图片库', // 🖼️ 添加图片库页面标题
       '/novel-reader': '语音合成',
       '/novel-reader/create': '语音合成',
       '/novel-reader/edit': '语音合成',

@@ -178,6 +178,15 @@ const routes = [
       requiresAuth: true
     }
   },
+  {
+    path: '/image-library',
+    name: 'ImageLibrary',
+    component: () => import('../components/ImageLibrary.vue'),
+    meta: {
+      title: '🖼️ 图片库',
+      requiresAuth: true
+    }
+  },
 
   // 音频编辑器路由（新增）
   {
