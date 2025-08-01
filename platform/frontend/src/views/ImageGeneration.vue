@@ -423,12 +423,18 @@ const onBookChange = async (bookId) => {
   selectedChapterId.value = null
   // imageTasks.value = [] // 删除局部变量赋值
   
-  if (!bookId) return
+  if (!bookId) {
+    // 清空角色数据
+    availableCharacters.value = []
+    return
+  }
   
   try {
     await booksStore.fetchChapters(bookId)
     // 加载书籍的图片生成配置
     await loadBookConfig(bookId)
+    // 自动加载该书籍的角色数据
+    await loadCharacters(bookId)
   } catch (error) {
     message.error('加载章节列表失败: ' + error.message)
   }
@@ -456,6 +462,11 @@ const onChapterChange = async (chapterId) => {
   await loadImageTasks(chapterId)  // 这一次调用就足够了，会同时更新tasks和stats
   // await loadGenerationStats(chapterId)  // 删除重复调用
   // 移除这里的startStatusRefresh，让loadImageTasks来决定是否启动
+  
+  // 重新加载角色数据（不按章节筛选，因为角色数据的chapter_id通常为null）
+  if (selectedBookId.value) {
+    await loadCharacters(selectedBookId.value) // 移除chapterId参数，加载该书籍的所有角色
+  }
 }
 
 const loadImageTasks = async (chapterId) => {
@@ -715,9 +726,43 @@ const testComfyuiConnection = async () => {
 }
 
 // 角色一致性相关方法
+// 加载角色数据
+const loadCharacters = async (bookId, chapterId = null) => {
+  if (!bookId) {
+    availableCharacters.value = []
+    return
+  }
+  
+  loadingCharacters.value = true
+  try {
+    // 构建搜索参数
+    const searchParams = { 
+      book_id: bookId
+    }
+    
+    // 如果指定了章节，则按章节筛选角色
+    if (chapterId) {
+      searchParams.chapter_id = chapterId
+    }
+    
+    const response = await imageStore.searchCharacters(searchParams)
+    availableCharacters.value = response.data?.data || []
+    console.log('已加载角色数据:', availableCharacters.value.length, '个角色')
+  } catch (error) {
+    console.error('加载角色失败:', error)
+    message.error('加载角色失败: ' + error.message)
+    availableCharacters.value = []
+  } finally {
+    loadingCharacters.value = false
+  }
+}
+
 const searchCharacters = async (searchText) => {
   if (!searchText) {
-    availableCharacters.value = []
+    // 如果没有搜索文本，重新加载所有角色
+    if (selectedBookId.value) {
+      await loadCharacters(selectedBookId.value, selectedChapterId.value)
+    }
     return
   }
   

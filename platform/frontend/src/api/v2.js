@@ -427,7 +427,7 @@ export const imageGenerationAPI = {
 
   // 🔥 新增：搜索角色（用于图片生成一致性）
   async searchCharacters(params = {}) {
-    return apiRequest(() => apiClient.get(`/api/v1/characters`, { params }))
+    return apiRequest(() => apiClient.get(`${API_V2_PREFIX}/characters`, { params }))
   }
 }
 
