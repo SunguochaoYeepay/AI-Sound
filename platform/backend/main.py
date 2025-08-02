@@ -10,6 +10,13 @@ from typing import Dict, Any
 import aiohttp
 import os
 
+# 加载环境变量
+try:
+    from dotenv import load_dotenv
+    load_dotenv()  # 加载.env文件中的环境变量
+except ImportError:
+    pass  # 如果没有安装python-dotenv，忽略错误
+
 from fastapi import FastAPI, Request, HTTPException, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
@@ -431,4 +438,4 @@ if __name__ == "__main__":
         workers=1,      # 🔥 Windows兼容性：使用单进程模式
         reload=False,   # 🔥 稳定性考虑禁用reload
         log_level="info"
-    ) 
+    )

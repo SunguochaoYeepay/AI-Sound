@@ -4,7 +4,7 @@ import { resolve } from 'path'
 
 export default defineConfig(({ mode }) => {
   // 根据环境选择API目标
-  // 开发模式：代理到本地开发服务器 8002 端口
+  // 开发模式：代理到本地开发服务器 8000 端口
   // 生产模式：代理到 Docker 服务 8000 端口
   const API_TARGET = mode === 'development' 
     ? 'http://localhost:8001'  // 本地开发端口

@@ -15,7 +15,7 @@ class TranslationService:
     """翻译服务 - 使用Ollama进行中文到英文的翻译"""
     
     def __init__(self):
-        self.ollama_url = os.getenv("OLLAMA_URL", "http://host.docker.internal:11434")
+        self.ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434")
         self.model = "qwen2.5:14b"  # 使用中文友好的模型
     
     async def translate_chinese_to_english(self, chinese_text: str) -> str:

@@ -198,9 +198,7 @@
     </a-drawer>
       </a-tab-pane>
       
-      <a-tab-pane key="library" tab="图片库">
-        <ImageLibrary />
-      </a-tab-pane>
+
     </a-tabs>
   </div>
 </template>
@@ -216,7 +214,7 @@ import CharacterConsistencyConfig from '@/components/image-generation/CharacterC
 import ImageTaskList from '@/components/image-generation/ImageTaskList.vue'
 import ImageGenerationStats from '@/components/image-generation/ImageGenerationStats.vue'
 import ImageTaskDetail from '@/components/image-generation/ImageTaskDetail.vue'
-import ImageLibrary from '@/components/ImageLibrary.vue'
+
 
 import { useImageGenerationStore } from '@/stores/imageGeneration'
 import { useBookStore } from '@/stores/book'
@@ -868,9 +866,8 @@ onUnmounted(() => {
 
 <style scoped>
 .image-generation-container {
-  background: #f5f5f5;
+  background: #f8fafc;
   min-height: 100vh;
-  padding: 20px;
 }
 
 .header-section {
@@ -883,11 +880,8 @@ onUnmounted(() => {
 
 .page-title {
   display: flex;
-  align-items: center;
-  margin: 0 0 8px 0;
-  font-size: 28px;
-  font-weight: 600;
-  color: white;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .page-title h1 {
@@ -895,6 +889,8 @@ onUnmounted(() => {
   font-size: 28px;
   color: white;
   font-weight: 600;
+  display: flex;
+  align-items: center;
 }
 
 .page-title p {
@@ -915,8 +911,24 @@ onUnmounted(() => {
 .section-card {
   margin-bottom: 24px;
   background: white;
-  border-radius: 8px;
+  border-radius: 12px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  border: none;
+  transition: all 0.3s;
+}
+
+.section-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+.section-card .ant-card-head {
+  border-bottom: 1px solid #f0f0f0;
+  padding: 16px 24px;
+}
+
+.section-card .ant-card-body {
+  padding: 24px;
 }
 
 .chapter-selection {
@@ -1151,9 +1163,54 @@ onUnmounted(() => {
 
 /* 响应式设计 */
 @media (max-width: 768px) {
+  .image-generation-container {
+  }
+  
+  .header-section {
+    padding: 24px;
+  }
+  
   .main-tabs .ant-tabs-tab {
     font-size: 14px;
     padding: 8px 16px;
   }
+  
+  .chapter-selection .ant-row {
+    flex-direction: column;
+  }
+  
+  .chapter-selection .ant-col {
+    margin-bottom: 16px;
+  }
+}
+
+/* 暗黑模式适配 */
+[data-theme='dark'] .image-generation-container {
+  background: #141414 !important;
+}
+
+[data-theme='dark'] .header-section {
+  background: linear-gradient(135deg, #2d2d2d 0%, #1f1f1f 100%) !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5) !important;
+}
+
+[data-theme='dark'] .section-card,
+[data-theme='dark'] .connection-status {
+  background: #1f1f1f !important;
+  border: 1px solid #434343 !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+}
+
+[data-theme='dark'] .section-card .ant-card-head {
+  border-bottom: 1px solid #434343 !important;
+  background: #1f1f1f !important;
+}
+
+[data-theme='dark'] .section-card .ant-card-body {
+  background: #1f1f1f !important;
+}
+
+[data-theme='dark'] .chapter-selection {
+  background: #1f1f1f !important;
 }
 </style>

@@ -14,7 +14,7 @@ services:
       - MEGATTS3_URL=http://megatts3:7929
       - TANGOFLUX_URL=http://tangoflux:7930
       - SONGGENERATION_URL=http://host.docker.internal:7862  # 独立的songgeneration-service容器
-      - OLLAMA_URL=http://host.docker.internal:11434  # Windows宿主机Ollama服务
+      - OLLAMA_URL=http://localhost:11434  # Windows宿主机Ollama服务
       - AUDIO_DIR=/app/data/audio
       - UPLOADS_DIR=/app/data/uploads
       - VOICE_PROFILES_DIR=/app/data/voice_profiles
@@ -37,6 +37,7 @@ services:
     restart: unless-stopped
     extra_hosts:
       - "host.docker.internal:host-gateway"
+      - "localhost:host-gateway"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s

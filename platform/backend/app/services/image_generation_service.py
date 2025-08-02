@@ -89,15 +89,33 @@ class ImageGenerationService:
             
             logger.info(f"最终获取到 {len(segments)} 个段落用于图片生成")
             
-            # 4. 🔥 新增：获取角色一致性配置
+            # 4. 角色一致性处理
             character_consistency = generation_config.get('character_consistency', {}) if generation_config else {}
             selected_character = None
+            reference_image_info = None
             
             if character_consistency.get('enabled') and character_consistency.get('selectedCharacterId'):
                 from app.models.character import Character
                 selected_character = self.db.query(Character).filter(
                     Character.id == character_consistency['selectedCharacterId']
                 ).first()
+                
+                # 获取参考图片信息（优先使用用户上传的图片）
+                if character_consistency.get('referenceImage'):
+                    reference_image_info = {
+                        'type': 'user_uploaded',
+                        'data': character_consistency['referenceImage'],
+                        'source': 'user_upload'
+                    }
+                    logger.info(f"🖼️ 使用用户上传的参考图片")
+                elif selected_character and selected_character.avatar_path:
+                    reference_image_info = {
+                        'type': 'character_avatar',
+                        'avatar_path': selected_character.avatar_path,
+                        'avatar_url': f"/api/v1/characters/avatar/{selected_character.id}",
+                        'source': 'character_avatar'
+                    }
+                    logger.info(f"🖼️ 使用角色头像作为参考图片")
                 
                 logger.info(f"🎭 启用角色一致性: {selected_character.name if selected_character else '角色未找到'}")
             
@@ -107,24 +125,32 @@ class ImageGenerationService:
                 if self._is_segment_image_worthy(segment):
                     # 🔥 新增：为每个段落添加角色信息
                     if selected_character:
-                        enhanced_segment = self._enhance_segment_with_character(segment, selected_character, character_consistency.get('weight', 0.6))
+                        enhanced_segment = self._enhance_segment_with_character(
+                            segment, 
+                            selected_character, 
+                            character_consistency.get('weight', 0.6),
+                            reference_image_info
+                        )
                         image_worthy_segments.append(enhanced_segment)
                     else:
                         image_worthy_segments.append(segment)
             
             logger.info(f"从 {len(segments)} 个段落中筛选出 {len(image_worthy_segments)} 个适合生成图片的段落")
             
-            # 6. 创建图片生成任务
+            # 创建图片生成任务
             created_tasks = []
             for i, segment in enumerate(image_worthy_segments):
-                # 提取段落信息用于生成prompt和保存到数据库
+                # 获取段落文本和类型
                 text = segment.get('text', '')
                 segment_type = segment.get('text_type', 'narration')
                 
-                # 使用AI导演生成专业提示词
-                prompt_result = await self._analyze_segment_for_image(text, segment_type)
+                # 获取角色上下文信息
+                character_context = segment.get('character_context')
                 
-                # 从AI导演结果中提取描述信息
+                # 使用AI导演分析段落并生成提示词
+                prompt_result = await self._analyze_segment_for_image(text, segment_type, character_context)
+                
+                # 提取分析结果
                 scene_description = prompt_result.get('scene_description', '')
                 character_info = prompt_result.get('character_info', {})
                 emotional_tone = prompt_result.get('emotional_tone', '')
@@ -144,7 +170,6 @@ class ImageGenerationService:
                     'negative_prompt_chinese': prompt_result.get('negative_prompt_chinese', ''),
                     'generation_params': generation_config or {},
                     'status': 'pending',
-                    'character_consistency_enabled': character_consistency.get('enabled', False),
                     'character_id': selected_character.id if selected_character else None,
                     'scene_description': scene_description,
                     'character_info': character_info,
@@ -152,7 +177,7 @@ class ImageGenerationService:
                     'style_keywords': style_keywords
                 }
                 
-                # 创建任务记录
+                # 创建数据库记录
                 task = ImageGenerationTask(
                     chapter_id=chapter_id,
                     analysis_result_id=analysis_result.id,
@@ -167,7 +192,6 @@ class ImageGenerationService:
                     negative_prompt_chinese=task_data.get('negative_prompt_chinese', '')[:1000] if task_data.get('negative_prompt_chinese') else None,
                     generation_params=task_data['generation_params'],
                     status='pending',
-                    # 🔥 修复：保存提取的描述信息到数据库字段
                     scene_description=scene_description[:500] if scene_description else None,
                     character_info=json.dumps(character_info, ensure_ascii=False) if character_info else None,
                     emotional_tone=emotional_tone,
@@ -183,9 +207,129 @@ class ImageGenerationService:
             return created_tasks
             
         except Exception as e:
-            self.db.rollback()
             logger.error(f"创建图片生成任务失败: {str(e)}")
+            self.db.rollback()
             raise ServiceException(f"创建图片生成任务失败: {str(e)}")
+    
+    def _enhance_segment_with_character(self, segment: Dict, character, weight: float, reference_image_info: Optional[Dict] = None) -> Dict:
+        """
+        为段落添加角色一致性信息
+        
+        Args:
+            segment: 原始段落数据
+            character: 角色对象
+            weight: 一致性权重 (0.3-1.0)
+            reference_image_info: 参考图片信息
+        
+        Returns:
+            增强后的段落数据
+        """
+        try:
+            # 复制原始段落，避免修改原数据
+            enhanced_segment = segment.copy()
+            
+            # 构建角色描述
+            character_description = self._build_character_description(character, weight)
+            
+            # 添加角色上下文信息
+            enhanced_segment['character_context'] = {
+                'character_id': character.id,
+                'character_name': character.name,
+                'character_description': character_description,
+                'consistency_weight': weight,
+                'character_features': {
+                    'age_range': character.age_range,
+                    'build_type': character.build_type,
+                    'clothing_style': character.clothing_style,
+                    'distinctive_features': character.distinctive_features
+                },
+                # 使用传入的参考图片信息，或者使用角色头像
+                'reference_image': reference_image_info or {
+                    'avatar_path': character.avatar_path,
+                    'avatar_url': f"/api/v1/characters/avatar/{character.id}" if character.avatar_path else None,
+                    'source': 'character_avatar'
+                }
+            }
+            
+            # 如果段落文本中包含角色名称，添加角色一致性提示
+            text = segment.get('text', '')
+            if character.name in text:
+                # 在文本中添加角色一致性提示
+                enhanced_text = f"{text} [角色一致性提示: {character.name} - {character_description}]"
+                enhanced_segment['enhanced_text'] = enhanced_text
+                logger.debug(f"为段落添加角色一致性信息: {character.name}")
+            
+            return enhanced_segment
+            
+        except Exception as e:
+            logger.error(f"增强段落角色信息失败: {str(e)}")
+            return segment  # 失败时返回原始段落
+    
+    def _build_character_description(self, character, weight: float) -> str:
+        """
+        构建角色描述信息
+        
+        Args:
+            character: 角色对象
+            weight: 一致性权重
+        
+        Returns:
+            角色描述字符串
+        """
+        description_parts = []
+        
+        # 基础信息
+        if character.name:
+            description_parts.append(f"角色名称: {character.name}")
+        
+        # 年龄范围
+        if character.age_range:
+            age_mapping = {
+                'child': '儿童',
+                'teenager': '青少年', 
+                'young_adult': '青年',
+                'middle_aged': '中年',
+                'elderly': '老年'
+            }
+            age_desc = age_mapping.get(character.age_range, character.age_range)
+            description_parts.append(f"年龄: {age_desc}")
+        
+        # 体型
+        if character.build_type:
+            build_mapping = {
+                'slim': '苗条',
+                'average': '中等身材',
+                'muscular': '健壮',
+                'heavy': '丰满'
+            }
+            build_desc = build_mapping.get(character.build_type, character.build_type)
+            description_parts.append(f"体型: {build_desc}")
+        
+        # 服装风格
+        if character.clothing_style:
+            clothing_mapping = {
+                'ancient': '古装',
+                'modern': '现代装',
+                'formal': '正装',
+                'casual': '休闲装'
+            }
+            clothing_desc = clothing_mapping.get(character.clothing_style, character.clothing_style)
+            description_parts.append(f"服装: {clothing_desc}")
+        
+        # 特殊特征
+        if character.distinctive_features:
+            description_parts.append(f"特征: {character.distinctive_features}")
+        
+        # 根据权重调整描述强度
+        if weight >= 0.8:
+            intensity = "强调"
+        elif weight >= 0.6:
+            intensity = "突出"
+        else:
+            intensity = "保持"
+        
+        base_description = ", ".join(description_parts)
+        return f"{intensity}{base_description}的一致性"
     
     def _filter_segments_for_image_generation(self, segments: List[Dict]) -> List[Tuple[int, Dict]]:
         """筛选适合生成图片的段落"""
@@ -412,7 +556,7 @@ class ImageGenerationService:
             'status': 'pending'
         }
     
-    async def _analyze_segment_for_image(self, text: str, segment_type: str) -> Dict[str, Any]:
+    async def _analyze_segment_for_image(self, text: str, segment_type: str, character_context: Optional[Dict] = None) -> Dict[str, Any]:
         """分析段落内容，生成图片描述和提示词"""
         
         try:
@@ -421,7 +565,7 @@ class ImageGenerationService:
             ai_director = AIDirectorService()
             
             logger.info(f"使用AI导演分析段落: {text[:50]}...")
-            result = await ai_director.generate_visual_prompt(text, segment_type, 'cinematic')
+            result = await ai_director.generate_visual_prompt(text, segment_type, 'cinematic', character_context)
             
             if result.get('success', False):
                 logger.info(f"AI导演分析成功，生成提示词: {result['generated_prompt'][:100]}...")

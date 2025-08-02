@@ -59,7 +59,8 @@ class AIDirectorService:
     async def generate_visual_prompt(self, 
                                    segment_text: str, 
                                    segment_type: str = 'narrative',
-                                   style_preference: str = 'cinematic') -> Dict[str, Any]:
+                                   style_preference: str = 'cinematic',
+                                   character_context: Optional[Dict] = None) -> Dict[str, Any]:
         """
         生成专业的视觉提示词
         
@@ -76,14 +77,19 @@ class AIDirectorService:
             # 1. 使用LLM分析段落内容
             analysis_result = await self._analyze_with_llm(segment_text, segment_type)
             
-            # 2. 生成镜头语言规划
+            # 2. 如果有角色上下文，融入分析结果
+            if character_context:
+                analysis_result = self._integrate_character_context(analysis_result, character_context)
+            
+            # 3. 生成镜头语言规划
             shot_planning = self._plan_shot_composition(analysis_result)
             
-            # 3. 构建最终提示词
+            # 4. 构建最终提示词
             final_prompt = self._build_professional_prompt(
                 analysis_result, 
                 shot_planning, 
-                style_preference
+                style_preference,
+                character_context
             )
             
             return {
@@ -267,10 +273,71 @@ class AIDirectorService:
         else:
             return 'natural color palette, balanced saturation'
     
+    def _integrate_character_context(self, analysis: Dict[str, Any], character_context: Dict) -> Dict[str, Any]:
+        """
+        将角色上下文信息融入分析结果
+        
+        Args:
+            analysis: LLM分析结果
+            character_context: 角色上下文信息
+        
+        Returns:
+            融入角色信息后的分析结果
+        """
+        try:
+            enhanced_analysis = analysis.copy()
+            
+            # 获取角色信息
+            character_name = character_context.get('character_name', '')
+            character_features = character_context.get('character_features', {})
+            consistency_weight = character_context.get('consistency_weight', 0.5)
+            
+            # 增强角色描述
+            if 'characters' not in enhanced_analysis:
+                enhanced_analysis['characters'] = {}
+            
+            # 如果分析结果中已有该角色，增强其描述
+            if character_name in enhanced_analysis['characters']:
+                existing_char = enhanced_analysis['characters'][character_name]
+                # 融合角色特征
+                if character_features.get('age_range'):
+                    existing_char['age'] = character_features['age_range']
+                if character_features.get('build_type'):
+                    existing_char['build'] = character_features['build_type']
+                if character_features.get('clothing_style'):
+                    existing_char['clothing'] = character_features['clothing_style']
+                if character_features.get('distinctive_features'):
+                    existing_char['features'] = character_features['distinctive_features']
+            else:
+                # 添加新的角色信息
+                enhanced_analysis['characters'][character_name] = {
+                    'name': character_name,
+                    'age': character_features.get('age_range', ''),
+                    'build': character_features.get('build_type', ''),
+                    'clothing': character_features.get('clothing_style', ''),
+                    'features': character_features.get('distinctive_features', ''),
+                    'consistency_weight': consistency_weight
+                }
+            
+            # 添加角色一致性标记
+            enhanced_analysis['character_consistency'] = {
+                'enabled': True,
+                'target_character': character_name,
+                'weight': consistency_weight
+            }
+            
+            logger.debug(f"成功融入角色上下文: {character_name}")
+            return enhanced_analysis
+            
+        except Exception as e:
+            logger.error(f"融入角色上下文失败: {str(e)}")
+            return analysis
+    
     def _build_professional_prompt(self, 
                                  analysis: Dict[str, Any], 
                                  shot_planning: Dict[str, Any], 
-                                 style: str) -> Dict[str, str]:
+                                 style: str,
+                                 character_context: Optional[Dict] = None) -> Dict[str, str]:
         """构建专业的Flux模型提示词（中英文双语）"""
         
         # 构建英文提示词
@@ -287,8 +354,10 @@ class AIDirectorService:
             chinese_scene = self._translate_scene_to_chinese(scene_desc, analysis)
             chinese_parts.append(chinese_scene)
         
-        # 2. 人物描述 - 结合外貌和动作
+        # 2. 人物描述 - 结合外貌和动作，优先使用角色一致性信息
         characters = analysis.get('characters', {})
+        character_consistency = analysis.get('character_consistency', {})
+        
         for char_name, char_info in characters.items():
             if isinstance(char_info, dict):
                 appearance = char_info.get('appearance', '')
@@ -299,6 +368,27 @@ class AIDirectorService:
                 char_description_en = []
                 char_description_cn = []
                 
+                # 如果启用了角色一致性且是目标角色，使用一致性信息增强描述
+                if (character_consistency.get('enabled') and 
+                    char_name == character_consistency.get('target_character') and 
+                    character_context):
+                    
+                    # 获取角色特征
+                    char_features = character_context.get('character_features', {})
+                    consistency_weight = character_context.get('consistency_weight', 0.5)
+                    
+                    # 构建角色一致性描述
+                    consistency_desc_en = self._build_character_consistency_prompt(char_features, consistency_weight)
+                    consistency_desc_cn = self._build_character_consistency_prompt_chinese(char_features, consistency_weight)
+                    
+                    if consistency_desc_en:
+                        char_description_en.append(consistency_desc_en)
+                    if consistency_desc_cn:
+                        char_description_cn.append(consistency_desc_cn)
+                    
+                    logger.debug(f"为角色 {char_name} 添加一致性描述: {consistency_desc_en}")
+                
+                # 添加原有的描述信息
                 if appearance:
                     char_description_en.append(appearance)
                     char_description_cn.append(self._translate_appearance_to_chinese(appearance))
@@ -671,6 +761,118 @@ class AIDirectorService:
                 return cn
         
         return style
+    
+    def _build_character_consistency_prompt(self, char_features: Dict, consistency_weight: float) -> str:
+        """构建角色一致性英文提示词"""
+        if not char_features:
+            return ""
+        
+        prompt_parts = []
+        
+        # 年龄描述
+        age = char_features.get('age')
+        if age:
+            prompt_parts.append(f"{age} years old")
+        
+        # 体型描述
+        build = char_features.get('build')
+        if build:
+            build_mapping = {
+                '瘦弱': 'slim and delicate',
+                '苗条': 'slender',
+                '匀称': 'well-proportioned',
+                '健壮': 'athletic and strong',
+                '丰满': 'full-figured',
+                '魁梧': 'robust and sturdy'
+            }
+            prompt_parts.append(build_mapping.get(build, build))
+        
+        # 服装描述
+        clothing = char_features.get('clothing')
+        if clothing:
+            clothing_mapping = {
+                '休闲装': 'casual wear',
+                '正装': 'formal attire',
+                '运动装': 'sportswear',
+                '传统服装': 'traditional clothing',
+                '时尚装': 'fashionable outfit',
+                '工作服': 'work uniform'
+            }
+            prompt_parts.append(f"wearing {clothing_mapping.get(clothing, clothing)}")
+        
+        # 特征描述
+        distinctive_features = char_features.get('distinctive_features')
+        if distinctive_features:
+            # 如果是中文特征，需要翻译
+            if any('\u4e00' <= char <= '\u9fff' for char in distinctive_features):
+                # 简单的特征翻译映射
+                feature_mapping = {
+                    '长发': 'long hair',
+                    '短发': 'short hair',
+                    '卷发': 'curly hair',
+                    '直发': 'straight hair',
+                    '眼镜': 'glasses',
+                    '胡须': 'beard',
+                    '微笑': 'smiling',
+                    '严肃': 'serious expression'
+                }
+                translated_features = feature_mapping.get(distinctive_features, distinctive_features)
+                prompt_parts.append(translated_features)
+            else:
+                prompt_parts.append(distinctive_features)
+        
+        if not prompt_parts:
+            return ""
+        
+        # 根据一致性权重调整描述强度
+        if consistency_weight >= 0.8:
+            intensity = "highly detailed"
+        elif consistency_weight >= 0.6:
+            intensity = "detailed"
+        else:
+            intensity = "subtle"
+        
+        return f"{intensity} character with {', '.join(prompt_parts)}"
+    
+    def _build_character_consistency_prompt_chinese(self, char_features: Dict, consistency_weight: float) -> str:
+        """构建角色一致性中文提示词"""
+        if not char_features:
+            return ""
+        
+        prompt_parts = []
+        
+        # 年龄描述
+        age = char_features.get('age')
+        if age:
+            prompt_parts.append(f"{age}岁")
+        
+        # 体型描述
+        build = char_features.get('build')
+        if build:
+            prompt_parts.append(f"{build}体型")
+        
+        # 服装描述
+        clothing = char_features.get('clothing')
+        if clothing:
+            prompt_parts.append(f"穿着{clothing}")
+        
+        # 特征描述
+        distinctive_features = char_features.get('distinctive_features')
+        if distinctive_features:
+            prompt_parts.append(distinctive_features)
+        
+        if not prompt_parts:
+            return ""
+        
+        # 根据一致性权重调整描述强度
+        if consistency_weight >= 0.8:
+            intensity = "高度细致的"
+        elif consistency_weight >= 0.6:
+            intensity = "细致的"
+        else:
+            intensity = "微妙的"
+        
+        return f"{intensity}角色，{', '.join(prompt_parts)}"
     
     def _fallback_prompt_generation(self, text: str, style: str) -> Dict[str, Any]:
         """降级的提示词生成方法（中英文双语）"""

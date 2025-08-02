@@ -58,6 +58,10 @@ class ImageGenerationTask(Base):
     generation_seed = Column(Integer, comment="生成种子")
     generation_time = Column(Integer, comment="生成耗时(秒)")
     
+    # 角色一致性功能暂时禁用
+    # character_consistency_enabled = Column(Boolean, default=False, comment="是否启用角色一致性")
+    # character_id = Column(Integer, comment="关联的角色ID")
+    
     # 质量评估
     quality_score = Column(Integer, comment="质量评分 0-100")
     user_rating = Column(Integer, comment="用户评分 1-5")

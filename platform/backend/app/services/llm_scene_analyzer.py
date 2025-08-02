@@ -42,7 +42,7 @@ class OllamaLLMSceneAnalyzer:
     
     def __init__(self):
         # Ollama配置
-        self.ollama_base_url = os.getenv("OLLAMA_URL", "http://host.docker.internal:11434")
+        self.ollama_base_url = os.getenv("OLLAMA_URL", "http://localhost:11434")
         self.model_name = os.getenv("OLLAMA_MODEL", "qwen2.5:14b")  # 🔥 改用中文优化模型
         
         logger.info(f"[LLM_ANALYZER] 初始化完成，模型: {self.model_name}, URL: {self.ollama_base_url}")
