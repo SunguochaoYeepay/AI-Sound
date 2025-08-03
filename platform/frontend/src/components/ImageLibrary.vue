@@ -735,7 +735,17 @@ const paginationConfig = computed(() => ({
   total: totalCount.value,
   showSizeChanger: true,
   showQuickJumper: true,
-  showTotal: (total, range) => `第 ${range[0]}-${range[1]} 条，共 ${total} 条`
+  showTotal: (total, range) => `第 ${range[0]}-${range[1]} 条，共 ${total} 条`,
+  onChange: (page, size) => {
+    currentPage.value = page
+    pageSize.value = size
+    loadImageLibrary()
+  },
+  onShowSizeChange: (current, size) => {
+    currentPage.value = 1
+    pageSize.value = size
+    loadImageLibrary()
+  }
 }))
 
 const rowSelection = computed(() => ({

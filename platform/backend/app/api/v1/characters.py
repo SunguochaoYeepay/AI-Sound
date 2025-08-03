@@ -673,6 +673,7 @@ async def update_character_with_voice(
     tags: str = Form(""),
     color: str = Form("#8b5cf6"),
     parameters: str = Form("{}"),
+    remove_avatar: str = Form(None),
     db: Session = Depends(get_db)
 ):
     """更新角色和声音配置"""
@@ -707,8 +708,18 @@ async def update_character_with_voice(
             if not book:
                 raise HTTPException(status_code=400, detail="所选书籍不存在")
         
+        # 处理移除头像
+        if remove_avatar and remove_avatar.lower() == 'true':
+            # 删除旧头像文件
+            if character.avatar_path and os.path.exists(character.avatar_path):
+                try:
+                    os.remove(character.avatar_path)
+                except:
+                    pass
+            character.avatar_path = None
+        
         # 处理新的头像文件
-        if avatar and avatar.filename:
+        elif avatar and avatar.filename:
             # 删除旧头像文件
             if character.avatar_path and os.path.exists(character.avatar_path):
                 try:
@@ -2229,6 +2240,7 @@ async def generate_character_avatar(
     custom_prompt: str = Form("", description="自定义提示词（可选）"),
     style_preference: str = Form("realistic", description="风格偏好: realistic, anime, cartoon, artistic"),
     image_size: str = Form("512x512", description="图片尺寸: 512x512, 768x768, 1024x1024"),
+    reference_image: UploadFile = File(None, description="参考图像（可选）"),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
     """🔥 新增：为指定角色生成头像"""
@@ -2265,6 +2277,17 @@ async def generate_character_avatar(
             # 解析图片尺寸
             width, height = map(int, image_size.split('x'))
             
+            # 处理参考图像
+            reference_image_path = None
+            if reference_image and reference_image.filename:
+                # 保存参考图像到临时目录
+                import tempfile
+                temp_dir = tempfile.mkdtemp()
+                reference_image_path = os.path.join(temp_dir, reference_image.filename)
+                with open(reference_image_path, "wb") as buffer:
+                    content = await reference_image.read()
+                    buffer.write(content)
+            
             # 生成图片
             image_path = await comfyui.generate_image(
                 prompt=avatar_prompt,
@@ -2273,8 +2296,17 @@ async def generate_character_avatar(
                 height=height,
                 steps=20,
                 cfg=7.0,
-                seed=None  # 随机种子
+                seed=None,  # 随机种子
+                reference_image=reference_image_path
             )
+            
+            # 清理临时参考图像文件
+            if reference_image_path and os.path.exists(reference_image_path):
+                try:
+                    import shutil
+                    shutil.rmtree(os.path.dirname(reference_image_path))
+                except Exception as e:
+                    logger.warning(f"清理临时文件失败: {e}")
             
             if image_path:
                 # 保存生成的头像到角色专用目录
@@ -2332,24 +2364,38 @@ async def get_character_avatar(
     """获取角色头像"""
     try:
         character = db.query(Character).filter(Character.id == character_id).first()
-        if not character or not character.avatar_path:
-            # 返回默认头像或404
-            raise HTTPException(status_code=404, detail="头像不存在")
-        
-        # 检查文件是否存在
-        if not os.path.exists(character.avatar_path):
-            raise HTTPException(status_code=404, detail="头像文件不存在")
-        
-        from fastapi.responses import FileResponse
-        return FileResponse(
-            character.avatar_path,
-            media_type="image/png",
-            filename=f"{character.name}_avatar.png"
-        )
+        if not character:
+            raise HTTPException(status_code=404, detail="角色不存在")
+            
+        if character.avatar_path and os.path.exists(character.avatar_path):
+            # 返回实际头像文件
+            from fastapi.responses import FileResponse
+            return FileResponse(
+                character.avatar_path,
+                media_type="image/png",
+                filename=f"{character.name}_avatar.png"
+            )
+        else:
+            # 生成默认头像SVG
+            return _generate_default_avatar_svg(character.name, character.voice_type)
         
     except Exception as e:
         logger.error(f"获取角色头像失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"获取头像失败: {str(e)}")
+
+@router.get("/avatar/default")
+async def get_default_avatar(
+    name: str = Query(..., description="角色名称"),
+    voice_type: str = Query("custom", description="声音类型")
+):
+    """获取默认头像"""
+    try:
+        # 直接使用参数生成默认头像
+        return _generate_default_avatar_svg(name, voice_type)
+        
+    except Exception as e:
+        logger.error(f"生成默认头像失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"生成默认头像失败: {str(e)}")
 
 def _build_avatar_prompt_from_character(character: Character) -> str:
     """基于角色信息构建头像生成提示词"""
@@ -2424,5 +2470,45 @@ def _enhance_prompt_with_style(prompt: str, style: str) -> str:
         'artistic': 'artistic style, painterly, expressive, creative'
     }
     
-    enhancement = style_enhancements.get(style, style_enhancements['realistic'])
+    enhancement = style_enhancements.get(style, style_enhancements["realistic"])
     return f"{prompt}, {enhancement}"
+
+def _generate_default_avatar_svg(name: str = "角色", voice_type: str = "custom") -> str:
+    """生成默认头像SVG"""
+    from fastapi.responses import Response
+    
+    # 根据声音类型选择图标和颜色
+    voice_type_config = {
+        'male': {'icon': '👨', 'color': '#3b82f6'},
+        'female': {'icon': '👩', 'color': '#ec4899'},
+        'child': {'icon': '🧒', 'color': '#10b981'},
+        'elder': {'icon': '👴', 'color': '#6b7280'},
+        'custom': {'icon': '🎭', 'color': '#8b5cf6'}
+    }
+    
+    config = voice_type_config.get(voice_type, voice_type_config['custom'])
+    color = config['color']
+    
+    # 生成SVG头像
+    svg_content = f'''
+<svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:{color};stop-opacity:0.8" />
+      <stop offset="100%" style="stop-color:{color};stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <circle cx="32" cy="32" r="30" fill="url(#bg)" stroke="white" stroke-width="2"/>
+  <text x="32" y="40" font-family="Arial, sans-serif" font-size="24" text-anchor="middle" fill="white">
+    {config['icon']}
+  </text>
+  <text x="32" y="58" font-family="Arial, sans-serif" font-size="8" text-anchor="middle" fill="white" opacity="0.8">
+    {name[:4]}
+  </text>
+</svg>'''
+    
+    return Response(
+        content=svg_content,
+        media_type="image/svg+xml",
+        headers={"Cache-Control": "public, max-age=3600"}
+    )

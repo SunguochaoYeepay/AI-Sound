@@ -574,7 +574,7 @@
                 size="small" 
                 type="default"
                 :loading="avatarGenerating"
-                @click="showGenerateAvatarModal = true"
+                @click="openGenerateAvatarModal"
                 :disabled="!editingVoice.name"
               >
                 <template #icon>
@@ -1451,6 +1451,26 @@
             </a-select>
           </a-form-item>
           
+          <!-- 参考图像上传 -->
+          <a-form-item label="参考图像（可选）">
+            <a-upload
+              v-model:file-list="avatarGenConfig.referenceImageList"
+              :before-upload="beforeReferenceImageUpload"
+              :on-remove="removeReferenceImage"
+              list-type="picture-card"
+              :max-count="1"
+              accept="image/*"
+            >
+              <div v-if="avatarGenConfig.referenceImageList.length < 1">
+                <plus-outlined />
+                <div style="margin-top: 8px">上传参考图像</div>
+              </div>
+            </a-upload>
+            <div class="tips">
+              <small>上传参考图像可以让AI生成更符合您期望的头像风格</small>
+            </div>
+          </a-form-item>
+          
           <a-form-item label="自定义提示词（可选）">
             <a-textarea 
               v-model:value="avatarGenConfig.customPrompt"
@@ -1506,6 +1526,7 @@
   const showEditModal = ref(false)
   const showSmartDiscoveryModal = ref(false)
   const showUploadModal = ref(false)
+  const managementType = ref('voice') // 管理类型：'voice' 或 'character'
 
   // 书籍筛选
   const selectedBookId = ref('')
@@ -1816,6 +1837,11 @@
       // 添加头像文件（如果有新上传的）
       if (voiceData.avatarFile) {
         formData.append('avatar', voiceData.avatarFile)
+      }
+      
+      // 处理移除头像的情况
+      if (voiceData.removeAvatar) {
+        formData.append('remove_avatar', 'true')
       }
 
       // 调试：打印FormData内容
@@ -2175,6 +2201,7 @@
     editingVoice.value.avatarPreview = null
     editingVoice.value.avatarFile = null
     editingVoice.value.avatarFileList = []
+    editingVoice.value.avatarUrl = null // 清除现有头像URL
     editingVoice.value.removeAvatar = true // 标记需要删除头像
   }
 
@@ -2195,6 +2222,11 @@
       }
       formData.append('style_preference', avatarGenConfig.style)
       formData.append('image_size', avatarGenConfig.size)
+      
+      // 添加参考图像
+      if (avatarGenConfig.referenceImageFile) {
+        formData.append('reference_image', avatarGenConfig.referenceImageFile)
+      }
 
       // 如果是编辑已存在的角色，直接调用API
       if (editingVoice.value.id) {
@@ -2228,9 +2260,48 @@
     }
   }
 
+  // 参考图像上传处理
+  const beforeReferenceImageUpload = (file) => {
+    const isImage = file.type.startsWith('image/')
+    if (!isImage) {
+      message.error('只能上传图片文件！')
+      return false
+    }
+    
+    const isLt10M = file.size / 1024 / 1024 < 10
+    if (!isLt10M) {
+      message.error('图片大小不能超过 10MB！')
+      return false
+    }
+    
+    // 保存文件引用
+    avatarGenConfig.referenceImageFile = file
+    return false // 阻止自动上传
+  }
+  
+  const removeReferenceImage = () => {
+    avatarGenConfig.referenceImageFile = null
+    avatarGenConfig.referenceImageList = []
+  }
+
+  const openGenerateAvatarModal = () => {
+    // 重置所有头像生成配置参数
+    avatarGenConfig.style = 'realistic'
+    avatarGenConfig.size = '512x512'
+    avatarGenConfig.customPrompt = ''
+    avatarGenConfig.referenceImageList = []
+    avatarGenConfig.referenceImageFile = null
+    showGenerateAvatarModal.value = true
+  }
+
   const cancelGenerateAvatar = () => {
     showGenerateAvatarModal.value = false
+    // 重置所有头像生成配置参数
+    avatarGenConfig.style = 'realistic'
+    avatarGenConfig.size = '512x512'
     avatarGenConfig.customPrompt = ''
+    avatarGenConfig.referenceImageList = []
+    avatarGenConfig.referenceImageFile = null
   }
 
   const getVoiceTypeLabel = (type) => {
@@ -3186,7 +3257,9 @@
   const avatarGenConfig = reactive({
     style: 'realistic',
     size: '512x512',
-    customPrompt: ''
+    customPrompt: '',
+    referenceImageList: [],
+    referenceImageFile: null
   })
 </script>
 

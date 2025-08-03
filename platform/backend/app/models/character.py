@@ -124,7 +124,8 @@ class Character(BaseModel):
             # 🔥 修正：使用正确的API接口路径
             result['avatarUrl'] = f"/api/v1/characters/avatar/{self.id}"
         else:
-            result['avatarUrl'] = None
+            # 提供默认头像，确保前端显示一致性
+            result['avatarUrl'] = f"/api/v1/characters/avatar/default?name={self.name}&voice_type={self.voice_type}"
             
         if self.reference_audio_path:
             filename = os.path.basename(self.reference_audio_path)
@@ -138,4 +139,4 @@ class Character(BaseModel):
         else:
             result['latentFileUrl'] = None
         
-        return result 
+        return result

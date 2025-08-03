@@ -201,8 +201,9 @@ const emit = defineEmits(['generate', 'regenerate', 'rate', 'approve', 'delete',
 // Reactive data
 const previewVisible = ref(false)
 const previewTask = ref(null)
-
 const selectedRowKeys = ref([])
+const currentPage = ref(1)
+const pageSize = ref(10)
 
 // Row selection configuration
 const rowSelection = {
@@ -264,12 +265,20 @@ const columns = [
 ]
 
 const pagination = computed(() => ({
-  current: 1,
-  pageSize: 10,
+  current: currentPage.value,
+  pageSize: pageSize.value,
   total: props.tasks.length,
   showSizeChanger: true,
   showQuickJumper: true,
-  showTotal: (total, range) => `第 ${range[0]}-${range[1]} 条，共 ${total} 条`
+  showTotal: (total, range) => `第 ${range[0]}-${range[1]} 条，共 ${total} 条`,
+  onChange: (page, size) => {
+    currentPage.value = page
+    pageSize.value = size
+  },
+  onShowSizeChange: (current, size) => {
+    currentPage.value = 1
+    pageSize.value = size
+  }
 }))
 
 // Methods

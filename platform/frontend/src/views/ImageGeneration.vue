@@ -474,6 +474,16 @@ const onChapterChange = async (chapterId) => {
   // 重新加载角色数据（不按章节筛选，因为角色数据的chapter_id通常为null）
   if (selectedBookId.value) {
     await loadCharacters(selectedBookId.value) // 移除chapterId参数，加载该书籍的所有角色
+    
+    // 智能启用角色一致性：如果检测到角色且当前未启用，则自动启用
+    if (availableCharacters.value.length > 0 && !taskGenerationConfig.characterConsistency.enabled) {
+      // 优先选择有头像的主要角色
+      const mainCharacter = availableCharacters.value.find(c => c.avatar_url) || availableCharacters.value[0]
+      if (mainCharacter) {
+        console.log('🎭 自动启用角色一致性，选择角色:', mainCharacter.name)
+        onCharacterSelect(mainCharacter.id)
+      }
+    }
   }
 }
 
