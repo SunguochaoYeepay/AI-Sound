@@ -5250,6 +5250,33 @@
     border-top: 1px solid #f0f0f0;
     background: #fff;
     width: 100%;
+    min-width: 100%;
+    box-sizing: border-box;
+  }
+
+  /* 分页组件内部样式 */
+  .grid-pagination .ant-pagination {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  /* 确保分页组件占满容器宽度 */
+  .grid-pagination .ant-pagination-total {
+    flex: 1;
+    text-align: left;
+  }
+
+  .grid-pagination .ant-pagination-options {
+    flex: 1;
+    text-align: right;
+  }
+
+  .grid-pagination .ant-pagination-prev,
+  .grid-pagination .ant-pagination-next,
+  .grid-pagination .ant-pagination-item {
+    margin: 0 4px;
   }
 
   /* 暗黑模式下的分页组件样式 */
@@ -5257,5 +5284,6 @@
     border-top-color: #434343;
     background: #1f1f1f;
     width: 100%;
+    min-width: 100%;
   }
 </style>
