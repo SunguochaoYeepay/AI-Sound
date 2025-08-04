@@ -125,9 +125,20 @@ class SequentialSynthesisCoordinator:
                 return result
                 
             except Exception as e:
-                logger.error(f"[COORDINATOR] 项目 {project_id} 合成失败: {str(e)}")
-                project.status = 'failed'
-                project.error_message = str(e)
+                logger.error(f"[COORDINATOR] 项目 {project_id} 环境音混合失败: {str(e)}")
+                
+                # 检查TTS合成是否已经完成
+                if "tts_synthesis" in result["stages_completed"]:
+                    # TTS合成成功，但环境音混合失败，设置为部分完成
+                    project.status = 'partial_completed'
+                    project.error_message = f"TTS合成完成，但环境音混合失败: {str(e)}"
+                    logger.warning(f"[COORDINATOR] 项目 {project_id} TTS合成成功，环境音混合失败，状态设置为 partial_completed")
+                else:
+                    # TTS合成也失败了，设置为失败
+                    project.status = 'failed'
+                    project.error_message = str(e)
+                    logger.error(f"[COORDINATOR] 项目 {project_id} TTS合成失败，状态设置为 failed")
+                
                 result["error"] = str(e)
                 db.commit()
                 raise

@@ -896,6 +896,127 @@ async def delete_multitrack_project(
         logger.error(f"删除多轨项目失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"项目删除失败: {str(e)}")
 
+# ========== 书籍集成 API ==========
+
+@router.get("/book/{book_id}/chapter/{chapter_id}/resources")
+async def get_chapter_audio_resources(
+    book_id: int,
+    chapter_id: int,
+    db: Session = Depends(get_db)
+):
+    """获取章节相关的音频资源"""
+    try:
+        from ...models import Book, Chapter, NovelProject, SynthesisResult, SynthesisPlan, EnvironmentSound, BackgroundMusic
+        from ...services.audio_editor_book_integration_service import AudioEditorBookIntegrationService
+        
+        # 验证书籍和章节
+        book = db.query(Book).filter(Book.id == book_id).first()
+        if not book:
+            raise HTTPException(status_code=404, detail="书籍不存在")
+            
+        chapter = db.query(Chapter).filter(
+            Chapter.id == chapter_id,
+            Chapter.book_id == book_id
+        ).first()
+        if not chapter:
+            raise HTTPException(status_code=404, detail="章节不存在")
+        
+        # 创建集成服务实例
+        integration_service = AudioEditorBookIntegrationService(db)
+        
+        # 获取章节的合成结果（对话音频）
+        synthesis_results = db.query(SynthesisResult).join(NovelProject).filter(
+            NovelProject.book_id == book_id,
+            SynthesisResult.chapter_id == chapter_id,
+            SynthesisResult.status == "completed"
+        ).all()
+        
+        dialogues = []
+        for result in synthesis_results:
+            if result.audio_file_path and Path(result.audio_file_path).exists():
+                dialogues.append({
+                    "fileId": f"synthesis_{result.id}",
+                    "filename": f"{result.character_name} - {result.text[:20]}...",
+                    "duration": result.duration or 5.0,
+                    "character": result.character_name,
+                    "content": result.text,
+                    "voiceId": result.voice_id,
+                    "filePath": result.audio_file_path
+                })
+        
+        # 获取章节的合成计划（环境音和背景音乐）
+        synthesis_plan = db.query(SynthesisPlan).filter(
+            SynthesisPlan.book_id == book_id,
+            SynthesisPlan.chapter_id == chapter_id
+        ).first()
+        
+        environments = []
+        background_music = []
+        
+        if synthesis_plan:
+            # 解析环境音
+            if synthesis_plan.environment_sounds:
+                env_data = json.loads(synthesis_plan.environment_sounds) if isinstance(synthesis_plan.environment_sounds, str) else synthesis_plan.environment_sounds
+                for env in env_data:
+                    if env.get('sound_id'):
+                        env_sound = db.query(EnvironmentSound).filter(EnvironmentSound.id == env['sound_id']).first()
+                        if env_sound and env_sound.file_path:
+                            environments.append({
+                                "fileId": f"env_{env_sound.id}",
+                                "filename": env_sound.name,
+                                "duration": env.get('duration', 60),
+                                "startTime": env.get('start_time', 0),
+                                "scene": env_sound.scene,
+                                "description": env_sound.description,
+                                "filePath": env_sound.file_path
+                            })
+            
+            # 解析背景音乐
+            if synthesis_plan.background_music:
+                music_data = json.loads(synthesis_plan.background_music) if isinstance(synthesis_plan.background_music, str) else synthesis_plan.background_music
+                for music in music_data:
+                    if music.get('music_id'):
+                        bg_music = db.query(BackgroundMusic).filter(BackgroundMusic.id == music['music_id']).first()
+                        if bg_music and bg_music.file_path:
+                            background_music.append({
+                                "fileId": f"music_{bg_music.id}",
+                                "filename": bg_music.name,
+                                "duration": music.get('duration', 180),
+                                "startTime": music.get('start_time', 0),
+                                "genre": bg_music.genre,
+                                "mood": bg_music.mood,
+                                "filePath": bg_music.file_path
+                            })
+        
+        # 获取章节配图（如果有）
+        images = []
+        if chapter.image_path:
+            images.append({
+                "url": chapter.image_path,
+                "description": f"第{chapter.chapter_number}章配图"
+            })
+        
+        return {
+            "success": True,
+            "data": {
+                "dialogues": dialogues,
+                "environments": environments,
+                "backgroundMusic": background_music,
+                "images": images,
+                "chapterInfo": {
+                    "title": chapter.title,
+                    "number": chapter.chapter_number,
+                    "bookTitle": book.title
+                }
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取章节音频资源失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取资源失败: {str(e)}")
+
 # ========== 预览播放 API ==========
 
 class PreviewResponse(BaseModel):

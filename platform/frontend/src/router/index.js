@@ -24,6 +24,8 @@ import BackupManagement from '../views/BackupManagement.vue'
 import UserManagement from '../views/UserManagement.vue'
 import RoleManagement from '../views/RoleManagement.vue'
 import LoginView from '../views/auth/LoginView.vue'
+import NavigationTest from '../views/NavigationTest.vue'
+import AudioEditorLayoutTest from '../views/AudioEditorLayoutTest.vue'
 
 const routes = [
   // 认证路由
@@ -262,6 +264,24 @@ const routes = [
       title: '角色管理',
       requiresAuth: true,
       permission: PERMISSIONS.ROLE_MANAGE
+    }
+  },
+  {
+    path: '/navigation-test',
+    name: 'NavigationTest',
+    component: NavigationTest,
+    meta: {
+      title: '导航优化测试',
+      requiresAuth: true
+    }
+  },
+  {
+    path: '/audio-editor-layout-test',
+    name: 'AudioEditorLayoutTest',
+    component: AudioEditorLayoutTest,
+    meta: {
+      title: '音频编辑器布局测试',
+      requiresAuth: true
     }
   },
 

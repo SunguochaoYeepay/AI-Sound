@@ -872,8 +872,13 @@ class ContentPreparationService:
             if char_name in character_library:
                 library_char = character_library[char_name]
                 if library_char.avatar_path:
-                    filename = os.path.basename(library_char.avatar_path)
-                    avatar_url = f"/api/v1/avatars/{filename}"
+                    # 🔥 修复：使用正确的角色头像API路径
+                    avatar_url = f"/api/v1/characters/avatar/{library_char.id}"
+                else:
+                    # 🔥 修复：如果没有头像，使用默认头像API，并对角色名称进行URL编码
+                    from urllib.parse import quote
+                    encoded_name = quote(library_char.name, safe='')
+                    avatar_url = f"/api/v1/characters/avatar/default?name={encoded_name}&voice_type={library_char.voice_type}"
             
             # 🚀 新架构：构建角色信息
             char_data = {

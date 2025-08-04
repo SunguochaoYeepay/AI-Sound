@@ -1,60 +1,45 @@
 import axios from 'axios'
 
-// 音频编辑器与书籍集成API
-const API_BASE = '/api/v1/sound-editor'
-
-/**
- * 获取可用的书籍列表
- */
-export async function getAvailableBooks() {
-  const res = await axios.get(`${API_BASE}/books/list`)
-  return res.data
-}
-
-/**
- * 获取书籍的章节列表
- * @param {number} bookId 书籍ID
- */
-export async function getBookChapters(bookId, params = {}) {
-  const defaultParams = {
-    sort_by: 'chapter_number',
-    sort_order: 'asc',
-    ...params
+// 获取章节相关的音频资源
+export async function getChapterAudioResources(bookId, chapterId) {
+  try {
+    const response = await axios.get(`/api/v1/sound-editor/book/${bookId}/chapter/${chapterId}/resources`)
+    return response.data
+  } catch (error) {
+    console.error('获取章节音频资源失败:', error)
+    return {
+      success: false,
+      error: error.message
+    }
   }
-  const res = await axios.get(`${API_BASE}/books/${bookId}/chapters`, { params: defaultParams })
-  return res.data
 }
 
-/**
- * 获取指定章节的所有资源
- * @param {number} bookId 书籍ID
- * @param {number[]} chapterIds 章节ID列表
- */
-export async function getChapterResources(bookId, chapterIds) {
-  const res = await axios.post(`${API_BASE}/books/${bookId}/chapters/resources`, {
-    chapter_ids: chapterIds
-  })
-  return res.data
+// 获取书籍的合成计划
+export async function getBookSynthesisPlan(bookId, chapterId) {
+  try {
+    const response = await axios.get(`/api/v1/books/${bookId}/synthesis-plan`, {
+      params: { chapter_id: chapterId }
+    })
+    return response.data
+  } catch (error) {
+    console.error('获取书籍合成计划失败:', error)
+    return {
+      success: false,
+      error: error.message
+    }
+  }
 }
 
-/**
- * 从书籍章节创建音频编辑器项目
- * @param {string} projectName 项目名称
- * @param {number} bookId 书籍ID
- * @param {number[]} chapterIds 章节ID列表
- * @param {Object} selectedResources 选中的资源 {dialogue_audio: [id1, id2], environment_configs: [id1]}
- */
-export async function createProjectFromChapters(
-  projectName,
-  bookId,
-  chapterIds,
-  selectedResources
-) {
-  const res = await axios.post(`${API_BASE}/create-from-chapters`, {
-    project_name: projectName,
-    book_id: bookId,
-    chapter_ids: chapterIds,
-    selected_resources: selectedResources
-  })
-  return res.data
+// 获取章节的音频段落
+export async function getChapterAudioSegments(projectId, chapterId) {
+  try {
+    const response = await axios.get(`/api/v1/novel-projects/${projectId}/chapters/${chapterId}/segments`)
+    return response.data
+  } catch (error) {
+    console.error('获取章节音频段落失败:', error)
+    return {
+      success: false,
+      error: error.message
+    }
+  }
 }

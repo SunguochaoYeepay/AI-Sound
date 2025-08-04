@@ -1177,9 +1177,11 @@ async def process_audio_generation_from_synthesis_plan(
                 db.commit()
                 return
             
-            # 🔧 实时统计已完成段落数（基于当前project状态）
+            # 🔧 实时统计已完成段落数（基于当前章节状态）
+            chapter_id = segment.get('chapter_id')
             current_completed = db.query(AudioFile).filter(
                 AudioFile.project_id == project_id,
+                AudioFile.chapter_id == chapter_id,
                 AudioFile.audio_type == 'segment'
             ).count()
             
@@ -1192,6 +1194,7 @@ async def process_audio_generation_from_synthesis_plan(
                         "data": {
                             "type": "synthesis",
                             "project_id": project_id,
+                            "chapter_id": chapter_id,
                             "status": "running",
                             "progress": round((i / len(synthesis_data)) * 100),
                             "completed_segments": current_completed,
@@ -1213,6 +1216,7 @@ async def process_audio_generation_from_synthesis_plan(
                 if result and not isinstance(result, Exception) and "error" not in result:
                     updated_completed = db.query(AudioFile).filter(
                         AudioFile.project_id == project_id,
+                        AudioFile.chapter_id == chapter_id,
                         AudioFile.audio_type == 'segment'
                     ).count()
                     
@@ -1221,17 +1225,18 @@ async def process_audio_generation_from_synthesis_plan(
                             f"synthesis_{project_id}",
                             {
                                 "type": "progress_update",
-                                "data": {
-                                    "type": "synthesis",
-                                    "project_id": project_id,
-                                    "status": "running",
-                                    "progress": round(((i + 1) / len(synthesis_data)) * 100),
-                                    "completed_segments": updated_completed,
-                                    "total_segments": len(synthesis_data),
-                                    "failed_segments": len(failed_segments),
-                                    "current_processing": f"已完成段落 {i+1} - {segment.get('speaker', '未知角色')}",
-                                    "timestamp": datetime.utcnow().isoformat()
-                                }
+                                                        "data": {
+                            "type": "synthesis",
+                            "project_id": project_id,
+                            "chapter_id": chapter_id,
+                            "status": "running",
+                            "progress": round(((i + 1) / len(synthesis_data)) * 100),
+                            "completed_segments": updated_completed,
+                            "total_segments": len(synthesis_data),
+                            "failed_segments": len(failed_segments),
+                            "current_processing": f"已完成段落 {i+1} - {segment.get('speaker', '未知角色')}",
+                            "timestamp": datetime.utcnow().isoformat()
+                        }
                             }
                         )
                     except Exception as ws_error:
@@ -1396,6 +1401,23 @@ async def process_audio_generation_from_synthesis_plan(
         
         # 🚀 发送章节级别的完成状态到前端
         chapter_progress = round((completed_count / len(synthesis_data)) * 100) if len(synthesis_data) > 0 else 0
+        # 获取当前章节ID（从synthesis_data中获取）
+        current_chapter_id = synthesis_data[0].get('chapter_id') if synthesis_data else None
+        
+        # 🔥 修复：基于章节音频文件生成情况判断最终状态
+        # 检查是否有成功的章节音频合并
+        # 由于merge_chapter_audio_files成功时会更新章节状态为completed，我们检查数据库中的状态
+        chapter_has_complete_audio = False
+        if current_chapter_id:
+            chapter = db.query(BookChapter).filter(BookChapter.id == current_chapter_id).first()
+            if chapter and chapter.synthesis_status == 'completed':
+                chapter_has_complete_audio = True
+        
+        final_status = "completed" if chapter_has_complete_audio else "failed"
+        
+        # 🔍 调试信息：记录状态判断过程
+        logger.info(f"[SYNTHESIS_PLAN] 章节状态判断详情: 章节ID={current_chapter_id}, 完成段落={completed_count}/{len(synthesis_data)}, 章节状态={chapter.synthesis_status if chapter else 'unknown'}, 最终状态={final_status}")
+        
         await websocket_manager.publish_to_topic(
             f"synthesis_{project_id}",
             {
@@ -1403,14 +1425,15 @@ async def process_audio_generation_from_synthesis_plan(
                 "data": {
                     "type": "synthesis",
                     "project_id": project_id,
-                    "status": "completed" if completed_count == len(synthesis_data) else "failed",
+                    "chapter_id": current_chapter_id,
+                    "status": final_status,
                     "progress": chapter_progress,
                     "completed_segments": completed_count,
                     "total_segments": len(synthesis_data),
                     "failed_segments": len(failed_segments),
-                    "current_processing": f"章节合成{'完成' if completed_count == len(synthesis_data) else '结束'}",
+                    "current_processing": f"章节合成{'完成' if chapter_has_complete_audio else '结束'}",
                     "final_audio_path": None,  # 现在不再有全局的最终音频文件
-                    "chapter_audio_files": len(chapter_audio_files),  # 生成的章节音频文件数量
+                    "chapter_audio_files": 1 if chapter_has_complete_audio else 0,  # 生成的章节音频文件数量
                     "timestamp": datetime.utcnow().isoformat()
                 }
             }
@@ -1430,7 +1453,7 @@ async def process_audio_generation_from_synthesis_plan(
                 "failed_segments": len(failed_segments),
                 "final_audio_path": final_audio_path,
                 "data_source": "智能准备结果",
-                "chapter_status": "completed" if completed_count == len(synthesis_data) else "failed"
+                "chapter_status": final_status  # 🔥 使用与WebSocket一致的状态
             }
         )
         
@@ -1459,21 +1482,49 @@ async def process_audio_generation_from_synthesis_plan(
                         chapter.synthesis_status = 'failed'
                         logger.info(f"[SYNTHESIS_PLAN] 章节 {chapter_id} 状态更新为 failed (无音频文件)")
             
-            # 🔥 更新项目状态
-            if failed_segments:
-                project.status = 'failed'
-                # 生成详细的错误摘要
-                error_summary = generate_detailed_error_summary(failed_segments, len(synthesis_data))
-                project.error_message = error_summary
-                logger.info(f"[SYNTHESIS_PLAN] 项目 {project_id} 状态更新为 failed")
-            elif len(chapter_audio_files) > 0:
+            # 🔥 更新项目状态 - 修复逻辑：检查数据库中的实际音频文件
+            # 检查数据库中是否有完成的章节音频文件
+            existing_chapter_audio_files = db.query(AudioFile).filter(
+                AudioFile.project_id == project_id,
+                AudioFile.audio_type == 'chapter'
+            ).all()
+            
+            # 验证音频文件是否真实存在
+            valid_chapter_audio_files = []
+            for audio_file in existing_chapter_audio_files:
+                if os.path.exists(audio_file.file_path):
+                    valid_chapter_audio_files.append(audio_file)
+                else:
+                    logger.warning(f"[SYNTHESIS_PLAN] 章节音频文件不存在: {audio_file.file_path}")
+            
+            # 根据实际情况更新项目状态
+            if len(valid_chapter_audio_files) > 0 or len(chapter_audio_files) > 0:
+                # 如果有完成的章节音频文件，项目状态为完成
                 project.status = 'completed'
-                project.error_message = None
-                logger.info(f"[SYNTHESIS_PLAN] 项目 {project_id} 状态更新为 completed")
-            else:
+                if failed_segments:
+                    # 如果有失败段落，记录警告信息但不影响整体状态
+                    error_summary = generate_detailed_error_summary(failed_segments, len(synthesis_data))
+                    project.error_message = f"项目已完成，但有部分段落失败：{error_summary}"
+                    logger.warning(f"[SYNTHESIS_PLAN] 项目 {project_id} 状态更新为 completed (有失败段落但音频合并成功)")
+                else:
+                    project.error_message = None
+                    logger.info(f"[SYNTHESIS_PLAN] 项目 {project_id} 状态更新为 completed (现有章节音频: {len(valid_chapter_audio_files)}, 新生成: {len(chapter_audio_files)})")
+            elif completed_count > 0:
+                # 如果有完成的段落但没有章节音频文件，状态为部分完成
                 project.status = 'partial_completed'
                 project.error_message = f"部分完成：{completed_count}/{len(synthesis_data)} 个段落"
                 logger.info(f"[SYNTHESIS_PLAN] 项目 {project_id} 状态更新为 partial_completed")
+            elif failed_segments:
+                # 只有在没有任何完成段落的情况下才标记为失败
+                project.status = 'failed'
+                error_summary = generate_detailed_error_summary(failed_segments, len(synthesis_data))
+                project.error_message = error_summary
+                logger.info(f"[SYNTHESIS_PLAN] 项目 {project_id} 状态更新为 failed")
+            else:
+                # 未知状态
+                project.status = 'failed'
+                project.error_message = "未知错误：没有完成或失败的段落"
+                logger.error(f"[SYNTHESIS_PLAN] 项目 {project_id} 状态更新为 failed (未知错误)")
             
             project.completed_at = datetime.utcnow()
             db.commit()
@@ -1497,6 +1548,14 @@ async def process_audio_generation_from_synthesis_plan(
                 db.commit()
                 
                 # 发送详细错误信息到前端
+                # 尝试从synthesis_data获取章节ID（如果可用）
+                current_chapter_id = None
+                try:
+                    if 'synthesis_data' in locals() and synthesis_data:
+                        current_chapter_id = synthesis_data[0].get('chapter_id')
+                except:
+                    pass
+                
                 await websocket_manager.publish_to_topic(
                     f"synthesis_{project_id}",
                     {
@@ -1504,6 +1563,7 @@ async def process_audio_generation_from_synthesis_plan(
                         "data": {
                             "type": "synthesis",
                             "project_id": project_id,
+                            "chapter_id": current_chapter_id,
                             "status": "failed",
                             "error_message": error_details,
                             "timestamp": datetime.utcnow().isoformat()

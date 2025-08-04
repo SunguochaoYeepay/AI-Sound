@@ -1,15 +1,15 @@
 {
   "project": {
-    "id": "project_1751805871_84732bf4",
-    "title": "呃呃呃呃",
-    "description": "",
+    "id": "project_1754286919_1d234761",
+    "title": "11",
+    "description": "11",
     "author": "AI-Sound",
-    "totalDuration": 300.0,
+    "totalDuration": 0.0,
     "sampleRate": 44100,
     "channels": 2,
     "bitDepth": 16,
     "exportFormat": "wav",
-    "createdAt": "2025-07-06T12:44:31.129Z",
+    "createdAt": "2025-08-04T05:55:19.459Z",
     "version": "1.0"
   },
   "tracks": [
@@ -22,19 +22,7 @@
       "solo": false,
       "color": "#3498db",
       "order": 1,
-      "clips": [
-        {
-          "id": "clip_1751805911311_b0q4hs56c",
-          "fileId": "",
-          "filename": "file_1751805894_28b417d7",
-          "startTime": 0.0,
-          "duration": 300.0,
-          "volume": 1.0,
-          "offset": 0.0,
-          "fadeIn": 0.1,
-          "fadeOut": 0.1
-        }
-      ]
+      "clips": []
     },
     {
       "id": "track_environment",
@@ -45,19 +33,7 @@
       "solo": false,
       "color": "#27ae60",
       "order": 2,
-      "clips": [
-        {
-          "id": "clip_1751805915350_f2ibhh1r8",
-          "fileId": "",
-          "filename": "file_1751805894_28b417d7",
-          "startTime": 0.0,
-          "duration": 300.0,
-          "volume": 1.0,
-          "offset": 0.0,
-          "fadeIn": 0.1,
-          "fadeOut": 0.1
-        }
-      ]
+      "clips": []
     },
     {
       "id": "track_background",

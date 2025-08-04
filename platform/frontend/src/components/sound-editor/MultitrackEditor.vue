@@ -189,6 +189,9 @@
     formatTime,
     generateId
   } from '../../api/sound-editor/multitrackProject'
+  import {
+    getChapterAudioResources
+  } from '../../api/sound-editor/bookIntegration'
 
   // 定义emit
   const emit = defineEmits(['project-change'])
@@ -960,12 +963,27 @@
       newProject.project.description = projectData.description
       newProject.project.author = projectData.author
 
+      // 添加书籍和章节信息
+      if (projectData.bookId && projectData.chapterId) {
+        newProject.project.bookId = projectData.bookId
+        newProject.project.chapterId = projectData.chapterId
+        newProject.project.bookTitle = projectData.bookTitle
+        newProject.project.chapterTitle = projectData.chapterTitle
+        newProject.project.chapterNumber = projectData.chapterNumber
+      }
+
       const result = await createProject(newProject)
       if (result.success) {
         // 正确地更新reactive对象的每个属性，保持响应性
         Object.assign(currentProject.project, result.data.project)
         currentProject.tracks.splice(0, currentProject.tracks.length, ...result.data.tracks)
         currentProject.markers = result.data.markers || []
+        
+        // 如果是从书籍导入，加载相关音频资源
+        if (projectData.bookId && projectData.chapterId) {
+          await loadChapterResources(projectData.bookId, projectData.chapterId)
+        }
+        
         // 保存到本地存储
         saveCurrentProjectToLocalStorage()
         // 发送项目变化事件
@@ -979,6 +997,113 @@
     } catch (error) {
       console.error('创建项目失败:', error)
       message.error('创建项目失败')
+    }
+  }
+
+  // 加载章节资源
+  async function loadChapterResources(bookId, chapterId) {
+    try {
+      message.loading('正在加载章节资源...', 0)
+      
+      // 调用后端API获取章节相关的音频资源
+      const response = await getChapterAudioResources(bookId, chapterId)
+      
+      if (response.success && response.data) {
+        const resources = response.data
+        
+        // 自动将对话音频添加到对话轨道
+        if (resources.dialogues && resources.dialogues.length > 0) {
+          const dialogueTrack = currentProject.tracks.find(t => t.type === 'dialogue')
+          if (dialogueTrack) {
+            let startTime = 0
+            resources.dialogues.forEach((dialogue, index) => {
+              const clip = {
+                id: generateId(),
+                fileId: dialogue.fileId,
+                filename: dialogue.filename || `对话 ${index + 1}`,
+                startTime: startTime,
+                duration: dialogue.duration || 5,
+                volume: 1.0,
+                offset: 0,
+                fadeIn: 0.1,
+                fadeOut: 0.1,
+                metadata: {
+                  character: dialogue.character,
+                  content: dialogue.content,
+                  voiceId: dialogue.voiceId
+                }
+              }
+              dialogueTrack.clips.push(clip)
+              startTime += clip.duration + 0.5 // 添加0.5秒间隔
+            })
+          }
+        }
+        
+        // 自动将环境音效添加到环境音轨道
+        if (resources.environments && resources.environments.length > 0) {
+          const environmentTrack = currentProject.tracks.find(t => t.type === 'environment')
+          if (environmentTrack) {
+            resources.environments.forEach((env, index) => {
+              const clip = {
+                id: generateId(),
+                fileId: env.fileId,
+                filename: env.filename || `环境音 ${index + 1}`,
+                startTime: env.startTime || 0,
+                duration: env.duration || 60,
+                volume: 0.3,
+                offset: 0,
+                fadeIn: 2,
+                fadeOut: 2,
+                metadata: {
+                  scene: env.scene,
+                  description: env.description
+                }
+              }
+              environmentTrack.clips.push(clip)
+            })
+          }
+        }
+        
+        // 自动将背景音乐添加到背景音轨道
+        if (resources.backgroundMusic && resources.backgroundMusic.length > 0) {
+          const backgroundTrack = currentProject.tracks.find(t => t.type === 'background')
+          if (backgroundTrack) {
+            resources.backgroundMusic.forEach((music, index) => {
+              const clip = {
+                id: generateId(),
+                fileId: music.fileId,
+                filename: music.filename || `背景音乐 ${index + 1}`,
+                startTime: music.startTime || 0,
+                duration: music.duration || 180,
+                volume: 0.2,
+                offset: 0,
+                fadeIn: 3,
+                fadeOut: 3,
+                metadata: {
+                  genre: music.genre,
+                  mood: music.mood
+                }
+              }
+              backgroundTrack.clips.push(clip)
+            })
+          }
+        }
+        
+        // 如果有配图信息，存储在项目元数据中
+        if (resources.images && resources.images.length > 0) {
+          currentProject.project.images = resources.images
+        }
+        
+        message.destroy()
+        message.success(`成功加载 ${resources.dialogues?.length || 0} 个对话音频，${resources.environments?.length || 0} 个环境音效，${resources.backgroundMusic?.length || 0} 个背景音乐`)
+      } else {
+        message.destroy()
+        message.warning('该章节暂无相关音频资源')
+      }
+    } catch (error) {
+      console.error('加载章节资源失败:', error)
+      message.destroy()
+      message.error('加载章节资源失败')
     }
   }
 

@@ -297,7 +297,19 @@
       :footer="null"
       :destroyOnClose="true"
     >
-      <BookChapterSelector @created="onProjectCreatedFromBook" />
+      <div class="book-import-placeholder">
+        <a-result
+          status="info"
+          title="书籍导入功能已优化"
+          sub-title="现在可以直接在新建项目时选择书籍和章节，无需单独的导入流程"
+        >
+          <template #extra>
+            <a-button type="primary" @click="bookImportModalVisible = false">
+              关闭
+            </a-button>
+          </template>
+        </a-result>
+      </div>
     </a-modal>
   </div>
 </template>
@@ -313,7 +325,7 @@
     deleteProject,
     createEmptyProject
   } from '@/api/sound-editor/multitrackProject'
-  import BookChapterSelector from '@/components/sound-editor/BookChapterSelector.vue'
+
 
   const router = useRouter()
 
@@ -484,16 +496,7 @@
     bookImportModalVisible.value = true
   }
 
-  // 处理从书籍创建项目成功
-  const onProjectCreatedFromBook = (result) => {
-    bookImportModalVisible.value = false
-    loadProjects()
 
-    // 显示创建结果
-    if (result && result.projectId) {
-      message.success(`项目创建成功，已导入${result.summary?.chapters_count || 0}个章节的资源`)
-    }
-  }
 
   // 处理视图切换
   const handleViewChange = ({ key }) => {

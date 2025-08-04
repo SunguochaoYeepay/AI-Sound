@@ -126,6 +126,8 @@ async def get_characters(
     status: str = Query("", description="状态过滤"),
     book_id: int = Query(None, description="书籍ID筛选"),
     chapter_id: int = Query(None, description="章节ID筛选"),
+    avatar_filter: str = Query("", description="头像设置筛选: has_avatar, no_avatar"),
+    audio_filter: str = Query("", description="音频文件筛选: has_audio, no_audio"),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
     """获取角色列表"""
@@ -168,6 +170,30 @@ async def get_characters(
             tag_list = [tag.strip() for tag in tags.split(',') if tag.strip()]
             for tag in tag_list:
                 query = query.filter(Character.tags.like(f'%"{tag}"%'))
+        
+        # 头像设置过滤
+        if avatar_filter == "has_avatar":
+            query = query.filter(Character.avatar_path.isnot(None))
+            query = query.filter(Character.avatar_path != "")
+        elif avatar_filter == "no_avatar":
+            query = query.filter(or_(Character.avatar_path.is_(None), Character.avatar_path == ""))
+        
+        # 音频文件过滤
+        if audio_filter == "has_audio":
+            query = query.filter(and_(
+                Character.reference_audio_path.isnot(None),
+                Character.reference_audio_path != "",
+                Character.latent_file_path.isnot(None),
+                Character.latent_file_path != ""
+            ))
+        elif audio_filter == "no_audio":
+            # 修复：检查是否缺少任一音频文件
+            query = query.filter(or_(
+                Character.reference_audio_path.is_(None),
+                Character.reference_audio_path == "",
+                Character.latent_file_path.is_(None),
+                Character.latent_file_path == ""
+            ))
         
         # 排序
         sort_field = getattr(Character, sort_by, Character.created_at)
@@ -213,6 +239,30 @@ async def get_characters(
             tag_list = [tag.strip() for tag in tags.split(',') if tag.strip()]
             for tag in tag_list:
                 base_query = base_query.filter(Character.tags.like(f'%"{tag}"%'))
+        
+        # 头像设置过滤
+        if avatar_filter == "has_avatar":
+            base_query = base_query.filter(Character.avatar_path.isnot(None))
+            base_query = base_query.filter(Character.avatar_path != "")
+        elif avatar_filter == "no_avatar":
+            base_query = base_query.filter(or_(Character.avatar_path.is_(None), Character.avatar_path == ""))
+        
+        # 音频文件过滤
+        if audio_filter == "has_audio":
+            base_query = base_query.filter(and_(
+                Character.reference_audio_path.isnot(None),
+                Character.reference_audio_path != "",
+                Character.latent_file_path.isnot(None),
+                Character.latent_file_path != ""
+            ))
+        elif audio_filter == "no_audio":
+            # 修复：检查是否缺少任一音频文件
+            base_query = base_query.filter(or_(
+                Character.reference_audio_path.is_(None),
+                Character.reference_audio_path == "",
+                Character.latent_file_path.is_(None),
+                Character.latent_file_path == ""
+            ))
         
         stats = {
             'total_count': total,
@@ -2356,6 +2406,37 @@ async def generate_character_avatar(
             "message": f"生成头像失败: {str(e)}"
         }
 
+@router.get("/avatar/default")
+async def get_default_avatar(
+    name: str = Query(..., description="角色名称"),
+    voice_type: str = Query("custom", description="声音类型")
+):
+    """获取默认头像"""
+    try:
+        from fastapi.responses import Response
+        from urllib.parse import unquote
+        
+        # 调试日志
+        logger.info(f"生成默认头像请求: name={name}, voice_type={voice_type}")
+        
+        # URL解码角色名称
+        decoded_name = unquote(name)
+        logger.info(f"解码后的角色名称: {decoded_name}")
+        
+        # 生成SVG内容
+        svg_content = _generate_default_avatar_svg(decoded_name, voice_type)
+        
+        # 返回SVG响应
+        return Response(
+            content=svg_content,
+            media_type="image/svg+xml",
+            headers={"Cache-Control": "public, max-age=3600"}
+        )
+        
+    except Exception as e:
+        logger.error(f"生成默认头像失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"生成默认头像失败: {str(e)}")
+
 @router.get("/avatar/{character_id}")
 async def get_character_avatar(
     character_id: int,
@@ -2382,20 +2463,6 @@ async def get_character_avatar(
     except Exception as e:
         logger.error(f"获取角色头像失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"获取头像失败: {str(e)}")
-
-@router.get("/avatar/default")
-async def get_default_avatar(
-    name: str = Query(..., description="角色名称"),
-    voice_type: str = Query("custom", description="声音类型")
-):
-    """获取默认头像"""
-    try:
-        # 直接使用参数生成默认头像
-        return _generate_default_avatar_svg(name, voice_type)
-        
-    except Exception as e:
-        logger.error(f"生成默认头像失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"生成默认头像失败: {str(e)}")
 
 def _build_avatar_prompt_from_character(character: Character) -> str:
     """基于角色信息构建头像生成提示词"""
@@ -2475,8 +2542,6 @@ def _enhance_prompt_with_style(prompt: str, style: str) -> str:
 
 def _generate_default_avatar_svg(name: str = "角色", voice_type: str = "custom") -> str:
     """生成默认头像SVG"""
-    from fastapi.responses import Response
-    
     # 根据声音类型选择图标和颜色
     voice_type_config = {
         'male': {'icon': '👨', 'color': '#3b82f6'},
@@ -2507,8 +2572,4 @@ def _generate_default_avatar_svg(name: str = "角色", voice_type: str = "custom
   </text>
 </svg>'''
     
-    return Response(
-        content=svg_content,
-        media_type="image/svg+xml",
-        headers={"Cache-Control": "public, max-age=3600"}
-    )
+    return svg_content

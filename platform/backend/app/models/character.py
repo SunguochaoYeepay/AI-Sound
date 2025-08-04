@@ -125,7 +125,10 @@ class Character(BaseModel):
             result['avatarUrl'] = f"/api/v1/characters/avatar/{self.id}"
         else:
             # 提供默认头像，确保前端显示一致性
-            result['avatarUrl'] = f"/api/v1/characters/avatar/default?name={self.name}&voice_type={self.voice_type}"
+            # 🔥 修复：对角色名称进行URL编码，避免中文字符导致的422错误
+            from urllib.parse import quote
+            encoded_name = quote(self.name, safe='')
+            result['avatarUrl'] = f"/api/v1/characters/avatar/default?name={encoded_name}&voice_type={self.voice_type}"
             
         if self.reference_audio_path:
             filename = os.path.basename(self.reference_audio_path)

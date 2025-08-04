@@ -84,6 +84,10 @@ export const charactersAPI = {
     if (params.management_type) queryParams.append('management_type', params.management_type)
     if (params.page) queryParams.append('page', params.page)
     if (params.page_size) queryParams.append('page_size', params.page_size)
+    // 🔧 修复：添加音频和头像筛选参数
+    if (params.audio_filter) queryParams.append('audio_filter', params.audio_filter)
+    if (params.avatar_filter) queryParams.append('avatar_filter', params.avatar_filter)
+    if (params.status) queryParams.append('status', params.status)
 
     const queryString = queryParams.toString()
     const url = queryString ? `/characters?${queryString}` : '/characters'

@@ -25,7 +25,7 @@ export async function listProjects() {
 }
 
 export async function deleteProject(projectId) {
-  const res = await axios.delete(`${API_BASE}/delete/${projectId}`)
+  const res = await axios.delete(`${API_BASE}/${projectId}`)
   return res.data
 }
 

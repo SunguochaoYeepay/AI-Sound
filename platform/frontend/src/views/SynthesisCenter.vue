@@ -751,25 +751,32 @@
               loadCurrentChapterProgress()
             }
 
-            // 🔥 处理合成完成状态
-            if (
-              data.data.status === 'completed' ||
-              data.data.status === 'partial_completed' ||
-              data.data.status === 'failed'
-            ) {
-              console.log('🎉 WebSocket收到合成完成消息，更新项目状态')
+                      // 🔥 处理合成完成状态
+          if (
+            data.data.status === 'completed' ||
+            data.data.status === 'partial_completed' ||
+            data.data.status === 'failed'
+          ) {
+            console.log('🎉 WebSocket收到合成完成消息，更新项目状态', {
+              状态: data.data.status,
+              章节ID: data.data.chapter_id,
+              完成段落: data.data.completed_segments,
+              总段落: data.data.total_segments,
+              失败段落: data.data.failed_segments,
+              章节音频文件数: data.data.chapter_audio_files
+            })
 
-              // 🔥 立即显示完成提醒（避免重复）
-              if (!hasShownCompletionMessage.value) {
-                if (data.data.status === 'completed') {
-                  message.success('🎉 章节合成完成！', 5)
-                } else if (data.data.status === 'partial_completed') {
-                  message.success('✅ 章节合成完成！', 5)
-                } else if (data.data.status === 'failed') {
-                  message.error('❌ 合成失败！', 5)
-                }
-                hasShownCompletionMessage.value = true
+            // 🔥 立即显示完成提醒（避免重复）
+            if (!hasShownCompletionMessage.value) {
+              if (data.data.status === 'completed') {
+                message.success('🎉 章节合成完成！', 5)
+              } else if (data.data.status === 'partial_completed') {
+                message.success('✅ 章节合成完成！', 5)
+              } else if (data.data.status === 'failed') {
+                message.error('❌ 合成失败！', 5)
               }
+              hasShownCompletionMessage.value = true
+            }
 
               // 🔥 立即更新状态
               synthesisRunning.value = false
@@ -1754,12 +1761,31 @@
         if (serverChapter && serverChapter.synthesis_status !== newStatus) {
           console.warn('⚠️ 前端状态与服务器不一致:', {
             前端状态: newStatus,
-            服务器状态: serverChapter.synthesis_status
+            服务器状态: serverChapter.synthesis_status,
+            时间戳: new Date().toISOString()
           })
 
-          // 以服务器状态为准
-          if (chapter) {
-            chapter.synthesis_status = serverChapter.synthesis_status
+          // 🔥 智能状态同步：分析不一致原因
+          if (newStatus === 'failed' && serverChapter.synthesis_status === 'completed') {
+            // 情况1：WebSocket报告失败，但服务器显示完成
+            // 可能是音频合并成功但WebSocket状态判断有误
+            console.log('🔍 状态不一致分析：WebSocket报告失败但服务器显示完成，以服务器状态为准')
+            if (chapter) {
+              chapter.synthesis_status = serverChapter.synthesis_status
+            }
+          } else if (newStatus === 'completed' && serverChapter.synthesis_status === 'failed') {
+            // 情况2：WebSocket报告完成，但服务器显示失败
+            // 可能是音频合并失败但WebSocket状态判断有误
+            console.log('🔍 状态不一致分析：WebSocket报告完成但服务器显示失败，以服务器状态为准')
+            if (chapter) {
+              chapter.synthesis_status = serverChapter.synthesis_status
+            }
+          } else {
+            // 其他情况：以服务器状态为准
+            console.log('🔍 状态不一致分析：其他情况，以服务器状态为准')
+            if (chapter) {
+              chapter.synthesis_status = serverChapter.synthesis_status
+            }
           }
         }
       }

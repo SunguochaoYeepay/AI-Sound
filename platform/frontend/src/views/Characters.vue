@@ -23,6 +23,15 @@
             </template>
             新建角色
           </a-button>
+          <a-button 
+            type="default" 
+            size="large"
+            @click="openBatchConfigModal"
+            :disabled="selectedCharacterIds.length === 0"
+          >
+            <template #icon><SettingOutlined /></template>
+            批量配置 ({{ selectedCharacterIds.length }})
+          </a-button>
         </div>
       </div>
     </div>
@@ -108,6 +117,7 @@
           style="width: 300px"
           size="large"
           @search="handleSearch"
+          @input="handleSearch"
         />
 
         <a-select
@@ -153,9 +163,43 @@
           <a-select-option value="unconfigured">未配置</a-select-option>
           <a-select-option value="training">训练中</a-select-option>
         </a-select>
+
+        <a-select
+          v-model:value="avatarFilter"
+          placeholder="头像设置"
+          style="width: 120px; opacity: 1 !important;"
+          size="large"
+          @change="handleFilterChange"
+          :disabled="false"
+        >
+          <a-select-option value="">全部头像</a-select-option>
+          <a-select-option value="has_avatar">已设置</a-select-option>
+          <a-select-option value="no_avatar">未设置</a-select-option>
+        </a-select>
+
+        <a-select
+          v-model:value="audioFilter"
+          placeholder="音频文件"
+          style="width: 120px; opacity: 1 !important;"
+          size="large"
+          @change="handleFilterChange"
+          :disabled="false"
+        >
+          <a-select-option value="">全部音频</a-select-option>
+          <a-select-option value="has_audio">已设置</a-select-option>
+          <a-select-option value="no_audio">未设置</a-select-option>
+        </a-select>
       </div>
 
       <div class="view-controls">
+        <div class="batch-controls">
+          <a-button size="small" @click="selectAllCharacters" :disabled="voiceLibrary.length === 0">
+            全选
+          </a-button>
+          <a-button size="small" @click="clearCharacterSelection" :disabled="selectedCharacterIds.length === 0">
+            清空
+          </a-button>
+        </div>
         <a-radio-group v-model:value="viewMode" size="large">
           <a-radio-button value="grid">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
@@ -176,13 +220,19 @@
       <!-- 网格视图 -->
       <div v-if="viewMode === 'grid'" class="grid-view">
         <div
-          v-for="voice in filteredVoices"
+          v-for="voice in voiceLibrary"
           :key="voice.id"
           class="voice-card"
           @click="selectVoice(voice)"
-          :class="{ selected: selectedVoice?.id === voice.id }"
+          :class="{ selected: selectedVoice?.id === voice.id, 'batch-selected': selectedCharacterIds.includes(voice.id) }"
           :data-character="voice.isCharacter"
         >
+          <div class="batch-select-checkbox" @click.stop>
+            <a-checkbox 
+              :checked="selectedCharacterIds.includes(voice.id)"
+              @change="(e) => handleCharacterSelection(voice.id, e.target.checked)"
+            />
+          </div>
           <div class="voice-avatar">
             <div
               class="avatar-icon"
@@ -295,16 +345,31 @@
             </a-dropdown>
           </div>
         </div>
+        
+        <!-- 卡片模式分页组件 -->
+        <div v-if="viewMode === 'grid' && pagination.total > 0" class="grid-pagination">
+          <a-pagination
+            v-model:current="pagination.current"
+            v-model:page-size="pagination.pageSize"
+            :total="pagination.total"
+            :show-size-changer="pagination.showSizeChanger"
+            :show-quick-jumper="pagination.showQuickJumper"
+            :show-total="pagination.showTotal"
+            @change="handleGridPaginationChange"
+            @show-size-change="handleGridPaginationChange"
+          />
+        </div>
       </div>
 
       <!-- 列表视图 -->
       <div v-else class="list-view">
         <a-table
           :columns="tableColumns"
-          :data-source="filteredVoices"
-          :pagination="{ pageSize: 10, showSizeChanger: true, showQuickJumper: true }"
+          :data-source="voiceLibrary"
+          :pagination="pagination"
           row-key="id"
           size="large"
+          @change="handleTableChange"
           @row="(record) => ({ onClick: () => selectVoice(record) })"
         >
           <template #bodyCell="{ column, record }">
@@ -1492,6 +1557,151 @@
         </a-form>
       </div>
     </a-modal>
+
+    <!-- 批量配置模态框 -->
+    <a-modal
+      v-model:open="showBatchConfigModal"
+      title="批量配置角色"
+      width="800px"
+      :footer="null"
+      @cancel="closeBatchConfigModal"
+    >
+      <div class="batch-config-content">
+        <!-- 步骤指示器 -->
+        <a-steps :current="batchConfigStep - 1" class="batch-steps">
+          <a-step title="选择角色" description="确认要配置的角色" />
+          <a-step title="配置文件" description="上传音频、NPY和头像文件" />
+        </a-steps>
+
+        <!-- 第一步：选择角色 -->
+        <div v-if="batchConfigStep === 1" class="batch-step-content">
+          <div class="selected-characters-info">
+            <h3>已选择 {{ selectedCharacterIds.length }} 个角色</h3>
+            <div class="character-list">
+              <div 
+                v-for="character in voiceLibrary.filter(v => selectedCharacterIds.includes(v.id))"
+                :key="character.id"
+                class="character-item"
+              >
+                <div class="character-avatar">
+                  <div 
+                    class="avatar-icon"
+                    :style="{ background: character.avatarUrl ? 'transparent' : character.color }"
+                  >
+                    <img
+                      v-if="character.avatarUrl"
+                      :src="character.avatarUrl"
+                      :alt="character.name"
+                      class="avatar-image"
+                    />
+                    <span v-else>{{ character.name.charAt(0) }}</span>
+                  </div>
+                </div>
+                <div class="character-info">
+                  <div class="character-name">{{ character.name }}</div>
+                  <div class="character-desc">{{ character.description || '暂无描述' }}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="step-actions">
+            <a-button @click="closeBatchConfigModal">取消</a-button>
+            <a-button type="primary" @click="goToBatchConfigStep(2)" :disabled="selectedCharacterIds.length === 0">
+              下一步
+            </a-button>
+          </div>
+        </div>
+
+        <!-- 第二步：配置文件 -->
+        <div v-if="batchConfigStep === 2" class="batch-step-content">
+          <a-form layout="vertical">
+            <a-form-item label="音频文件配置">
+              <a-checkbox v-model:checked="batchConfigData.applyToAll.audio">
+                为所有选中角色应用相同的音频文件
+              </a-checkbox>
+              <div v-if="batchConfigData.applyToAll.audio" class="file-upload-section">
+                <a-upload
+                  v-model:file-list="batchConfigData.audioFileList"
+                  :before-upload="() => false"
+                  @change="handleBatchAudioChange"
+                  accept=".wav,.mp3,.m4a"
+                  :max-count="1"
+                >
+                  <a-button>
+                    <template #icon><UploadOutlined /></template>
+                    选择音频文件
+                  </a-button>
+                </a-upload>
+                <div class="upload-tips">
+                  <small>支持 WAV、MP3、M4A 格式，建议使用高质量音频</small>
+                </div>
+              </div>
+            </a-form-item>
+
+            <a-form-item label="NPY特征文件配置">
+              <a-checkbox v-model:checked="batchConfigData.applyToAll.npy">
+                为所有选中角色应用相同的NPY特征文件
+              </a-checkbox>
+              <div v-if="batchConfigData.applyToAll.npy" class="file-upload-section">
+                <a-upload
+                  v-model:file-list="batchConfigData.npyFileList"
+                  :before-upload="() => false"
+                  @change="handleBatchNpyChange"
+                  accept=".npy"
+                  :max-count="1"
+                >
+                  <a-button>
+                    <template #icon><UploadOutlined /></template>
+                    选择NPY文件
+                  </a-button>
+                </a-upload>
+                <div class="upload-tips">
+                  <small>NPY特征文件用于语音克隆，提高合成质量</small>
+                </div>
+              </div>
+            </a-form-item>
+
+            <a-form-item label="头像配置">
+              <a-checkbox v-model:checked="batchConfigData.applyToAll.avatar">
+                为所有选中角色应用相同的头像
+              </a-checkbox>
+              <div v-if="batchConfigData.applyToAll.avatar" class="file-upload-section">
+                <a-upload
+                  v-model:file-list="batchConfigData.avatarFileList"
+                  :before-upload="() => false"
+                  @change="handleBatchAvatarChange"
+                  accept=".jpg,.jpeg,.png,.webp"
+                  :max-count="1"
+                  list-type="picture-card"
+                >
+                  <div>
+                    <UploadOutlined />
+                    <div style="margin-top: 8px">上传头像</div>
+                  </div>
+                </a-upload>
+                <div class="upload-tips">
+                  <small>支持 JPG、PNG、WebP 格式，建议尺寸 512x512</small>
+                </div>
+              </div>
+            </a-form-item>
+          </a-form>
+          
+          <div class="step-actions">
+            <a-button @click="goToBatchConfigStep(1)">上一步</a-button>
+            <a-button @click="closeBatchConfigModal">取消</a-button>
+            <a-button 
+              type="primary" 
+              @click="executeBatchConfig"
+              :loading="batchConfigLoading"
+              :disabled="!batchConfigData.applyToAll.audio && !batchConfigData.applyToAll.npy && !batchConfigData.applyToAll.avatar"
+            >
+              开始配置
+            </a-button>
+          </div>
+        </div>
+      </div>
+    </a-modal>
   </div>
 </template>
 
@@ -1507,7 +1717,9 @@
     ArrowLeftOutlined,
     PlusOutlined,
     UserOutlined,
-    SearchOutlined
+    SearchOutlined,
+    SettingOutlined,
+    UploadOutlined
   } from '@ant-design/icons-vue'
 
   // 路由
@@ -1526,13 +1738,46 @@
   const showEditModal = ref(false)
   const showSmartDiscoveryModal = ref(false)
   const showUploadModal = ref(false)
-  const managementType = ref('voice') // 管理类型：'voice' 或 'character'
+  const managementType = ref('character') // 管理类型：'voice' 或 'character'
+  
+  // 分页配置
+  const pagination = reactive({
+    current: 1,
+    pageSize: 20,
+    total: 0,
+    showSizeChanger: true,
+    showQuickJumper: true,
+    showTotal: (total, range) => `第 ${range[0]}-${range[1]} 条，共 ${total} 条`
+  })
+  
+  // 批量配置相关状态
+  const showBatchConfigModal = ref(false)
+  const selectedCharacterIds = ref([])
+  const batchConfigStep = ref(1) // 1: 选择角色, 2: 配置文件
+  const batchConfigData = ref({
+    audioFile: null,
+    audioFileList: [],
+    npyFile: null,
+    npyFileList: [],
+    avatarFile: null,
+    avatarFileList: [],
+    applyToAll: {
+      audio: false,
+      npy: false,
+      avatar: false
+    }
+  })
+  const batchConfigLoading = ref(false)
 
   // 书籍筛选
   const selectedBookId = ref('')
   const availableBooks = ref([])
   const booksLoading = ref(false)
   const statusFilter = ref('')
+  
+  // 新增筛选条件
+  const avatarFilter = ref('') // 头像设置筛选
+  const audioFilter = ref('') // 音频文件设置筛选
 
   // 智能发现相关状态
   const discoveryStep = ref(0)
@@ -1661,8 +1906,8 @@
 
       // 构建API参数
       const apiParams = {
-        page: 1,
-        page_size: 100
+        page: pagination.current,
+        page_size: pagination.pageSize
       }
 
       // 添加筛选条件
@@ -1670,6 +1915,14 @@
       if (typeFilter.value) apiParams.voice_type = typeFilter.value
       if (statusFilter.value) apiParams.status = statusFilter.value
       if (selectedBookId.value) apiParams.book_id = selectedBookId.value
+      if (avatarFilter.value) apiParams.avatar_filter = avatarFilter.value
+      if (audioFilter.value) apiParams.audio_filter = audioFilter.value
+
+      // 调试日志
+      console.log('🔍 音频筛选调试:', {
+        audioFilter: audioFilter.value,
+        apiParams: apiParams
+      })
 
       const response = await charactersAPI.getCharacters(apiParams)
 
@@ -1678,40 +1931,82 @@
 
       if (responseData && responseData.success) {
         const data = responseData.data
+        
+        // 🔧 调试：打印API响应数据
+        console.log('🔍 API响应数据:', {
+          success: responseData.success,
+          dataLength: data.length,
+          pagination: responseData.pagination,
+          filters: responseData.filters
+        })
+        
+        // 更新分页总数
+        pagination.total = responseData.pagination?.total || data.length
 
         // 统一处理角色数据
-        voiceLibrary.value = data.map((character) => ({
-          id: character.id,
-          name: character.name,
-          description: character.description || '暂无描述',
-          type: character.voice_type || 'custom',
-          quality: character.quality_score || 0,
-          status: character.status || 'unconfigured',
-          color: character.color || '#8b5cf6',
-          usageCount: character.usage_count || 0,
-          audioUrl: character.referenceAudioUrl || '',
-          referenceAudioUrl: character.referenceAudioUrl || '',
-          latentFileUrl: character.latentFileUrl || '',
-          avatarUrl: character.avatarUrl || null, // 🔧 修复：添加头像URL映射
-          book: character.book,
-          book_id: character.book_id,
-          chapter_id: character.chapter_id,
-          voice_parameters: character.voice_parameters || {
-            time_step: 20,
-            p_weight: 1.0,
-            t_weight: 1.0
-          },
-          params: character.voice_parameters || {
-            // 🔧 修复：添加params别名以兼容模板
-            timeStep: character.voice_parameters?.time_step || 20,
-            pWeight: character.voice_parameters?.p_weight || 1.0,
-            tWeight: character.voice_parameters?.t_weight || 1.0
-          },
-          tags: character.tags || [],
-          createdAt: character.created_at ? character.created_at.split('T')[0] : '',
-          isCharacter: true,
-          is_voice_configured: character.is_voice_configured || false
-        }))
+        voiceLibrary.value = data.map((character) => {
+          // 🔧 调试：打印角色数据映射
+          console.log(`🔍 角色数据映射 - ${character.name}:`, {
+            id: character.id,
+            status: character.status,
+            is_voice_configured: character.is_voice_configured,
+            reference_audio_path: character.reference_audio_path,
+            latent_file_path: character.latent_file_path,
+            avatar_path: character.avatar_path,
+            referenceAudioUrl: character.referenceAudioUrl,
+            latentFileUrl: character.latentFileUrl,
+            avatarUrl: character.avatarUrl
+          })
+          
+          return {
+            id: character.id,
+            name: character.name,
+            description: character.description || '暂无描述',
+            type: character.voice_type || 'custom',
+            quality: character.quality_score || 0,
+            status: character.status || 'unconfigured',
+            color: character.color || '#8b5cf6',
+            usageCount: character.usage_count || 0,
+            // 🔧 修复：正确映射音频相关字段
+            audioUrl: character.referenceAudioUrl || '',
+            referenceAudioUrl: character.referenceAudioUrl || '',
+            reference_audio_path: character.reference_audio_path || null, // 保留原始路径
+            latentFileUrl: character.latentFileUrl || '',
+            latent_file_path: character.latent_file_path || null, // 保留原始路径
+            // 🔧 修复：正确映射头像相关字段
+            avatarUrl: character.avatarUrl || null,
+            avatar_path: character.avatar_path || null, // 保留原始路径
+            book: character.book,
+            book_id: character.book_id,
+            chapter_id: character.chapter_id,
+            voice_parameters: character.voice_parameters || {
+              time_step: 20,
+              p_weight: 1.0,
+              t_weight: 1.0
+            },
+            params: character.voice_parameters || {
+              // 🔧 修复：添加params别名以兼容模板
+              timeStep: character.voice_parameters?.time_step || 20,
+              pWeight: character.voice_parameters?.p_weight || 1.0,
+              tWeight: character.voice_parameters?.t_weight || 1.0
+            },
+            tags: character.tags || [],
+            createdAt: character.created_at ? character.created_at.split('T')[0] : '',
+            isCharacter: true,
+            is_voice_configured: character.is_voice_configured || false
+          }
+        })
+        
+        // 🔧 调试：打印更新后的数据状态
+        console.log('🔍 数据更新完成:', {
+          voiceLibraryLength: voiceLibrary.value.length,
+          firstCharacter: voiceLibrary.value[0]?.name,
+          lastCharacter: voiceLibrary.value[voiceLibrary.value.length - 1]?.name
+        })
+        
+        // 🔧 强制触发响应式更新
+        await nextTick()
+        console.log('🔍 响应式更新完成，当前列表长度:', voiceLibrary.value.length)
       } else {
         const errorMsg = responseData?.message || '未知错误'
         message.error('加载数据失败：' + errorMsg)
@@ -1805,13 +2100,42 @@
   }
 
   // 搜索处理（兼容新的管理模式）
+  // 搜索防抖
+  let searchTimeout = null
   const handleSearch = async () => {
-    await loadVoiceLibrary()
+    if (searchTimeout) {
+      clearTimeout(searchTimeout)
+    }
+    searchTimeout = setTimeout(async () => {
+      pagination.current = 1 // 重置到第一页
+      await loadVoiceLibrary()
+    }, 300)
   }
 
   // 筛选变化处理（兼容新的管理模式）
   const handleFilterChange = async () => {
+    console.log('🎯 筛选器变化:', {
+      audioFilter: audioFilter.value,
+      avatarFilter: avatarFilter.value,
+      typeFilter: typeFilter.value,
+      statusFilter: statusFilter.value
+    })
+    pagination.current = 1 // 重置到第一页
     await loadVoiceLibrary()
+  }
+  
+  // 表格分页变化处理
+  const handleTableChange = (paginationInfo, filters, sorter) => {
+    pagination.current = paginationInfo.current
+    pagination.pageSize = paginationInfo.pageSize
+    loadVoiceLibrary()
+  }
+
+  // 卡片模式分页变化处理
+  const handleGridPaginationChange = (page, pageSize) => {
+    pagination.current = page
+    pagination.pageSize = pageSize
+    loadVoiceLibrary()
   }
 
   // 保存声音到后端
@@ -1925,36 +2249,6 @@
   }
 
   // 计算属性
-  const filteredVoices = computed(() => {
-    let voices = voiceLibrary.value
-
-    // 搜索过滤
-    if (searchQuery.value) {
-      voices = voices.filter(
-        (voice) =>
-          voice.name.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
-          voice.description.toLowerCase().includes(searchQuery.value.toLowerCase())
-      )
-    }
-
-    // 质量过滤
-    if (qualityFilter.value) {
-      voices = voices.filter((voice) => {
-        const quality = typeof voice.quality === 'number' ? voice.quality : 0
-        if (qualityFilter.value === 'high') return quality >= 4.0
-        if (qualityFilter.value === 'medium') return quality >= 3.0 && quality < 4.0
-        if (qualityFilter.value === 'low') return quality < 3.0
-        return true
-      })
-    }
-
-    // 类型过滤
-    if (typeFilter.value) {
-      voices = voices.filter((voice) => voice.type === typeFilter.value)
-    }
-
-    return voices
-  })
 
   const configuredCount = computed(
     () => voiceLibrary.value.filter((character) => character.status === 'configured').length
@@ -2298,6 +2592,161 @@
     showGenerateAvatarModal.value = false
     // 重置所有头像生成配置参数
     avatarGenConfig.style = 'realistic'
+  }
+
+  // 批量配置相关方法
+  const openBatchConfigModal = () => {
+    if (selectedCharacterIds.value.length === 0) {
+      message.warning('请先选择要配置的角色')
+      return
+    }
+    batchConfigStep.value = 1
+    showBatchConfigModal.value = true
+  }
+
+  const closeBatchConfigModal = () => {
+    showBatchConfigModal.value = false
+    selectedCharacterIds.value = []
+    batchConfigStep.value = 1
+    // 重置批量配置数据
+    batchConfigData.value = {
+      audioFile: null,
+      audioFileList: [],
+      npyFile: null,
+      npyFileList: [],
+      avatarFile: null,
+      avatarFileList: [],
+      applyToAll: {
+        audio: false,
+        npy: false,
+        avatar: false
+      }
+    }
+  }
+
+  const goToBatchConfigStep = (step) => {
+    batchConfigStep.value = step
+  }
+
+  const handleBatchAudioChange = (info) => {
+    if (info.fileList.length > 0) {
+      const file = info.fileList[0].originFileObj
+      batchConfigData.value.audioFile = file
+    } else {
+      batchConfigData.value.audioFile = null
+    }
+  }
+
+  const handleBatchNpyChange = (info) => {
+    if (info.fileList.length > 0) {
+      const file = info.fileList[0].originFileObj
+      batchConfigData.value.npyFile = file
+    } else {
+      batchConfigData.value.npyFile = null
+    }
+  }
+
+  const handleBatchAvatarChange = (info) => {
+    if (info.fileList.length > 0) {
+      const file = info.fileList[0].originFileObj
+      batchConfigData.value.avatarFile = file
+    } else {
+      batchConfigData.value.avatarFile = null
+    }
+  }
+
+  const executeBatchConfig = async () => {
+    try {
+      batchConfigLoading.value = true
+      
+      const selectedCharacters = voiceLibrary.value.filter(char => 
+        selectedCharacterIds.value.includes(char.id)
+      )
+      
+      let successCount = 0
+      let errorCount = 0
+      
+      for (const character of selectedCharacters) {
+        try {
+          const formData = new FormData()
+          formData.append('name', character.name)
+          formData.append('description', character.description || '')
+          formData.append('voice_type', character.type || 'custom')
+          formData.append('color', character.color || '#8b5cf6')
+          formData.append('parameters', JSON.stringify(character.params || {}))
+          
+          if (character.book_id) {
+            formData.append('book_id', character.book_id)
+          }
+          
+          // 添加音频文件
+          if (batchConfigData.value.applyToAll.audio && batchConfigData.value.audioFile) {
+            formData.append('reference_audio', batchConfigData.value.audioFile)
+          }
+          
+          // 添加NPY文件
+          if (batchConfigData.value.applyToAll.npy && batchConfigData.value.npyFile) {
+            formData.append('latent_file', batchConfigData.value.npyFile)
+          }
+          
+          // 添加头像文件
+          if (batchConfigData.value.applyToAll.avatar && batchConfigData.value.avatarFile) {
+            formData.append('avatar', batchConfigData.value.avatarFile)
+          }
+          
+          const response = await charactersAPI.updateCharacter(character.id, formData)
+          
+          if (response.data && response.data.success) {
+            successCount++
+          } else {
+            errorCount++
+            console.error(`更新角色 ${character.name} 失败:`, response.data?.message)
+          }
+        } catch (error) {
+          errorCount++
+          console.error(`更新角色 ${character.name} 失败:`, error)
+        }
+      }
+      
+      if (successCount > 0) {
+        message.success(`批量配置完成！成功更新 ${successCount} 个角色${errorCount > 0 ? `，${errorCount} 个失败` : ''}`)
+        await loadVoiceLibrary() // 重新加载数据
+      } else {
+        message.error('批量配置失败，请检查文件格式和网络连接')
+      }
+      
+      closeBatchConfigModal()
+    } catch (error) {
+      console.error('批量配置失败:', error)
+      message.error('批量配置失败：' + (error.message || '未知错误'))
+    } finally {
+      batchConfigLoading.value = false
+    }
+  }
+
+  // 角色选择相关
+  const handleCharacterSelection = (characterId, checked) => {
+    if (checked) {
+      if (!selectedCharacterIds.value.includes(characterId)) {
+        selectedCharacterIds.value.push(characterId)
+      }
+    } else {
+      const index = selectedCharacterIds.value.indexOf(characterId)
+      if (index > -1) {
+        selectedCharacterIds.value.splice(index, 1)
+      }
+    }
+  }
+
+  const selectAllCharacters = () => {
+    selectedCharacterIds.value = voiceLibrary.value.map(char => char.id)
+  }
+
+  const clearCharacterSelection = () => {
+    selectedCharacterIds.value = []
+  }
+
+  const resetAvatarGenConfig = () => {
     avatarGenConfig.size = '512x512'
     avatarGenConfig.customPrompt = ''
     avatarGenConfig.referenceImageList = []
@@ -3081,7 +3530,9 @@
     const colors = {
       active: 'success',
       training: 'processing',
-      inactive: 'default'
+      inactive: 'default',
+      configured: 'success', // 🔧 修复：添加configured状态
+      unconfigured: 'warning' // 🔧 修复：添加unconfigured状态
     }
     return colors[status] || 'default'
   }
@@ -3090,7 +3541,9 @@
     const texts = {
       active: '可用',
       training: '训练中',
-      inactive: '未激活'
+      inactive: '未激活',
+      configured: '已配置', // 🔧 修复：添加configured状态
+      unconfigured: '待配置' // 🔧 修复：添加unconfigured状态
     }
     return texts[status] || '未知'
   }
@@ -4628,5 +5081,181 @@
 
   [data-theme='dark'] .voice-card[data-character='true'] .voice-avatar .avatar-icon {
     background: #a855f7 !important;
+  }
+
+  /* 批量配置相关样式 */
+  .batch-controls {
+    display: flex;
+    gap: 8px;
+    margin-right: 16px;
+  }
+
+  .batch-select-checkbox {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    z-index: 10;
+    background: rgba(255, 255, 255, 0.9);
+    border-radius: 4px;
+    padding: 2px;
+  }
+
+  .voice-card.batch-selected {
+    border: 2px solid #1890ff;
+    box-shadow: 0 0 8px rgba(24, 144, 255, 0.3);
+  }
+
+  .batch-config-content {
+    padding: 16px 0;
+  }
+
+  .batch-steps {
+    margin-bottom: 24px;
+  }
+
+  .batch-step-content {
+    min-height: 300px;
+  }
+
+  .selected-characters-info h3 {
+    margin-bottom: 16px;
+    color: #1890ff;
+  }
+
+  .character-list {
+    max-height: 300px;
+    overflow-y: auto;
+    border: 1px solid #d9d9d9;
+    border-radius: 6px;
+    padding: 8px;
+  }
+
+  .character-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px;
+    border-radius: 4px;
+    margin-bottom: 8px;
+    background: #fafafa;
+  }
+
+  .character-item:last-child {
+    margin-bottom: 0;
+  }
+
+  .character-item .character-avatar {
+    flex-shrink: 0;
+  }
+
+  .character-item .avatar-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: bold;
+    font-size: 14px;
+  }
+
+  .character-item .avatar-image {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    object-fit: cover;
+  }
+
+  .character-item .character-info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .character-item .character-name {
+    font-weight: 500;
+    margin-bottom: 4px;
+  }
+
+  .character-item .character-desc {
+    font-size: 12px;
+    color: #666;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .file-upload-section {
+    margin-top: 12px;
+    padding: 12px;
+    background: #f9f9f9;
+    border-radius: 6px;
+  }
+
+  .upload-tips {
+    margin-top: 8px;
+    color: #666;
+  }
+
+  .step-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px solid #f0f0f0;
+  }
+
+  /* 暗黑模式适配 */
+  [data-theme='dark'] .batch-select-checkbox {
+    background: rgba(0, 0, 0, 0.8);
+  }
+
+  [data-theme='dark'] .character-list {
+    border-color: #434343;
+    background: #1f1f1f;
+  }
+
+  [data-theme='dark'] .character-item {
+    background: #2d2d2d;
+  }
+
+  [data-theme='dark'] .character-item .character-name {
+    color: #fff;
+  }
+
+  [data-theme='dark'] .character-item .character-desc {
+    color: #8c8c8c;
+  }
+
+  [data-theme='dark'] .file-upload-section {
+    background: #2d2d2d;
+  }
+
+  [data-theme='dark'] .step-actions {
+    border-top-color: #434343;
+  }
+
+  [data-theme='dark'] .upload-tips {
+    color: #8c8c8c;
+  }
+
+  /* 卡片模式分页组件样式 */
+  .grid-pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-top: 32px;
+    padding: 24px 0;
+    border-top: 1px solid #f0f0f0;
+    background: #fff;
+    width: 100%;
+  }
+
+  /* 暗黑模式下的分页组件样式 */
+  [data-theme='dark'] .grid-pagination {
+    border-top-color: #434343;
+    background: #1f1f1f;
+    width: 100%;
   }
 </style>

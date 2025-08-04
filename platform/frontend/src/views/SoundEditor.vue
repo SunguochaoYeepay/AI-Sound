@@ -1,19 +1,26 @@
 <template>
-  <div class="sound-editor-view" :class="{ 'fullscreen-mode': isAppFullscreen }">
-    <!-- 页面头部 -->
-    <div class="editor-header" v-show="!isAppFullscreen">
+  <div class="sound-editor-container" :class="{ 'fullscreen-mode': isAppFullscreen }">
+    <!-- 标准页面头部 -->
+    <div class="page-header" v-show="!isAppFullscreen">
       <div class="header-content">
-        <div class="header-left">
-          <a-button type="text" @click="handleBack" class="back-button">
-            <template #icon><ArrowLeftOutlined /></template>
-          </a-button>
-          <div class="header-title">
-            <h2>{{ projectTitle }}</h2>
-            <span class="header-subtitle">{{ projectSubtitle }}</span>
+        <div class="title-section">
+          <div class="title-with-back">
+            <a-button type="text" @click="handleBack" class="back-button">
+              <template #icon><ArrowLeftOutlined /></template>
+            </a-button>
+            <h1 class="page-title">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" class="title-icon">
+                <path
+                  d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6zM10 19c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"
+                />
+                <path d="M2 7h4v2H2V7zm0 3h4v2H2v-2zm0 3h4v2H2v-2z" />
+              </svg>
+              多轨音频编辑器 {{ projectTitle || '专业的音频编辑工具，支持多轨混音和精确编辑' }}
+            </h1>
           </div>
+        
         </div>
-
-        <div class="header-right">
+        <div class="action-section">
           <a-space>
             <a-tooltip title="帮助">
               <a-button type="text" shape="circle" @click="showHelp">
@@ -163,12 +170,7 @@
     return currentProject.value?.title || '多轨音频编辑器'
   })
 
-  const projectSubtitle = computed(() => {
-    if (currentProject.value?.title) {
-      return `项目 · ${currentProject.value.author || 'AI-Sound'}`
-    }
-    return '专业级多轨音频编辑工具'
-  })
+
 
   // 设置数据
   const settings = reactive({
@@ -244,64 +246,81 @@
 </script>
 
 <style scoped>
-  .sound-editor-view {
+  .sound-editor-container {
     height: 100vh;
     display: flex;
     flex-direction: column;
-    background: #0f0f0f;
+    background: #f5f5f5;
   }
 
-  .editor-header {
-    background: #1a1a1a;
-    border-bottom: 1px solid #333;
+  /* 标准页面头部样式 */
+  .page-header {
+    background: white;
+    border-bottom: 1px solid #e8e8e8;
+    padding: 24px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     flex-shrink: 0;
-    height: 56px;
   }
 
   .header-content {
     display: flex;
+    align-items: flex-start;
     justify-content: space-between;
-    align-items: center;
-    height: 100%;
-    padding: 0 16px;
+    width: 100%;
+    margin: 0 auto;
   }
 
-  .header-left {
+  .title-section {
+    flex: 1;
+  }
+
+  .title-with-back {
     display: flex;
     align-items: center;
     gap: 12px;
+    margin-bottom: 8px;
   }
 
   .back-button {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #999;
+    color: #666;
+    border: none;
+    padding: 4px;
+    margin-right: 8px;
   }
 
   .back-button:hover {
-    color: #fff;
+    color: #1890ff;
+    background: rgba(24, 144, 255, 0.1);
   }
 
-  .header-title h2 {
+  .page-title {
     margin: 0;
-    font-size: 18px;
+    font-size: 24px;
     font-weight: 600;
-    color: #fff;
+    color: #262626;
     line-height: 1.2;
+    display: flex;
+    align-items: center;
+    gap: 8px;
   }
 
-  .header-subtitle {
-    font-size: 12px;
-    color: #888;
-    display: block;
-    margin-top: 2px;
+  .title-icon {
+    color: #1890ff;
   }
 
-  .header-right {
+  .page-description {
+    margin: 0;
+    font-size: 14px;
+    color: #666;
+    line-height: 1.5;
+  }
+
+  .action-section {
     display: flex;
     align-items: center;
   }
+
+
 
   .editor-content {
     flex: 1;
@@ -383,7 +402,62 @@
     color: #ff4d4f !important;
   }
 
-  :deep(.ant-page-header) {
-    padding: 16px 24px;
+  /* 响应式设计 */
+  @media (max-width: 768px) {
+    .page-header {
+      padding: 16px;
+    }
+
+    .header-content {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 16px;
+    }
+
+    .title-with-back {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 8px;
+    }
+
+    .page-title {
+      font-size: 20px;
+    }
+
+    .action-section {
+      width: 100%;
+      justify-content: flex-end;
+    }
+  }
+
+  /* 暗黑模式支持 */
+  [data-theme='dark'] .sound-editor-container {
+    background: #141414;
+  }
+
+  [data-theme='dark'] .page-header {
+    background: #1f1f1f;
+    border-bottom-color: #303030;
+  }
+
+  [data-theme='dark'] .page-title {
+    color: #fff;
+  }
+
+  [data-theme='dark'] .page-description {
+    color: #a6a6a6;
+  }
+
+  [data-theme='dark'] .back-button {
+    color: #a6a6a6;
+  }
+
+  [data-theme='dark'] .back-button:hover {
+    color: #1890ff;
+    background: rgba(24, 144, 255, 0.1);
+  }
+
+  [data-theme='dark'] .title-icon {
+    color: #1890ff;
   }
 </style>
