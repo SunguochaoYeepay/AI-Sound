@@ -108,257 +108,58 @@
       </div>
     </div>
 
-    <!-- 筛选和搜索 -->
-    <div class="filter-section">
-      <div class="filter-controls">
-        <a-input-search
-          v-model:value="searchQuery"
-          placeholder="搜索角色..."
-          style="width: 300px"
-          size="large"
-          @search="handleSearch"
-          @input="handleSearch"
-        />
-
-        <a-select
-          v-model:value="selectedBookId"
-          placeholder="选择书籍"
-          style="width: 200px"
-          size="large"
-          @change="handleBookChange"
-          :loading="booksLoading"
-          show-search
-          allow-clear
-        >
-          <a-select-option value="">全部书籍</a-select-option>
-          <a-select-option v-for="book in availableBooks" :key="book.id" :value="book.id">
-            {{ book.title }} ({{ book.character_count || 0 }}个角色)
-          </a-select-option>
-        </a-select>
-
-        <a-select
-          v-model:value="typeFilter"
-          placeholder="声音类型"
-          style="width: 120px"
-          size="large"
-          @change="handleFilterChange"
-        >
-          <a-select-option value="">全部类型</a-select-option>
-          <a-select-option value="male">男声</a-select-option>
-          <a-select-option value="female">女声</a-select-option>
-          <a-select-option value="child">童声</a-select-option>
-          <a-select-option value="elder">老人声</a-select-option>
-          <a-select-option value="custom">自定义</a-select-option>
-        </a-select>
-
-        <a-select
-          v-model:value="statusFilter"
-          placeholder="配置状态"
-          style="width: 120px"
-          size="large"
-          @change="handleFilterChange"
-        >
-          <a-select-option value="">全部状态</a-select-option>
-          <a-select-option value="configured">已配置</a-select-option>
-          <a-select-option value="unconfigured">未配置</a-select-option>
-          <a-select-option value="training">训练中</a-select-option>
-        </a-select>
-
-        <a-select
-          v-model:value="avatarFilter"
-          placeholder="头像设置"
-          style="width: 120px; opacity: 1 !important;"
-          size="large"
-          @change="handleFilterChange"
-          :disabled="false"
-        >
-          <a-select-option value="">全部头像</a-select-option>
-          <a-select-option value="has_avatar">已设置</a-select-option>
-          <a-select-option value="no_avatar">未设置</a-select-option>
-        </a-select>
-
-        <a-select
-          v-model:value="audioFilter"
-          placeholder="音频文件"
-          style="width: 120px; opacity: 1 !important;"
-          size="large"
-          @change="handleFilterChange"
-          :disabled="false"
-        >
-          <a-select-option value="">全部音频</a-select-option>
-          <a-select-option value="has_audio">已设置</a-select-option>
-          <a-select-option value="no_audio">未设置</a-select-option>
-        </a-select>
-      </div>
-
-      <div class="view-controls">
-        <div class="batch-controls">
-          <a-button size="small" @click="selectAllCharacters" :disabled="voiceLibrary.length === 0">
-            全选
-          </a-button>
-          <a-button size="small" @click="clearCharacterSelection" :disabled="selectedCharacterIds.length === 0">
-            清空
-          </a-button>
-        </div>
-        <a-radio-group v-model:value="viewMode" size="large">
-          <a-radio-button value="grid">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M3,11H11V3H3M3,21H11V13H3M13,21H21V13H13M13,3V11H21V3" />
-            </svg>
-          </a-radio-button>
-          <a-radio-button value="list">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M3,5H21V7H3V5M3,13V11H21V13H3M3,19V17H21V19H3Z" />
-            </svg>
-          </a-radio-button>
-        </a-radio-group>
-      </div>
-    </div>
+    <!-- 🔧 使用新组件：筛选和搜索 -->
+    <CharacterFilters
+      :search-query="searchQuery"
+      :selected-book-id="selectedBookId"
+      :type-filter="typeFilter"
+      :status-filter="statusFilter"
+      :avatar-filter="avatarFilter"
+      :audio-filter="audioFilter"
+      :view-mode="viewMode"
+      :available-books="availableBooks"
+      :books-loading="booksLoading"
+      :total-count="voiceLibrary.length"
+      :selected-count="selectedCharacterIds.length"
+      @search="handleSearch"
+      @book-change="handleBookChange"
+      @filter-change="handleFilterChange"
+      @view-change="handleViewChange"
+      @select-all="selectAllCharacters"
+      @clear-selection="clearCharacterSelection"
+    />
 
     <!-- 声音库列表 -->
     <div class="voice-library-content">
-      <!-- 网格视图 -->
+      <!-- 🔧 使用新组件：网格视图 -->
       <div v-if="viewMode === 'grid'" class="grid-view">
-        <div
+        <CharacterCard
           v-for="voice in voiceLibrary"
           :key="voice.id"
-          class="voice-card"
-          @click="selectVoice(voice)"
-          :class="{ selected: selectedVoice?.id === voice.id, 'batch-selected': selectedCharacterIds.includes(voice.id) }"
-          :data-character="voice.isCharacter"
-        >
-          <div class="batch-select-checkbox" @click.stop>
-            <a-checkbox 
-              :checked="selectedCharacterIds.includes(voice.id)"
-              @change="(e) => handleCharacterSelection(voice.id, e.target.checked)"
-            />
-          </div>
-          <div class="voice-avatar">
-            <div
-              class="avatar-icon"
-              :style="{ background: voice.avatarUrl ? 'transparent' : voice.color }"
-            >
-              <img
-                v-if="voice.avatarUrl"
-                :src="voice.avatarUrl"
-                :alt="voice.name"
-                class="avatar-image"
-              />
-              <span v-else>{{ voice.name.charAt(0) }}</span>
-            </div>
-            <div class="voice-status" :class="voice.status">
-              <div class="status-dot"></div>
-            </div>
-          </div>
-
-          <div class="voice-info">
-            <h3 class="voice-name">{{ voice.name }}</h3>
-            <p class="voice-desc">{{ voice.description }}</p>
-
-            <!-- 角色模式：显示书籍信息 -->
-            <div v-if="managementType === 'character' && voice.book" class="book-info">
-              <div class="book-badge">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                  <path
-                    d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"
-                  />
-                </svg>
-                <span>{{ voice.book.title }}</span>
-              </div>
-            </div>
-
-            <div class="voice-meta">
-              <!-- 声音样本模式：显示质量和使用次数 -->
-              <template v-if="managementType === 'voice'">
-                <div class="meta-item">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                    <path
-                      d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
-                    />
-                  </svg>
-                  <span>{{ (voice.quality || 0).toFixed(1) }}</span>
-                </div>
-                <div class="meta-item">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                    <path
-                      d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"
-                    />
-                  </svg>
-                  <span>{{ voice.usageCount }}</span>
-                </div>
-              </template>
-
-              <!-- 角色模式：显示配置状态 -->
-              <template v-else>
-                <div class="meta-item">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                    <path
-                      d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"
-                    />
-                  </svg>
-                  <span>{{ voice.status === 'configured' ? '已配置' : '待配置' }}</span>
-                </div>
-                <div class="meta-item">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                    <path
-                      d="M9 11H7v3h2v-3zm4 0h-2v3h2v-3zm4 0h-2v3h2v-3zm2-7h-1V2h-2v2H8V2H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H5V9h14v11z"
-                    />
-                  </svg>
-                  <span>{{ voice.createdAt }}</span>
-                </div>
-              </template>
-            </div>
-          </div>
-
-          <div class="voice-actions">
-            <a-button type="text" size="small" @click.stop="playVoice(voice)">
-              <template #icon>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M8,5.14V19.14L19,12.14L8,5.14Z" />
-                </svg>
-              </template>
-            </a-button>
-            <a-dropdown @click.stop="">
-              <a-button type="text" size="small">
-                <template #icon>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                    <path
-                      d="M12,16A2,2 0 0,1 14,18A2,2 0 0,1 12,20A2,2 0 0,1 10,18A2,2 0 0,1 12,16M12,10A2,2 0 0,1 14,12A2,2 0 0,1 12,14A2,2 0 0,1 10,12A2,2 0 0,1 12,10M12,4A2,2 0 0,1 14,6A2,2 0 0,1 12,8A2,2 0 0,1 10,6A2,2 0 0,1 12,4Z"
-                    />
-                  </svg>
-                </template>
-              </a-button>
-              <template #overlay>
-                <a-menu>
-                  <a-menu-item key="edit" @click="editVoice(voice)">编辑</a-menu-item>
-                  <a-menu-item key="duplicate" @click="duplicateVoice(voice)">复制</a-menu-item>
-                  <a-menu-item key="export" @click="exportVoice(voice)">导出</a-menu-item>
-                  <a-menu-divider />
-                  <a-menu-item
-                    key="delete"
-                    @click="confirmDeleteCharacter(voice)"
-                    style="color: #ef4444"
-                    >删除</a-menu-item
-                  >
-                </a-menu>
-              </template>
-            </a-dropdown>
-          </div>
-        </div>
+          :character="voice"
+          :selected-character-id="selectedVoice?.id"
+          :selected-character-ids="selectedCharacterIds"
+          :management-type="managementType"
+          @select="selectVoice"
+          @play="playVoice"
+          @edit="editVoice"
+          @duplicate="duplicateVoice"
+          @export="exportVoice"
+          @delete="confirmDeleteCharacter"
+          @batch-select="handleCharacterSelection"
+        />
         
-        <!-- 卡片模式分页组件 -->
-        <div v-if="viewMode === 'grid' && pagination.total > 0" class="grid-pagination">
-          <a-pagination
-            v-model:current="pagination.current"
-            v-model:page-size="pagination.pageSize"
-            :total="pagination.total"
-            :show-size-changer="pagination.showSizeChanger"
-            :show-quick-jumper="pagination.showQuickJumper"
-            :show-total="pagination.showTotal"
-            @change="handleGridPaginationChange"
-            @show-size-change="handleGridPaginationChange"
-          />
-        </div>
+        <!-- 🔧 使用新组件：卡片模式分页组件 -->
+        <CharacterPagination
+          v-if="viewMode === 'grid'"
+          :current="pagination.current"
+          :page-size="pagination.pageSize"
+          :total="pagination.total"
+          :show-size-changer="pagination.showSizeChanger"
+          :show-quick-jumper="pagination.showQuickJumper"
+          @change="handleGridPaginationChange"
+          @show-size-change="handleGridPaginationChange"
+        />
       </div>
 
       <!-- 列表视图 -->
@@ -1710,29 +1511,51 @@
   import { useRouter, useRoute } from 'vue-router'
   import { message, Modal } from 'ant-design-vue'
   import { charactersAPI, booksAPI } from '@/api'
-  import { API_BASE_URL } from '@/api/config'
   import { bookAPI, chapterAPI } from '../api/v2.js'
   import { playCustomAudio } from '@/utils/audioService'
   import {
-    ArrowLeftOutlined,
     PlusOutlined,
     UserOutlined,
     SearchOutlined,
     SettingOutlined,
     UploadOutlined
   } from '@ant-design/icons-vue'
+  
+  // 🔧 引入新组件
+  import CharacterCard from './Characters/components/CharacterCard.vue'
+  import CharacterFilters from './Characters/components/CharacterFilters.vue'
+  import CharacterPagination from './Characters/components/CharacterPagination.vue'
+  
+  // 🔧 引入composable
+  import { useCharacters } from '@/composables/useCharacters'
 
   // 路由
   const router = useRouter()
   const route = useRoute()
 
-  // 响应式数据
-  const voiceLibrary = ref([])
-  const loading = ref(true)
-  const selectedVoice = ref(null)
-  const searchQuery = ref('')
-  const qualityFilter = ref('')
-  const typeFilter = ref('')
+  // 🔧 使用composable管理角色数据
+  const {
+    voiceLibrary,
+    loading,
+    selectedVoice,
+    selectedCharacterIds,
+    pagination,
+    searchQuery,
+    typeFilter,
+    statusFilter,
+    avatarFilter,
+    audioFilter,
+    selectedBookId,
+    loadVoiceLibrary,
+    selectVoice,
+    handleCharacterSelection,
+    selectAllCharacters,
+    clearCharacterSelection,
+    resetFilters,
+    handlePaginationChange
+  } = useCharacters()
+
+  // 其他状态
   const viewMode = ref('grid')
   const showDetailDrawer = ref(false)
   const showEditModal = ref(false)
@@ -1740,19 +1563,8 @@
   const showUploadModal = ref(false)
   const managementType = ref('character') // 管理类型：'voice' 或 'character'
   
-  // 分页配置
-  const pagination = reactive({
-    current: 1,
-    pageSize: 20,
-    total: 0,
-    showSizeChanger: true,
-    showQuickJumper: true,
-    showTotal: (total, range) => `第 ${range[0]}-${range[1]} 条，共 ${total} 条`
-  })
-  
   // 批量配置相关状态
   const showBatchConfigModal = ref(false)
-  const selectedCharacterIds = ref([])
   const batchConfigStep = ref(1) // 1: 选择角色, 2: 配置文件
   const batchConfigData = ref({
     audioFile: null,
@@ -1770,14 +1582,8 @@
   const batchConfigLoading = ref(false)
 
   // 书籍筛选
-  const selectedBookId = ref('')
   const availableBooks = ref([])
   const booksLoading = ref(false)
-  const statusFilter = ref('')
-  
-  // 新增筛选条件
-  const avatarFilter = ref('') // 头像设置筛选
-  const audioFilter = ref('') // 音频文件设置筛选
 
   // 智能发现相关状态
   const discoveryStep = ref(0)
@@ -2122,6 +1928,11 @@
     })
     pagination.current = 1 // 重置到第一页
     await loadVoiceLibrary()
+  }
+
+  // 视图模式变化处理
+  const handleViewChange = (mode) => {
+    viewMode.value = mode
   }
   
   // 表格分页变化处理
