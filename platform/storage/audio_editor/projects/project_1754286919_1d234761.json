@@ -4,7 +4,7 @@
     "title": "11",
     "description": "11",
     "author": "AI-Sound",
-    "totalDuration": 0.0,
+    "totalDuration": 300.5,
     "sampleRate": 44100,
     "channels": 2,
     "bitDepth": 16,
@@ -22,7 +22,19 @@
       "solo": false,
       "color": "#3498db",
       "order": 1,
-      "clips": []
+      "clips": [
+        {
+          "id": "clip_1754324685130_nik77d31l",
+          "fileId": "",
+          "filename": "file_1752120329_4f067902",
+          "startTime": 0.5,
+          "duration": 300.0,
+          "volume": 1.0,
+          "offset": 0.0,
+          "fadeIn": 0.1,
+          "fadeOut": 0.1
+        }
+      ]
     },
     {
       "id": "track_environment",
