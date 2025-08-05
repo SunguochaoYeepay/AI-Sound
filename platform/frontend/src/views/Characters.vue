@@ -244,118 +244,16 @@
       </div>
     </div>
 
-    <!-- 声音详情面板 -->
-    <a-drawer
-      v-model:open="showDetailDrawer"
-      title="声音详情"
-      placement="right"
-      width="500"
-      :closable="true"
-    >
-      <div v-if="selectedVoice" class="voice-detail">
-        <div class="detail-header">
-          <div
-            class="detail-avatar"
-            :style="{ background: selectedVoice.avatarUrl ? 'transparent' : selectedVoice.color }"
-          >
-            <img
-              v-if="selectedVoice.avatarUrl"
-              :src="selectedVoice.avatarUrl"
-              :alt="selectedVoice.name"
-              class="avatar-image"
-            />
-            <span v-else>{{ selectedVoice.name.charAt(0) }}</span>
-          </div>
-          <div class="detail-info">
-            <h2>{{ selectedVoice.name }}</h2>
-            <p>{{ selectedVoice.description }}</p>
-            <a-rate v-model:value="selectedVoice.quality" disabled allow-half />
-          </div>
-        </div>
-
-        <a-divider />
-
-        <div class="detail-section">
-          <h3>音频样本</h3>
-          <div class="audio-sample">
-            <div v-if="selectedVoice.audioUrl">
-              <audio controls style="width: 100%">
-                <source :src="selectedVoice.audioUrl" type="audio/wav" />
-                您的浏览器不支持音频播放
-              </audio>
-            </div>
-            <div v-else class="no-audio-message">
-              <div style="text-align: center; padding: 20px; color: #6b7280">
-                <svg
-                  width="48"
-                  height="48"
-                  viewBox="0 0 24 24"
-                  fill="#d1d5db"
-                  style="margin-bottom: 12px"
-                >
-                  <path
-                    d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"
-                  />
-                  <path
-                    d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"
-                  />
-                </svg>
-                <p>暂无音频样本</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="detail-section">
-          <h3>技术参数</h3>
-          <div class="params-list">
-            <div class="param-row">
-              <span class="param-label">Time Step:</span>
-              <span class="param-value">{{ selectedVoice.params?.timeStep || 'N/A' }}</span>
-            </div>
-            <div class="param-row">
-              <span class="param-label">智能权重 (p_w):</span>
-              <span class="param-value">{{ selectedVoice.params?.pWeight || 'N/A' }}</span>
-            </div>
-            <div class="param-row">
-              <span class="param-label">相似度权重 (t_w):</span>
-              <span class="param-value">{{ selectedVoice.params?.tWeight || 'N/A' }}</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="detail-section">
-          <h3>使用统计</h3>
-          <div class="stats-list">
-            <div class="stat-row">
-              <span class="stat-label">使用次数:</span>
-              <span class="stat-value">{{ selectedVoice.usageCount || 0 }}</span>
-            </div>
-            <div class="stat-row">
-              <span class="stat-label">创建时间:</span>
-              <span class="stat-value">{{ selectedVoice.createdAt || 'N/A' }}</span>
-            </div>
-            <div class="stat-row">
-              <span class="stat-label">最后使用:</span>
-              <span class="stat-value">{{ selectedVoice.lastUsed || 'N/A' }}</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="detail-actions">
-          <a-button type="primary" block size="large" @click="useVoiceForTTS">
-            使用此声音
-          </a-button>
-          <div style="display: flex; gap: 12px; margin-top: 12px">
-            <a-button @click="editVoice(selectedVoice)" style="flex: 1">编辑</a-button>
-            <a-button @click="duplicateVoice(selectedVoice)" style="flex: 1">复制</a-button>
-            <a-button danger @click="confirmDeleteCharacter(selectedVoice)" style="flex: 1"
-              >删除</a-button
-            >
-          </div>
-        </div>
-      </div>
-    </a-drawer>
+    <!-- 🔧 使用新组件：声音详情面板 -->
+    <CharacterDetail
+      :visible="showDetailDrawer"
+      :character="selectedVoice"
+      @close="showDetailDrawer = false"
+      @use="useVoiceForTTS"
+      @edit="editVoice"
+      @duplicate="duplicateVoice"
+      @delete="confirmDeleteCharacter"
+    />
 
     <!-- 新增/编辑角色抽屉 -->
     <a-drawer
@@ -1525,6 +1423,7 @@
   import CharacterCard from './Characters/components/CharacterCard.vue'
   import CharacterFilters from './Characters/components/CharacterFilters.vue'
   import CharacterPagination from './Characters/components/CharacterPagination.vue'
+  import CharacterDetail from './Characters/components/CharacterDetail.vue'
   
   // 🔧 引入composable
   import { useCharacters } from '@/composables/useCharacters'
