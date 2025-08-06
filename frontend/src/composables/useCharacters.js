@@ -1,4 +1,4 @@
-import { ref, reactive, nextTick } from 'vue'
+import { ref, reactive } from 'vue'
 import { message } from 'ant-design-vue'
 import { charactersAPI } from '@/api'
 
@@ -57,43 +57,19 @@ export function useCharacters() {
       // axios响应的实际数据在response.data中
       const responseData = response.data
 
-      // 🔧 调试：打印API响应数据结构
-      console.log('🔍 API响应数据结构:', {
-        hasSuccess: 'success' in responseData,
-        success: responseData.success,
-        hasData: 'data' in responseData,
-        hasCharacters: 'characters' in responseData,
-        dataKeys: Object.keys(responseData)
-      })
-
-      // 🔧 修复：支持多种API响应格式
-      let data = null
-      let total = 0
-
-      if (responseData && responseData.success && responseData.data) {
-        // 格式1: {success: true, data: [...], pagination: {...}}
-        data = responseData.data
-        total = responseData.pagination?.total || data.length
-      } else if (responseData && responseData.characters) {
-        // 格式2: {characters: [...], total: 63, page: 1, size: 20, has_next: true}
-        data = responseData.characters
-        total = responseData.total || data.length
-      } else if (Array.isArray(responseData)) {
-        // 格式3: 直接是数组
-        data = responseData
-        total = data.length
-      }
-
-      if (data && Array.isArray(data)) {
+      if (responseData && responseData.success) {
+        const data = responseData.data
+        
         // 🔧 调试：打印API响应数据
         console.log('🔍 API响应数据:', {
+          success: responseData.success,
           dataLength: data.length,
-          total: total,
-          firstItem: data[0]
+          pagination: responseData.pagination,
+          filters: responseData.filters
         })
         
         // 更新分页总数
-        pagination.total = total
+        pagination.total = responseData.pagination?.total || data.length
 
         // 统一处理角色数据
         voiceLibrary.value = data.map((character) => {
@@ -160,13 +136,7 @@ export function useCharacters() {
         await nextTick()
         console.log('🔍 响应式更新完成，当前列表长度:', voiceLibrary.value.length)
       } else {
-        // 🔧 调试：打印错误情况
-        console.error('🔍 数据处理失败:', {
-          responseData: responseData,
-          hasData: !!data,
-          isArray: Array.isArray(data)
-        })
-        const errorMsg = responseData?.message || '数据格式错误'
+        const errorMsg = responseData?.message || '未知错误'
         message.error('加载数据失败：' + errorMsg)
         voiceLibrary.value = []
       }
@@ -250,4 +220,4 @@ export function useCharacters() {
     resetFilters,
     handlePaginationChange
   }
-}
+} 

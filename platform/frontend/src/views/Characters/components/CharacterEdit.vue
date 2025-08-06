@@ -1,6 +1,6 @@
 <template>
   <a-drawer
-    v-model:open="visible"
+    :open="visible"
     :title="character.id ? '编辑角色' : '新增角色'"
     width="600"
     placement="right"
@@ -324,6 +324,9 @@
 </template>
 
 <script setup>
+import { ref } from 'vue'
+import { message } from 'ant-design-vue'
+
 // Props
 const props = defineProps({
   visible: {
@@ -374,6 +377,9 @@ const emit = defineEmits([
   'play-audio'
 ])
 
+// Refs
+const editForm = ref(null)
+
 // Methods
 const beforeAvatarUpload = (file) => {
   const isImage = file.type.startsWith('image/')
@@ -389,6 +395,11 @@ const beforeAvatarUpload = (file) => {
   }
   return false // 阻止自动上传
 }
+
+// 暴露表单引用给父组件
+defineExpose({
+  editForm
+})
 
 const beforeAudioUpload = (file) => {
   const isAudio = file.type.startsWith('audio/') || file.name.match(/\.(wav|mp3|m4a|flac)$/i)

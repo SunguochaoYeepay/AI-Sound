@@ -45,7 +45,7 @@ async def log_system_event(*args, **kwargs):
                 message=message,
                 module=module,
                 details=json.dumps(details) if details else None,
-                timestamp=datetime.utcnow()
+                created_at=datetime.utcnow()
             )
             
             if db and hasattr(db, 'add'):

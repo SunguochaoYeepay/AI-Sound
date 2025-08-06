@@ -93,7 +93,12 @@ class VoiceProfile(Base):
     def get_tags(self):
         """获取标签列表"""
         try:
-            return json.loads(self.tags) if self.tags else []
+            if isinstance(self.tags, str):
+                return json.loads(self.tags) if self.tags else []
+            elif isinstance(self.tags, list):
+                return self.tags
+            else:
+                return []
         except (json.JSONDecodeError, TypeError):
             return []
     
@@ -104,7 +109,12 @@ class VoiceProfile(Base):
     def get_parameters(self):
         """获取参数字典"""
         try:
-            return json.loads(self.parameters) if self.parameters else {}
+            if isinstance(self.parameters, str):
+                return json.loads(self.parameters) if self.parameters else {}
+            elif isinstance(self.parameters, dict):
+                return self.parameters
+            else:
+                return {"timeStep": 20, "pWeight": 1.0, "tWeight": 1.0}
         except (json.JSONDecodeError, TypeError):
             return {"timeStep": 20, "pWeight": 1.0, "tWeight": 1.0}
     

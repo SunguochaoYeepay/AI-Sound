@@ -10,10 +10,8 @@ const SERVICE_CONFIG = {
   // 主后端API服务
   API_BASE_URL: '/api/v1', // 通过Vite代理
 
-  // 后端服务基础URL（用于直接访问）
-  BACKEND_BASE_URL: isDevelopment
-    ? 'http://localhost:8001' // 开发环境：本地服务
-    : 'http://localhost:8000', // 生产环境：Docker容器
+  // 后端服务基础URL（统一使用相对路径，通过Vite代理）
+  BACKEND_BASE_URL: '', // 使用相对路径，让Vite代理处理
 
   // SongGeneration音乐生成服务
   SONG_GENERATION: {
@@ -34,17 +32,14 @@ const SERVICE_CONFIG = {
     // 主WebSocket连接
     MAIN: () => {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-
-      // 🔧 强制使用正确的后端URL，忽略可能错误的环境变量
-      const backendUrl = SERVICE_CONFIG.BACKEND_BASE_URL
-      const cleanHost = backendUrl.replace(/^https?:\/\//, '')
-      const wsUrl = `${protocol}//${cleanHost}/ws`
+      
+      // 使用当前域名和端口，通过Vite代理处理
+      const wsUrl = `${protocol}//${window.location.host}/ws`
 
       console.log('[WebSocket配置]', {
         环境: isDevelopment ? '开发' : '生产',
-        后端URL: backendUrl,
         WebSocket地址: wsUrl,
-        环境变量覆盖: import.meta.env.VITE_API_BASE_URL
+        当前域名: window.location.host
       })
 
       return wsUrl
@@ -125,7 +120,7 @@ export function getWebSocketUrl(type, params = null) {
 export default SERVICE_CONFIG
 
 // 导出常用的URL获取函数
-export const getBackendUrl = () => SERVICE_CONFIG.BACKEND_BASE_URL
+export const getBackendUrl = () => '' // 返回空字符串，使用相对路径
 export const getApiBaseUrl = () => SERVICE_CONFIG.API_BASE_URL
 export const getSongGenerationUrl = (endpoint = '') => getServiceUrl('SONG_GENERATION', endpoint)
 

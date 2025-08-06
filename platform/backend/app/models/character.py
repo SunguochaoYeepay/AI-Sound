@@ -49,11 +49,20 @@ class Character(BaseModel):
     def get_voice_parameters(self):
         """获取声音参数配置"""
         try:
-            return json.loads(self.voice_parameters) if self.voice_parameters else {
-                "time_step": 20,
-                "p_weight": 1.0,
-                "t_weight": 1.0
-            }
+            if isinstance(self.voice_parameters, str):
+                return json.loads(self.voice_parameters) if self.voice_parameters else {
+                    "time_step": 20,
+                    "p_weight": 1.0,
+                    "t_weight": 1.0
+                }
+            elif isinstance(self.voice_parameters, dict):
+                return self.voice_parameters
+            else:
+                return {
+                    "time_step": 20,
+                    "p_weight": 1.0,
+                    "t_weight": 1.0
+                }
         except json.JSONDecodeError:
             return {
                 "time_step": 20,
@@ -68,7 +77,12 @@ class Character(BaseModel):
     def get_tags(self):
         """获取标签列表"""
         try:
-            return json.loads(self.tags) if self.tags else []
+            if isinstance(self.tags, str):
+                return json.loads(self.tags) if self.tags else []
+            elif isinstance(self.tags, list):
+                return self.tags
+            else:
+                return []
         except json.JSONDecodeError:
             return []
     
@@ -114,10 +128,29 @@ class Character(BaseModel):
     
     def to_dict(self):
         """转换为字典"""
-        result = super().to_dict()
+        # 🔧 修复：先获取基础字典，然后处理JSON字段
+        result = {}
+        for column in self.__table__.columns:
+            value = getattr(self, column.name)
+            # 跳过JSON字段，稍后单独处理
+            if column.name not in ['voice_parameters', 'tags']:
+                result[column.name] = value
+        
+        # 单独处理JSON字段
         result['voice_parameters'] = self.get_voice_parameters()
         result['tags'] = self.get_tags()
         result['is_voice_configured'] = self.is_voice_configured
+        
+        # 🔧 添加缺失的计算属性
+        result['has_avatar'] = bool(self.avatar_path)
+        result['has_latent'] = bool(self.latent_file_path)
+        
+        # 确保所有字段都有值（避免undefined）
+        result['status'] = self.status or 'unconfigured'
+        result['voice_type'] = self.voice_type or 'custom'
+        result['color'] = self.color or '#8b5cf6'
+        result['quality_score'] = self.quality_score or 0.0
+        result['usage_count'] = self.usage_count or 0
         
         # 生成文件URL
         if self.avatar_path:

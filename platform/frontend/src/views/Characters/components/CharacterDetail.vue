@@ -1,6 +1,6 @@
 <template>
   <a-drawer
-    v-model:open="visible"
+    :open="visible"
     title="声音详情"
     placement="right"
     width="500"

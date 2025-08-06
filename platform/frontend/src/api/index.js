@@ -137,7 +137,7 @@ export const charactersAPI = {
 
   // 创建角色
   createCharacter: (data) =>
-    apiClient.post('/characters/character', data, {
+    apiClient.post('/characters', data, {
       headers: {
         'Content-Type': 'multipart/form-data'
       }
@@ -145,7 +145,7 @@ export const charactersAPI = {
 
   // 更新角色
   updateCharacter: (id, data) =>
-    apiClient.put(`/characters/character/${id}`, data, {
+    apiClient.put(`/characters/${id}`, data, {
       headers: {
         'Content-Type': 'multipart/form-data'
       }

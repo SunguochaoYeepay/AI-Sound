@@ -25,7 +25,6 @@
           :src="character.avatarUrl"
           :alt="character.name"
           class="avatar-image"
-          @error="handleAvatarError"
         />
         <span v-else>{{ character.name.charAt(0) }}</span>
       </div>
@@ -166,13 +165,6 @@ const emit = defineEmits([
 // Computed
 const isSelected = computed(() => props.selectedCharacterId === props.character.id)
 const isBatchSelected = computed(() => props.selectedCharacterIds.includes(props.character.id))
-
-// Methods
-const handleAvatarError = (event) => {
-  console.warn(`头像加载失败: ${props.character.name}`, event.target.src)
-  // 清除错误的头像URL，让组件显示默认头像
-  props.character.avatarUrl = null
-}
 </script>
 
 <style scoped>
@@ -376,4 +368,4 @@ const handleAvatarError = (event) => {
 [data-theme='dark'] .meta-item {
   color: #9ca3af;
 }
-</style>
+</style> 

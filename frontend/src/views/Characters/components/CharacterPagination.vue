@@ -1,8 +1,8 @@
 <template>
   <div v-if="total > 0" class="pagination-wrapper">
     <a-pagination
-      :current="current"
-      :page-size="pageSize"
+      v-model:current="current"
+      v-model:page-size="pageSize"
       :total="total"
       :show-size-changer="showSizeChanger"
       :show-quick-jumper="showQuickJumper"
@@ -45,7 +45,7 @@ const emit = defineEmits(['change', 'show-size-change'])
 
 // Computed
 const showTotal = computed(() => {
-  return (totalCount, range) => `第 ${range[0]}-${range[1]} 条，共 ${totalCount} 条`
+  return (total, range) => `第 ${range[0]}-${range[1]} 条，共 ${total} 条`
 })
 
 // Methods
@@ -120,4 +120,4 @@ const handleShowSizeChange = (current, size) => {
     text-align: center;
   }
 }
-</style>
+</style> 

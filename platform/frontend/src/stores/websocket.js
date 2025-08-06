@@ -47,12 +47,9 @@ export const useWebSocketStore = defineStore('websocket', () => {
       return `${protocol}//${window.location.host}/ws`
     }
 
-    // 生产环境使用配置的URL
+    // 生产环境也使用相对路径，通过代理处理
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const baseUrl = import.meta.env.VITE_API_BASE_URL || getBackendUrl()
-    // 移除协议前缀（如果存在）
-    const cleanHost = baseUrl.replace(/^https?:\/\//, '')
-    return `${protocol}//${cleanHost}/ws`
+    return `${protocol}//${window.location.host}/ws`
   }
 
   // 连接WebSocket

@@ -18,16 +18,10 @@ export function useWebSocket() {
           return import.meta.env.VITE_WS_URL
         }
 
+        const wsUrl = (() => {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-        const host = window.location.host
-
-        if (host.includes(':3000')) {
-          return `${protocol}//${window.location.hostname}:8000/ws`
-        } else if (host.includes('localhost:8001') || host.includes('127.0.0.1:8001')) {
-          return `${protocol}//${window.location.hostname}:8001/ws`
-        } else {
-          return `${protocol}//${host}/ws`
-        }
+        // 统一使用当前域名和端口，通过Vite代理处理
+        return `${protocol}//${window.location.host}/ws`
       })()
 
       console.log('🔗 连接WebSocket:', wsUrl)

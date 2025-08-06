@@ -2,20 +2,20 @@
   <div class="filter-section">
     <div class="filter-controls">
       <a-input-search
-        :value="searchQuery"
+        v-model:value="searchQuery"
         placeholder="搜索角色..."
         style="width: 300px"
         size="large"
         @search="$emit('search')"
-        @input="$emit('update:searchQuery', $event.target.value)"
+        @input="$emit('search')"
       />
 
       <a-select
-        :value="selectedBookId"
+        v-model:value="selectedBookId"
         placeholder="选择书籍"
         style="width: 200px"
         size="large"
-        @change="$emit('update:selectedBookId', $event)"
+        @change="$emit('book-change')"
         :loading="booksLoading"
         show-search
         allow-clear
@@ -27,11 +27,11 @@
       </a-select>
 
       <a-select
-        :value="typeFilter"
+        v-model:value="typeFilter"
         placeholder="声音类型"
         style="width: 120px"
         size="large"
-        @change="$emit('update:typeFilter', $event)"
+        @change="$emit('filter-change')"
       >
         <a-select-option value="">全部类型</a-select-option>
         <a-select-option value="male">男声</a-select-option>
@@ -42,11 +42,11 @@
       </a-select>
 
       <a-select
-        :value="statusFilter"
+        v-model:value="statusFilter"
         placeholder="配置状态"
         style="width: 120px"
         size="large"
-        @change="$emit('update:statusFilter', $event)"
+        @change="$emit('filter-change')"
       >
         <a-select-option value="">全部状态</a-select-option>
         <a-select-option value="configured">已配置</a-select-option>
@@ -55,11 +55,11 @@
       </a-select>
 
       <a-select
-        :value="avatarFilter"
+        v-model:value="avatarFilter"
         placeholder="头像设置"
         style="width: 120px; opacity: 1 !important;"
         size="large"
-        @change="$emit('update:avatarFilter', $event)"
+        @change="$emit('filter-change')"
         :disabled="false"
       >
         <a-select-option value="">全部头像</a-select-option>
@@ -68,11 +68,11 @@
       </a-select>
 
       <a-select
-        :value="audioFilter"
+        v-model:value="audioFilter"
         placeholder="音频文件"
         style="width: 120px; opacity: 1 !important;"
         size="large"
-        @change="$emit('update:audioFilter', $event)"
+        @change="$emit('filter-change')"
         :disabled="false"
       >
         <a-select-option value="">全部音频</a-select-option>
@@ -90,7 +90,7 @@
           清空
         </a-button>
       </div>
-      <a-radio-group :value="viewMode" size="large" @change="$emit('update:viewMode', $event)">
+      <a-radio-group v-model:value="viewMode" size="large" @change="$emit('view-change')">
         <a-radio-button value="grid">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
             <path d="M3,11H11V3H3M3,21H11V13H3M13,21H21V13H13M13,3V11H21V3" />
@@ -158,13 +158,6 @@ const props = defineProps({
 // Emits
 const emit = defineEmits([
   'search',
-  'update:searchQuery',
-  'update:selectedBookId',
-  'update:typeFilter',
-  'update:statusFilter',
-  'update:avatarFilter',
-  'update:audioFilter',
-  'update:viewMode',
   'book-change',
   'filter-change',
   'view-change',
@@ -229,4 +222,4 @@ const emit = defineEmits([
     gap: 12px;
   }
 }
-</style>
+</style> 

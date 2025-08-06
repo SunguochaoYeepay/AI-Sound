@@ -44,7 +44,12 @@ class Book(BaseModel):
     def get_tags(self):
         """获取标签列表"""
         try:
-            return json.loads(self.tags) if self.tags else []
+            if isinstance(self.tags, str):
+                return json.loads(self.tags) if self.tags else []
+            elif isinstance(self.tags, list):
+                return self.tags
+            else:
+                return []
         except json.JSONDecodeError:
             return []
     

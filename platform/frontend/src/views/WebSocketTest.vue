@@ -146,9 +146,7 @@
     }
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const baseUrl = import.meta.env.VITE_API_BASE_URL || getBackendUrl()
-    const cleanHost = baseUrl.replace(/^https?:\/\//, '')
-    return `${protocol}//${cleanHost}/ws`
+    return `${protocol}//${window.location.host}/ws`
   })
 
   const connectionTime = computed(() => {
