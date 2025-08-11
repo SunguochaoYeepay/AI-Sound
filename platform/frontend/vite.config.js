@@ -25,7 +25,7 @@ export default defineConfig(({ mode }) => {
       }
     },
     server: {
-      port: 3000,
+      port: 4000,
       host: '0.0.0.0',
       strictPort: false,
       allowedHosts: [
@@ -37,7 +37,7 @@ export default defineConfig(({ mode }) => {
       ],
       hmr: {
         host: mode === 'development' ? 'localhost' : 'aisound.cpolar.top',
-        clientPort: mode === 'development' ? 3000 : 443,
+        clientPort: mode === 'development' ? 4000 : 443,
         protocol: mode === 'development' ? 'ws' : 'wss'
       },
       optimizeDeps: {

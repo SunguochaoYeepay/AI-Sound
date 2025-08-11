@@ -7,7 +7,7 @@
         style="width: 300px"
         size="large"
         @search="$emit('search')"
-        @input="$emit('update:searchQuery', $event.target.value)"
+        @input="handleSearchInput"
       />
 
       <a-select
@@ -15,7 +15,7 @@
         placeholder="选择书籍"
         style="width: 200px"
         size="large"
-        @change="$emit('update:selectedBookId', $event)"
+        @change="handleBookChange"
         :loading="booksLoading"
         show-search
         allow-clear
@@ -31,7 +31,7 @@
         placeholder="声音类型"
         style="width: 120px"
         size="large"
-        @change="$emit('update:typeFilter', $event)"
+        @change="handleTypeFilterChange"
       >
         <a-select-option value="">全部类型</a-select-option>
         <a-select-option value="male">男声</a-select-option>
@@ -46,7 +46,7 @@
         placeholder="配置状态"
         style="width: 120px"
         size="large"
-        @change="$emit('update:statusFilter', $event)"
+        @change="handleStatusFilterChange"
       >
         <a-select-option value="">全部状态</a-select-option>
         <a-select-option value="configured">已配置</a-select-option>
@@ -59,7 +59,7 @@
         placeholder="头像设置"
         style="width: 120px; opacity: 1 !important;"
         size="large"
-        @change="$emit('update:avatarFilter', $event)"
+        @change="handleAvatarFilterChange"
         :disabled="false"
       >
         <a-select-option value="">全部头像</a-select-option>
@@ -72,7 +72,7 @@
         placeholder="音频文件"
         style="width: 120px; opacity: 1 !important;"
         size="large"
-        @change="$emit('update:audioFilter', $event)"
+        @change="handleAudioFilterChange"
         :disabled="false"
       >
         <a-select-option value="">全部音频</a-select-option>
@@ -171,6 +171,37 @@ const emit = defineEmits([
   'select-all',
   'clear-selection'
 ])
+
+// 处理方法
+const handleBookChange = (bookId) => {
+  emit('update:selectedBookId', bookId)
+  emit('book-change', bookId)
+}
+
+const handleTypeFilterChange = (value) => {
+  emit('update:typeFilter', value)
+  emit('filter-change')
+}
+
+const handleStatusFilterChange = (value) => {
+  emit('update:statusFilter', value)
+  emit('filter-change')
+}
+
+const handleAvatarFilterChange = (value) => {
+  emit('update:avatarFilter', value)
+  emit('filter-change')
+}
+
+const handleAudioFilterChange = (value) => {
+  emit('update:audioFilter', value)
+  emit('filter-change')
+}
+
+const handleSearchInput = (event) => {
+  emit('update:searchQuery', event.target.value)
+  emit('search')
+}
 </script>
 
 <style scoped>
