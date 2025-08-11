@@ -15,26 +15,27 @@
       />
     </div>
     
-    <div class="voice-avatar">
-      <div
-        class="avatar-icon"
-        :style="{ background: character.avatarUrl ? 'transparent' : character.color }"
-      >
-        <img
-          v-if="character.avatarUrl"
-          :src="character.avatarUrl"
-          :alt="character.name"
-          class="avatar-image"
-          @error="handleAvatarError"
-        />
-        <span v-else>{{ character.name.charAt(0) }}</span>
+    <div class="voice-header">
+      <div class="voice-avatar">
+        <div
+          class="avatar-icon"
+          :style="{ background: character.avatarUrl ? 'transparent' : character.color }"
+        >
+          <img
+            v-if="character.avatarUrl"
+            :src="character.avatarUrl"
+            :alt="character.name"
+            class="avatar-image"
+            @error="handleAvatarError"
+          />
+          <span v-else>{{ character.name.charAt(0) }}</span>
+        </div>
+        <div class="voice-status" :class="character.status">
+          <div class="status-dot"></div>
+        </div>
       </div>
-      <div class="voice-status" :class="character.status">
-        <div class="status-dot"></div>
-      </div>
-    </div>
 
-    <div class="voice-info">
+      <div class="voice-info">
       <h3 class="voice-name">{{ character.name }}</h3>
       <p class="voice-desc">{{ character.description }}</p>
 
@@ -50,81 +51,80 @@
         </div>
       </div>
 
-      <div class="voice-meta">
-        <!-- 声音样本模式：显示质量和使用次数 -->
-        <template v-if="managementType === 'voice'">
-          <div class="meta-item">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-              <path
-                d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
-              />
-            </svg>
-            <span>{{ (character.quality || 0).toFixed(1) }}</span>
-          </div>
-          <div class="meta-item">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-              <path
-                d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"
-              />
-            </svg>
-            <span>{{ character.usageCount }}</span>
-          </div>
-        </template>
-
-        <!-- 角色模式：显示配置状态 -->
-        <template v-else>
-          <div class="meta-item">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-              <path
-                d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"
-              />
-            </svg>
-            <span>{{ character.status === 'configured' ? '已配置' : '待配置' }}</span>
-          </div>
-          <div class="meta-item">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-              <path
-                d="M9 11H7v3h2v-3zm4 0h-2v3h2v-3zm4 0h-2v3h2v-3zm2-7h-1V2h-2v2H8V2H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H5V9h14v11z"
-              />
-            </svg>
-            <span>{{ character.createdAt }}</span>
-          </div>
-        </template>
       </div>
     </div>
 
+    <div class="voice-meta">
+      <!-- 声音样本模式：显示质量和使用次数 -->
+      <template v-if="managementType === 'voice'">
+        <div class="meta-item">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+            <path
+              d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
+            />
+          </svg>
+          <span>{{ (character.quality || 0).toFixed(1) }}</span>
+        </div>
+        <div class="meta-item">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+            <path
+              d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"
+            />
+          </svg>
+          <span>{{ character.usageCount }}</span>
+        </div>
+      </template>
+
+      <!-- 角色模式：显示配置状态 -->
+      <template v-else>
+        <div class="meta-item">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+            <path
+              d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"
+            />
+          </svg>
+          <span>{{ character.status === 'configured' ? '已配置' : '待配置' }}</span>
+        </div>
+        <div class="meta-item">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+            <path
+              d="M9 11H7v3h2v-3zm4 0h-2v3h2v-3zm4 0h-2v3h2v-3zm2-7h-1V2h-2v2H8V2H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H5V9h14v11z"
+            />
+          </svg>
+          <span>{{ character.createdAt }}</span>
+        </div>
+      </template>
+    </div>
+
     <div class="voice-actions">
-      <a-button type="text" size="small" @click.stop="$emit('play', character)">
+      <a-button type="text" size="small" @click.stop="$emit('play', character)" title="播放">
         <template #icon>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
             <path d="M8,5.14V19.14L19,12.14L8,5.14Z" />
           </svg>
         </template>
       </a-button>
-      <a-dropdown @click.stop="">
-        <a-button type="text" size="small">
-          <template #icon>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-              <path
-                d="M12,16A2,2 0 0,1 14,18A2,2 0 0,1 12,20A2,2 0 0,1 10,18A2,2 0 0,1 12,16M12,10A2,2 0 0,1 14,12A2,2 0 0,1 12,14A2,2 0 0,1 10,12A2,2 0 0,1 12,10M12,4A2,2 0 0,1 14,6A2,2 0 0,1 12,8A2,2 0 0,1 10,6A2,2 0 0,1 12,4Z"
-              />
-            </svg>
-          </template>
-        </a-button>
-        <template #overlay>
-          <a-menu>
-            <a-menu-item key="edit" @click="$emit('edit', character)">编辑</a-menu-item>
-            <a-menu-item key="duplicate" @click="$emit('duplicate', character)">复制</a-menu-item>
-            <a-menu-item key="export" @click="$emit('export', character)">导出</a-menu-item>
-            <a-menu-divider />
-            <a-menu-item
-              key="delete"
-              @click="$emit('delete', character)"
-              style="color: #ef4444"
-            >删除</a-menu-item>
-          </a-menu>
+      <a-button type="text" size="small" @click.stop="$emit('view', character)" title="详情">
+        <template #icon>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9M12,17A5,5 0 0,1 7,12A5,5 0 0,1 12,7A5,5 0 0,1 17,12A5,5 0 0,1 12,17M12,4.5C7,4.5 2.73,7.61 1,12C2.73,16.39 7,19.5 12,19.5C17,19.5 21.27,16.39 23,12C21.27,7.61 17,4.5 12,4.5Z" />
+          </svg>
         </template>
-      </a-dropdown>
+      </a-button>
+      <a-button type="text" size="small" @click.stop="$emit('edit', character)" title="编辑">
+        <template #icon>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.12,5.12L18.87,8.87M3,17.25V21H6.75L17.81,9.93L14.06,6.18L3,17.25Z" />
+          </svg>
+        </template>
+      </a-button>
+      <a-button type="text" size="small" @click.stop="$emit('delete', character)" title="删除" style="color: #ef4444">
+        <template #icon>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z" />
+          </svg>
+        </template>
+      </a-button>
     </div>
   </div>
 </template>
@@ -156,6 +156,7 @@ const props = defineProps({
 const emit = defineEmits([
   'select',
   'play',
+  'view',
   'edit',
   'duplicate',
   'export',
@@ -181,13 +182,14 @@ const handleAvatarError = (event) => {
   background: #fff;
   border: 1px solid #e5e7eb;
   border-radius: 12px;
-  padding: 20px;
+  padding: 16px;
   cursor: pointer;
   transition: all 0.2s ease;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
   min-height: 200px;
+  height: 100%;
 }
 
 .voice-card:hover {
@@ -217,23 +219,28 @@ const handleAvatarError = (event) => {
   padding: 2px;
 }
 
-.voice-avatar {
-  position: relative;
+.voice-header {
   display: flex;
-  justify-content: center;
+  align-items: flex-start;
+  gap: 12px;
   margin-bottom: 8px;
 }
 
+.voice-avatar {
+  position: relative;
+  flex-shrink: 0;
+}
+
 .avatar-icon {
-  width: 64px;
-  height: 64px;
+  width: 56px;
+  height: 56px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   color: white;
   font-weight: bold;
-  font-size: 24px;
+  font-size: 20px;
   position: relative;
 }
 
@@ -275,22 +282,22 @@ const handleAvatarError = (event) => {
 
 .voice-info {
   flex: 1;
-  text-align: center;
+  min-width: 0;
 }
 
 .voice-name {
   font-size: 16px;
   font-weight: 600;
-  margin: 0 0 8px 0;
+  margin: 0 0 6px 0;
   color: #1f2937;
-  line-height: 1.4;
+  line-height: 1.3;
 }
 
 .voice-desc {
   font-size: 12px;
   color: #6b7280;
-  margin: 0 0 12px 0;
-  line-height: 1.4;
+  margin: 0 0 8px 0;
+  line-height: 1.3;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -298,7 +305,7 @@ const handleAvatarError = (event) => {
 }
 
 .book-info {
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 
 .book-badge {
@@ -314,9 +321,9 @@ const handleAvatarError = (event) => {
 
 .voice-meta {
   display: flex;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 16px;
-  margin-top: auto;
+  margin-top: 4px;
 }
 
 .meta-item {
@@ -329,9 +336,11 @@ const handleAvatarError = (event) => {
 
 .voice-actions {
   display: flex;
-  justify-content: center;
-  gap: 8px;
+  justify-content: space-between;
+  gap: 4px;
   margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #f3f4f6;
 }
 
 /* 暗黑模式适配 */
@@ -375,5 +384,9 @@ const handleAvatarError = (event) => {
 
 [data-theme='dark'] .meta-item {
   color: #9ca3af;
+}
+
+[data-theme='dark'] .voice-actions {
+  border-top-color: #374151;
 }
 </style>

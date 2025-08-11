@@ -48,21 +48,23 @@
     <div class="voice-library-content">
       <!-- 🔧 使用新组件：网格视图 -->
       <div v-if="viewMode === 'grid'" class="grid-view">
-        <CharacterCard
-          v-for="voice in voiceLibrary"
-          :key="voice.id"
-          :character="voice"
-          :selected-character-id="selectedVoice?.id"
-          :selected-character-ids="selectedCharacterIds"
-          :management-type="managementType"
-          @select="selectVoice"
-          @play="playVoice"
-          @edit="editVoice"
-          @duplicate="duplicateVoice"
-          @export="exportVoice"
-          @delete="confirmDeleteCharacter"
-          @batch-select="handleCharacterSelection"
-        />
+        <div class="character-cards-container">
+          <CharacterCard
+            v-for="voice in voiceLibrary"
+            :key="voice.id"
+            :character="voice"
+            :selected-character-id="selectedVoice?.id"
+            :selected-character-ids="selectedCharacterIds"
+            :management-type="managementType"
+            @select="selectVoice"
+            @play="playVoice"
+            @edit="editVoice"
+            @duplicate="duplicateVoice"
+            @export="exportVoice"
+            @delete="confirmDeleteCharacter"
+            @batch-select="handleCharacterSelection"
+          />
+        </div>
         
         <!-- 🔧 使用新组件：卡片模式分页组件 -->
         <CharacterPagination
@@ -183,7 +185,7 @@
       :color-options="colorOptions"
       @close="cancelEdit"
       @save="saveVoice"
-      @generate-avatar="openGenerateAvatarModal"
+      @generate-avatar="openGenerateAvatarDrawer"
       @remove-avatar="removeAvatar"
       @book-search="handleBookSearch"
       @load-books="loadBooksForEdit"
@@ -230,9 +232,9 @@
       @start-new-discovery="startNewDiscovery"
     />
 
-    <!-- 🔧 使用新组件：AI生成头像模态框 -->
-    <AvatarGenerationModal
-      :visible="showGenerateAvatarModal"
+    <!-- 🔧 使用新组件：AI生成头像抽屉 -->
+    <AvatarGenerationDrawer
+      :visible="showGenerateAvatarDrawer"
       :generating="avatarGenerating"
       :character-name="editingVoice.name"
       :character-description="editingVoice.description"
@@ -285,7 +287,7 @@
   import CharacterSmartDiscovery from './Characters/components/CharacterSmartDiscovery.vue'
   import CharacterHeader from './Characters/components/CharacterHeader.vue'
   import CharacterStats from './Characters/components/CharacterStats.vue'
-  import AvatarGenerationModal from './Characters/components/AvatarGenerationModal.vue'
+  import AvatarGenerationDrawer from './Characters/components/AvatarGenerationDrawer.vue'
   import BatchConfigModal from './Characters/components/BatchConfigModal.vue'
   
   // 🔧 引入composable
@@ -855,7 +857,7 @@
           editingVoice.value.avatarPreview = result.avatar_url
           
           message.success('头像生成成功！')
-          showGenerateAvatarModal.value = false
+          showGenerateAvatarDrawer.value = false
         } else {
           message.error(`头像生成失败: ${result.message}`)
         }
@@ -872,18 +874,18 @@
     }
   }
 
-  const openGenerateAvatarModal = () => {
+  const openGenerateAvatarDrawer = () => {
     // 重置所有头像生成配置参数
     avatarGenConfig.style = 'realistic'
     avatarGenConfig.size = '512x512'
     avatarGenConfig.customPrompt = ''
     avatarGenConfig.referenceImageList = []
     avatarGenConfig.referenceImageFile = null
-    showGenerateAvatarModal.value = true
+    showGenerateAvatarDrawer.value = true
   }
 
   const cancelGenerateAvatar = () => {
-    showGenerateAvatarModal.value = false
+    showGenerateAvatarDrawer.value = false
     // 重置所有头像生成配置参数
     avatarGenConfig.style = 'realistic'
   }
@@ -1140,7 +1142,7 @@
 
 
   // 🔥 新增：AI头像生成相关状态
-  const showGenerateAvatarModal = ref(false)
+  const showGenerateAvatarDrawer = ref(false)
   const avatarGenerating = ref(false)
   const avatarGenConfig = reactive({
     style: 'realistic',
@@ -1216,9 +1218,16 @@
   }
 
   .grid-view {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    display: flex;
+    flex-direction: column;
     gap: 24px;
+  }
+
+  .character-cards-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 16px;
+    align-items: stretch;
   }
 
   .voice-card {

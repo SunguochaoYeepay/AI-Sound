@@ -21,8 +21,7 @@
       layout="vertical"
       class="voice-edit-form"
     >
-      <!-- 角色基本信息 -->
-      <a-divider orientation="left">角色基本信息</a-divider>
+     
 
       <a-form-item label="角色名称" name="name" required>
         <a-input v-model:value="character.name" placeholder="请输入角色名称" />

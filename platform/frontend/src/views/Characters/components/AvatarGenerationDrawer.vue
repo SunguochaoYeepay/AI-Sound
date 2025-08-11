@@ -1,14 +1,12 @@
 <template>
-  <a-modal
+  <a-drawer
     :open="visible"
     title="AI生成角色头像"
-    width="600"
+    width="500"
+    placement="right"
     :maskClosable="false"
-    @ok="$emit('generate')"
-    @cancel="$emit('cancel')"
-    :confirmLoading="generating"
-    okText="生成头像"
-    cancelText="取消"
+    @close="$emit('cancel')"
+    :bodyStyle="{ paddingBottom: '80px' }"
   >
     <div class="avatar-generation-form">
       <a-form layout="vertical">
@@ -16,22 +14,22 @@
           <a-input :value="characterName" disabled />
         </a-form-item>
         
-                 <a-form-item label="风格偏好">
-           <a-radio-group :value="config.style" class="style-radio-group" @change="$emit('update:config', { ...config, style: $event })">
-             <a-radio value="realistic">写实风格</a-radio>
-             <a-radio value="anime">动漫风格</a-radio>
-             <a-radio value="cartoon">卡通风格</a-radio>
-             <a-radio value="artistic">艺术风格</a-radio>
-           </a-radio-group>
-         </a-form-item>
-         
-         <a-form-item label="图片尺寸">
-           <a-select :value="config.size" @change="$emit('update:config', { ...config, size: $event })">
-             <a-select-option value="512x512">512x512 (标准)</a-select-option>
-             <a-select-option value="768x768">768x768 (高清)</a-select-option>
-             <a-select-option value="1024x1024">1024x1024 (超高清)</a-select-option>
-           </a-select>
-         </a-form-item>
+        <a-form-item label="风格偏好">
+          <a-radio-group :value="config.style" class="style-radio-group" @change="$emit('update:config', { ...config, style: $event })">
+            <a-radio value="realistic">写实风格</a-radio>
+            <a-radio value="anime">动漫风格</a-radio>
+            <a-radio value="cartoon">卡通风格</a-radio>
+            <a-radio value="artistic">艺术风格</a-radio>
+          </a-radio-group>
+        </a-form-item>
+        
+        <a-form-item label="图片尺寸">
+          <a-select :value="config.size" @change="$emit('update:config', { ...config, size: $event })">
+            <a-select-option value="512x512">512x512 (标准)</a-select-option>
+            <a-select-option value="768x768">768x768 (高清)</a-select-option>
+            <a-select-option value="1024x1024">1024x1024 (超高清)</a-select-option>
+          </a-select>
+        </a-form-item>
         
         <!-- 参考图像上传 -->
         <a-form-item label="参考图像（可选）">
@@ -55,13 +53,13 @@
           </div>
         </a-form-item>
         
-                 <a-form-item label="自定义提示词（可选）">
-           <a-textarea 
-             :value="config.customPrompt"
-             placeholder="如果您有特定的外貌要求，可以在这里描述..."
-             :rows="3"
-             @input="$emit('update:config', { ...config, customPrompt: $event.target.value })"
-           />
+        <a-form-item label="自定义提示词（可选）">
+          <a-textarea 
+            :value="config.customPrompt"
+            placeholder="如果您有特定的外貌要求，可以在这里描述..."
+            :rows="3"
+            @input="$emit('update:config', { ...config, customPrompt: $event.target.value })"
+          />
           <div class="tips">
             <small>留空将使用基于角色描述的智能提示词</small>
           </div>
@@ -76,7 +74,21 @@
         </a-form-item>
       </a-form>
     </div>
-  </a-modal>
+
+    <!-- 抽屉底部操作按钮 -->
+    <div class="drawer-footer">
+      <a-space>
+        <a-button @click="$emit('cancel')">取消</a-button>
+        <a-button 
+          type="primary" 
+          :loading="generating" 
+          @click="$emit('generate')"
+        >
+          {{ generating ? '生成中...' : '生成头像' }}
+        </a-button>
+      </a-space>
+    </div>
+  </a-drawer>
 </template>
 
 <script setup>
@@ -185,6 +197,17 @@ const removeReferenceImage = () => {
   margin-bottom: 0;
 }
 
+.drawer-footer {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 16px 24px;
+  background: #fff;
+  border-top: 1px solid #f0f0f0;
+  text-align: right;
+}
+
 /* 暗黑模式适配 */
 [data-theme='dark'] .character-preview {
   background: #2d2d2d !important;
@@ -193,5 +216,22 @@ const removeReferenceImage = () => {
 
 [data-theme='dark'] .tips {
   color: #8c8c8c !important;
+}
+
+[data-theme='dark'] .drawer-footer {
+  background: #1f1f1f !important;
+  border-top-color: #434343 !important;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .style-radio-group {
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .drawer-footer {
+    padding: 12px 16px;
+  }
 }
 </style>
