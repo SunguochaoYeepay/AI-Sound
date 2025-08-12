@@ -41,10 +41,10 @@ class CharacterCRUDService:
             character = Character(
                 name=character_data.name,
                 description=character_data.description or "",
-                voice_type=character_data.voice_type or "custom",
-                quality_score=character_data.quality_score or 0.0,
+                voice_type=getattr(character_data, 'voice_type', None) or "custom",
+                quality_score=getattr(character_data, 'quality_score', None) or 0.0,
                 status="unconfigured",
-                tags=json.dumps(character_data.tags or []),
+                tags=json.dumps(getattr(character_data, 'tags', None) or []),
                 book_id=character_data.book_id,
                 chapter_id=character_data.chapter_id,
                 created_at=datetime.now(),

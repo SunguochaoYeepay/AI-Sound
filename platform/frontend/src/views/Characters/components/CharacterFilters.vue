@@ -22,7 +22,7 @@
       >
         <a-select-option value="">全部书籍</a-select-option>
         <a-select-option v-for="book in availableBooks" :key="book.id" :value="book.id">
-          {{ book.title }} ({{ book.character_count || 0 }}个角色)
+          {{ book.title }} 
         </a-select-option>
       </a-select>
 

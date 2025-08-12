@@ -3,7 +3,6 @@
     <!-- 🔧 使用新组件：页面头部 -->
     <CharacterHeader
       :selected-count="selectedCharacterIds.length"
-      @smart-discovery="startSmartDiscovery"
       @add-character="addNewCharacter"
       @batch-config="openBatchConfigModal"
     />
@@ -56,7 +55,7 @@
             :selected-character-id="selectedVoice?.id"
             :selected-character-ids="selectedCharacterIds"
             :management-type="managementType"
-            @select="selectVoice"
+            @select="handleSelectVoice"
             @play="playVoice"
             @edit="editVoice"
             @duplicate="duplicateVoice"
@@ -79,86 +78,17 @@
         />
       </div>
 
-      <!-- 列表视图 -->
-      <div v-else class="list-view">
-        <a-table
-          :columns="tableColumns"
-          :data-source="voiceLibrary"
-          :pagination="pagination"
-          row-key="id"
-          size="large"
-          @change="handleTableChange"
-          @row="(record) => ({ onClick: () => selectVoice(record) })"
-        >
-          <template #bodyCell="{ column, record }">
-            <template v-if="column.key === 'name'">
-              <div style="display: flex; align-items: center; gap: 12px">
-                <div
-                  class="table-avatar"
-                  :style="{ background: record.avatarUrl ? 'transparent' : record.color }"
-                >
-                  <img
-                    v-if="record.avatarUrl"
-                    :src="record.avatarUrl"
-                    :alt="record.name"
-                    class="avatar-image"
-                  />
-                  <span v-else>{{ record.name.charAt(0) }}</span>
-                </div>
-                <div>
-                  <div style="font-weight: 500">{{ record.name }}</div>
-                  <div style="font-size: 12px; color: #6b7280">{{ record.description }}</div>
-                </div>
-              </div>
-            </template>
-
-            <template v-if="column.key === 'quality'">
-              <a-rate v-model:value="record.quality" disabled allow-half />
-            </template>
-
-            <template v-if="column.key === 'status'">
-              <a-tag :color="getStatusColor(record.status)">
-                {{ getStatusText(record.status) }}
-              </a-tag>
-            </template>
-
-            <template v-if="column.key === 'actions'">
-              <div style="display: flex; gap: 8px">
-                <a-button type="text" size="small" @click.stop="playVoice(record)">
-                  <template #icon>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M8,5.14V19.14L19,12.14L8,5.14Z" />
-                    </svg>
-                  </template>
-                </a-button>
-                <a-button type="text" size="small" @click.stop="editVoice(record)">
-                  <template #icon>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                      <path
-                        d="M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.12,5.12L18.87,8.87M3,17.25V21H6.75L17.81,9.93L14.06,6.18L3,17.25Z"
-                      />
-                    </svg>
-                  </template>
-                </a-button>
-                <a-button
-                  type="text"
-                  size="small"
-                  danger
-                  @click.stop="confirmDeleteCharacter(record)"
-                >
-                  <template #icon>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                      <path
-                        d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z"
-                      />
-                    </svg>
-                  </template>
-                </a-button>
-              </div>
-            </template>
-          </template>
-        </a-table>
-      </div>
+      <!-- 🔧 使用新组件：列表视图 -->
+      <CharacterListView
+        v-else
+        :characters="voiceLibrary"
+        :pagination="pagination"
+        @select="handleSelectVoice"
+        @play="playVoice"
+        @edit="editVoice"
+        @delete="confirmDeleteCharacter"
+        @table-change="handleTableChange"
+      />
     </div>
 
     <!-- 🔧 使用新组件：声音详情面板 -->
@@ -192,45 +122,7 @@
       @play-audio="playCurrentAudio"
     />
 
-    <!-- 🔧 使用新组件：智能角色发现抽屉 -->
-    <CharacterSmartDiscovery
-      :visible="showSmartDiscoveryModal"
-      :current-step="discoveryStep"
-      :steps="discoverySteps"
-      :books-data="booksData"
-      :books-loading="booksLoading"
-      :selected-book="smartDiscovery.selectedBook"
-      :chapters-data="chaptersData"
-      :chapters-loading="chaptersLoading"
-      :selected-chapters="smartDiscovery.selectedChapters"
-      :chapter-indeterminate="chapterIndeterminate"
-      :chapter-check-all="chapterCheckAll"
-      :analysis-progress="smartDiscovery.analysisProgress"
-      :analysis-status="analysisStatus"
-      :analysis-text="analysisText"
-      :analysis-complete="smartDiscovery.analysisComplete"
-      :discovered-characters="smartDiscovery.discoveredCharacters"
-      :main-characters-count="mainCharactersCount"
-      :new-characters="newCharacters"
-      :selected-configs="selectedConfigs"
-      :config-indeterminate="configIndeterminate"
-      :config-check-all="configCheckAll"
-      :creating-characters="creatingCharacters"
-      :created-characters="createdCharacters"
-      :creation-summary="getCreationSummary()"
-      :color-options="colorOptions"
-      @close="closeSmartDiscovery"
-      @load-books="loadBooks"
-      @select-book="selectBook"
-      @next-step="nextStep"
-      @prev-step="prevStep"
-      @toggle-all-chapters="toggleAllChapters"
-      @toggle-chapter="toggleChapterSelection"
-      @analyze-characters="analyzeCharacters"
-      @check-all-configs="onCheckAllConfigs"
-      @edit-character="editCreatedCharacter"
-      @start-new-discovery="startNewDiscovery"
-    />
+
 
     <!-- 🔧 使用新组件：AI生成头像抽屉 -->
     <AvatarGenerationDrawer
@@ -266,7 +158,7 @@
 </template>
 
 <script setup>
-  import { ref, computed, reactive, onMounted, watch, nextTick, h } from 'vue'
+  import { ref, computed, reactive, onMounted, h } from 'vue'
   import { useRoute } from 'vue-router'
   import { message, Modal } from 'ant-design-vue'
   import { charactersAPI, booksAPI } from '@/api'
@@ -274,21 +166,21 @@
   import { playCustomAudio } from '@/utils/audioService'
 
   // 🔧 引入新的 composables
-  import { useSmartDiscovery } from '@/composables/useSmartDiscovery'
   import { useBatchConfig } from '@/composables/useBatchConfig'
-  import { getTableColumns } from './Characters/config/tableColumns'
+  
   
   // 🔧 引入新组件
   import CharacterCard from './Characters/components/CharacterCard.vue'
-  import CharacterFilters from './Characters/components/CharacterFilters.vue'
-  import CharacterPagination from './Characters/components/CharacterPagination.vue'
-  import CharacterDetail from './Characters/components/CharacterDetail.vue'
-  import CharacterEdit from './Characters/components/CharacterEdit.vue'
-  import CharacterSmartDiscovery from './Characters/components/CharacterSmartDiscovery.vue'
-  import CharacterHeader from './Characters/components/CharacterHeader.vue'
-  import CharacterStats from './Characters/components/CharacterStats.vue'
-  import AvatarGenerationDrawer from './Characters/components/AvatarGenerationDrawer.vue'
-  import BatchConfigModal from './Characters/components/BatchConfigModal.vue'
+import CharacterFilters from './Characters/components/CharacterFilters.vue'
+import CharacterPagination from './Characters/components/CharacterPagination.vue'
+import CharacterListView from './Characters/components/CharacterListView.vue'
+import CharacterDetail from './Characters/components/CharacterDetail.vue'
+import CharacterEdit from './Characters/components/CharacterEdit.vue'
+
+import CharacterHeader from './Characters/components/CharacterHeader.vue'
+import CharacterStats from './Characters/components/CharacterStats.vue'
+import AvatarGenerationDrawer from './Characters/components/AvatarGenerationDrawer.vue'
+import BatchConfigModal from './Characters/components/BatchConfigModal.vue'
   
   // 🔧 引入composable
   import { useCharacters } from '@/composables/useCharacters'
@@ -315,39 +207,7 @@
     clearCharacterSelection
   } = useCharacters()
 
-  // 🔧 使用智能发现 composable
-  const {
-    discoveryStep,
-    discoverySteps,
-    booksData,
-    chaptersData,
-    chaptersLoading,
-    selectedChapters,
-    chapterCheckAll,
-    chapterIndeterminate,
-    analysisStatus,
-    analysisText,
-    newCharacters,
-    selectedConfigs,
-    configCheckAll,
-    configIndeterminate,
-    creatingCharacters,
-    createdCharacters,
-    mainCharactersCount,
-    loadBooks,
-    selectBook,
-    analyzeCharacters,
-    updateConfigCheckState,
-    getCreationSummary,
-    resetDiscoveryState,
-    startSmartDiscovery,
-    nextStep,
-    prevStep,
-    toggleChapterSelection,
-    toggleAllChapters,
-    updateChapterCheckState,
-    onCheckAllConfigs
-  } = useSmartDiscovery()
+
 
   // 🔧 使用批量配置 composable
   const {
@@ -368,7 +228,13 @@
   const viewMode = ref('grid')
   const showDetailDrawer = ref(false)
   const showEditModal = ref(false)
-  const showSmartDiscoveryModal = ref(false)
+
+  // 🔧 自定义选择角色方法，处理详情显示
+  const handleSelectVoice = (voice) => {
+    selectVoice(voice)
+    showDetailDrawer.value = true
+  }
+
   const showUploadModal = ref(false)
   const managementType = ref('character') // 管理类型：'voice' 或 'character'
 
@@ -378,7 +244,7 @@
 
   // 编辑状态
   const editingVoice = ref({})
-  const editForm = ref(null)
+
   const characterEditRef = ref(null)
   const saving = ref(false)
 
@@ -407,42 +273,7 @@
     '#84cc16'
   ]
 
-  // 工具函数定义 - 需要在tableColumns之前定义
-  const getStatusColor = (status) => {
-    const colors = {
-      active: 'success',
-      training: 'processing',
-      inactive: 'default',
-      configured: 'success', // 🔧 修复：添加configured状态
-      unconfigured: 'warning' // 🔧 修复：添加unconfigured状态
-    }
-    return colors[status] || 'default'
-  }
 
-  const getStatusText = (status) => {
-    const texts = {
-      active: '可用',
-      training: '训练中',
-      inactive: '未激活',
-      configured: '已配置', // 🔧 修复：添加configured状态
-      unconfigured: '待配置' // 🔧 修复：添加unconfigured状态
-    }
-    return texts[status] || '未知'
-  }
-
-  const getVoiceTypeLabel = (type) => {
-    const typeMap = {
-      'male': '男声',
-      'female': '女声', 
-      'child': '童声',
-      'elder': '老人声',
-      'custom': '自定义'
-    }
-    return typeMap[type] || '未知'
-  }
-
-  // 表格列定义
-  const tableColumns = getTableColumns(getStatusColor, getStatusText, getVoiceTypeLabel)
 
   // 页面初始化时加载书籍列表
   onMounted(async () => {
@@ -733,7 +564,7 @@
       quality: voice.quality,
       status: voice.status,
       color: voice.color,
-      avatarUrl: voice.avatarUrl,
+      avatarUrl: voice.avatarUrl ? `${voice.avatarUrl}?t=${Date.now()}` : null,
       avatarPreview: null,
       avatarFile: null,
       avatarFileList: [],
@@ -856,6 +687,9 @@
           editingVoice.value.avatarUrl = result.avatar_url
           editingVoice.value.avatarPreview = result.avatar_url
           
+          // 🔧 修复：刷新角色列表以显示新头像
+          await loadVoiceLibrary()
+          
           message.success('头像生成成功！')
           showGenerateAvatarDrawer.value = false
         } else {
@@ -934,49 +768,7 @@
 
 
 
-  // 智能发现方法
-  const closeSmartDiscovery = () => {
-    nextTick(() => {
-      showSmartDiscoveryModal.value = false
-      resetDiscoveryState()
-    })
-  }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  // 编辑已创建的角色
-  const editCreatedCharacter = (character) => {
-    // 找到对应的角色并编辑
-    const voice = voiceLibrary.value.find((v) => v.name === character.name)
-    if (voice) {
-      editVoice(voice)
-      closeSmartDiscovery()
-    }
-  }
-
-  // 开始新的发现
-  const startNewDiscovery = () => {
-    resetDiscoveryState()
-    loadBooks()
-  }
 
 
 
@@ -1094,25 +886,7 @@
     }
   }
 
-  // 监听选择变化
-  watch([selectedChapters, selectedConfigs], () => {
-    nextTick(() => {
-      updateChapterCheckState()
-      updateConfigCheckState()
-    })
-  })
 
-  // 监听智能发现模态框打开
-  watch(showSmartDiscoveryModal, async (newVal) => {
-    if (newVal) {
-      try {
-        await loadBooks()
-      } catch (error) {
-        console.error('加载书籍列表失败:', error)
-        message.error('加载书籍列表失败，请重试')
-      }
-    }
-  })
 
   // 组件挂载时加载数据
   onMounted(async () => {
@@ -1124,18 +898,7 @@
     }
   })
 
-  // 智能发现相关数据
-  const smartDiscovery = reactive({
-    visible: false,
-    currentStep: 1,
-    selectedBook: null,
-    selectedChapters: [],
-    analysisProgress: 0,
-    analysisComplete: false,
-    discoveredCharacters: [],
-    configuredCharacters: [],
-    creationResults: []
-  })
+
 
 
 
@@ -1758,99 +1521,7 @@
     }
   }
 
-  /* 智能发现样式 */
-  .smart-discovery-container {
-    padding: 0;
-  }
 
-  .statistics-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 24px;
-    margin: 16px 0;
-  }
-
-  .discovery-steps {
-    margin-bottom: 32px;
-  }
-
-  .step-content {
-    min-height: 400px;
-  }
-
-  .step-panel {
-    padding: 24px 0;
-  }
-
-  .step-header {
-    text-align: center;
-    margin-bottom: 32px;
-  }
-
-  .step-header h3 {
-    font-size: 20px;
-    font-weight: 600;
-    color: #1f2937;
-    margin: 0 0 8px 0;
-  }
-
-  .step-header p {
-    color: #6b7280;
-    margin: 0;
-  }
-
-  .success-icon {
-    margin-bottom: 16px;
-  }
-
-  .step-actions {
-    display: flex;
-    justify-content: center;
-    gap: 16px;
-    margin-top: 32px;
-    padding-top: 24px;
-    border-top: 1px solid #d1d5db;
-  }
-
-  /* 书籍选择样式 */
-  .book-selection {
-    margin-bottom: 32px;
-  }
-
-  .empty-state {
-    text-align: center;
-    padding: 48px 24px;
-    color: #6b7280;
-  }
-
-  .empty-state p {
-    margin: 16px 0;
-    font-size: 16px;
-  }
-
-  .books-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 16px;
-  }
-
-  .book-card {
-    border: 2px solid #d1d5db;
-    border-radius: 12px;
-    padding: 20px;
-    cursor: pointer;
-    transition: all 0.3s;
-    display: flex;
-    align-items: flex-start;
-    gap: 16px;
-    min-height: 120px;
-  }
-
-  .book-card:hover {
-    border-color: var(--primary-color);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(var(--primary-color-rgb), 0.15);
-  }
 
   .book-card.selected {
     border-color: var(--primary-color);
@@ -2325,101 +1996,7 @@
     border: 1px solid #434343 !important;
   }
 
-  /* 智能角色发现抽屉暗黑模式适配 */
-  [data-theme='dark'] .smart-discovery-container {
-    background: transparent !important;
-    color: #d1d5db !important;
-  }
 
-  [data-theme='dark'] .step-header h3 {
-    color: #fff !important;
-  }
-
-  [data-theme='dark'] .step-header p {
-    color: #8c8c8c !important;
-  }
-
-  [data-theme='dark'] .book-card {
-    background: #2d2d2d !important;
-    border-color: #434343 !important;
-    color: #d1d5db !important;
-  }
-
-  [data-theme='dark'] .book-card:hover {
-    background: #3a3a3a !important;
-    border-color: var(--primary-color) !important;
-    box-shadow: 0 4px 12px rgba(var(--primary-color-rgb), 0.25) !important;
-  }
-
-  [data-theme='dark'] .book-card.selected {
-    background: rgba(var(--primary-color-rgb), 0.15) !important;
-    border-color: var(--primary-color) !important;
-  }
-
-  [data-theme='dark'] .book-info h4 {
-    color: #fff !important;
-  }
-
-  [data-theme='dark'] .book-info p,
-  [data-theme='dark'] .book-stats,
-  [data-theme='dark'] .book-id {
-    color: #8c8c8c !important;
-  }
-
-  [data-theme='dark'] .book-status {
-    background: var(--primary-color) !important;
-    color: #fff !important;
-  }
-
-  [data-theme='dark'] .chapter-item {
-    background: #2d2d2d !important;
-    border-bottom-color: #434343 !important;
-  }
-
-  [data-theme='dark'] .chapter-title {
-    color: #fff !important;
-  }
-
-  [data-theme='dark'] .chapter-meta {
-    color: #8c8c8c !important;
-  }
-
-  [data-theme='dark'] .selection-controls {
-    background: #2d2d2d !important;
-    border-color: #434343 !important;
-  }
-
-  [data-theme='dark'] .selection-info {
-    color: #8c8c8c !important;
-  }
-
-  [data-theme='dark'] .chapters-list {
-    border-color: #434343 !important;
-    background: #1f1f1f !important;
-  }
-
-  [data-theme='dark'] .progress-text {
-    color: #8c8c8c !important;
-  }
-
-  [data-theme='dark'] .results-summary {
-    background: #2d2d2d !important;
-    border-color: #434343 !important;
-  }
-
-  [data-theme='dark'] .characters-preview h4 {
-    color: #fff !important;
-  }
-
-  [data-theme='dark'] .character-preview-item,
-  [data-theme='dark'] .created-character-item {
-    background: #2d2d2d !important;
-    border-color: #434343 !important;
-  }
-
-  [data-theme='dark'] .character-name {
-    color: #fff !important;
-  }
 
   [data-theme='dark'] .character-meta {
     color: #8c8c8c !important;

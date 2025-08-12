@@ -9,12 +9,6 @@
         <p class="page-description">管理您的角色库，为语音合成项目提供声音素材</p>
       </div>
       <div class="action-section">
-        <a-button type="primary" size="large" @click="$emit('smart-discovery')" ghost>
-          <template #icon>
-            <SearchOutlined />
-          </template>
-          智能发现
-        </a-button>
         <a-button type="primary" size="large" @click="$emit('add-character')">
           <template #icon>
             <PlusOutlined />
@@ -36,7 +30,7 @@
 </template>
 
 <script setup>
-import { UserOutlined, SearchOutlined, PlusOutlined, SettingOutlined } from '@ant-design/icons-vue'
+import { UserOutlined, PlusOutlined, SettingOutlined } from '@ant-design/icons-vue'
 
 defineProps({
   selectedCount: {
@@ -45,7 +39,7 @@ defineProps({
   }
 })
 
-defineEmits(['smart-discovery', 'add-character', 'batch-config'])
+defineEmits(['add-character', 'batch-config'])
 </script>
 
 <style scoped>

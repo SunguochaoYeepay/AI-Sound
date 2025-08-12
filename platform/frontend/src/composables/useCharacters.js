@@ -125,8 +125,8 @@ export function useCharacters() {
             reference_audio_path: character.reference_audio_path || null, // 保留原始路径
             latentFileUrl: character.latentFileUrl || '',
             latent_file_path: character.latent_file_path || null, // 保留原始路径
-            // 🔧 修复：正确映射头像相关字段
-            avatarUrl: character.avatarUrl || null,
+            // 🔧 修复：正确映射头像相关字段，添加缓存破坏参数
+            avatarUrl: character.avatarUrl ? `${character.avatarUrl}?t=${Date.now()}` : null,
             avatar_path: character.avatar_path || null, // 保留原始路径
             book: character.book,
             book_id: character.book_id,
@@ -183,6 +183,7 @@ export function useCharacters() {
   // 选择角色
   const selectVoice = (voice) => {
     selectedVoice.value = voice
+    // 注意：这里不设置 showDetailDrawer，由父组件处理
   }
 
   // 批量选择角色

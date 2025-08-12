@@ -142,17 +142,18 @@ async def create_character(
         if not is_valid:
             raise HTTPException(status_code=400, detail=error_msg)
         
-        if character_data.voice_type:
+        # 检查字段是否存在再验证
+        if hasattr(character_data, 'voice_type') and character_data.voice_type:
             is_valid, error_msg = validate_voice_type(character_data.voice_type)
             if not is_valid:
                 raise HTTPException(status_code=400, detail=error_msg)
         
-        if character_data.quality_score is not None:
+        if hasattr(character_data, 'quality_score') and character_data.quality_score is not None:
             is_valid, error_msg = validate_quality_score(character_data.quality_score)
             if not is_valid:
                 raise HTTPException(status_code=400, detail=error_msg)
         
-        if character_data.tags:
+        if hasattr(character_data, 'tags') and character_data.tags:
             is_valid, error_msg = validate_tags(character_data.tags)
             if not is_valid:
                 raise HTTPException(status_code=400, detail=error_msg)

@@ -61,7 +61,8 @@
             :before-upload="beforeAvatarUpload"
             @change="handleAvatarChange"
             accept=".jpg,.jpeg,.png,.gif,.webp"
-            :show-upload-list="false"
+            :show-upload-list="true"
+            :max-count="1"
             class="avatar-upload"
           >
             <a-button size="small" type="primary">
@@ -392,7 +393,7 @@ const beforeAvatarUpload = (file) => {
     message.error('图片大小不能超过 10MB!')
     return false
   }
-  return false // 阻止自动上传
+  return false // 阻止自动上传到服务器，我们手动处理
 }
 
 // 暴露表单引用给父组件
@@ -431,11 +432,47 @@ const beforeLatentUpload = (file) => {
 }
 
 const handleAvatarChange = (info) => {
+  console.log('头像文件变化:', info)
+  
   if (info.file.status === 'removed') {
     props.character.avatarFileList = []
+    props.character.avatarFile = null
+    props.character.avatarPreview = null
+    props.character.removeAvatar = true
     return
   }
-  // 处理头像文件变化
+  
+  // 处理头像文件上传
+  if (info.file && (info.file.originFileObj || info.file)) {
+    const file = info.file.originFileObj || info.file
+    
+    // 保存文件对象
+    props.character.avatarFile = file
+    
+    // 更新文件列表，设置状态为done以显示成功状态
+    const fileItem = {
+      ...info.file,
+      status: 'done',
+      percent: 100
+    }
+    props.character.avatarFileList = [fileItem]
+    
+    // 创建预览URL
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      props.character.avatarPreview = e.target.result
+    }
+    reader.readAsDataURL(file)
+    
+    // 清除删除标记
+    props.character.removeAvatar = false
+    
+    console.log('头像文件处理完成:', {
+      fileName: file.name,
+      fileSize: file.size,
+      hasPreview: !!props.character.avatarPreview
+    })
+  }
 }
 
 const handleAudioChange = (info) => {
