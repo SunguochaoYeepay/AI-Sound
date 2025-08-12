@@ -6,7 +6,6 @@ export const useImageGenerationStore = defineStore('imageGeneration', () => {
   // State
   const imageTasks = ref([])
   const imagePresets = ref([])
-  const generationStats = ref({})
   const loading = ref(false)
   const error = ref(null)
 
@@ -137,14 +136,11 @@ export const useImageGenerationStore = defineStore('imageGeneration', () => {
         const stats = actualData || {}
         
         console.log('🏪 准备设置 imageTasks:', tasks)
-        console.log('🏪 准备设置 generationStats:', stats)
         
         imageTasks.value = tasks
-        generationStats.value = stats
         
         console.log('🏪 设置后 imageTasks.value:', imageTasks.value)
         console.log('🏪 设置后 imageTasks.value length:', imageTasks.value.length)
-        console.log('🏪 设置后 generationStats.value:', generationStats.value)
         
         return response
       } else {
@@ -368,7 +364,6 @@ export const useImageGenerationStore = defineStore('imageGeneration', () => {
   const resetState = () => {
     imageTasks.value = []
     imagePresets.value = []
-    generationStats.value = {}
     error.value = null
   }
 
@@ -397,7 +392,6 @@ export const useImageGenerationStore = defineStore('imageGeneration', () => {
     // State
     imageTasks,
     imagePresets,
-    generationStats,
     loading,
     error,
     

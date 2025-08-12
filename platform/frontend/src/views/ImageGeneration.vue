@@ -144,14 +144,7 @@
       
     </a-card>
     
-    <!-- 生成统计 -->
-    <a-card 
-      title="生成统计" 
-      class="section-card" 
-      v-if="hasImageTasks"
-    >
-      <ImageGenerationStats :stats="generationStats" />
-    </a-card>
+
     
     <!-- 统一抽屉 -->
     <a-drawer
@@ -212,7 +205,7 @@ import BookImageGenerationConfig from '@/components/image-generation/BookImageGe
 import TaskImageGenerationConfig from '@/components/image-generation/TaskImageGenerationConfig.vue'
 import CharacterConsistencyConfig from '@/components/image-generation/CharacterConsistencyConfig.vue'
 import ImageTaskList from '@/components/image-generation/ImageTaskList.vue'
-import ImageGenerationStats from '@/components/image-generation/ImageGenerationStats.vue'
+
 import ImageTaskDetail from '@/components/image-generation/ImageTaskDetail.vue'
 
 
@@ -235,19 +228,14 @@ const unifiedDrawerVisible = ref(false) // 统一抽屉显示状态
 const activeDrawerTab = ref('book-config') // 当前激活的抽屉标签页
 const selectedTask = ref(null)
 
-// 新增：图片任务和统计数据 - 直接使用store中的数据
+// 新增：图片任务数据 - 直接使用store中的数据
 // const imageTasks = ref([])  // 删除局部变量
-// const generationStats = ref({})  // 删除局部变量
 
 // 直接使用store中的响应式数据
 const imageTasks = computed(() => {
   console.log('🔄 computed imageTasks 被触发，store.imageTasks:', imageStore.imageTasks)
   console.log('🔄 computed imageTasks length:', imageStore.imageTasks.length)
   return imageStore.imageTasks
-})
-const generationStats = computed(() => {
-  console.log('📈 computed generationStats 被触发，store.generationStats:', imageStore.generationStats)
-  return imageStore.generationStats
 })
 
 // 添加调试watch
@@ -468,7 +456,7 @@ const onChapterChange = async (chapterId) => {
   console.log('📂 章节切换到:', chapterId)
   clearStatusRefresh() // 清理之前的定时器
   await loadImageTasks(chapterId)  // 这一次调用就足够了，会同时更新tasks和stats
-  // await loadGenerationStats(chapterId)  // 删除重复调用
+  
   // 移除这里的startStatusRefresh，让loadImageTasks来决定是否启动
   
   // 重新加载角色数据（不按章节筛选，因为角色数据的chapter_id通常为null）
@@ -501,7 +489,6 @@ const loadImageTasks = async (chapterId) => {
     console.log('📊 computed imageTasks.value length:', imageTasks.value.length)
     
     console.log('📊 加载图片任务成功:', imageTasks.value.length, '个任务')
-    console.log('📈 任务状态统计:', generationStats.value.status_breakdown)
     
     // 动态控制自动刷新：只有processing任务时才启用
     const hasProcessingTasks = imageTasks.value.some(task => task.status === 'processing')
@@ -521,10 +508,7 @@ const loadImageTasks = async (chapterId) => {
   }
 }
 
-const loadGenerationStats = async (chapterId) => {
-  // 不再需要单独调用API，因为loadImageTasks已经更新了store中的所有数据
-  console.log('📈 统计数据已从store获取:', generationStats.value)
-}
+
 
 // 优化的状态自动刷新机制
 let refreshTimer = null
