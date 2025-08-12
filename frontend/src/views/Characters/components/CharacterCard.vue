@@ -173,7 +173,7 @@ const isBatchSelected = computed(() => props.selectedCharacterIds.includes(props
   background: #fff;
   border: 1px solid #e5e7eb;
   border-radius: 12px;
-  padding: 20px;
+  padding: 20px ;
   cursor: pointer;
   transition: all 0.2s ease;
   display: flex;

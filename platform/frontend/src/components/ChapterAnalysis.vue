@@ -3,7 +3,7 @@
     <!-- 加载状态 -->
     <div v-if="loading" class="loading-wrapper">
       <a-spin size="large" tip="加载智能分析结果...">
-        <div style="height: 300px"></div>
+        <div style="width: 100%"></div>
       </a-spin>
     </div>
 

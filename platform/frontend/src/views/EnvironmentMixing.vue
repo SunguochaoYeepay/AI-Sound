@@ -572,7 +572,6 @@
 
 <style scoped>
   .environment-mixing-page {
-    padding: 24px;
     min-height: 100vh;
   }
 
