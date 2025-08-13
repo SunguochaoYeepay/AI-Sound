@@ -399,7 +399,7 @@ const formatNumber = (num) => {
   display: flex;
   flex: 1;
   gap: 24px;
-  padding: 0 24px 24px;
+  padding: 0 ;
   overflow: hidden;
 }
 

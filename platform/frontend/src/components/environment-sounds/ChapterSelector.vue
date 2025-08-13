@@ -1,11 +1,26 @@
 <template>
   <div class="chapter-selector">
     <div class="section-header">
-      <h3>选择章节</h3>
+      <div class="title-section">
+        <a-button
+          type="text"
+          size="small"
+          @click="toggleCollapse"
+          :title="collapsed ? '展开章节列表' : '收起章节列表'"
+          class="collapse-btn"
+        >
+          <template #icon>
+            <MenuUnfoldOutlined v-if="collapsed" />
+            <MenuFoldOutlined v-else />
+          </template>
+        </a-button>
+        <h3 v-if="!collapsed">选择章节</h3>
+      </div>
     </div>
     
     <!-- 使用标准 Ant Menu 组件 -->
     <a-menu
+      v-if="!collapsed"
       v-model:selectedKeys="selectedKeys"
       mode="inline"
       class="chapter-menu"
@@ -32,6 +47,7 @@
 
 <script setup>
 import { ref, watch } from 'vue'
+import { MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons-vue'
 
 const props = defineProps({
   chapters: {
@@ -41,10 +57,14 @@ const props = defineProps({
   selectedChapterId: {
     type: Number,
     default: null
+  },
+  collapsed: {
+    type: Boolean,
+    default: false
   }
 })
 
-const emit = defineEmits(['select-chapter'])
+const emit = defineEmits(['select-chapter', 'toggle-collapse'])
 
 // 使用ref而不是computed来避免readonly警告
 const selectedKeys = ref([])
@@ -62,27 +82,51 @@ const handleMenuSelect = ({ key }) => {
 const formatNumber = (num) => {
   return num.toLocaleString()
 }
+
+const toggleCollapse = () => {
+  emit('toggle-collapse')
+}
 </script>
 
 <style scoped>
 .chapter-selector {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  transition: width 0.3s ease;
 }
 
 .section-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid #f0f0f0;
+  background: #fafafa;
+}
+
+.title-section {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
+  gap: 8px;
+}
+
+.collapse-btn {
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #666;
+  transition: color 0.3s ease;
+}
+
+.collapse-btn:hover {
+  color: #1890ff;
 }
 
 .section-header h3 {
   margin: 0;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
-  color: var(--ant-text-color);
+  color: #262626;
 }
 
 .chapter-menu {
@@ -121,5 +165,28 @@ const formatNumber = (num) => {
 .chapter-meta {
   font-size: 11px;
   color: var(--ant-text-color-secondary);
+}
+
+/* 暗黑模式适配 */
+[data-theme='dark'] .chapter-selector {
+  background: #1f1f1f;
+  border: 1px solid #303030;
+}
+
+[data-theme='dark'] .section-header {
+  background: #262626;
+  border-bottom-color: #303030;
+}
+
+[data-theme='dark'] .section-header h3 {
+  color: #fff;
+}
+
+[data-theme='dark'] .collapse-btn {
+  color: #999;
+}
+
+[data-theme='dark'] .collapse-btn:hover {
+  color: #1890ff;
 }
 </style>

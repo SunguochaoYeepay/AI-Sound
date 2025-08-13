@@ -14,24 +14,30 @@
               环境音分析详情
             </h1>
           </div>
-          
+         
         </div>
       </div>
     </div>
 
     <!-- 主要内容区域 - 左右分栏布局 -->
     <div class="main-content">
-      <!-- 左侧：章节选择器 -->
-      <div class="left-panel">
-        <ChapterSelector
-          :chapters="chapters"
-          :selected-chapter-id="selectedChapter?.id"
-          @select-chapter="handleChapterSelect"
-        />
-      </div>
+        <a-row :gutter="8">
+        <!-- 左侧：章节选择器 -->
+        <a-col :span="chapterListCollapsed ? 2 : 6" class="chapter-list-col">
+          <div class="left-panel">
+            <ChapterSelector
+              :chapters="chapters"
+              :selected-chapter-id="selectedChapter?.id"
+              :collapsed="chapterListCollapsed"
+              @select-chapter="handleChapterSelect"
+              @toggle-collapse="toggleChapterList"
+            />
+          </div>
+        </a-col>
 
-      <!-- 右侧：分析内容 -->
-      <div class="right-panel">
+        <!-- 右侧：分析内容 -->
+        <a-col :span="chapterListCollapsed ? 22 : 18">
+          <div class="right-panel">
         <!-- 分析头部 -->
         <AnalysisHeader
           :selected-chapter="selectedChapter"
@@ -49,7 +55,9 @@
           :has-analysis="hasAnalysis"
           :environment-tracks="environmentTracks"
         />
-      </div>
+          </div>
+        </a-col>
+      </a-row>
     </div>
     
     <!-- 调试信息 -->
@@ -89,6 +97,7 @@ const projectLoading = ref(false)
 const chapters = ref([])
 const selectedChapter = ref(null)
 const chaptersLoading = ref(false)
+const chapterListCollapsed = ref(false)
 
 // 分析结果 - 改为按章节ID存储
 const analysisResults = ref({}) // { chapterId: analysisResult }
@@ -425,6 +434,11 @@ const startAnalysis = async () => {
   }
 }
 
+// 切换章节列表折叠状态
+const toggleChapterList = () => {
+  chapterListCollapsed.value = !chapterListCollapsed.value
+}
+
 // 生成环境音
 const handleGenerateSounds = async () => {
   const needGenerationTracks = environmentTracks.value.filter(track => !track.has_match)
@@ -467,10 +481,11 @@ const handleGenerateSounds = async () => {
 }
 
 .page-header {
-  border-radius: 8px;
-  padding: 24px;
   margin-bottom: 24px;
-  box-shadow: 0 2px 8px var(--ant-box-shadow);
+  padding: 32px;
+  background: linear-gradient(135deg, #52c41a 0%, #389e0d 100%);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(82, 196, 26, 0.3);
 }
 
 .header-content {
@@ -491,52 +506,71 @@ const handleGenerateSounds = async () => {
 
 .back-button {
   margin-right: 12px;
-  color: var(--ant-text-color-secondary);
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.back-button:hover {
+  color: white;
 }
 
 .page-title {
   margin: 0;
-  font-size: 24px;
+  font-size: 28px;
   font-weight: 600;
-  color: var(--ant-text-color);
+  color: white;
   display: flex;
   align-items: center;
 }
 
 .title-icon {
-  margin-right: 8px;
-  color: var(--ant-primary-color);
+  margin-right: 12px;
+  color: #ffffff;
 }
 
 .page-description {
   margin: 0;
-  color: var(--ant-text-color-secondary);
+  color: rgba(255, 255, 255, 0.85);
   font-size: 14px;
   line-height: 1.5;
 }
 
 .main-content {
-  display: flex;
-  gap: 24px;
-  padding: 24px;
+  margin-top: 16px;
+  padding: 0 8px;
   min-height: calc(100vh - 200px);
 }
 
+/* 全局样式调整 */
+.main-content .ant-row {
+  height: calc(100vh - 200px);
+}
+
+.main-content .ant-col {
+  background-color: var(--ant-color-bg-container);
+}
+
+/* 章节列表收起展开样式 */
+.chapter-list-col {
+  transition: all 0.3s ease;
+}
+
 .left-panel {
-  flex: 0 0 300px;
+  height: 100%;
   background-color: var(--ant-component-background);
   border-radius: 8px;
-  padding: 24px;
+  padding: 12px;
   box-shadow: 0 2px 8px var(--ant-box-shadow);
+  display: flex;
+  flex-direction: column;
 }
 
 .right-panel {
-  flex: 1;
+  height: 100%;
   background-color: var(--ant-component-background);
   border-radius: 8px;
-  padding: 24px;
+  padding: 16px;
   box-shadow: 0 2px 8px var(--ant-box-shadow);
-  min-height: 400px;
+  overflow-y: auto;
 }
 
 /* 响应式设计 */
@@ -559,18 +593,30 @@ const handleGenerateSounds = async () => {
   }
 
   .main-content {
-    flex-direction: column;
-    gap: 16px;
     padding: 16px;
+  }
+
+  .main-content .ant-row {
+    height: auto;
+  }
+
+  .main-content .ant-col {
+    height: auto;
+    margin-bottom: 16px;
   }
 
   .left-panel {
-    flex: none;
-    padding: 16px;
+    padding: 12px;
   }
 
   .right-panel {
-    padding: 16px;
+    padding: 12px;
   }
+}
+
+/* 暗黑模式适配 */
+[data-theme='dark'] .page-header {
+  background: linear-gradient(135deg, #2d2d2d 0%, #1f1f1f 100%) !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5) !important;
 }
 </style>
