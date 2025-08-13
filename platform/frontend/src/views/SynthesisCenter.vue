@@ -96,8 +96,8 @@
   import { message } from 'ant-design-vue'
   import { getWebSocketUrl } from '@/config/services'
   import { SoundOutlined } from '@ant-design/icons-vue'
-  import api from '@/api'
-  import apiClient from '@/api/config.js'
+  import api, { readerAPI } from '@/api'
+import apiClient from '@/api/config.js'
   import { playSegmentAudio, playChapterAudio } from '@/utils/audioService'
   import ProjectHeader from '@/components/synthesis-center/ProjectHeader.vue'
   import ChapterSelector from '@/components/synthesis-center/ChapterSelector.vue'
@@ -162,7 +162,7 @@
     }
 
     try {
-      const response = await api.getChapterProgress(project.value.id, selectedChapter.value)
+      const response = await readerAPI.getChapterProgress(project.value.id, selectedChapter.value)
       if (response.data.success && response.data.data) {
         const data = response.data.data
         currentChapterProgress.value = {
@@ -329,7 +329,7 @@
       loading.value = true
       const projectId = route.params.projectId
 
-      const response = await api.getProjectDetail(projectId)
+      const response = await readerAPI.getProjectDetail(projectId)
       if (response.data.success) {
         project.value = response.data.data
         console.log('📊 项目数据加载成功:', {
@@ -356,7 +356,7 @@
     try {
       const projectId = route.params.projectId
       // 使用正确的API获取项目的合成进度
-      const response = await api.getProgress(projectId)
+      const response = await readerAPI.getProgress(projectId)
       if (response.data.success && response.data.data) {
         const progressInfo = response.data.data
 
@@ -905,7 +905,7 @@
       synthesisType.value = 'voice'
       synthesisStatus.value = 'running'
 
-      const response = await api.startGeneration(project.value.id, {
+      const response = await readerAPI.startGeneration(project.value.id, {
         chapter_ids: selectedChapter.value ? [selectedChapter.value] : undefined,
         continue_synthesis: false // 重新合成模式
       })
@@ -1027,7 +1027,7 @@
   const handlePauseSynthesis = async () => {
     try {
       console.log('📌 开始暂停合成，项目ID:', project.value.id)
-      await api.pauseGeneration(project.value.id)
+              await readerAPI.pauseGeneration(project.value.id)
       message.success('已暂停合成')
       synthesisRunning.value = false
 
@@ -1048,7 +1048,7 @@
   const handleCancelSynthesis = async () => {
     try {
       console.log('📌 开始取消合成，项目ID:', project.value.id)
-      await api.cancelGeneration(project.value.id)
+              await readerAPI.cancelGeneration(project.value.id)
       message.success('已取消合成')
       synthesisRunning.value = false
       progressDrawerVisible.value = false
@@ -1094,7 +1094,7 @@
 
   const handleRetrySynthesis = async () => {
     try {
-      await api.resumeGeneration(project.value.id, {})
+      await readerAPI.resumeGeneration(project.value.id, {})
       message.success('重新开始合成')
       synthesisRunning.value = true
       progressDrawerVisible.value = true
@@ -1149,7 +1149,7 @@
 
   const handleDownloadAudio = async () => {
     try {
-      const response = await api.downloadChapterAudio(project.value.id, selectedChapter.value)
+      const response = await readerAPI.downloadChapterAudio(project.value.id, selectedChapter.value)
 
       const blob = new Blob([response.data], { type: 'audio/wav' })
       const url = window.URL.createObjectURL(blob)
@@ -1258,7 +1258,7 @@
   const handleShowFailureDetails = async () => {
     try {
       // 获取详细的失败段落信息
-      const response = await api.getFailedSegments(project.value.id)
+      const response = await readerAPI.getFailedSegments(project.value.id)
       if (response.data.success && response.data.data) {
         failedSegmentsList.value = response.data.data
       } else {
@@ -1409,7 +1409,7 @@
       })
 
       // 🎯 **直接下载指定章节，不修改选中状态**
-      const response = await api.downloadChapterAudio(project.value.id, chapterId)
+              const response = await readerAPI.downloadChapterAudio(project.value.id, chapterId)
 
       const blob = new Blob([response.data], { type: 'audio/wav' })
       const url = window.URL.createObjectURL(blob)
@@ -1450,7 +1450,7 @@
       synthesisStatus.value = 'running'
 
       // 重新启动选中章节的合成
-      const response = await api.startGeneration(project.value.id, {
+      const response = await readerAPI.startGeneration(project.value.id, {
         chapter_ids: selectedChapter.value ? [selectedChapter.value] : undefined,
         continue_synthesis: false // 表示这是重新合成，清理现有文件
       })
@@ -1589,7 +1589,7 @@
       synthesisStatus.value = 'running'
 
       // 继续合成剩余章节（不重新开始已完成的部分）
-      const response = await api.startGeneration(project.value.id, {
+      const response = await readerAPI.startGeneration(project.value.id, {
         chapter_ids: selectedChapter.value ? [selectedChapter.value] : undefined,
         continue_synthesis: true // 表示这是继续合成，只生成缺失的段落
       })

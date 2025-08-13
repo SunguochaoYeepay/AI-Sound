@@ -16,6 +16,7 @@ import SynthesisCenter from '../views/SynthesisCenter.vue'
 import SynthesisResults from '../views/SynthesisResults.vue'
 import AudioLibrary from '../views/AudioLibrary.vue'
 import EnvironmentSounds from '../views/EnvironmentSounds.vue'
+import EnvironmentAnalysis from '../views/EnvironmentAnalysis.vue'
 import MusicLibrary from '../views/MusicLibrary.vue'
 import WebSocketTest from '../views/WebSocketTest.vue'
 import Settings from '../views/Settings.vue'
@@ -156,6 +157,24 @@ const routes = [
     path: '/environment-sounds',
     name: 'EnvironmentSounds',
     component: EnvironmentSounds
+  },
+  {
+    path: '/environment-sounds/analysis',
+    name: 'EnvironmentAnalysis',
+    component: EnvironmentAnalysis,
+    meta: {
+      title: '环境音分析',
+      requiresAuth: true
+    }
+  },
+  {
+    path: '/environment-sounds/analysis/:analysisId',
+    name: 'EnvironmentAnalysisDetail',
+    component: () => import('../views/EnvironmentAnalysisDetail.vue'),
+    meta: {
+      title: '环境音分析详情',
+      requiresAuth: true
+    }
   },
   {
     path: '/environment-mixing',

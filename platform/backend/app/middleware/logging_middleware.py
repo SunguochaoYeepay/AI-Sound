@@ -102,7 +102,11 @@ class LoggingMiddleware(BaseHTTPMiddleware):
                     
                     # 首先直接输出到控制台日志（确保能看到）
                     log_message = f"🌐 API请求: {method} {path} -> {response.status_code} ({process_time:.2f}ms) | IP: {client_ip}"
-                    if response.status_code >= 500:
+                    
+                    # 健康检查请求使用DEBUG级别，避免日志过多
+                    if path == "/api/v1/health" or path == "/health":
+                        logger.debug(log_message)
+                    elif response.status_code >= 500:
                         logger.error(log_message)
                     elif response.status_code >= 400:
                         logger.warning(log_message)
@@ -136,7 +140,13 @@ class LoggingMiddleware(BaseHTTPMiddleware):
             if not should_skip:
                 try:
                     # 直接输出到控制台
-                    logger.error(f"🌐 API异常: {method} {path} -> 500 ({process_time:.2f}ms) | 错误: {str(e)} | IP: {client_ip}")
+                    error_message = f"🌐 API异常: {method} {path} -> 500 ({process_time:.2f}ms) | 错误: {str(e)} | IP: {client_ip}"
+                    
+                    # 健康检查异常也使用DEBUG级别
+                    if path == "/api/v1/health" or path == "/health":
+                        logger.debug(error_message)
+                    else:
+                        logger.error(error_message)
                     
                     # 记录到数据库
                     log_api_request(

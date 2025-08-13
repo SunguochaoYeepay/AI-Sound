@@ -60,30 +60,42 @@ class ChapterEnvironmentAnalyzer(NarrationEnvironmentAnalyzer):
         
         try:
             # 步骤1: 基础环境音分析（复用现有能力）
+            logger.info("[CHAPTER_ANALYZER] 步骤1: 开始基础环境音分析")
             base_analysis = await self.extract_and_analyze_narration(synthesis_plan)
+            logger.info(f"[CHAPTER_ANALYZER] 步骤1完成: 基础分析结果包含{len(base_analysis.get('environment_tracks', []))}个轨道")
             
             # 步骤2: 精确时长计算
+            logger.info("[CHAPTER_ANALYZER] 步骤2: 开始精确时长计算")
             precise_timeline = self._calculate_precise_timeline(synthesis_plan, base_analysis)
+            logger.info(f"[CHAPTER_ANALYZER] 步骤2完成: 精确时长计算完成，总时长{precise_timeline.get('total_duration', 0)}s")
             
             # 步骤3: 环境音强度分析
+            logger.info("[CHAPTER_ANALYZER] 步骤3: 开始环境音强度分析")
             intensity_analysis = self._analyze_environment_intensity(base_analysis['environment_tracks'])
+            logger.info(f"[CHAPTER_ANALYZER] 步骤3完成: 强度分析完成")
             
             # 步骤4: 环境音连续性分析
+            logger.info("[CHAPTER_ANALYZER] 步骤4: 开始环境音连续性分析")
             continuity_analysis = self._analyze_environment_continuity(
                 base_analysis['environment_tracks'], 
                 synthesis_plan
             )
+            logger.info(f"[CHAPTER_ANALYZER] 步骤4完成: 连续性分析完成")
             
             # 步骤5: 生成优化的环境音配置
+            logger.info("[CHAPTER_ANALYZER] 步骤5: 开始生成优化的环境音配置")
             optimized_config = self._generate_optimized_environment_config(
                 precise_timeline,
                 intensity_analysis,
                 continuity_analysis,
                 base_analysis['environment_tracks']  # 传递原始环境轨道数据
             )
+            logger.info(f"[CHAPTER_ANALYZER] 步骤5完成: 生成{len(optimized_config)}个优化配置")
             
             # 步骤6: 生成视频编辑兼容的时间轴
+            logger.info("[CHAPTER_ANALYZER] 步骤6: 开始生成视频编辑时间轴")
             video_timeline = self._generate_video_timeline(optimized_config)
+            logger.info(f"[CHAPTER_ANALYZER] 步骤6完成: 视频时间轴生成完成")
             
             logger.info(f"[CHAPTER_ANALYZER] 章节分析完成，生成{len(optimized_config)}个优化环境音轨道")
             
@@ -106,6 +118,9 @@ class ChapterEnvironmentAnalyzer(NarrationEnvironmentAnalyzer):
             
         except Exception as e:
             logger.error(f"[CHAPTER_ANALYZER] 章节分析失败: {str(e)}")
+            logger.error(f"[CHAPTER_ANALYZER] 错误详情: {type(e).__name__}: {str(e)}")
+            import traceback
+            logger.error(f"[CHAPTER_ANALYZER] 错误堆栈: {traceback.format_exc()}")
             raise RuntimeError(f"章节环境音分析失败: {str(e)}")
     
     def _calculate_precise_timeline(self, synthesis_plan: List[Dict], base_analysis: Dict) -> Dict:
@@ -462,6 +477,109 @@ class ChapterEnvironmentAnalyzer(NarrationEnvironmentAnalyzer):
             'enhancement_level': 'advanced'
         }
     
+    async def analyze_chapters(self, chapters: List, options: Dict = None) -> Dict[str, Any]:
+        """
+        分析多个章节的环境音需求
+        
+        Args:
+            chapters: 章节对象列表
+            options: 分析选项
+            
+        Returns:
+            环境音分析结果
+        """
+        logger.info(f"[CHAPTER_ANALYZER] 开始分析{len(chapters)}个章节")
+        
+        try:
+            # 合并所有章节内容
+            all_content = ""
+            chapter_info = []
+            
+            for chapter in chapters:
+                content = getattr(chapter, 'content', '') or getattr(chapter, 'text', '')
+                all_content += content + "\n\n"
+                chapter_info.append({
+                    'id': getattr(chapter, 'id', 0),
+                    'title': getattr(chapter, 'chapter_title', '') or getattr(chapter, 'title', ''),
+                    'content': content
+                })
+            
+            logger.info(f"[CHAPTER_ANALYZER] 合并内容长度: {len(all_content)}字符")
+            
+            # 生成合成计划
+            synthesis_plan = self._generate_synthesis_plan_from_chapters(chapters)
+            logger.info(f"[CHAPTER_ANALYZER] 生成合成计划: {len(synthesis_plan)}个段落")
+            
+            # 调用单章节分析方法
+            logger.info("[CHAPTER_ANALYZER] 开始调用analyze_chapter_environment")
+            result = await self.analyze_chapter_environment(
+                all_content,
+                synthesis_plan,
+                options or {}
+            )
+            logger.info(f"[CHAPTER_ANALYZER] analyze_chapter_environment返回结果: {type(result)}")
+            logger.info(f"[CHAPTER_ANALYZER] 结果keys: {list(result.keys()) if isinstance(result, dict) else 'Not a dict'}")
+            
+            # 返回正确的结构
+            if result.get('success'):
+                # 如果成功，返回analysis_result部分
+                analysis_result = result.get('analysis_result', {})
+                analysis_result['chapter_info'] = chapter_info
+                analysis_result['total_chapters'] = len(chapters)
+                logger.info(f"[CHAPTER_ANALYZER] 返回成功结果，包含{len(analysis_result.get('environment_tracks', []))}个轨道")
+                return analysis_result
+            else:
+                # 如果失败，返回错误信息
+                logger.error(f"[CHAPTER_ANALYZER] 分析失败: {result.get('error', '未知错误')}")
+                return {
+                    'environment_tracks': [],
+                    'analysis_metadata': {
+                        'error': result.get('error', '分析失败'),
+                        'total_duration': 0,
+                        'track_count': 0,
+                        'analysis_timestamp': datetime.now().isoformat()
+                    }
+                }
+            
+        except Exception as e:
+            logger.error(f"[CHAPTER_ANALYZER] 章节分析失败: {str(e)}")
+            import traceback
+            logger.error(f"[CHAPTER_ANALYZER] 错误堆栈: {traceback.format_exc()}")
+            return {
+                'environment_tracks': [],
+                'analysis_metadata': {
+                    'error': str(e),
+                    'total_duration': 0,
+                    'track_count': 0,
+                    'analysis_timestamp': datetime.now().isoformat()
+                }
+            }
+    
+    def _generate_synthesis_plan_from_chapters(self, chapters: List) -> List[Dict]:
+        """从章节生成合成计划"""
+        synthesis_plan = []
+        segment_id = 1
+        
+        for chapter in chapters:
+            content = getattr(chapter, 'content', '') or getattr(chapter, 'text', '')
+            chapter_id = getattr(chapter, 'id', 0)
+            
+            # 按句号分割内容
+            sentences = [s.strip() for s in content.split('。') if s.strip()]
+            
+            for sentence in sentences:
+                if sentence:
+                    synthesis_plan.append({
+                        'segment_id': segment_id,
+                        'text': sentence + '。',
+                        'speaker': '旁白',
+                        'emotion': 'neutral',
+                        'chapter_id': chapter_id
+                    })
+                    segment_id += 1
+        
+        return synthesis_plan
+
     async def analyze_batch_chapters_environment(self, chapters: List[Dict]) -> Dict[str, Any]:
         """批量章节环境音分析 - 简化版测试方法"""
         logger.info(f"[BATCH_ANALYZER] 开始批量分析{len(chapters)}个章节")

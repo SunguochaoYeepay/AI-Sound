@@ -95,11 +95,30 @@
           <!-- 分析选项 -->
           <div v-if="selectedChapterIds.length > 0" style="margin-bottom: 16px">
             <h4>分析选项</h4>
-            <a-checkbox-group v-model:value="analysisOptions">
-              <a-checkbox value="include_emotion">包含情感分析</a-checkbox>
-              <a-checkbox value="precise_timing">精确时长计算</a-checkbox>
-              <a-checkbox value="intensity_analysis">强度分析</a-checkbox>
-            </a-checkbox-group>
+            <div>
+              <a-checkbox 
+                v-model:checked="analysisOptions.include_emotion"
+                @change="(checked) => analysisOptions.include_emotion = checked"
+              >
+                包含情感分析
+              </a-checkbox>
+            </div>
+            <div>
+              <a-checkbox 
+                v-model:checked="analysisOptions.precise_timing"
+                @change="(checked) => analysisOptions.precise_timing = checked"
+              >
+                精确时长计算
+              </a-checkbox>
+            </div>
+            <div>
+              <a-checkbox 
+                v-model:checked="analysisOptions.intensity_analysis"
+                @change="(checked) => analysisOptions.intensity_analysis = checked"
+              >
+                强度分析
+              </a-checkbox>
+            </div>
           </div>
         </div>
 
@@ -703,7 +722,11 @@
   const bookLoading = ref(false)
   const chapterLoading = ref(false)
 
-  const analysisOptions = ref(['include_emotion', 'precise_timing'])
+  const analysisOptions = ref({
+    include_emotion: true,
+    precise_timing: true,
+    intensity_analysis: false
+  })
   const selectedBook = ref(null)
   const selectedProject = ref(null)
   const selectedChapterIds = ref([])
@@ -1131,11 +1154,7 @@
       // 调用真实的章节环境音分析API
       const analysisRequest = {
         chapter_ids: selectedChapterIds.value,
-        analysis_options: {
-          include_emotion: analysisOptions.value.includes('include_emotion'),
-          precise_timing: analysisOptions.value.includes('precise_timing'),
-          intensity_analysis: analysisOptions.value.includes('intensity_analysis')
-        }
+        analysis_options: analysisOptions.value
       }
 
       console.log('开始调用章节环境音分析API:', analysisRequest)

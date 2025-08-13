@@ -30,7 +30,7 @@ from .auth import (
 from .synthesis_task import SynthesisTask
 from .text_segment import TextSegment
 from .environment_generation import (
-    EnvironmentGenerationSession, EnvironmentTrackConfig, 
+    EnvironmentProject, EnvironmentGenerationSession, EnvironmentTrackConfig, 
     EnvironmentAudioMixingJob, EnvironmentGenerationLog
 )
 from .background_music import BackgroundMusic, MusicCategory
@@ -86,6 +86,7 @@ __all__ = [
     # 其他模型
     'SynthesisTask',
     'TextSegment',
+    'EnvironmentProject',
     'EnvironmentGenerationSession',
     'EnvironmentTrackConfig',
     'EnvironmentAudioMixingJob', 

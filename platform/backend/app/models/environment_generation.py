@@ -9,6 +9,73 @@ from datetime import datetime
 Base = declarative_base()
 
 
+class EnvironmentProject(Base):
+    """环境音效项目模型"""
+    __tablename__ = 'environment_projects'
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False, comment="项目名称")
+    description = Column(Text, comment="项目描述")
+    status = Column(String(50), default='analyzed', comment="项目状态: analyzed, generating, completed, failed")
+    
+    # 分析结果
+    analysis_result = Column(JSON, comment="分析结果")
+    matching_result = Column(JSON, comment="匹配结果")
+    chapter_ids = Column(JSON, comment="章节ID列表")
+    analysis_options = Column(JSON, comment="分析选项")
+    
+    # 统计信息
+    analysis_tracks = Column(Integer, default=0, comment="分析轨道数量")
+    generation_count = Column(Integer, default=0, comment="生成数量")
+    matched_count = Column(Integer, default=0, comment="匹配数量")
+    
+    # 书籍信息
+    book_name = Column(String(255), comment="书籍名称")
+    chapter_name = Column(String(255), comment="章节名称")
+    
+    # 时间戳
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    def to_dict(self):
+        """转换为字典格式"""
+        return {
+            "id": self.id,
+            "name": self.name,
+            "description": self.description,
+            "status": self.status,
+            "analysis_result": self.analysis_result,
+            "matching_result": self.matching_result,
+            "chapter_ids": self.chapter_ids,
+            "analysis_options": self.analysis_options,
+            "analysis_tracks": self.analysis_tracks,
+            "generation_count": self.generation_count,
+            "matched_count": self.matched_count,
+            "book_name": self.book_name,
+            "chapter_name": self.chapter_name,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None
+        }
+    
+    def to_simple_dict(self):
+        """转换为简化的字典格式（不包含分析结果和匹配结果）"""
+        return {
+            "id": self.id,
+            "name": self.name,
+            "description": self.description,
+            "status": self.status,
+            "chapter_ids": self.chapter_ids,
+            "analysis_options": self.analysis_options,
+            "analysis_tracks": self.analysis_tracks,
+            "generation_count": self.generation_count,
+            "matched_count": self.matched_count,
+            "book_name": self.book_name,
+            "chapter_name": self.chapter_name,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None
+        }
+
+
 class EnvironmentGenerationSession(Base):
     """环境音生成会话"""
     __tablename__ = 'environment_generation_sessions'

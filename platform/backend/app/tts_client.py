@@ -509,7 +509,9 @@ def get_tts_client() -> MegaTTS3Client:
         logger.info(f"创建TTS客户端，URL: {megatts3_url}，当前实例ID: {id(_tts_client)}")
         _tts_client = MegaTTS3Client(base_url=megatts3_url)
     else:
-        logger.debug(f"复用TTS客户端，实例ID: {id(_tts_client)}")
+        # 降低日志级别，避免频繁打印
+        # logger.debug(f"复用TTS客户端，实例ID: {id(_tts_client)}")
+        pass
     return _tts_client 
 
 def reset_tts_client():

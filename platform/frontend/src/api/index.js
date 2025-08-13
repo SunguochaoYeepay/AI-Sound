@@ -1234,8 +1234,53 @@ export const environmentGenerationAPI = {
   getGenerationTaskStatus: (taskId) =>
     apiClient.get(`/environment-generation/generation/status/${taskId}`),
 
+  // === 项目管理API ===
+
+  // 获取环境音分析项目列表
+  getProjects: (params = {}) => {
+    const queryParams = new URLSearchParams()
+    if (params.page) queryParams.append('page', params.page)
+    if (params.page_size) queryParams.append('page_size', params.page_size)
+    if (params.search) queryParams.append('search', params.search)
+    if (params.status) queryParams.append('status', params.status)
+    if (params.sort_by) queryParams.append('sort_by', params.sort_by)
+    if (params.start_date) queryParams.append('start_date', params.start_date)
+    if (params.end_date) queryParams.append('end_date', params.end_date)
+
+    const queryString = queryParams.toString()
+    const url = queryString ? `/environment-generation/projects?${queryString}` : '/environment-generation/projects'
+    return apiClient.get(url)
+  },
+
+  // 创建环境音分析项目
+  createProject: (projectData) =>
+    apiClient.post('/environment-generation/projects', projectData),
+
+  // 获取环境音分析项目详情
+  getProjectDetail: (projectId) =>
+    apiClient.get(`/environment-generation/projects/${projectId}`),
+
+  // 开始项目环境音生成
+  startGeneration: (projectId) =>
+    apiClient.post(`/environment-generation/projects/${projectId}/start-generation`),
+
+  // 删除环境音分析项目
+  deleteProject: (projectId) =>
+    apiClient.delete(`/environment-generation/projects/${projectId}`),
+
+  // 获取环境音生成统计数据
+  getStats: () => apiClient.get('/environment-generation/stats'),
+
   // 获取所有生成任务
-  getAllGenerationTasks: () => apiClient.get('/environment-generation/generation/tasks')
+  getAllGenerationTasks: () => apiClient.get('/environment-generation/generation/tasks'),
+
+  // 获取分析详情
+  getAnalysisDetail: (analysisId) =>
+    apiClient.get(`/environment-generation/analysis/${analysisId}`),
+
+  // 批量生成环境音
+  batchGenerateEnvironmentSounds: (generationPlan) =>
+    apiClient.post('/environment-generation/batch-generate', generationPlan)
 }
 
 // 环境混音API
@@ -1430,6 +1475,7 @@ const api = {
   deleteEnvironmentMixing: environmentMixingAPI.deleteMixing,
   getEnvironmentMixingDetail: environmentMixingAPI.getMixingDetail,
   updateEnvironmentMixing: environmentMixingAPI.updateMixing,
+  updateProjectAnalysis: environmentGenerationAPI.updateProjectAnalysis,
   ...musicGenerationAPI,
 
   // 智能检测API

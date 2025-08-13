@@ -37,6 +37,7 @@ class NarrationEnvironmentAnalyzer:
     async def extract_and_analyze_narration_batch(self, synthesis_plan: List[Dict]) -> Dict:
         """批量分析版本：一次分析，智能映射"""
         logger.info(f"[BATCH_ANALYZER] 开始批量分析synthesis_plan，共{len(synthesis_plan)}个段落")
+        logger.info(f"[BATCH_ANALYZER] 第一个段落内容: {synthesis_plan[0] if synthesis_plan else 'No segments'}")
         
         # 1. 提取所有旁白段落，记录时间轴信息
         narration_segments = []

@@ -1055,6 +1055,13 @@ async def process_audio_generation_from_synthesis_plan(
                 
                 # 调用TTS合成
                 start_time = time.time()
+                
+                # 🔥 增加请求间隔，防止MegaTTS3服务崩溃
+                import asyncio
+                logger.info(f"[SYNTHESIS_PLAN] 段落 {segment_id} 开始TTS合成，等待5秒...")
+                await asyncio.sleep(5)  # 等待5秒，给MegaTTS3充分恢复时间
+                
+                logger.info(f"[SYNTHESIS_PLAN] 段落 {segment_id} 发送TTS请求...")
                 response = await tts_client.synthesize_speech(tts_request)
                 processing_time = time.time() - start_time
                 
@@ -1354,12 +1361,12 @@ async def process_audio_generation_from_synthesis_plan(
         
         db.commit()
         
-        # 🔥 新增：按章节合并音频文件
+                # 🔥 新增：按章节合并音频文件
         chapter_audio_files = {}
         if completed_count > 0:
             try:
                 logger.info(f"[SYNTHESIS_PLAN] 开始按章节合并音频文件...")
-                
+
                 # 按章节组织音频文件
                 for result in results:
                     if isinstance(result, dict) and 'chapter_id' in result and result.get('file_path'):
@@ -1367,24 +1374,24 @@ async def process_audio_generation_from_synthesis_plan(
                         if chapter_id not in chapter_audio_files:
                             chapter_audio_files[chapter_id] = []
                         chapter_audio_files[chapter_id].append(result)
-                
+
                 # 为每个章节生成合并的音频文件
                 for chapter_id, audio_files in chapter_audio_files.items():
                     if not audio_files:
                         continue
-                    
+
                     try:
                         # 按段落顺序排序
                         audio_files.sort(key=lambda x: x.get('segment_id', 0))
-                        
+
                         # 生成章节音频文件
                         chapter_audio_path = await merge_chapter_audio_files(
                             project_id, chapter_id, audio_files, db
                         )
-                        
+
                         if chapter_audio_path:
                             logger.info(f"[SYNTHESIS_PLAN] 章节 {chapter_id} 音频合并完成: {chapter_audio_path}")
-                            
+
                             # 更新章节状态为完成
                             chapter = db.query(BookChapter).filter(BookChapter.id == chapter_id).first()
                             if chapter:
@@ -1392,10 +1399,10 @@ async def process_audio_generation_from_synthesis_plan(
                                 db.commit()
                         else:
                             logger.warning(f"[SYNTHESIS_PLAN] 章节 {chapter_id} 音频合并失败")
-                            
+
                     except Exception as e:
                         logger.error(f"[SYNTHESIS_PLAN] 章节 {chapter_id} 音频合并异常: {str(e)}")
-                        
+
             except Exception as e:
                 logger.error(f"[SYNTHESIS_PLAN] 章节音频合并过程异常: {str(e)}")
         
