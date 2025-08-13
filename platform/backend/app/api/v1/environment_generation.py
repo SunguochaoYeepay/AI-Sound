@@ -80,6 +80,7 @@ class EnvironmentProjectUpdateRequest(BaseModel):
     """环境音项目更新请求"""
     analysis_result: Optional[Dict[str, Any]] = None
     status: Optional[str] = None
+    chapter_id: Optional[int] = None  # 添加章节ID字段
 
 
 def get_session_id(project_id: int) -> str:
@@ -560,9 +561,27 @@ async def update_project_analysis(
         if not project:
             raise HTTPException(status_code=404, detail="项目不存在")
         
-        # 更新分析结果
+        # 更新分析结果 - 支持多章节分析结果存储
         if request.analysis_result is not None:
-            project.analysis_result = request.analysis_result
+            # 如果analysis_result是字典格式，说明是单个章节的分析结果
+            if isinstance(request.analysis_result, dict):
+                # 获取章节ID（从请求中获取）
+                chapter_id = request.chapter_id
+                
+                if chapter_id:
+                    # 初始化多章节分析结果存储
+                    if not project.analysis_result or not isinstance(project.analysis_result, dict):
+                        project.analysis_result = {}
+                    
+                    # 存储到对应章节
+                    project.analysis_result[str(chapter_id)] = request.analysis_result
+                    logger.info(f"[ENV_GEN_API] 保存章节 {chapter_id} 的分析结果")
+                else:
+                    # 兼容旧格式，直接覆盖
+                    project.analysis_result = request.analysis_result
+            else:
+                # 兼容旧格式，直接覆盖
+                project.analysis_result = request.analysis_result
         
         if request.status is not None:
             project.status = request.status

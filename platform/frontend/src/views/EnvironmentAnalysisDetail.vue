@@ -161,8 +161,16 @@ const loadProjectInfo = async () => {
           analysisResultKeys: Object.keys(response.data.data.analysis_result)
         })
         
-        // 先加载章节，然后根据实际选中的章节来分配分析结果
-        // 暂时不在这里分配分析结果，等章节加载完成后再处理
+        // 如果是多章节分析结果格式（字典格式，key是章节ID）
+        if (typeof response.data.data.analysis_result === 'object' && 
+            !Array.isArray(response.data.data.analysis_result) &&
+            response.data.data.analysis_result.environment_tracks === undefined) {
+          
+          // 多章节格式，直接加载到analysisResults
+          analysisResults.value = response.data.data.analysis_result
+          console.log('💾 加载多章节分析结果:', Object.keys(analysisResults.value))
+        }
+        // 否则保持原有逻辑，等章节加载完成后再处理
       } else {
         console.log('⚠️ 没有找到分析结果')
       }
@@ -179,10 +187,12 @@ const loadProjectInfo = async () => {
       
       // 设置当前选中章节的环境轨道
       if (selectedChapter.value) {
-        // 如果有分析结果，分配给当前选中的章节
-        if (response.data.data.analysis_result && Object.keys(response.data.data.analysis_result).length > 0) {
+        // 如果是旧格式的分析结果，分配给当前选中的章节
+        if (response.data.data.analysis_result && 
+            Object.keys(response.data.data.analysis_result).length > 0 &&
+            response.data.data.analysis_result.environment_tracks !== undefined) {
           analysisResults.value[selectedChapter.value.id] = response.data.data.analysis_result
-          console.log('💾 分析结果已分配给当前章节:', selectedChapter.value.id)
+          console.log('💾 旧格式分析结果已分配给当前章节:', selectedChapter.value.id)
         }
         
         const chapterAnalysis = analysisResults.value[selectedChapter.value.id]
@@ -378,7 +388,8 @@ const startAnalysis = async () => {
             },
             body: JSON.stringify({
               analysis_result: analysisResults.value[selectedChapter.value.id],
-              status: 'analyzed'
+              status: 'analyzed',
+              chapter_id: selectedChapter.value.id
             })
           })
           
