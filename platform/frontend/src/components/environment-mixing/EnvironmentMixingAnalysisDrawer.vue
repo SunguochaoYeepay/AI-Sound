@@ -725,7 +725,8 @@
   const analysisOptions = ref({
     include_emotion: true,
     precise_timing: true,
-    intensity_analysis: false
+    intensity_analysis: false,
+    create_project: true  // 环境音混合分析需要创建项目
   })
   const selectedBook = ref(null)
   const selectedProject = ref(null)

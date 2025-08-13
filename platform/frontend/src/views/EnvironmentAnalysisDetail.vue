@@ -14,9 +14,7 @@
               环境音分析详情
             </h1>
           </div>
-          <p class="page-description">
-            选择章节进行环境音分析，生成相应的音效
-          </p>
+          
         </div>
       </div>
     </div>
@@ -100,12 +98,25 @@ const generationLoading = ref(false)
 
 // 计算属性
 const hasAnalysis = computed(() => {
-  if (!selectedChapter.value) return false
+  if (!selectedChapter.value) {
+    console.log('❌ hasAnalysis: 没有选中章节')
+    return false
+  }
   
   const chapterId = selectedChapter.value.id
   const chapterAnalysis = analysisResults.value[chapterId]
   
-  return chapterAnalysis && Object.keys(chapterAnalysis).length > 0 && environmentTracks.value.length > 0
+  const result = chapterAnalysis && Object.keys(chapterAnalysis).length > 0 && environmentTracks.value.length > 0
+  
+  console.log('🔍 hasAnalysis计算:', {
+    chapterId,
+    chapterAnalysis: chapterAnalysis ? '有数据' : '无数据',
+    analysisResultsKeys: Object.keys(analysisResults.value),
+    environmentTracksLength: environmentTracks.value.length,
+    result
+  })
+  
+  return result
 })
 
 // 页面初始化
@@ -131,19 +142,29 @@ const loadProjectInfo = async () => {
   
   try {
     projectLoading.value = true
+    console.log('🔍 开始加载项目信息:', analysisId)
     
     const response = await environmentGenerationAPI.getProjectDetail(analysisId)
     
     if (response.data.success) {
       projectInfo.value = response.data.data.project
+      console.log('📋 项目信息加载成功:', {
+        projectId: projectInfo.value.id,
+        analysisResult: response.data.data.analysis_result ? '有数据' : '无数据'
+      })
       
       // 检查并加载分析结果
       if (response.data.data.analysis_result && Object.keys(response.data.data.analysis_result).length > 0) {
-        // 如果有分析结果，假设是第一个章节的分析结果
-        const firstChapterId = projectInfo.value.chapter_ids?.[0]
-        if (firstChapterId) {
-          analysisResults.value[firstChapterId] = response.data.data.analysis_result
-        }
+        console.log('🔍 检查分析结果:', {
+          analysisResult: response.data.data.analysis_result,
+          chapterIds: projectInfo.value.chapter_ids,
+          analysisResultKeys: Object.keys(response.data.data.analysis_result)
+        })
+        
+        // 先加载章节，然后根据实际选中的章节来分配分析结果
+        // 暂时不在这里分配分析结果，等章节加载完成后再处理
+      } else {
+        console.log('⚠️ 没有找到分析结果')
       }
       
       // 加载项目关联的章节
@@ -151,10 +172,31 @@ const loadProjectInfo = async () => {
         await loadChaptersByIds(projectInfo.value.chapter_ids)
       } else if (projectInfo.value.book_name && projectInfo.value.book_name !== '未知书籍') {
         await loadChaptersByBookName(projectInfo.value.book_name)
+      } else if (projectInfo.value.book_id) {
+        // 如果有book_id，通过book_id加载章节
+        await loadChaptersByBookId(projectInfo.value.book_id)
+      }
+      
+      // 设置当前选中章节的环境轨道
+      if (selectedChapter.value) {
+        // 如果有分析结果，分配给当前选中的章节
+        if (response.data.data.analysis_result && Object.keys(response.data.data.analysis_result).length > 0) {
+          analysisResults.value[selectedChapter.value.id] = response.data.data.analysis_result
+          console.log('💾 分析结果已分配给当前章节:', selectedChapter.value.id)
+        }
+        
+        const chapterAnalysis = analysisResults.value[selectedChapter.value.id]
+        if (chapterAnalysis && Object.keys(chapterAnalysis).length > 0) {
+          environmentTracks.value = chapterAnalysis.environment_tracks || []
+          console.log('🎯 设置当前章节环境轨道:', {
+            chapterId: selectedChapter.value.id,
+            tracksCount: environmentTracks.value.length
+          })
+        }
       }
     }
   } catch (error) {
-    console.error('加载项目信息失败:', error)
+    console.error('❌ 加载项目信息失败:', error)
     message.error('加载项目信息失败')
   } finally {
     projectLoading.value = false
@@ -170,6 +212,13 @@ const loadChaptersByIds = async (chapterIds) => {
       chapters.value = response.data.data || []
       if (chapterIds.length > 0) {
         selectedChapter.value = chapters.value.find(ch => ch.id === chapterIds[0])
+        // 设置当前选中章节的环境轨道
+        if (selectedChapter.value) {
+          const chapterAnalysis = analysisResults.value[selectedChapter.value.id]
+          if (chapterAnalysis && Object.keys(chapterAnalysis).length > 0) {
+            environmentTracks.value = chapterAnalysis.environment_tracks || []
+          }
+        }
       }
     }
   } catch (error) {
@@ -184,19 +233,96 @@ const loadChaptersByIds = async (chapterIds) => {
 const loadChaptersByBookName = async (bookName) => {
   try {
     chaptersLoading.value = true
+    console.log('📚 开始通过书籍名称加载章节:', bookName)
+    
     const booksResponse = await booksAPI.getBooks({ search: bookName })
     if (booksResponse.data.success && booksResponse.data.data.length > 0) {
       const book = booksResponse.data.data[0]
+      console.log('📖 找到书籍:', book)
+      
       const response = await chaptersAPI.getChapters({ book_id: book.id })
       if (response.data.success) {
         chapters.value = response.data.data || []
+        console.log('📑 章节加载成功:', {
+          chaptersCount: chapters.value.length,
+          chapters: chapters.value.map(ch => ({ id: ch.id, title: ch.chapter_title }))
+        })
+        
         if (chapters.value.length > 0) {
           selectedChapter.value = chapters.value[0]
+          console.log('🎯 设置选中章节:', selectedChapter.value)
+          
+          // 设置当前选中章节的环境轨道
+          if (selectedChapter.value) {
+            const chapterAnalysis = analysisResults.value[selectedChapter.value.id]
+            console.log('🔍 查找章节分析结果:', {
+              chapterId: selectedChapter.value.id,
+              analysisResults: analysisResults.value,
+              chapterAnalysis: chapterAnalysis
+            })
+            
+            if (chapterAnalysis && Object.keys(chapterAnalysis).length > 0) {
+              environmentTracks.value = chapterAnalysis.environment_tracks || []
+              console.log('✅ 设置环境轨道:', {
+                tracksCount: environmentTracks.value.length,
+                tracks: environmentTracks.value
+              })
+            } else {
+              console.log('❌ 章节没有分析结果')
+            }
+          }
         }
       }
     }
   } catch (error) {
     console.error('通过书籍名称加载章节失败:', error)
+    message.error('加载章节失败: ' + error.message)
+  } finally {
+    chaptersLoading.value = false
+  }
+}
+
+// 通过书籍ID加载章节
+const loadChaptersByBookId = async (bookId) => {
+  try {
+    chaptersLoading.value = true
+    console.log('📚 开始通过书籍ID加载章节:', bookId)
+    
+    const response = await chaptersAPI.getChapters({ book_id: bookId })
+    if (response.data.success) {
+      chapters.value = response.data.data || []
+      console.log('📑 章节加载成功:', {
+        chaptersCount: chapters.value.length,
+        chapters: chapters.value.map(ch => ({ id: ch.id, title: ch.chapter_title }))
+      })
+      
+      if (chapters.value.length > 0) {
+        selectedChapter.value = chapters.value[0]
+        console.log('🎯 设置选中章节:', selectedChapter.value)
+        
+        // 设置当前选中章节的环境轨道
+        if (selectedChapter.value) {
+          const chapterAnalysis = analysisResults.value[selectedChapter.value.id]
+          console.log('🔍 查找章节分析结果:', {
+            chapterId: selectedChapter.value.id,
+            analysisResults: analysisResults.value,
+            chapterAnalysis: chapterAnalysis
+          })
+          
+          if (chapterAnalysis && Object.keys(chapterAnalysis).length > 0) {
+            environmentTracks.value = chapterAnalysis.environment_tracks || []
+            console.log('✅ 设置环境轨道:', {
+              tracksCount: environmentTracks.value.length,
+              tracks: environmentTracks.value
+            })
+          } else {
+            console.log('❌ 章节没有分析结果')
+          }
+        }
+      }
+    }
+  } catch (error) {
+    console.error('通过书籍ID加载章节失败:', error)
     message.error('加载章节失败: ' + error.message)
   } finally {
     chaptersLoading.value = false
@@ -233,7 +359,8 @@ const startAnalysis = async () => {
       {
         mode: 'auto',
         environment_types: ['nature', 'urban', 'indoor', 'action'],
-        precision: 'medium'
+        precision: 'medium',
+        create_project: false  // 详情页面分析不创建项目
       }
     )
     
@@ -241,8 +368,8 @@ const startAnalysis = async () => {
       analysisResults.value[selectedChapter.value.id] = response.data.analysis_result
       environmentTracks.value = response.data.analysis_result?.environment_tracks || []
       
-      // 保存分析结果到项目
-      if (projectInfo.value && response.data.project_id) {
+      // 保存分析结果到项目 - 修复：只要有项目信息就保存，不依赖response.data.project_id
+      if (projectInfo.value) {
         try {
           const updateResponse = await fetch(`/api/v1/environment-generation/projects/${projectInfo.value.id}/analysis`, {
             method: 'PUT',
@@ -262,6 +389,7 @@ const startAnalysis = async () => {
             if (updateData.success) {
               projectInfo.value.analysis_result = analysisResults.value[selectedChapter.value.id]
               projectInfo.value.status = 'analyzed'
+              console.log('✅ 分析结果已保存到项目:', projectInfo.value.id)
             }
           } else {
             const errorText = await updateResponse.text()
@@ -272,6 +400,8 @@ const startAnalysis = async () => {
           console.error('保存分析结果失败:', saveError)
           message.warning('分析完成，但保存结果失败')
         }
+      } else {
+        console.warn('⚠️ 没有项目信息，无法保存分析结果')
       }
       
       message.success('分析完成')

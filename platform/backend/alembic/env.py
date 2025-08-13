@@ -22,7 +22,15 @@ if config.config_file_name is not None:
 # Add app directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from app.database import Base
+# 避免在导入时就创建数据库引擎
+import os
+import sys
+
+# 添加app目录到路径
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+# 导入模型但不创建引擎
+from app.models.base import Base
 from app.models import *  # Import all models
 
 target_metadata = Base.metadata

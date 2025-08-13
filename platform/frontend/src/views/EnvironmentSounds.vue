@@ -605,7 +605,8 @@
   const analysisOptions = ref({
     precise_timing: true,
     intensity_analysis: true,
-    include_emotion: false
+    include_emotion: false,
+    create_project: true  // 环境音页面分析需要创建项目
   })
 
   // 书籍和章节数据

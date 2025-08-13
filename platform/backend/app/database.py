@@ -17,7 +17,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # 数据库配置
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://ai_sound_user:ai_sound_password@localhost:5432/ai_sound")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+psycopg2://ai_sound_user:ai_sound_password@localhost:5432/ai_sound")
 ECHO_SQL = os.getenv("ECHO_SQL", "false").lower() == "true"
 
 # 创建数据库引擎

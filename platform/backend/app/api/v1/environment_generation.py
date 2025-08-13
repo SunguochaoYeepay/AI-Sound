@@ -15,6 +15,7 @@ from app.services.sound_matching_engine import SoundMatchingEngine
 from app.services.tangoflux_environment_generator import TangoFluxEnvironmentGenerator
 from app.services.timeline_generator import EnvironmentTimelineGenerator
 from app.services.environment_config_validator import EnvironmentConfigValidator
+from app.services.environment_project_service import EnvironmentProjectService
 from app.utils.logger import get_logger
 from app.database import get_db
 from app.models.novel_project import NovelProject
@@ -118,47 +119,66 @@ async def analyze_chapters_environment(
             options=request.analysis_options or {}
         )
         
-        # 生成项目ID（使用时间戳）
-        project_id = int(datetime.now().timestamp())
+        # 检查是否需要创建项目（通过analysis_options中的create_project参数控制）
+        create_project = request.analysis_options.get('create_project', False)
         
-        # 保存到数据库
-        new_project = EnvironmentProject(
-            id=project_id,
-            name=f"环境音分析_{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}",
-            description=f"基于{len(chapters)}个章节的智能环境音分析",
-            status="analyzed",
-            analysis_result=analysis_result,
-            matching_result={
-                'analysis_stats': {
+        if create_project:
+            # 生成项目ID（使用时间戳）
+            project_id = int(datetime.now().timestamp())
+            
+            # 保存到数据库
+            new_project = EnvironmentProject(
+                id=project_id,
+                name=f"环境音分析_{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}",
+                description=f"基于{len(chapters)}个章节的智能环境音分析",
+                status="analyzed",
+                analysis_result=analysis_result,
+                matching_result={
+                    'analysis_stats': {
+                        'total_chapters': len(chapters),
+                        'total_tracks': len(analysis_result.get('environment_tracks', [])),
+                        'analysis_time': datetime.now().isoformat()
+                    },
+                    'session_stage': 'analyzed'
+                },
+                chapter_ids=request.chapter_ids,
+                analysis_options=request.analysis_options or {},
+                book_name=project.name if project else "未知书籍",
+                chapter_name=f"第{len(chapters)}章"
+            )
+            
+            db.add(new_project)
+            db.commit()
+            db.refresh(new_project)
+            
+            logger.info(f"[ENV_GEN_API] 章节环境音分析完成，项目ID: {project_id}")
+            
+            return {
+                "success": True,
+                "project_id": project_id,
+                "analysis_result": analysis_result,
+                "analysis_stats": {
                     'total_chapters': len(chapters),
                     'total_tracks': len(analysis_result.get('environment_tracks', [])),
                     'analysis_time': datetime.now().isoformat()
                 },
-                'session_stage': 'analyzed'
-            },
-            chapter_ids=request.chapter_ids,
-            analysis_options=request.analysis_options or {},
-            book_name=project.name if project else "未知书籍",
-            chapter_name=f"第{len(chapters)}章"
-        )
-        
-        db.add(new_project)
-        db.commit()
-        db.refresh(new_project)
-        
-        logger.info(f"[ENV_GEN_API] 章节环境音分析完成，项目ID: {project_id}")
-        
-        return {
-            "success": True,
-            "project_id": project_id,
-            "analysis_result": analysis_result,
-            "analysis_stats": {
-                'total_chapters': len(chapters),
-                'total_tracks': len(analysis_result.get('environment_tracks', [])),
-                'analysis_time': datetime.now().isoformat()
-            },
-            "message": f"成功分析 {len(chapters)} 个章节，发现 {len(analysis_result.get('environment_tracks', []))} 个环境音轨道"
-        }
+                "message": f"成功分析 {len(chapters)} 个章节，发现 {len(analysis_result.get('environment_tracks', []))} 个环境音轨道，已创建项目"
+            }
+        else:
+            # 只返回分析结果，不创建项目
+            logger.info(f"[ENV_GEN_API] 章节环境音分析完成，未创建项目")
+            
+            return {
+                "success": True,
+                "project_id": None,
+                "analysis_result": analysis_result,
+                "analysis_stats": {
+                    'total_chapters': len(chapters),
+                    'total_tracks': len(analysis_result.get('environment_tracks', [])),
+                    'analysis_time': datetime.now().isoformat()
+                },
+                "message": f"成功分析 {len(chapters)} 个章节，发现 {len(analysis_result.get('environment_tracks', []))} 个环境音轨道"
+            }
         
     except HTTPException:
         raise
@@ -181,26 +201,29 @@ async def analyze_environment_from_synthesis_plan(
     
     logger.info(f"[ENV_GEN_API] 开始环境音分析，项目ID: {request.project_id}，强制重新分析: {force_reanalyze}")
     
-    # 🚀 检查数据库中是否已有分析结果
-    existing_project = db.query(EnvironmentProject).filter(EnvironmentProject.id == request.project_id).first()
-    if not force_reanalyze and existing_project and existing_project.analysis_result:
+    # 🚀 检查数据库中是否已有分析结果 - 使用独立的环境音项目
+    project = db.query(NovelProject).filter(NovelProject.id == request.project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail=f"项目 {request.project_id} 不存在")
+    
+    # 使用环境音项目服务检查现有分析结果
+    env_service = EnvironmentProjectService(db)
+    existing_env_project = env_service.get_by_novel_project_id(request.project_id)
+    
+    if not force_reanalyze and existing_env_project and existing_env_project.analysis_result:
         logger.info(f"[ENV_GEN_API] 发现已有分析结果，项目ID: {request.project_id}")
         return {
             'success': True,
             'project_id': request.project_id,
             'session_id': session_id,
-            'analysis_result': existing_project.analysis_result,
-            'analysis_stats': existing_project.matching_result.get('analysis_stats', {}) if existing_project.matching_result else {},
+            'analysis_result': existing_env_project.analysis_result,
+            'analysis_stats': existing_env_project.matching_result.get('analysis_stats', {}) if existing_env_project.matching_result else {},
             'existing_analysis': True,
             'message': '发现已有分析结果，如需重新分析请使用重新分析功能'
         }
     
     try:
-        # 🚨 验证项目状态
-        project = db.query(NovelProject).filter(NovelProject.id == request.project_id).first()
-        if not project:
-            raise HTTPException(status_code=404, detail=f"项目 {request.project_id} 不存在")
-        
+        # 🚨 验证项目状态（项目已在前面查询过）
         if project.status == 'cancelled':
             raise HTTPException(
                 status_code=422, 
@@ -211,7 +234,7 @@ async def analyze_environment_from_synthesis_plan(
         if not request.synthesis_plan:
             # 尝试从数据库获取synthesis_plan
             # 通过项目ID -> 书籍ID -> 章节 -> 分析结果的路径查找
-            chapters = db.query(BookChapter).filter(BookChapter.book_id == project.book_id).all()
+            chapters = db.query(BookChapter).filter(BookChapter.book_id == getattr(project, 'book_id', None)).all()
             
             analysis_result = None
             for chapter in chapters:
@@ -256,9 +279,8 @@ async def analyze_environment_from_synthesis_plan(
         analyzer = NarrationEnvironmentAnalyzer()
         
         # 执行环境音分析
-        analysis_result = analyzer.analyze_narration_environment(
-            synthesis_plan=request.synthesis_plan,
-            analysis_options=request.options
+        analysis_result = await analyzer.extract_and_analyze_narration(
+            synthesis_plan=request.synthesis_plan
         )
         
         # 计算分析统计
@@ -269,37 +291,16 @@ async def analyze_environment_from_synthesis_plan(
             'analysis_duration': analysis_result.get('analysis_duration', 0)
         }
         
-        # 🚀 保存到数据库
-        if existing_project:
-            # 更新现有项目
-            existing_project.analysis_result = analysis_result
-            existing_project.matching_result = {
-                'analysis_stats': analysis_stats,
-                'session_stage': 'analyzed'
-            }
-            existing_project.updated_at = datetime.now()
-            db.commit()
-            db.refresh(existing_project)
-        else:
-            # 创建新项目
-            new_project = EnvironmentProject(
-                id=request.project_id,
-                name=f"环境音分析_{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}",
-                description=f"基于{len(request.synthesis_plan)}个段落的智能环境音分析",
-                status="analyzed",
-                analysis_result=analysis_result,
-                matching_result={
-                    'analysis_stats': analysis_stats,
-                    'session_stage': 'analyzed'
-                },
-                chapter_ids=[project.book_id],
-                analysis_options=request.options,
-                book_name=project.name if hasattr(project, 'name') else "未知书籍",
-                chapter_name="第1章"  # 默认值
-            )
-            db.add(new_project)
-            db.commit()
-            db.refresh(new_project)
+        # 🚀 保存到数据库 - 使用独立的环境音项目
+        env_service = EnvironmentProjectService(db)
+        env_project = env_service.create_or_update(
+            novel_project_id=request.project_id,
+            analysis_result=analysis_result,
+            analysis_stats=analysis_stats,
+            analysis_options=request.options
+        )
+        
+        logger.info(f"[ENV_GEN_API] 环境音分析结果已保存到独立项目，项目ID: {env_project.id}")
         
         # 🚀 同时保存到内存数据库（用于快速访问）
         # _analysis_sessions[session_id] = {
@@ -364,6 +365,7 @@ async def create_environment_project(
             name=request.name,
             description=request.description,
             status="pending",  # 初始状态为pending，等待分析
+            book_id=request.book_id,  # 设置书籍ID
             analysis_result={},  # 空的分析结果
             matching_result={},  # 空的匹配结果
             chapter_ids=request.chapter_ids,
@@ -386,8 +388,14 @@ async def create_environment_project(
                 "name": new_project.name,
                 "description": new_project.description,
                 "status": new_project.status,
+                "book_id": getattr(new_project, 'book_id', None),  # 安全访问book_id字段
                 "chapter_ids": new_project.chapter_ids,
                 "analysis_options": new_project.analysis_options,
+                "analysis_tracks": new_project.analysis_tracks,
+                "generation_count": new_project.generation_count,
+                "matched_count": new_project.matched_count,
+                "book_name": new_project.book_name,
+                "chapter_name": new_project.chapter_name,
                 "created_at": new_project.created_at.isoformat() if new_project.created_at else None
             },
             "message": "项目创建成功"
@@ -417,7 +425,7 @@ async def get_environment_project(
             "id": project.id,
             "name": project.name,
             "description": project.description,
-            "book_id": project.book_id,
+            "book_id": getattr(project, 'book_id', None),  # 安全访问book_id字段
             "book_name": project.book_name,
             "chapter_ids": project.chapter_ids,
             "chapter_name": project.chapter_name,
@@ -508,6 +516,7 @@ async def get_projects(
                 "name": project.name,
                 "description": project.description,
                 "status": project.status,
+                "book_id": project.book_id,  # 添加book_id字段
                 "chapter_ids": project.chapter_ids,
                 "analysis_options": project.analysis_options,
                 "analysis_tracks": project.analysis_tracks,
@@ -575,6 +584,190 @@ async def update_project_analysis(
         logger.error(f"[ENV_GEN_API] 更新项目分析结果失败: {str(e)}")
         db.rollback()
         raise HTTPException(status_code=500, detail=f"更新分析结果失败: {str(e)}")
+
+@router.get("/config/{project_id}")
+async def get_environment_config(
+    project_id: int,
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """
+    获取项目的环境音配置
+    """
+    try:
+        logger.info(f"[ENV_GEN_API] 获取环境音配置，项目ID: {project_id}")
+        
+        # 使用环境音项目服务获取配置
+        env_service = EnvironmentProjectService(db)
+        env_project = env_service.get_by_novel_project_id(project_id)
+        
+        if not env_project or not env_project.analysis_result:
+            return {
+                "success": False,
+                "message": "未找到环境音配置，请先进行环境音分析"
+            }
+        
+        # 构建返回的配置数据
+        analysis_result = env_project.analysis_result
+        analysis_stats = env_project.matching_result.get('analysis_stats', {}) if env_project.matching_result else {}
+        session_stage = env_project.matching_result.get('session_stage', 'analyzed') if env_project.matching_result else 'analyzed'
+        
+        # 构建环境音轨道配置
+        environment_tracks = []
+        if 'environment_tracks' in analysis_result:
+            for i, track in enumerate(analysis_result['environment_tracks']):
+                environment_tracks.append({
+                    'id': f"track_{i}",
+                    'segment_id': track.get('segment_id', i + 1),
+                    'environment_keywords': track.get('environment_keywords', []),
+                    'scene_description': track.get('scene_description', ''),
+                    'duration': track.get('duration', 30.0),
+                    'intensity_level': track.get('intensity_level', 'medium'),
+                    'tangoflux_config': {
+                        'prompt': track.get('tangoflux_prompt', ''),
+                        'volume': track.get('volume', 0.6),
+                        'duration': track.get('duration', 30.0),
+                        'fade_in': track.get('fade_in', 3.0),
+                        'fade_out': track.get('fade_out', 2.0),
+                        'loop': track.get('loop', True)
+                    },
+                    'environment_sound_id': track.get('environment_sound_id'),
+                    'user_confirmed': track.get('user_confirmed', False),
+                    'confidence': track.get('confidence', 0.8)
+                })
+        
+        return {
+            "success": True,
+            "config": {
+                "project_id": project_id,
+                "environment_tracks": environment_tracks,
+                "analysis_stats": analysis_stats,
+                "session_stage": session_stage,
+                "total_tracks": len(environment_tracks)
+            },
+            "message": f"找到 {len(environment_tracks)} 个环境音轨道配置"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[ENV_GEN_API] 获取环境音配置失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取环境音配置失败: {str(e)}")
+
+
+
+
+@router.put("/track/{project_id}/{track_index}")
+async def update_track_config(
+    project_id: int,
+    track_index: int,
+    request: ValidationEditRequest,
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """
+    更新环境音轨道配置
+    """
+    try:
+        logger.info(f"[ENV_GEN_API] 更新轨道配置，项目ID: {project_id}，轨道索引: {track_index}")
+        
+        # 使用环境音项目服务更新轨道配置
+        env_service = EnvironmentProjectService(db)
+        
+        # 构建轨道配置更新数据
+        track_config = {}
+        manual_edits = request.manual_edits
+        
+        if 'environment_keywords' in manual_edits:
+            track_config['environment_keywords'] = manual_edits['environment_keywords']
+        if 'scene_description' in manual_edits:
+            track_config['scene_description'] = manual_edits['scene_description']
+        if 'environment_sound_id' in manual_edits:
+            track_config['environment_sound_id'] = manual_edits['environment_sound_id']
+        if 'tangoflux_config' in manual_edits:
+            track_config['tangoflux_config'] = manual_edits['tangoflux_config']
+            # 同步更新相关字段
+            tangoflux_config = manual_edits['tangoflux_config']
+            if 'prompt' in tangoflux_config:
+                track_config['tangoflux_prompt'] = tangoflux_config['prompt']
+            if 'volume' in tangoflux_config:
+                track_config['volume'] = tangoflux_config['volume']
+            if 'duration' in tangoflux_config:
+                track_config['duration'] = tangoflux_config['duration']
+        
+        # 更新轨道配置
+        success = env_service.update_track_config(project_id, track_index, track_config)
+        
+        if not success:
+            raise HTTPException(status_code=404, detail="未找到环境音分析结果或轨道索引超出范围")
+        
+        logger.info(f"[ENV_GEN_API] 轨道配置更新成功，项目ID: {project_id}，轨道索引: {track_index}")
+        
+        return {
+            "success": True,
+            "data": {
+                "project_id": project_id,
+                "track_index": track_index
+            },
+            "message": "轨道配置更新成功"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[ENV_GEN_API] 更新轨道配置失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"更新轨道配置失败: {str(e)}")
+
+@router.post("/finalize/{project_id}")
+async def finalize_generation(
+    project_id: int,
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """
+    完成环境音生成流程
+    """
+    try:
+        logger.info(f"[ENV_GEN_API] 完成环境音生成流程，项目ID: {project_id}")
+        
+        # 使用环境音项目服务完成项目
+        env_service = EnvironmentProjectService(db)
+        env_project = env_service.get_by_novel_project_id(project_id)
+        
+        if not env_project or not env_project.analysis_result:
+            raise HTTPException(status_code=404, detail="未找到环境音分析结果")
+        
+        environment_tracks = env_project.analysis_result.get('environment_tracks', [])
+        
+        # 检查是否有轨道配置
+        if not environment_tracks:
+            raise HTTPException(status_code=400, detail="没有环境音轨道配置")
+        
+        # 完成项目
+        success = env_service.finalize_project(project_id)
+        
+        if not success:
+            raise HTTPException(status_code=500, detail="完成项目失败")
+        
+        logger.info(f"[ENV_GEN_API] 环境音生成流程完成，项目ID: {project_id}，轨道数量: {len(environment_tracks)}")
+        
+        return {
+            "success": True,
+            "data": {
+                "project_id": project_id,
+                "config": {
+                    "project_id": project_id,
+                    "environment_tracks": environment_tracks,
+                    "analysis_stats": env_project.matching_result.get('analysis_stats', {}) if env_project.matching_result else {},
+                    "session_stage": "completed",
+                    "total_tracks": len(environment_tracks)
+                }
+            },
+            "message": f"环境音生成流程完成，共 {len(environment_tracks)} 个轨道"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[ENV_GEN_API] 完成环境音生成流程失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"完成环境音生成流程失败: {str(e)}")
 
 @router.post("/batch-generate")
 async def batch_generate_environment_sounds(

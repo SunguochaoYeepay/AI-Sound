@@ -18,6 +18,10 @@ class EnvironmentProject(Base):
     description = Column(Text, comment="项目描述")
     status = Column(String(50), default='analyzed', comment="项目状态: analyzed, generating, completed, failed")
     
+    # 关联信息
+    novel_project_id = Column(Integer, nullable=True, comment="关联的合成项目ID")
+    book_id = Column(Integer, comment="书籍ID")
+    
     # 分析结果
     analysis_result = Column(JSON, comment="分析结果")
     matching_result = Column(JSON, comment="匹配结果")
@@ -44,6 +48,7 @@ class EnvironmentProject(Base):
             "name": self.name,
             "description": self.description,
             "status": self.status,
+            "book_id": self.book_id,
             "analysis_result": self.analysis_result,
             "matching_result": self.matching_result,
             "chapter_ids": self.chapter_ids,
@@ -64,6 +69,7 @@ class EnvironmentProject(Base):
             "name": self.name,
             "description": self.description,
             "status": self.status,
+            "book_id": self.book_id,
             "chapter_ids": self.chapter_ids,
             "analysis_options": self.analysis_options,
             "analysis_tracks": self.analysis_tracks,
