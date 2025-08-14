@@ -1,63 +1,64 @@
 <template>
   <div class="analysis-header">
     <div class="header-left">
-      <h2 class="content-title">章节内容分析</h2>
+      <h3 class="content-title">章节分析</h3>
       <p class="content-subtitle" v-if="selectedChapter">
-        第{{ selectedChapter.chapter_number }}章 {{ selectedChapter.chapter_title }}
+        {{ selectedChapter.chapter_title }}
       </p>
     </div>
     
     <div class="header-actions">
       <a-space>
-        <!-- 第一步：环境音分析 -->
+        <!-- 环境音分析 -->
         <a-button 
           v-if="!hasAnalysis"
-          type="primary" 
+          type="default" 
           @click="$emit('start-analysis')"
           :loading="analysisLoading"
         >
           <BulbOutlined />
-          环境音分析
+          分析环境音
         </a-button>
         
-       
-        
-        <!-- 第二步：生成环境音（合并两个生成按钮） -->
+        <!-- 生成当前章节环境音 -->
         <a-button 
           v-if="hasAnalysis && hasTracks"
-          type="primary" 
+          type="default" 
           @click="$emit('generate-all-sounds')"
           :loading="generationLoading"
         >
           <SoundOutlined />
-          生成所有环境音
+          生成当前章节环境音
         </a-button>
         
-        <!-- 第三步：混音操作（只有在有生成文件时才显示） -->
+        <!-- 混音操作 -->
         <a-button 
           v-if="hasAnalysis && hasTracks && hasGeneratedTracks"
           size="small"
+          type="default"
           :loading="mixingLoading"
           @click="$emit('mix-sounds')"
         >
-          🔊 混音环境音
+          混音
         </a-button>
         
-        <!-- 第四步：播放和下载混音（只有在有混音文件时才显示） -->
+        <!-- 播放和下载 -->
         <a-button 
           v-if="hasAnalysis && hasTracks && hasMixingFile"
           size="small"
+          type="default"
           @click="$emit('play-mixing')"
         >
-          🎵 播放混音
+          播放
         </a-button>
         
         <a-button 
           v-if="hasAnalysis && hasTracks && hasMixingFile"
           size="small"
+          type="default"
           @click="$emit('download-mixing')"
         >
-          ⬇️ 下载混音
+          下载
         </a-button>
       </a-space>
     </div>
@@ -109,10 +110,14 @@ defineEmits(['start-analysis', 'generate-all-sounds', 'mix-sounds', 'play-mixing
 .analysis-header {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 24px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid var(--ant-border-color-split);
+  align-items: center;
+  margin-bottom: 20px;
+  padding: 16px 0;
+  border-bottom: 1px solid #f0f0f0;
+  background: #fafafa;
+  border-radius: 6px;
+  padding-left: 16px;
+  padding-right: 16px;
 }
 
 .header-left {
@@ -121,15 +126,15 @@ defineEmits(['start-analysis', 'generate-all-sounds', 'mix-sounds', 'play-mixing
 
 .content-title {
   margin: 0 0 4px 0;
-  font-size: 20px;
-  font-weight: 600;
-  color: var(--ant-text-color);
+  font-size: 16px;
+  font-weight: 500;
+  color: #262626;
 }
 
 .content-subtitle {
   margin: 0;
-  font-size: 14px;
-  color: var(--ant-text-color-secondary);
+  font-size: 13px;
+  color: #8c8c8c;
 }
 
 .header-actions {
@@ -138,14 +143,15 @@ defineEmits(['start-analysis', 'generate-all-sounds', 'mix-sounds', 'play-mixing
 
 /* 暗色主题适配 */
 [data-theme='dark'] .analysis-header {
-  border-bottom-color: var(--ant-border-color-split);
+  background: #1f1f1f;
+  border-bottom-color: #303030;
 }
 
 [data-theme='dark'] .content-title {
-  color: var(--ant-color-text);
+  color: #ffffff;
 }
 
 [data-theme='dark'] .content-subtitle {
-  color: var(--ant-color-text-secondary);
+  color: #a6a6a6;
 }
 </style>

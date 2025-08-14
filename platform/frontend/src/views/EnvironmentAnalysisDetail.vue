@@ -104,7 +104,7 @@ import EnvironmentProgressBar from '@/components/environment-sounds/EnvironmentP
 import { environmentGenerationAPI } from '@/api'
 import { chaptersAPI } from '@/api'
 import { booksAPI } from '@/api'
-import { playEnvironmentTrack, playEnvironmentMixing } from '@/utils/audioService'
+import { playEnvironmentTrack } from '@/utils/audioService'
 import { useWebSocket } from '@/composables/useWebSocketSimple'
 
 // 路由参数
@@ -143,6 +143,11 @@ const generationErrorMessage = ref('')
 // 环境音轨道
 const environmentTracks = ref([])
 
+// 防重复加载机制
+const isLoadingProject = ref(false)
+const lastLoadTime = ref(0)
+const LOAD_DEBOUNCE_TIME = 1000 // 1秒防抖
+
 // 计算属性
 const hasAnalysis = computed(() => {
   if (!selectedChapter.value) {
@@ -169,13 +174,28 @@ const hasAnalysis = computed(() => {
 // 计算属性：是否有已生成的环境音轨道
 const hasGeneratedTracks = computed(() => {
   if (!environmentTracks.value || environmentTracks.value.length === 0) {
+    console.log('🔍 hasGeneratedTracks: 没有环境轨道')
     return false
   }
   
   // 检查是否有至少一个轨道已经生成
-  return environmentTracks.value.some(track => 
+  const hasGenerated = environmentTracks.value.some(track => 
     track.generated_file_path && track.generated_file_path.length > 0
   )
+  
+      console.log('🔍 hasGeneratedTracks检查:', {
+      tracksCount: environmentTracks.value.length,
+      tracks: environmentTracks.value.map(track => ({
+        keywords: track.environment_keywords?.[0] || '未命名',
+        hasGenerated: track.generated_file_path && track.generated_file_path.length > 0,
+        generatedFilePath: track.generated_file_path,
+        allFields: Object.keys(track),
+        fullTrack: JSON.stringify(track, null, 2)
+      })),
+      result: hasGenerated
+    })
+  
+  return hasGenerated
 })
 
 // 项目统计数据
@@ -194,7 +214,7 @@ const projectStats = computed(() => {
 })
 
 // WebSocket消息处理
-const handleWebSocketMessage = (event) => {
+const handleWebSocketMessage = async (event) => {
   try {
     const data = JSON.parse(event.detail)
     
@@ -229,11 +249,30 @@ const handleWebSocketMessage = (event) => {
             totalTracks: totalTracks.value,
             progress: generationProgress.value
           })
+          
+          // 只更新当前轨道的生成文件路径，不重新加载整个项目
+          if (progressData.file_path && environmentTracks.value[progressData.track_index]) {
+            // 使用Vue 3的响应式更新方法
+            const track = environmentTracks.value[progressData.track_index]
+            track.generated_file_path = progressData.file_path
+            
+            // 强制触发响应式更新
+            environmentTracks.value = [...environmentTracks.value]
+            
+            console.log(`📁 更新轨道${progressData.track_index}文件路径:`, progressData.file_path)
+            console.log(`✅ 轨道${progressData.track_index}状态更新:`, {
+              hasGenerated: track.generated_file_path && track.generated_file_path.length > 0,
+              generatedFilePath: track.generated_file_path
+            })
+          }
         } else {
           // 整体生成完成
           generationStatus.value = 'completed'
           generationProgress.value = 100
           message.success('🎵 环境音生成完成！')
+          
+          // 只在整体完成时刷新一次项目数据
+          await loadProjectInfo()
           
           // 延迟重置状态，让用户看到完成状态
           setTimeout(() => {
@@ -246,9 +285,6 @@ const handleWebSocketMessage = (event) => {
             tracksProgress.value = []
             generationErrorMessage.value = ''
           }, 2000)
-          
-          // 刷新项目信息和分析结果
-          loadProjectInfo()
         }
       } else if (progressData.status === 'failed') {
         // 生成失败
@@ -351,7 +387,20 @@ const loadProjectInfo = async () => {
     return
   }
   
+  // 防重复加载检查
+  const now = Date.now()
+  if (isLoadingProject.value || (now - lastLoadTime.value < LOAD_DEBOUNCE_TIME)) {
+    console.log('⏳ 跳过重复加载项目信息:', {
+      isLoading: isLoadingProject.value,
+      timeSinceLastLoad: now - lastLoadTime.value,
+      debounceTime: LOAD_DEBOUNCE_TIME
+    })
+    return
+  }
+  
   try {
+    isLoadingProject.value = true
+    lastLoadTime.value = now
     projectLoading.value = true
     console.log('🔍 开始加载项目信息:', analysisId)
     
@@ -399,31 +448,69 @@ const loadProjectInfo = async () => {
       // 检查是否有混音文件
       hasMixingFile.value = projectInfo.value.matching_result?.mixed_file_path ? true : false
       
-      // 设置当前选中章节的环境轨道
-      if (selectedChapter.value) {
-        // 如果是旧格式的分析结果，分配给当前选中的章节
-        if (response.data.data.analysis_result && 
-            Object.keys(response.data.data.analysis_result).length > 0 &&
-            response.data.data.analysis_result.environment_tracks !== undefined) {
-          analysisResults.value[selectedChapter.value.id] = response.data.data.analysis_result
-          console.log('💾 旧格式分析结果已分配给当前章节:', selectedChapter.value.id)
+              // 设置当前选中章节的环境轨道
+        if (selectedChapter.value) {
+          // 如果是旧格式的分析结果，分配给当前选中的章节
+          if (response.data.data.analysis_result && 
+              Object.keys(response.data.data.analysis_result).length > 0 &&
+              response.data.data.analysis_result.environment_tracks !== undefined) {
+            analysisResults.value[selectedChapter.value.id] = response.data.data.analysis_result
+            console.log('💾 旧格式分析结果已分配给当前章节:', selectedChapter.value.id)
+          }
+          
+          const chapterAnalysis = analysisResults.value[selectedChapter.value.id]
+          if (chapterAnalysis && Object.keys(chapterAnalysis).length > 0) {
+            const newTracks = chapterAnalysis.environment_tracks || []
+            
+            // 保留已更新的轨道状态，避免覆盖WebSocket更新的generated_file_path
+            if (environmentTracks.value.length > 0 && newTracks.length === environmentTracks.value.length) {
+              newTracks.forEach((newTrack, index) => {
+                const existingTrack = environmentTracks.value[index]
+                if (existingTrack && existingTrack.generated_file_path && !newTrack.generated_file_path) {
+                  newTrack.generated_file_path = existingTrack.generated_file_path
+                  console.log(`🔄 保留轨道${index}的生成文件路径:`, existingTrack.generated_file_path)
+                }
+              })
+            } else if (newTracks.length > 0) {
+              // 如果前端没有轨道状态，检查数据库中是否已有生成的文件路径
+              console.log('🔍 检查数据库中轨道生成状态:', newTracks.map((track, index) => ({
+                index,
+                hasGeneratedPath: !!track.generated_file_path,
+                generatedPath: track.generated_file_path,
+                trackKeywords: track.environment_keywords?.[0] || '未命名',
+                allFields: Object.keys(track)
+              })))
+              
+              // 检查是否有生成路径的轨道
+              const tracksWithPath = newTracks.filter(track => track.generated_file_path)
+              console.log('🔍 有生成路径的轨道数量:', tracksWithPath.length)
+              if (tracksWithPath.length > 0) {
+                console.log('🔍 有生成路径的轨道详情:', tracksWithPath.map(track => ({
+                  keywords: track.environment_keywords?.[0] || '未命名',
+                  generatedPath: track.generated_file_path
+                })))
+              }
+            }
+            
+            environmentTracks.value = newTracks
+            console.log('🎯 设置当前章节环境轨道:', {
+              chapterId: selectedChapter.value.id,
+              tracksCount: environmentTracks.value.length,
+              tracks: environmentTracks.value.map(track => ({
+                keywords: track.environment_keywords?.[0] || '未命名',
+                hasGenerated: track.generated_file_path && track.generated_file_path.length > 0,
+                generatedFilePath: track.generated_file_path
+              }))
+            })
+          }
         }
-        
-        const chapterAnalysis = analysisResults.value[selectedChapter.value.id]
-        if (chapterAnalysis && Object.keys(chapterAnalysis).length > 0) {
-          environmentTracks.value = chapterAnalysis.environment_tracks || []
-          console.log('🎯 设置当前章节环境轨道:', {
-            chapterId: selectedChapter.value.id,
-            tracksCount: environmentTracks.value.length
-          })
-        }
-      }
     }
   } catch (error) {
     console.error('❌ 加载项目信息失败:', error)
     message.error('加载项目信息失败')
   } finally {
     projectLoading.value = false
+    isLoadingProject.value = false
   }
 }
 
@@ -440,7 +527,27 @@ const loadChaptersByIds = async (chapterIds) => {
         if (selectedChapter.value) {
           const chapterAnalysis = analysisResults.value[selectedChapter.value.id]
           if (chapterAnalysis && Object.keys(chapterAnalysis).length > 0) {
-            environmentTracks.value = chapterAnalysis.environment_tracks || []
+            const newTracks = chapterAnalysis.environment_tracks || []
+            
+            // 保留已更新的轨道状态，避免覆盖WebSocket更新的generated_file_path
+            if (environmentTracks.value.length > 0 && newTracks.length === environmentTracks.value.length) {
+              newTracks.forEach((newTrack, index) => {
+                const existingTrack = environmentTracks.value[index]
+                if (existingTrack && existingTrack.generated_file_path && !newTrack.generated_file_path) {
+                  newTrack.generated_file_path = existingTrack.generated_file_path
+                  console.log(`🔄 保留轨道${index}的生成文件路径:`, existingTrack.generated_file_path)
+                }
+              })
+            } else if (newTracks.length > 0) {
+              // 如果前端没有轨道状态，检查数据库中是否已有生成的文件路径
+              console.log('🔍 检查数据库中轨道生成状态:', newTracks.map((track, index) => ({
+                index,
+                hasGeneratedPath: !!track.generated_file_path,
+                generatedPath: track.generated_file_path
+              })))
+            }
+            
+            environmentTracks.value = newTracks
           }
         }
       }
@@ -486,7 +593,29 @@ const loadChaptersByBookName = async (bookName) => {
             })
             
             if (chapterAnalysis && Object.keys(chapterAnalysis).length > 0) {
-              environmentTracks.value = chapterAnalysis.environment_tracks || []
+              const newTracks = chapterAnalysis.environment_tracks || []
+              
+              // 保留已更新的轨道状态，避免覆盖WebSocket更新的generated_file_path
+              // 检查数据库中是否已经有生成的文件路径
+              if (environmentTracks.value.length > 0 && newTracks.length === environmentTracks.value.length) {
+                // 如果前端已有轨道状态，保留WebSocket更新的状态
+                newTracks.forEach((newTrack, index) => {
+                  const existingTrack = environmentTracks.value[index]
+                  if (existingTrack && existingTrack.generated_file_path && !newTrack.generated_file_path) {
+                    newTrack.generated_file_path = existingTrack.generated_file_path
+                    console.log(`🔄 保留轨道${index}的生成文件路径:`, existingTrack.generated_file_path)
+                  }
+                })
+              } else if (newTracks.length > 0) {
+                // 如果前端没有轨道状态，检查数据库中是否已有生成的文件路径
+                console.log('🔍 检查数据库中轨道生成状态:', newTracks.map((track, index) => ({
+                  index,
+                  hasGeneratedPath: !!track.generated_file_path,
+                  generatedPath: track.generated_file_path
+                })))
+              }
+              
+              environmentTracks.value = newTracks
               console.log('✅ 设置环境轨道:', {
                 tracksCount: environmentTracks.value.length,
                 tracks: environmentTracks.value
@@ -534,7 +663,27 @@ const loadChaptersByBookId = async (bookId) => {
           })
           
           if (chapterAnalysis && Object.keys(chapterAnalysis).length > 0) {
-            environmentTracks.value = chapterAnalysis.environment_tracks || []
+            const newTracks = chapterAnalysis.environment_tracks || []
+            
+            // 保留已更新的轨道状态，避免覆盖WebSocket更新的generated_file_path
+            if (environmentTracks.value.length > 0 && newTracks.length === environmentTracks.value.length) {
+              newTracks.forEach((newTrack, index) => {
+                const existingTrack = environmentTracks.value[index]
+                if (existingTrack && existingTrack.generated_file_path && !newTrack.generated_file_path) {
+                  newTrack.generated_file_path = existingTrack.generated_file_path
+                  console.log(`🔄 保留轨道${index}的生成文件路径:`, existingTrack.generated_file_path)
+                }
+              })
+            } else if (newTracks.length > 0) {
+              // 如果前端没有轨道状态，检查数据库中是否已有生成的文件路径
+              console.log('🔍 检查数据库中轨道生成状态:', newTracks.map((track, index) => ({
+                index,
+                hasGeneratedPath: !!track.generated_file_path,
+                generatedPath: track.generated_file_path
+              })))
+            }
+            
+            environmentTracks.value = newTracks
             console.log('✅ 设置环境轨道:', {
               tracksCount: environmentTracks.value.length,
               tracks: environmentTracks.value
@@ -560,7 +709,27 @@ const handleChapterSelect = (chapterId) => {
   // 加载当前章节的分析结果
   const chapterAnalysis = analysisResults.value[chapterId]
   if (chapterAnalysis && Object.keys(chapterAnalysis).length > 0) {
-    environmentTracks.value = chapterAnalysis.environment_tracks || []
+    const newTracks = chapterAnalysis.environment_tracks || []
+    
+    // 保留已更新的轨道状态，避免覆盖WebSocket更新的generated_file_path
+    if (environmentTracks.value.length > 0 && newTracks.length === environmentTracks.value.length) {
+      newTracks.forEach((newTrack, index) => {
+        const existingTrack = environmentTracks.value[index]
+        if (existingTrack && existingTrack.generated_file_path && !newTrack.generated_file_path) {
+          newTrack.generated_file_path = existingTrack.generated_file_path
+          console.log(`🔄 保留轨道${index}的生成文件路径:`, existingTrack.generated_file_path)
+        }
+      })
+    } else if (newTracks.length > 0) {
+      // 如果前端没有轨道状态，检查数据库中是否已有生成的文件路径
+      console.log('🔍 检查数据库中轨道生成状态:', newTracks.map((track, index) => ({
+        index,
+        hasGeneratedPath: !!track.generated_file_path,
+        generatedPath: track.generated_file_path
+      })))
+    }
+    
+    environmentTracks.value = newTracks
   } else {
     // 清空环境轨道，因为该章节没有分析结果
     environmentTracks.value = []
@@ -589,7 +758,7 @@ const startAnalysis = async () => {
         mode: 'auto',
         environment_types: ['nature', 'urban', 'indoor', 'action'],
         precision: 'medium',
-        create_project: false  // 详情页面分析不创建项目
+        existing_project_id: projectInfo.value.id  // 指定现有项目ID
       }
     })
     
@@ -609,24 +778,19 @@ const startAnalysis = async () => {
           // 构建完整的分析结果（保持多章节格式）
           const fullAnalysisResult = { ...analysisResults.value }
           
-          // 调用书籍分析API来保存结果（但不重新分析）
-          const saveResponse = await environmentGenerationAPI.analyzeBook({
-            book_id: projectInfo.value.book_id,
-            project_id: projectInfo.value.id,
-            analysis_options: {
-              mode: 'auto',
-              environment_types: ['nature', 'urban', 'indoor', 'action'],
-              precision: 'medium',
-              skip_analysis: true,  // 跳过分析，只保存结果
-              analysis_result: fullAnalysisResult  // 传递已有的分析结果
-            }
+          // 直接更新项目分析结果，不调用analyzeBook API
+          console.log('💾 直接更新项目分析结果')
+          
+          const updateResponse = await environmentGenerationAPI.updateProjectAnalysis(projectInfo.value.id, {
+            analysis_result: fullAnalysisResult,
+            status: 'analyzed'
           })
           
-          if (saveResponse.data.success) {
+          if (updateResponse.data.success) {
             console.log('✅ 分析结果已保存到项目:', projectInfo.value.id)
             message.success('章节环境音分析完成')
           } else {
-            console.error('保存分析结果失败:', saveResponse.data)
+            console.error('保存分析结果失败:', updateResponse.data)
             message.warning('分析完成，但保存结果失败')
           }
         } catch (saveError) {
@@ -653,7 +817,7 @@ const toggleChapterList = () => {
 
 
 
-// 生成所有环境音
+// 生成当前章节环境音
 const handleGenerateAllSounds = async () => {
   try {
     generationLoading.value = true
@@ -661,18 +825,24 @@ const handleGenerateAllSounds = async () => {
     generationStatus.value = 'processing'
     completedTracks.value = 0
     
-    // 获取所有章节的环境音轨道总数
-    let allTracks = []
-    for (const chapterId in analysisResults.value) {
-      const chapterAnalysis = analysisResults.value[chapterId]
-      if (chapterAnalysis && chapterAnalysis.environment_tracks) {
-        allTracks = allTracks.concat(chapterAnalysis.environment_tracks)
-      }
+    // 只获取当前选中章节的环境音轨道
+    const currentChapterId = selectedChapter.value?.id
+    if (!currentChapterId) {
+      message.error('请先选择一个章节')
+      return
     }
-    totalTracks.value = allTracks.length
+    
+    const currentChapterAnalysis = analysisResults.value[currentChapterId]
+    if (!currentChapterAnalysis || !currentChapterAnalysis.environment_tracks) {
+      message.error('当前章节没有环境音轨道，请先进行分析')
+      return
+    }
+    
+    const currentTracks = currentChapterAnalysis.environment_tracks
+    totalTracks.value = currentTracks.length
     
     // 初始化轨道进度数据
-    tracksProgress.value = allTracks.map((track, index) => ({
+    tracksProgress.value = currentTracks.map((track, index) => ({
       index,
       originalIndex: index, // 保存原始索引用于映射
       keyword: track.environment_keywords?.[0] || track.scene_description || '未命名',
@@ -682,12 +852,42 @@ const handleGenerateAllSounds = async () => {
     }))
     
     console.log('🎵 初始化进度数据:', {
+      chapterId: currentChapterId,
       totalTracks: totalTracks.value,
       tracksProgress: tracksProgress.value.length
     })
     
-    const response = await environmentGenerationAPI.generateEnvironmentSounds(
-      projectInfo.value.id
+    // 计算当前章节轨道在全局轨道中的起始索引
+    let globalStartIndex = 0
+    const sortedChapterIds = Object.keys(analysisResults.value).sort((a, b) => parseInt(a) - parseInt(b))
+    
+    for (const chapterId of sortedChapterIds) {
+      if (parseInt(chapterId) < currentChapterId) {
+        const chapterAnalysis = analysisResults.value[chapterId]
+        if (chapterAnalysis && chapterAnalysis.environment_tracks) {
+          globalStartIndex += chapterAnalysis.environment_tracks.length
+        }
+      } else {
+        break
+      }
+    }
+    
+    // 构建轨道索引数组（基于全局轨道索引）
+    const trackIndices = []
+    for (let i = 0; i < currentTracks.length; i++) {
+      trackIndices.push(globalStartIndex + i)
+    }
+    
+    console.log('🎯 轨道索引计算:', {
+      currentChapterId,
+      globalStartIndex,
+      currentTracksLength: currentTracks.length,
+      trackIndices
+    })
+    
+    const response = await environmentGenerationAPI.startGeneration(
+      projectInfo.value.id,
+      { track_indices: trackIndices }
     )
     
     if (response.data.success) {
@@ -749,16 +949,9 @@ const handleMixSounds = async () => {
   }
 }
 
-// 播放混音
+// 播放混音功能已禁用
 const handlePlayMixing = async () => {
-  try {
-    const projectTitle = `环境音混音 - ${projectInfo.value.name || projectInfo.value.id}`
-    await playEnvironmentMixing(projectInfo.value.id, projectTitle)
-    message.success('正在播放混音')
-  } catch (error) {
-    console.error('播放混音失败:', error)
-    message.error('播放混音失败')
-  }
+  message.warning('环境音混音功能已禁用')
 }
 
 // 下载混音
@@ -786,13 +979,13 @@ const handleDownloadMixing = async () => {
 }
 
 // 生成单个轨道
-const handleGenerateTrack = async (track, trackIndex) => {
+const handleGenerateTrack = async (track, _trackIndex) => {
   try {
     track.generating = true
     
-    const response = await environmentGenerationAPI.generateEnvironmentSounds(
+    const response = await environmentGenerationAPI.startGeneration(
       projectInfo.value.id,
-      [trackIndex]
+      { track_indices: [_trackIndex] }
     )
     
     if (response.data.success) {
@@ -856,15 +1049,15 @@ const handlePlayTrack = async (track, trackIndex) => {
 }
 
 // 下载轨道
-const handleDownloadTrack = async (track, trackIndex) => {
+const handleDownloadTrack = async (track, _trackIndex) => {
   try {
     const response = await environmentGenerationAPI.downloadEnvironmentSound(
       projectInfo.value.id,
-      trackIndex
+      _trackIndex
     )
     
     const keywords = track.environment_keywords?.[0] || '环境音'
-    const filename = `${keywords}_${projectInfo.value.id}_${trackIndex}.wav`
+    const filename = `${keywords}_${projectInfo.value.id}_${_trackIndex}.wav`
     
     const blob = new Blob([response.data], { type: 'audio/wav' })
     const url = window.URL.createObjectURL(blob)
@@ -884,13 +1077,13 @@ const handleDownloadTrack = async (track, trackIndex) => {
 }
 
 // 重新生成轨道
-const handleRegenerateTrack = async (track, trackIndex) => {
+const handleRegenerateTrack = async (track, _trackIndex) => {
   try {
     track.regenerating = true
     
-    const response = await environmentGenerationAPI.generateEnvironmentSounds(
+    const response = await environmentGenerationAPI.startGeneration(
       projectInfo.value.id,
-      [trackIndex]
+      { track_indices: [_trackIndex] }
     )
     
     if (response.data.success) {

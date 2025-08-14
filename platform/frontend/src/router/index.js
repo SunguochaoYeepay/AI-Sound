@@ -176,15 +176,7 @@ const routes = [
       requiresAuth: true
     }
   },
-  {
-    path: '/environment-mixing',
-    name: 'EnvironmentMixing',
-    component: () => import('../views/EnvironmentMixing.vue'),
-    meta: {
-      title: '环境混音',
-      requiresAuth: true
-    }
-  },
+
   {
     path: '/music-library',
     name: 'MusicLibrary',

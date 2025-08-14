@@ -197,18 +197,30 @@
               theme="dark"
               :style="{ background: 'transparent', border: 'none' }"
             >
-              <a-menu-item key="environment-sounds" @click="navigateTo('environment-sounds')">
-                <template #icon>
+              <a-sub-menu key="environment-sounds-group">
+                <template #title>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z" />
-                    <path
-                      d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"
-                    />
-                    <path d="M11 7h2v2h-2zm0 4h2v6h-2z" />
+                    <path d="M12 3v9.28c-.47-.17-.97-.28-1.5-.28C8.01 12 6 14.01 6 16.5S8.01 21 10.5 21s4.5-2.01 4.5-4.5V7h4V3h-6zM10.5 19C9.12 19 8 17.88 8 16.5S9.12 14 10.5 14s2.5 1.12 2.5 2.5S11.88 19 10.5 19z"/>
+                    <path d="M3 9h2v6H3zM19 9h2v6h-2z"/>
                   </svg>
+                  <span>🎵 环境音制作</span>
                 </template>
-                <span>环境音效</span>
-              </a-menu-item>
+                
+                <a-menu-item key="environment-sounds" @click="navigateTo('environment-sounds')">
+                  <template #icon>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z" />
+                      <path
+                        d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"
+                      />
+                      <path d="M11 7h2v2h-2zm0 4h2v6h-2z" />
+                    </svg>
+                  </template>
+                  <span>🌍 环境音管理</span>
+                </a-menu-item>
+
+
+              </a-sub-menu>
 
               <a-menu-item key="music-library" @click="navigateTo('music-library')">
                 <template #icon>
@@ -220,18 +232,6 @@
                   </svg>
                 </template>
                 <span>背景音乐</span>
-              </a-menu-item>
-
-              <a-menu-item key="environment-mixing" @click="navigateTo('environment-mixing')">
-                <template #icon>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                    <path
-                      d="M12 3v9.28c-.47-.17-.97-.28-1.5-.28C8.01 12 6 14.01 6 16.5S8.01 21 10.5 21s4.5-2.01 4.5-4.5V7h4V3h-6zM10.5 19C9.12 19 8 17.88 8 16.5S9.12 14 10.5 14s2.5 1.12 2.5 2.5S11.88 19 10.5 19z"
-                    />
-                    <path d="M3 9h2v6H3zM19 9h2v6h-2z" />
-                  </svg>
-                </template>
-                <span>环境混音</span>
               </a-menu-item>
 
               <a-menu-item key="sound-editor" @click="navigateTo('sound-editor')">
@@ -613,7 +613,7 @@
       '/novel-reader/edit': 'novel-projects',
       '/synthesis': 'novel-projects',
       '/sound-editor': 'sound-editor', // 🎵 新增音频编辑器路由映射
-      '/environment-mixing': 'environment-mixing', // 环境混音页面
+  
       '/users': 'users',
       '/roles': 'roles',
       '/logs': 'logs',
@@ -693,7 +693,7 @@
       'image-generation': '/image-generation', // 🖼️ 添加图片生成路由映射
       'image-library': '/image-library', // 🖼️ 添加图片库路由映射
       'novel-projects': '/novel-reader',
-      'environment-mixing': '/environment-mixing', // 环境混音页面
+  
       'sound-editor': '/sound-editor', // 🎵 新增音频编辑器路由映射
       users: '/users',
       roles: '/roles',
@@ -726,7 +726,7 @@
       '/books': '书籍管理',
       '/basic-tts': '声音克隆',
       '/characters': '角色配音',
-      '/environment-sounds': '环境音效',
+      '/environment-sounds': '环境音分析',
       '/audio-library': '音频库',
       '/music-library': '背景音乐', // 🎵 添加背景音乐页面标题
       '/image-generation': '图片生成', // 🖼️ 添加图片生成页面标题
@@ -736,7 +736,7 @@
       '/novel-reader/edit': '语音合成',
       '/synthesis': '创作中心',
       '/sound-editor': '多轨音频编辑器', // 🎵 新增音频编辑器页面标题
-      '/environment-mixing': '环境混音', // 环境混音页面标题
+  
       '/users': '用户管理',
       '/roles': '角色权限',
       '/logs': '日志监控',

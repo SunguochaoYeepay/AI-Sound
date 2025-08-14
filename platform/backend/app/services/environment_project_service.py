@@ -26,6 +26,22 @@ class EnvironmentProjectService:
             EnvironmentProject.novel_project_id == novel_project_id
         ).first()
     
+    def get_by_id(self, project_id: int) -> Optional[EnvironmentProject]:
+        """根据环境音项目ID获取项目"""
+        return self.db.query(EnvironmentProject).filter(
+            EnvironmentProject.id == project_id
+        ).first()
+    
+    def get_by_project_id(self, project_id: int) -> Optional[EnvironmentProject]:
+        """根据项目ID获取环境音项目（支持环境音项目ID和合成项目ID）"""
+        # 首先尝试通过环境音项目ID获取
+        env_project = self.get_by_id(project_id)
+        if env_project:
+            return env_project
+        
+        # 如果没找到，再尝试通过合成项目ID获取
+        return self.get_by_novel_project_id(project_id)
+    
     def create_or_update(
         self, 
         novel_project_id: int, 
@@ -139,10 +155,10 @@ class EnvironmentProjectService:
         logger.info(f"更新轨道配置: 项目{novel_project_id}, 轨道{track_index}")
         return True
     
-    def finalize_project(self, novel_project_id: int) -> bool:
+    def finalize_project(self, project_id: int) -> bool:
         """完成环境音项目"""
         
-        env_project = self.get_by_novel_project_id(novel_project_id)
+        env_project = self.get_by_project_id(project_id)
         if not env_project:
             return False
         
@@ -151,7 +167,7 @@ class EnvironmentProjectService:
         env_project.updated_at = datetime.utcnow()
         
         self.db.commit()
-        logger.info(f"完成环境音项目: {novel_project_id}")
+        logger.info(f"完成环境音项目: {project_id}")
         return True
     
     def delete_by_novel_project_id(self, novel_project_id: int) -> bool:

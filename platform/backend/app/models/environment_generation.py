@@ -20,7 +20,7 @@ class EnvironmentProject(Base):
     
     # 关联信息
     novel_project_id = Column(Integer, nullable=True, comment="关联的合成项目ID")
-    book_id = Column(Integer, comment="书籍ID")
+    book_id = Column(Integer, nullable=True, comment="书籍ID")
     
     # 分析结果
     analysis_result = Column(JSON, comment="分析结果")

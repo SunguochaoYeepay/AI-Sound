@@ -34,7 +34,7 @@ class ChapterEnvironmentAnalysisRequest(BaseModel):
 
 class BookEnvironmentAnalysisRequest(BaseModel):
     """书籍环境音分析请求 - 基于书籍的分析"""
-    book_id: int
+    book_id: Optional[int] = None  # 可选：当只是保存分析结果时可以为null
     project_id: Optional[int] = None  # 可选：指定现有项目ID
     analysis_options: Optional[Dict[str, Any]] = {}
 

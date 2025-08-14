@@ -207,6 +207,18 @@ const groupedTracks = computed(() => {
     return []
   }
   
+  console.log('🔍 AnalysisContent groupedTracks计算:', {
+    tracksCount: props.environmentTracks.length,
+    tracks: props.environmentTracks.map(track => ({
+      keywords: track.environment_keywords?.[0] || '未命名',
+      hasGeneratedPath: !!track.generated_file_path,
+      generatedPath: track.generated_file_path,
+      generatedFilePathType: typeof track.generated_file_path,
+      generatedFilePathLength: track.generated_file_path ? track.generated_file_path.length : 0,
+      allFields: Object.keys(track)
+    }))
+  })
+  
   // 按段落分组
   const paragraphs = {}
   
@@ -233,17 +245,33 @@ const groupedTracks = computed(() => {
     }
     
     // 添加轨道
+    const hasGenerated = track.generated_file_path && track.generated_file_path.length > 0
     paragraphs[paragraphKey].tracks.push({
       ...track,
-      has_generated: track.generated_file_path && track.generated_file_path.length > 0,
+      has_generated: hasGenerated,
       generating: false,
       playing: false,
       regenerating: false
     })
+    
+    console.log(`🔍 轨道${track.environment_keywords?.[0] || '未命名'} has_generated:`, hasGenerated, {
+      generatedFilePath: track.generated_file_path,
+      generatedFilePathType: typeof track.generated_file_path,
+      generatedFilePathLength: track.generated_file_path ? track.generated_file_path.length : 0,
+      hasGeneratedResult: hasGenerated
+    })
   })
   
   // 转换为数组并按段落索引排序
-  return Object.values(paragraphs).sort((a, b) => a.paragraphIndex - b.paragraphIndex)
+  const result = Object.values(paragraphs).sort((a, b) => a.paragraphIndex - b.paragraphIndex)
+  
+  console.log('🔍 groupedTracks结果:', result.map(paragraph => ({
+    paragraphIndex: paragraph.paragraphIndex,
+    tracksCount: paragraph.tracks.length,
+    tracksWithGenerated: paragraph.tracks.filter(track => track.has_generated).length
+  })))
+  
+  return result
 })
 
 // 工具函数：格式化时间

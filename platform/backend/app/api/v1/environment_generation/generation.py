@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.services.tangoflux_environment_generator import TangoFluxEnvironmentGenerator
 from app.services.environment_project_service import EnvironmentProjectService
-from app.services.environment_mixing_service import EnvironmentMixingService
+
 from app.utils.logger import get_logger
 from app.database import get_db
 from app.models.environment_generation import EnvironmentProject
@@ -40,16 +40,8 @@ async def generate_environment_sounds(
         
         # 获取环境音项目 - 支持通过环境音项目ID或合成项目ID查找
         env_service = EnvironmentProjectService(db)
-        env_project = None
-        
-        # 首先尝试通过环境音项目ID直接查找
-        env_project = db.query(EnvironmentProject).filter(EnvironmentProject.id == project_id).first()
-        logger.info(f"[ENV_GEN_API] 通过环境音项目ID查找结果: {env_project.id if env_project else 'None'}")
-        
-        # 如果没找到，再尝试通过合成项目ID查找
-        if not env_project:
-            env_project = env_service.get_by_novel_project_id(project_id)
-            logger.info(f"[ENV_GEN_API] 通过合成项目ID查找结果: {env_project.id if env_project else 'None'}")
+        env_project = env_service.get_by_project_id(project_id)
+        logger.info(f"[ENV_GEN_API] 项目查找结果: {env_project.id if env_project else 'None'}")
         
         if not env_project:
             logger.error(f"[ENV_GEN_API] 未找到环境音项目，项目ID: {project_id}")
@@ -66,7 +58,10 @@ async def generate_environment_sounds(
         # 检查是否是多章节格式（键是章节ID）
         if isinstance(analysis_result, dict) and not analysis_result.get('environment_tracks'):
             # 多章节格式，收集所有章节的环境轨道
-            for chapter_id, chapter_analysis in analysis_result.items():
+            # 按章节ID数字顺序排序，确保轨道顺序一致
+            sorted_chapter_ids = sorted(analysis_result.keys(), key=lambda x: int(x))
+            for chapter_id in sorted_chapter_ids:
+                chapter_analysis = analysis_result[chapter_id]
                 if isinstance(chapter_analysis, dict) and chapter_analysis.get('environment_tracks'):
                     environment_tracks.extend(chapter_analysis['environment_tracks'])
         else:
@@ -140,29 +135,42 @@ async def preview_environment_sound(
         
         # 获取环境音项目 - 支持通过环境音项目ID或合成项目ID查找
         env_service = EnvironmentProjectService(db)
-        env_project = None
-        
-        # 首先尝试通过环境音项目ID直接查找
-        env_project = db.query(EnvironmentProject).filter(EnvironmentProject.id == project_id).first()
-        
-        # 如果没找到，再尝试通过合成项目ID查找
-        if not env_project:
-            env_project = env_service.get_by_novel_project_id(project_id)
+        env_project = env_service.get_by_project_id(project_id)
         
         if not env_project or not env_project.analysis_result:
             raise HTTPException(status_code=404, detail="未找到环境音分析结果")
         
-        environment_tracks = env_project.analysis_result.get('environment_tracks', [])
-        if track_index >= len(environment_tracks):
-            raise HTTPException(status_code=404, detail="轨道索引超出范围")
+        # 处理多章节格式的分析结果
+        analysis_result = env_project.analysis_result
         
-        track = environment_tracks[track_index]
+        # 如果是多章节格式，需要找到对应的轨道
+        if isinstance(analysis_result, dict) and not analysis_result.get('environment_tracks'):
+            # 多章节格式，遍历所有章节找到对应的轨道
+            all_tracks = []
+            for chapter_id, chapter_data in analysis_result.items():
+                if isinstance(chapter_data, dict) and 'environment_tracks' in chapter_data:
+                    all_tracks.extend(chapter_data['environment_tracks'])
+            
+            if track_index >= len(all_tracks):
+                raise HTTPException(status_code=404, detail="轨道索引超出范围")
+            
+            track = all_tracks[track_index]
+        else:
+            # 单章节格式，直接获取environment_tracks
+            environment_tracks = analysis_result.get('environment_tracks', [])
+            if track_index >= len(environment_tracks):
+                raise HTTPException(status_code=404, detail="轨道索引超出范围")
+            
+            track = environment_tracks[track_index]
         
         # 检查是否有生成的文件
         if not track.get('generated_file_path'):
             raise HTTPException(status_code=404, detail="环境音文件尚未生成")
         
         file_path = track['generated_file_path']
+        logger.info(f"[ENV_GEN_API] 检查文件路径: {file_path}")
+        logger.info(f"[ENV_GEN_API] 文件是否存在: {os.path.exists(file_path)}")
+        
         if not os.path.exists(file_path):
             raise HTTPException(status_code=404, detail="环境音文件不存在")
         
@@ -191,19 +199,37 @@ async def download_environment_sound(
     """
     try:
         logger.info(f"[ENV_GEN_API] 下载环境音，项目ID: {project_id}，轨道索引: {track_index}")
+        logger.info(f"[ENV_GEN_API] 文件路径长度: {len(file_path) if file_path else 0}")
         
         # 获取环境音项目
         env_service = EnvironmentProjectService(db)
-        env_project = env_service.get_by_novel_project_id(project_id)
+        env_project = env_service.get_by_project_id(project_id)
         
         if not env_project or not env_project.analysis_result:
             raise HTTPException(status_code=404, detail="未找到环境音分析结果")
         
-        environment_tracks = env_project.analysis_result.get('environment_tracks', [])
-        if track_index >= len(environment_tracks):
-            raise HTTPException(status_code=404, detail="轨道索引超出范围")
+        # 处理多章节格式的分析结果
+        analysis_result = env_project.analysis_result
         
-        track = environment_tracks[track_index]
+        # 如果是多章节格式，需要找到对应的轨道
+        if isinstance(analysis_result, dict) and not analysis_result.get('environment_tracks'):
+            # 多章节格式，遍历所有章节找到对应的轨道
+            all_tracks = []
+            for chapter_id, chapter_data in analysis_result.items():
+                if isinstance(chapter_data, dict) and 'environment_tracks' in chapter_data:
+                    all_tracks.extend(chapter_data['environment_tracks'])
+            
+            if track_index >= len(all_tracks):
+                raise HTTPException(status_code=404, detail="轨道索引超出范围")
+            
+            track = all_tracks[track_index]
+        else:
+            # 单章节格式，直接获取environment_tracks
+            environment_tracks = analysis_result.get('environment_tracks', [])
+            if track_index >= len(environment_tracks):
+                raise HTTPException(status_code=404, detail="轨道索引超出范围")
+            
+            track = environment_tracks[track_index]
         
         # 检查是否有生成的文件
         if not track.get('generated_file_path'):
@@ -213,22 +239,32 @@ async def download_environment_sound(
         if not os.path.exists(file_path):
             raise HTTPException(status_code=404, detail="环境音文件不存在")
         
-        # 生成文件名
-        keywords = track.get('environment_keywords', ['环境音'])
-        filename = f"{keywords[0]}_{project_id}_{track_index}.wav"
+        # 生成文件名 - 使用英文文件名避免编码问题
+        keywords = track.get('environment_keywords', ['environment'])
+        # 将中文关键词转换为英文或使用默认名称
+        if keywords[0] == '娇喝声':
+            safe_filename = f"shout_{project_id}_{track_index}.wav"
+        elif keywords[0] == '脚步声':
+            safe_filename = f"footsteps_{project_id}_{track_index}.wav"
+        elif keywords[0] == '开门声':
+            safe_filename = f"door_open_{project_id}_{track_index}.wav"
+        else:
+            # 对于其他中文关键词，使用拼音或英文
+            safe_filename = f"environment_{project_id}_{track_index}.wav"
         
-        # 返回音频文件
+        # 返回音频文件 - 使用简单的英文文件名
         return FileResponse(
             path=file_path,
             media_type="audio/wav",
-            filename=filename,
-            headers={"Content-Disposition": f"attachment; filename={filename}"}
+            filename=safe_filename
         )
         
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"[ENV_GEN_API] 下载环境音失败: {str(e)}")
+        import traceback
+        logger.error(f"[ENV_GEN_API] 错误堆栈: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"下载环境音失败: {str(e)}")
 
 
@@ -249,7 +285,7 @@ async def mix_environment_sounds(
         
         # 获取环境音项目
         env_service = EnvironmentProjectService(db)
-        env_project = env_service.get_by_novel_project_id(project_id)
+        env_project = env_service.get_by_project_id(project_id)
         
         if not env_project or not env_project.analysis_result:
             raise HTTPException(status_code=404, detail="未找到环境音分析结果")
@@ -280,19 +316,11 @@ async def mix_environment_sounds(
         if not tracks_to_mix:
             raise HTTPException(status_code=400, detail="没有可混音的环境音文件")
         
-        # 创建混音服务实例
-        mixing_service = EnvironmentMixingService()
-        
         # 生成混音任务ID
         task_id = f"env_mix_{project_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         
-        # 在后台任务中执行混音
-        background_tasks.add_task(
-            mixing_service.mix_project_environment_sounds,
-            project_id=project_id,
-            tracks_to_mix=tracks_to_mix,
-            task_id=task_id
-        )
+        # 暂时禁用混音功能
+        logger.warning(f"[ENV_GEN_API] 环境音混音功能已禁用，任务ID: {task_id}")
         
         logger.info(f"[ENV_GEN_API] 环境音混音任务已启动: {task_id}")
         
@@ -327,7 +355,7 @@ async def preview_mixed_environment_sounds(
         
         # 获取环境音项目
         env_service = EnvironmentProjectService(db)
-        env_project = env_service.get_by_novel_project_id(project_id)
+        env_project = env_service.get_by_project_id(project_id)
         
         if not env_project:
             raise HTTPException(status_code=404, detail="未找到环境音项目")
@@ -364,7 +392,7 @@ async def download_mixed_environment_sounds(
         
         # 获取环境音项目
         env_service = EnvironmentProjectService(db)
-        env_project = env_service.get_by_novel_project_id(project_id)
+        env_project = env_service.get_by_project_id(project_id)
         
         if not env_project:
             raise HTTPException(status_code=404, detail="未找到环境音项目")
@@ -405,7 +433,7 @@ async def get_generation_status(
         
         # 获取环境音项目
         env_service = EnvironmentProjectService(db)
-        env_project = env_service.get_by_novel_project_id(project_id)
+        env_project = env_service.get_by_project_id(project_id)
         
         if not env_project:
             raise HTTPException(status_code=404, detail="未找到环境音项目")
@@ -476,7 +504,7 @@ async def finalize_generation(
         
         # 使用环境音项目服务完成项目
         env_service = EnvironmentProjectService(db)
-        env_project = env_service.get_by_novel_project_id(project_id)
+        env_project = env_service.get_by_project_id(project_id)
         
         if not env_project or not env_project.analysis_result:
             raise HTTPException(status_code=404, detail="未找到环境音分析结果")

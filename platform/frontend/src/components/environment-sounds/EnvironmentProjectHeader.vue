@@ -45,7 +45,7 @@
         <a-space>
           <a-button
             v-if="canEdit"
-            type="primary"
+            type="default"
             @click="handleEdit"
             :loading="loading"
           >
@@ -203,19 +203,19 @@ const formatDate = (dateString) => {
 
 <style scoped>
 .environment-project-header {
-  background: linear-gradient(135deg, #52c41a 0%, #389e0d 100%);
-  color: white;
-  padding: 24px;
-  border-radius: 12px;
-  margin-bottom: 24px;
-  box-shadow: 0 8px 32px rgba(82, 196, 26, 0.3);
+  background: #ffffff;
+  border: 1px solid #f0f0f0;
+  padding: 20px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 }
 
 .header-content {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 
 .back-section {
@@ -223,19 +223,17 @@ const formatDate = (dateString) => {
 }
 
 .back-button {
-  color: white;
-  border-color: rgba(255, 255, 255, 0.3);
+  color: #595959;
 }
 
 .back-button:hover {
-  color: white;
-  border-color: white;
-  background: rgba(255, 255, 255, 0.1);
+  color: #1890ff;
+  background: #f0f8ff;
 }
 
 .project-info {
   flex: 1;
-  margin: 0 24px;
+  margin: 0 20px;
 }
 
 .project-title {
@@ -247,9 +245,9 @@ const formatDate = (dateString) => {
 
 .project-title h2 {
   margin: 0;
-  color: white;
-  font-size: 24px;
-  font-weight: 600;
+  color: #262626;
+  font-size: 20px;
+  font-weight: 500;
 }
 
 .project-meta {
@@ -262,8 +260,8 @@ const formatDate = (dateString) => {
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 14px;
-  opacity: 0.9;
+  font-size: 13px;
+  color: #8c8c8c;
 }
 
 .header-actions {
@@ -271,34 +269,68 @@ const formatDate = (dateString) => {
 }
 
 .project-stats {
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
+  background: #fafafa;
+  border-radius: 6px;
   padding: 16px;
+  border: 1px solid #f0f0f0;
 }
 
 .stat-card {
   text-align: center;
   padding: 12px;
-  background: rgba(255, 255, 255, 0.1);
+  background: #ffffff;
   border-radius: 6px;
-  transition: all 0.3s ease;
+  border: 1px solid #f0f0f0;
+  transition: all 0.2s ease;
 }
 
 .stat-card:hover {
-  background: rgba(255, 255, 255, 0.2);
-  transform: translateY(-2px);
+  border-color: #d9d9d9;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .stat-number {
-  font-size: 24px;
-  font-weight: 600;
-  color: white;
+  font-size: 20px;
+  font-weight: 500;
+  color: #262626;
   margin-bottom: 4px;
 }
 
 .stat-label {
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.8);
+  color: #8c8c8c;
+}
+
+/* 暗色主题适配 */
+[data-theme='dark'] .environment-project-header {
+  background: #1f1f1f;
+  border-color: #303030;
+}
+
+[data-theme='dark'] .project-title h2 {
+  color: #ffffff;
+}
+
+[data-theme='dark'] .meta-item {
+  color: #a6a6a6;
+}
+
+[data-theme='dark'] .project-stats {
+  background: #262626;
+  border-color: #303030;
+}
+
+[data-theme='dark'] .stat-card {
+  background: #1f1f1f;
+  border-color: #303030;
+}
+
+[data-theme='dark'] .stat-number {
+  color: #ffffff;
+}
+
+[data-theme='dark'] .stat-label {
+  color: #a6a6a6;
 }
 
 /* 移动端适配 */
@@ -340,7 +372,7 @@ const formatDate = (dateString) => {
   }
 
   .stat-number {
-    font-size: 20px;
+    font-size: 18px;
   }
 
   .stat-label {

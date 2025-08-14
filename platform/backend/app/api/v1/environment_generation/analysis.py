@@ -48,21 +48,6 @@ async def analyze_book_environment(
         
         logger.info(f"[ENV_GEN_API] 开始书籍环境音分析，书籍ID: {book_id}，项目ID: {project_id}")
         
-        if not book_id:
-            raise HTTPException(status_code=400, detail="请指定要分析的书籍ID")
-        
-        # 获取书籍信息
-        book = db.query(Book).filter(Book.id == book_id).first()
-        if not book:
-            raise HTTPException(status_code=404, detail="未找到指定的书籍")
-        
-        # 获取书籍的所有章节
-        chapters = db.query(BookChapter).filter(BookChapter.book_id == book_id).order_by(BookChapter.chapter_number).all()
-        if not chapters:
-            raise HTTPException(status_code=404, detail="书籍没有章节内容")
-        
-        logger.info(f"[ENV_GEN_API] 找到 {len(chapters)} 个章节")
-        
         # 检查是否跳过分析，只保存结果
         skip_analysis = analysis_options.get('skip_analysis', False)
         provided_analysis_result = analysis_options.get('analysis_result', None)
@@ -86,6 +71,22 @@ async def analyze_book_environment(
                 'skip_analysis': True
             }
         else:
+            # 正常分析模式，需要book_id
+            if not book_id:
+                raise HTTPException(status_code=400, detail="请指定要分析的书籍ID")
+            
+            # 获取书籍信息
+            book = db.query(Book).filter(Book.id == book_id).first()
+            if not book:
+                raise HTTPException(status_code=404, detail="未找到指定的书籍")
+            
+            # 获取书籍的所有章节
+            chapters = db.query(BookChapter).filter(BookChapter.book_id == book_id).order_by(BookChapter.chapter_number).all()
+            if not chapters:
+                raise HTTPException(status_code=404, detail="书籍没有章节内容")
+            
+            logger.info(f"[ENV_GEN_API] 找到 {len(chapters)} 个章节")
+            
             # 正常分析所有章节的环境音
             analyzer = ChapterEnvironmentAnalyzer()
             
@@ -112,6 +113,8 @@ async def analyze_book_environment(
                 'analysis_time': datetime.now().isoformat()
             }
         
+
+        
         # 确定项目ID和保存策略
         if project_id:
             # 使用指定的项目ID，更新现有项目
@@ -133,6 +136,10 @@ async def analyze_book_environment(
                 # 更新统计信息
                 existing_project.analysis_tracks = total_tracks
                 
+                # 如果没有book_id，使用novel_project_id
+                if not book_id and analysis_options.get('novel_project_id'):
+                    existing_project.novel_project_id = analysis_options['novel_project_id']
+                
                 db.commit()
                 logger.info(f"[ENV_GEN_API] 更新指定项目: {project_id}")
             else:
@@ -141,13 +148,19 @@ async def analyze_book_environment(
             # 查找或创建环境音项目
             env_service = EnvironmentProjectService(db)
             
-            # 查找现有项目（通过书籍ID）
-            existing_env_project = db.query(EnvironmentProject).filter(EnvironmentProject.book_id == book_id).first()
+            # 确定novel_project_id
+            novel_project_id = book_id
+            if not book_id and analysis_options.get('novel_project_id'):
+                novel_project_id = analysis_options['novel_project_id']
+                logger.info(f"[ENV_GEN_API] 使用novel_project_id: {novel_project_id}")
+            
+            # 查找现有项目（通过novel_project_id）
+            existing_env_project = db.query(EnvironmentProject).filter(EnvironmentProject.novel_project_id == novel_project_id).first()
             
             if existing_env_project:
                 # 更新现有项目
                 env_service.create_or_update(
-                    novel_project_id=book_id,  # 使用书籍ID作为novel_project_id
+                    novel_project_id=novel_project_id,
                     analysis_result=multi_chapter_result, # 保存多章节结果
                     analysis_stats=analysis_stats,
                     analysis_options=analysis_options
@@ -157,7 +170,7 @@ async def analyze_book_environment(
             else:
                 # 创建新项目
                 env_project = env_service.create_or_update(
-                    novel_project_id=book_id,  # 使用书籍ID作为novel_project_id
+                    novel_project_id=novel_project_id,
                     analysis_result=multi_chapter_result, # 保存多章节结果
                     analysis_stats=analysis_stats,
                     analysis_options=analysis_options

@@ -51,16 +51,14 @@
         </a-select>
       </a-form-item>
 
-      <!-- 分析选项 -->
-      <a-form-item label="分析选项">
-        <a-space direction="vertical" style="width: 100%">
-          <a-checkbox v-model:checked="formData.auto_analyze">
-            自动分析书籍内容
-          </a-checkbox>
-          <a-checkbox v-model:checked="formData.create_tracks">
-            自动创建环境音轨道
-          </a-checkbox>
-        </a-space>
+      <!-- 项目说明 -->
+      <a-form-item label="项目说明">
+        <a-alert
+          message="项目创建说明"
+          description="项目创建后，您需要在详情页面选择具体章节，然后手动触发分析。这样可以避免一次性分析整本书的所有章节，提高效率。"
+          type="info"
+          show-icon
+        />
       </a-form-item>
 
 
@@ -114,9 +112,7 @@ const submitting = ref(false)
 const formData = reactive({
   name: '',
   description: '',
-  book_id: null,
-  auto_analyze: true,
-  create_tracks: true
+  book_id: null
 })
 
 // 表单验证规则
@@ -149,15 +145,15 @@ const handleSubmit = async () => {
     await formRef.value.validate()
     submitting.value = true
 
-    // 构建创建项目的数据 - 基于书籍，不指定章节
+    // 构建创建项目的数据 - 仅创建项目，不进行任何分析
     const projectData = {
       name: formData.name,
       description: formData.description,
       book_id: formData.book_id,
-      // 移除 chapter_ids，让后端分析整本书
-      options: {
-        auto_analyze: formData.auto_analyze,
-        create_tracks: formData.create_tracks
+      // 不进行任何分析，用户需要在详情页面手动选择章节并分析
+      analysis_options: {
+        auto_analyze: false,  // 不自动分析
+        create_tracks: false  // 不自动创建轨道
       }
     }
 
@@ -186,9 +182,7 @@ const handleClose = () => {
   Object.assign(formData, {
     name: '',
     description: '',
-    book_id: null,
-    auto_analyze: true,
-    create_tracks: true
+    book_id: null
   })
   
   emit('update:open', false)

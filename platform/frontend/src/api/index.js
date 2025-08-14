@@ -1167,8 +1167,8 @@ export const environmentGenerationAPI = {
     apiClient.get(`/environment-generation/projects/${projectId}`),
 
   // 开始项目环境音生成
-  startGeneration: (projectId) =>
-    apiClient.post(`/environment-generation/projects/${projectId}/start-generation`),
+  startGeneration: (projectId, requestBody = {}) =>
+    apiClient.post(`/environment-generation/generate/${projectId}`, requestBody),
 
   // 删除环境音分析项目
   deleteProject: (projectId) =>
@@ -1192,59 +1192,30 @@ export const environmentGenerationAPI = {
 
   // 书籍环境音分析（新增）
   analyzeBook: (request) =>
-    apiClient.post('/environment-generation/books/analyze', request)
-}
+    apiClient.post('/environment-generation/books/analyze', request),
 
-// 环境混音API
-export const environmentMixingAPI = {
-  // 获取环境混音结果
-  getResults: (params = {}) => {
-    const queryParams = new URLSearchParams()
-    if (params.search) queryParams.append('search', params.search)
-    if (params.project_id) queryParams.append('project_id', params.project_id)
-    if (params.status) queryParams.append('status', params.status)
-    if (params.page) queryParams.append('page', params.page)
-    if (params.page_size) queryParams.append('page_size', params.page_size)
+  // 混音环境音
+  mixEnvironmentSounds: (projectId) =>
+    apiClient.post(`/environment-generation/mix/${projectId}`),
 
-    const queryString = queryParams.toString()
-    const url = queryString
-      ? `/environment/mixing/results?${queryString}`
-      : '/environment/mixing/results'
-    return apiClient.get(url)
-  },
-
-  // 获取混音统计数据
-  getStats: () => apiClient.get('/environment/mixing/stats'),
-
-  // 开始环境混音
-  startMixing: (projectId, config) =>
-    apiClient.post(`/environment/mixing/${projectId}/start`, config),
-
-  // 下载环境混音作品
-  downloadMixing: (mixingId) =>
-    apiClient.get(`/environment/mixing/${mixingId}/download`, {
+  // 下载混音环境音
+  downloadMixedEnvironmentSounds: (projectId) =>
+    apiClient.get(`/environment-generation/mix-download/${projectId}`, {
       responseType: 'blob'
     }),
 
-  // 删除环境混音作品
-  deleteMixing: (mixingId) => apiClient.delete(`/environment/mixing/${mixingId}`),
+  // 下载单个环境音
+  downloadEnvironmentSound: (projectId, trackIndex) =>
+    apiClient.get(`/environment-generation/download/${projectId}/${trackIndex}`, {
+      responseType: 'blob'
+    }),
 
-  // 获取混音详情
-  getMixingDetail: (mixingId) => apiClient.get(`/environment/mixing/${mixingId}`),
-
-  // 预览混音作品
-  previewMixing: (mixingId) => apiClient.get(`/environment/mixing/${mixingId}/preview`),
-
-  // 获取混音配置
-  getMixingConfig: (mixingId) => apiClient.get(`/environment/mixing/${mixingId}/config`),
-
-  // 更新混音配置
-  updateMixingConfig: (mixingId, config) =>
-    apiClient.put(`/environment/mixing/${mixingId}/config`, config),
-
-  // 更新环境混音
-  updateMixing: (mixingId, config) => apiClient.put(`/environment/mixing/${mixingId}`, config)
+  // 更新项目分析结果
+  updateProjectAnalysis: (projectId, data) =>
+    apiClient.put(`/environment-generation/projects/${projectId}/analysis`, data)
 }
+
+
 
 // 背景音乐库API
 export const backgroundMusicAPI = {
@@ -1376,17 +1347,9 @@ const api = {
   ...intelligentAnalysisAPI,
   ...environmentSoundsAPI,
   ...environmentGenerationAPI,
-  ...environmentMixingAPI,
   ...backgroundMusicAPI,
 
-  // 环境混音专用接口
-  getEnvironmentMixingResults: environmentMixingAPI.getResults,
-  getEnvironmentMixingStats: environmentMixingAPI.getStats,
-  startEnvironmentMixing: environmentMixingAPI.startMixing,
-  downloadEnvironmentMixing: environmentMixingAPI.downloadMixing,
-  deleteEnvironmentMixing: environmentMixingAPI.deleteMixing,
-  getEnvironmentMixingDetail: environmentMixingAPI.getMixingDetail,
-  updateEnvironmentMixing: environmentMixingAPI.updateMixing,
+
   updateProjectAnalysis: environmentGenerationAPI.updateProjectAnalysis,
   ...musicGenerationAPI,
 

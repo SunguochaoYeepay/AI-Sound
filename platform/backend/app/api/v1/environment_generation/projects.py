@@ -28,7 +28,8 @@ async def create_environment_project(
 ) -> Dict[str, Any]:
     """
     创建环境音分析项目
-    基于书籍的环境音分析，自动分析整本书的所有章节
+    仅创建项目，不进行任何分析
+    用户需要在详情页面选择章节后手动触发分析
     """
     try:
         logger.info(f"[ENV_GEN_API] 创建环境音项目: {request.name}")
@@ -45,18 +46,19 @@ async def create_environment_project(
             else:
                 logger.warning(f"[ENV_GEN_API] 未找到书籍: {request.book_id}")
         
-        # 创建新项目 - 基于书籍，不指定具体章节
+        # 创建新项目 - 仅创建项目，不进行任何分析
         new_project = EnvironmentProject(
             name=request.name,
             description=request.description,
-            status="pending",  # 初始状态为pending，等待分析
+            status="created",  # 初始状态为created，表示项目已创建但未分析
             book_id=request.book_id,  # 设置书籍ID
+            novel_project_id=request.book_id,  # 同时设置novel_project_id为book_id
             analysis_result={},  # 空的分析结果
             matching_result={},  # 空的匹配结果
-            chapter_ids=[],  # 空数组表示分析整本书的所有章节
+            chapter_ids=[],  # 空数组，等待用户选择具体章节
             analysis_options=request.analysis_options,
             book_name=book_name,
-            chapter_name="整本书"  # 表示分析整本书
+            chapter_name="待选择章节"  # 表示需要用户选择章节
         )
         
         # 保存到数据库
