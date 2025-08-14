@@ -219,36 +219,49 @@ export class AudioService {
   }
 
   /**
-   * 播放环境混音结果
-   * @param {Object} result 环境混音结果对象
+   * 播放环境音项目轨道
+   * @param {number} projectId 项目ID
+   * @param {number} trackIndex 轨道索引
+   * @param {string} trackTitle 轨道标题
    */
-  async playEnvironmentMixing(result) {
-    try {
-      if (result.status !== 'completed') {
-        throw new Error('环境混音尚未完成')
-      }
-
-      const audioInfo = {
-        id: `env_mixing_${result.id}`,
-        title: result.name || `环境混音 ${result.id}`,
-        url: `/api/v1/environment/mixing/${result.id}/audio`,
-        type: 'environment_mixing',
-        metadata: {
-          resultId: result.id,
-          chapterId: result.chapter_id,
-          environmentTracksCount: result.environment_tracks_count,
-          createdAt: result.created_at,
-          onEnded: () => {
-            console.log(`环境混音 ${result.name || result.id} 播放完成`)
-          }
+  async playEnvironmentTrack(projectId, trackIndex, trackTitle = `环境音轨道 ${trackIndex}`) {
+    const audioInfo = {
+      id: `env_track_${projectId}_${trackIndex}`,
+      title: trackTitle,
+      url: `/api/v1/environment-generation/preview/${projectId}/${trackIndex}`,
+      type: 'environment_track',
+      metadata: {
+        projectId,
+        trackIndex,
+        onEnded: () => {
+          console.log(`环境音轨道 ${trackIndex} 播放完成`)
         }
       }
-
-      await this.store.playAudio(audioInfo)
-    } catch (error) {
-      console.error('播放环境混音失败:', error)
-      throw error
     }
+
+    await this.store.playAudio(audioInfo)
+  }
+
+  /**
+   * 播放环境音项目混音结果
+   * @param {number} projectId 项目ID
+   * @param {string} projectTitle 项目标题
+   */
+  async playEnvironmentMixing(projectId, projectTitle = `环境音混音 ${projectId}`) {
+    const audioInfo = {
+      id: `env_mixing_${projectId}`,
+      title: projectTitle,
+      url: `/api/v1/environment-generation/mix-preview/${projectId}`,
+      type: 'environment_mixing',
+      metadata: {
+        projectId,
+        onEnded: () => {
+          console.log(`环境音混音 ${projectId} 播放完成`)
+        }
+      }
+    }
+
+    await this.store.playAudio(audioInfo)
   }
 
   /**
@@ -340,6 +353,7 @@ export const playLibraryAudio = (...args) => getAudioService().playLibraryAudio(
 export const playVoicePreview = (...args) => getAudioService().playVoicePreview(...args)
 export const playCustomAudio = (...args) => getAudioService().playCustomAudio(...args)
 export const playEnvironmentSound = (...args) => getAudioService().playEnvironmentSound(...args)
+export const playEnvironmentTrack = (...args) => getAudioService().playEnvironmentTrack(...args)
 export const playEnvironmentMixing = (...args) => getAudioService().playEnvironmentMixing(...args)
 export const pauseAudio = () => getAudioService().pause()
 export const stopAudio = () => getAudioService().stop()

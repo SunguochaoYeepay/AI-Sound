@@ -169,7 +169,7 @@
   import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
   import { message } from 'ant-design-vue'
   import { PlayCircleOutlined, DownloadOutlined } from '@ant-design/icons-vue'
-  import { useWebSocket } from '@/composables/useWebSocket'
+  import { useWebSocket } from '@/composables/useWebSocketSimple'
   import SongStructureHelper from './SongStructureHelper.vue'
 
   const emit = defineEmits(['musicGenerated', 'generationCompleted'])

@@ -16,9 +16,11 @@ from app.models.novel_project import NovelProject
 from app.models.analysis_result import AnalysisResult
 from app.models.book import Book
 from app.models.book_chapter import BookChapter
+from app.models.environment_generation import EnvironmentProject
 from .schemas import (
     EnvironmentGenerationRequest,
-    ChapterEnvironmentAnalysisRequest
+    ChapterEnvironmentAnalysisRequest,
+    BookEnvironmentAnalysisRequest
 )
 
 logger = get_logger(__name__)
@@ -30,98 +32,261 @@ def get_session_id(project_id: int) -> str:
     return f"env_gen_{project_id}"
 
 
+@router.post("/books/analyze")
+async def analyze_book_environment(
+    request: BookEnvironmentAnalysisRequest,
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """
+    分析整本书的环境音需求
+    基于书籍的环境音分析，自动分析所有章节
+    """
+    try:
+        book_id = request.book_id
+        analysis_options = request.analysis_options or {}
+        project_id = request.project_id  # 可选：指定现有项目ID
+        
+        logger.info(f"[ENV_GEN_API] 开始书籍环境音分析，书籍ID: {book_id}，项目ID: {project_id}")
+        
+        if not book_id:
+            raise HTTPException(status_code=400, detail="请指定要分析的书籍ID")
+        
+        # 获取书籍信息
+        book = db.query(Book).filter(Book.id == book_id).first()
+        if not book:
+            raise HTTPException(status_code=404, detail="未找到指定的书籍")
+        
+        # 获取书籍的所有章节
+        chapters = db.query(BookChapter).filter(BookChapter.book_id == book_id).order_by(BookChapter.chapter_number).all()
+        if not chapters:
+            raise HTTPException(status_code=404, detail="书籍没有章节内容")
+        
+        logger.info(f"[ENV_GEN_API] 找到 {len(chapters)} 个章节")
+        
+        # 检查是否跳过分析，只保存结果
+        skip_analysis = analysis_options.get('skip_analysis', False)
+        provided_analysis_result = analysis_options.get('analysis_result', None)
+        
+        if skip_analysis and provided_analysis_result:
+            # 跳过分析，直接使用提供的结果
+            logger.info(f"[ENV_GEN_API] 跳过分析，使用提供的结果")
+            multi_chapter_result = provided_analysis_result
+            
+            # 计算总轨道数
+            total_tracks = 0
+            for chapter_id, chapter_result in multi_chapter_result.items():
+                tracks = chapter_result.get('environment_tracks', [])
+                total_tracks += len(tracks)
+            
+            # 构建分析统计
+            analysis_stats = {
+                'total_chapters': len(multi_chapter_result),
+                'total_tracks': total_tracks,
+                'analysis_time': datetime.now().isoformat(),
+                'skip_analysis': True
+            }
+        else:
+            # 正常分析所有章节的环境音
+            analyzer = ChapterEnvironmentAnalyzer()
+            
+            # 为每个章节单独分析，然后合并结果
+            multi_chapter_result = {}
+            total_tracks = 0
+            
+            for chapter in chapters:
+                logger.info(f"[ENV_GEN_API] 分析章节 {chapter.id}: {chapter.chapter_title}")
+                
+                # 单独分析每个章节
+                chapter_result = await analyzer.analyze_chapters([chapter], analysis_options)
+                
+                # 将结果存储到多章节格式中
+                multi_chapter_result[chapter.id] = chapter_result
+                total_tracks += len(chapter_result.get('environment_tracks', []))
+                
+                logger.info(f"[ENV_GEN_API] 章节 {chapter.id} 分析完成，发现 {len(chapter_result.get('environment_tracks', []))} 个轨道")
+            
+            # 构建分析统计
+            analysis_stats = {
+                'total_chapters': len(chapters),
+                'total_tracks': total_tracks,
+                'analysis_time': datetime.now().isoformat()
+            }
+        
+        # 确定项目ID和保存策略
+        if project_id:
+            # 使用指定的项目ID，更新现有项目
+            logger.info(f"[ENV_GEN_API] 使用指定项目ID: {project_id}")
+            
+            # 查找现有项目并更新
+            existing_project = db.query(EnvironmentProject).filter(EnvironmentProject.id == project_id).first()
+            if existing_project:
+                # 直接更新现有项目的分析结果
+                existing_project.analysis_result = multi_chapter_result
+                existing_project.matching_result = {
+                    'analysis_stats': analysis_stats,
+                    'session_stage': 'analyzed'
+                }
+                existing_project.analysis_options = analysis_options
+                existing_project.status = 'analyzed'
+                existing_project.updated_at = datetime.now()
+                
+                # 更新统计信息
+                existing_project.analysis_tracks = total_tracks
+                
+                db.commit()
+                logger.info(f"[ENV_GEN_API] 更新指定项目: {project_id}")
+            else:
+                logger.warning(f"[ENV_GEN_API] 指定的项目ID {project_id} 不存在")
+        else:
+            # 查找或创建环境音项目
+            env_service = EnvironmentProjectService(db)
+            
+            # 查找现有项目（通过书籍ID）
+            existing_env_project = db.query(EnvironmentProject).filter(EnvironmentProject.book_id == book_id).first()
+            
+            if existing_env_project:
+                # 更新现有项目
+                env_service.create_or_update(
+                    novel_project_id=book_id,  # 使用书籍ID作为novel_project_id
+                    analysis_result=multi_chapter_result, # 保存多章节结果
+                    analysis_stats=analysis_stats,
+                    analysis_options=analysis_options
+                )
+                project_id = existing_env_project.id
+                logger.info(f"[ENV_GEN_API] 更新现有环境音项目: {project_id}")
+            else:
+                # 创建新项目
+                env_project = env_service.create_or_update(
+                    novel_project_id=book_id,  # 使用书籍ID作为novel_project_id
+                    analysis_result=multi_chapter_result, # 保存多章节结果
+                    analysis_stats=analysis_stats,
+                    analysis_options=analysis_options
+                )
+                project_id = env_project.id
+                logger.info(f"[ENV_GEN_API] 创建新环境音项目: {project_id}")
+        
+        logger.info(f"[ENV_GEN_API] 书籍环境音分析完成，项目ID: {project_id}")
+        
+        return {
+            "success": True,
+            "project_id": project_id,
+            "analysis_result": multi_chapter_result,
+            "analysis_stats": analysis_stats,
+            "message": f"成功分析 {len(chapters)} 个章节，发现 {total_tracks} 个环境音轨道"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[ENV_GEN_API] 书籍环境音分析失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"书籍环境音分析失败: {str(e)}")
+
+
 @router.post("/chapters/analyze")
 async def analyze_chapters_environment(
     request: ChapterEnvironmentAnalysisRequest,
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
     """
-    章节环境音智能分析 - 新流程第2步
-    基于章节ID进行环境音需求分析
+    分析指定章节的环境音需求
+    支持指定现有项目ID，合并分析结果
     """
-    logger.info(f"[ENV_GEN_API] 开始章节环境音分析，章节IDs: {request.chapter_ids}")
-    
     try:
+        chapter_ids = request.chapter_ids
+        analysis_options = request.analysis_options or {}
+        existing_project_id = analysis_options.get('existing_project_id')  # 新增：支持指定现有项目ID
+        
+        logger.info(f"[ENV_GEN_API] 开始章节环境音分析，章节IDs: {chapter_ids}，现有项目ID: {existing_project_id}")
+        
+        if not chapter_ids:
+            raise HTTPException(status_code=400, detail="请指定要分析的章节ID")
+        
         # 获取章节信息
-        chapters = db.query(BookChapter).filter(BookChapter.id.in_(request.chapter_ids)).all()
+        chapters = db.query(BookChapter).filter(BookChapter.id.in_(chapter_ids)).all()
         if not chapters:
             raise HTTPException(status_code=404, detail="未找到指定的章节")
         
-        # 获取项目信息
-        project = None
-        if chapters:
-            project = db.query(NovelProject).filter(NovelProject.id == chapters[0].book_id).first()
+        # 获取第一个章节的书籍信息（假设所有章节来自同一本书）
+        book = db.query(Book).filter(Book.id == chapters[0].book_id).first()
+        if not book:
+            raise HTTPException(status_code=404, detail="未找到章节对应的书籍")
         
-        # 创建分析器实例
+        # 分析章节环境音
         analyzer = ChapterEnvironmentAnalyzer()
+        analysis_result = await analyzer.analyze_chapters(chapters, analysis_options)
         
-        # 执行分析
-        analysis_result = await analyzer.analyze_chapters(
-            chapters=chapters,
-            options=request.analysis_options or {}
-        )
+        # 构建分析统计
+        analysis_stats = {
+            'total_chapters': len(chapters),
+            'total_tracks': len(analysis_result.get('environment_tracks', [])),
+            'analysis_time': datetime.now().isoformat()
+        }
         
-        # 检查是否需要创建项目（通过analysis_options中的create_project参数控制）
-        create_project = request.analysis_options.get('create_project', False)
+        # 确定项目ID和保存策略
+        project_id = None
+        create_project = analysis_options.get('create_project', False)
         
-        if create_project:
-            # 生成项目ID（使用时间戳）
-            project_id = int(datetime.now().timestamp())
-            
-            # 保存到数据库
-            from app.models.environment_generation import EnvironmentProject
-            new_project = EnvironmentProject(
-                id=project_id,
-                name=f"环境音分析_{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}",
-                description=f"基于{len(chapters)}个章节的智能环境音分析",
-                status="analyzed",
-                analysis_result=analysis_result,
-                matching_result={
-                    'analysis_stats': {
-                        'total_chapters': len(chapters),
-                        'total_tracks': len(analysis_result.get('environment_tracks', [])),
-                        'analysis_time': datetime.now().isoformat()
-                    },
-                    'session_stage': 'analyzed'
-                },
-                chapter_ids=request.chapter_ids,
-                analysis_options=request.analysis_options or {},
-                book_name=project.name if project else "未知书籍",
-                chapter_name=f"第{len(chapters)}章"
-            )
-            
-            db.add(new_project)
-            db.commit()
-            db.refresh(new_project)
-            
-            logger.info(f"[ENV_GEN_API] 章节环境音分析完成，项目ID: {project_id}")
-            
-            return {
-                "success": True,
-                "project_id": project_id,
-                "analysis_result": analysis_result,
-                "analysis_stats": {
-                    'total_chapters': len(chapters),
-                    'total_tracks': len(analysis_result.get('environment_tracks', [])),
-                    'analysis_time': datetime.now().isoformat()
-                },
-                "message": f"成功分析 {len(chapters)} 个章节，发现 {len(analysis_result.get('environment_tracks', []))} 个环境音轨道，已创建项目"
-            }
+        # 通过书籍ID找到对应的合成项目
+        novel_project = db.query(NovelProject).filter(NovelProject.book_id == book.id).first()
+        if not novel_project:
+            logger.warning(f"[ENV_GEN_API] 书籍 {book.id} 没有对应的合成项目")
+            # 如果没有合成项目，使用书籍ID作为后备
+            novel_project_id = book.id
         else:
-            # 只返回分析结果，不创建项目
-            logger.info(f"[ENV_GEN_API] 章节环境音分析完成，未创建项目")
+            novel_project_id = novel_project.id
+        
+        if existing_project_id:
+            # 使用指定的现有项目ID
+            project_id = existing_project_id
+            create_project = True  # 强制保存到现有项目
+            logger.info(f"[ENV_GEN_API] 使用现有项目ID: {project_id}")
+        elif create_project:
+            # 创建新项目
+            env_service = EnvironmentProjectService(db)
+            env_project = env_service.create_or_update(
+                novel_project_id=novel_project_id,  # 使用合成项目ID
+                analysis_result=analysis_result,
+                analysis_stats=analysis_stats,
+                analysis_options=analysis_options
+            )
+            project_id = env_project.id
+            logger.info(f"[ENV_GEN_API] 创建新环境音项目: {project_id}")
+        else:
+            # 查找现有项目（通过合成项目ID）
+            env_service = EnvironmentProjectService(db)
+            existing_env_project = env_service.get_by_novel_project_id(novel_project_id)
             
-            return {
-                "success": True,
-                "project_id": None,
-                "analysis_result": analysis_result,
-                "analysis_stats": {
-                    'total_chapters': len(chapters),
-                    'total_tracks': len(analysis_result.get('environment_tracks', [])),
-                    'analysis_time': datetime.now().isoformat()
-                },
-                "message": f"成功分析 {len(chapters)} 个章节，发现 {len(analysis_result.get('environment_tracks', []))} 个环境音轨道"
-            }
+            if existing_env_project:
+                # 更新现有项目
+                env_service.create_or_update(
+                    novel_project_id=novel_project_id,
+                    analysis_result=analysis_result,
+                    analysis_stats=analysis_stats,
+                    analysis_options=analysis_options
+                )
+                project_id = existing_env_project.id
+                logger.info(f"[ENV_GEN_API] 更新现有环境音项目: {project_id}")
+            else:
+                # 没有现有项目，但不创建新项目
+                logger.info(f"[ENV_GEN_API] 章节环境音分析完成，未创建项目")
+                
+                return {
+                    "success": True,
+                    "project_id": None,
+                    "analysis_result": analysis_result,
+                    "analysis_stats": analysis_stats,
+                    "message": f"成功分析 {len(chapters)} 个章节，发现 {len(analysis_result.get('environment_tracks', []))} 个环境音轨道"
+                }
+        
+        logger.info(f"[ENV_GEN_API] 章节环境音分析完成，项目ID: {project_id}")
+        
+        return {
+            "success": True,
+            "project_id": project_id,
+            "analysis_result": analysis_result,
+            "analysis_stats": analysis_stats,
+            "message": f"成功分析 {len(chapters)} 个章节，发现 {len(analysis_result.get('environment_tracks', []))} 个环境音轨道"
+        }
         
     except HTTPException:
         raise

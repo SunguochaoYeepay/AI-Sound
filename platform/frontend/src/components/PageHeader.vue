@@ -5,8 +5,8 @@
         <h1 class="page-title">{{ title }}</h1>
         <p v-if="subtitle" class="page-subtitle">{{ subtitle }}</p>
       </div>
-      <div v-if="$slots.extra" class="extra-section">
-        <slot name="extra"></slot>
+      <div v-if="$slots.actions" class="actions-section">
+        <slot name="actions"></slot>
       </div>
     </div>
     <div v-if="$slots.content" class="content-section">

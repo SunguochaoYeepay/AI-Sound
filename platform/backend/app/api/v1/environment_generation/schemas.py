@@ -32,6 +32,13 @@ class ChapterEnvironmentAnalysisRequest(BaseModel):
     analysis_options: Optional[Dict[str, Any]] = {}
 
 
+class BookEnvironmentAnalysisRequest(BaseModel):
+    """书籍环境音分析请求 - 基于书籍的分析"""
+    book_id: int
+    project_id: Optional[int] = None  # 可选：指定现有项目ID
+    analysis_options: Optional[Dict[str, Any]] = {}
+
+
 class EnvironmentMatchingRequest(BaseModel):
     """环境音匹配请求"""
     analysis_result: Dict[str, Any]

@@ -1137,102 +1137,8 @@ export const environmentSoundsAPI = {
 // 环境音生成API (新方案A)
 export const environmentGenerationAPI = {
   // 第一步：从synthesis_plan分析环境音需求 - 使用LLM专用客户端，支持5分钟超时
-  analyzeEnvironment: (projectId, synthesisData) =>
-    llmAnalysisClient.post('/environment-generation/analyze', {
-      project_id: projectId,
-      synthesis_plan: synthesisData?.synthesis_plan || [], // 修复：确保发送正确的数组格式
-      options: synthesisData?.options || {}
-    }),
-
-  // 第二步：准备人工校对
-  prepareValidation: (projectId) =>
-    apiClient.post(`/environment-generation/prepare-validation/${projectId}`),
-
-  // 第三步：应用人工编辑
-  editValidation: (projectId, trackIndex, manualEdits) =>
-    apiClient.post(`/environment-generation/edit-validation/${projectId}`, {
-      track_index: trackIndex,
-      manual_edits: manualEdits
-    }),
-
-  // 第四步：校对审批
-  approveValidation: (projectId, trackIndex, validationResult, notes = null) =>
-    apiClient.post(`/environment-generation/approve-validation/${projectId}`, {
-      track_index: trackIndex,
-      validation_result: validationResult,
-      notes: notes
-    }),
-
-  // 第五步：完成环境音生成流程
-  finalizeGeneration: (projectId) =>
-    apiClient.post(`/environment-generation/finalize/${projectId}`),
-
-  // 获取环境音生成状态
-  getGenerationStatus: (projectId) => apiClient.get(`/environment-generation/status/${projectId}`),
-
-  // 获取已分析的环境音配置（类似角色管理）
-  getEnvironmentConfig: (projectId) => apiClient.get(`/environment-generation/config/${projectId}`),
-
-  // 更新环境音轨道配置（支持手动设置环境音ID）
-  updateTrackConfig: (projectId, trackIndex, config) =>
-    apiClient.put(`/environment-generation/track/${projectId}/${trackIndex}`, config),
-
-  // 清除环境音生成会话
-  clearGenerationSession: (projectId) =>
-    apiClient.delete(`/environment-generation/session/${projectId}`),
-
-  // === 新流程API ===
-
-  // 章节级环境音智能分析 - 新流程第2步
-  analyzeChaptersEnvironment: (chapterIds, analysisOptions = {}) =>
-    llmAnalysisClient.post('/environment-generation/chapters/analyze', {
-      chapter_ids: chapterIds,
-      analysis_options: analysisOptions
-    }),
-
-  // 获取章节环境音时间轴
-  getChapterTimeline: (chapterId) =>
-    apiClient.get(`/environment-generation/chapters/${chapterId}/timeline`),
-
-  // 环境音智能匹配 - 新流程第3步
-  matchEnvironmentSounds: (analysisResult, matchingOptions = {}) =>
-    apiClient.post('/environment-generation/match-sounds', {
-      analysis_result: analysisResult,
-      matching_options: matchingOptions
-    }),
-
-  // 搜索环境音
-  searchEnvironmentSounds: (keywords, maxResults = 10) =>
-    apiClient.get(
-      `/environment-generation/sounds/search?keywords=${encodeURIComponent(keywords)}&max_results=${maxResults}`
-    ),
-
-  // 环境音批量生成 - 新流程第4步
-  generateEnvironmentSounds: (generationPlan, generationOptions = {}) =>
-    apiClient.post('/environment-generation/generate-sounds', {
-      generation_plan: generationPlan,
-      generation_options: generationOptions
-    }),
-
-  // 创建环境音时间轴
-  createEnvironmentTimeline: (analysisResult, matchingResult, projectName = null) =>
-    apiClient.post('/environment-generation/create-timeline', {
-      analysis_result: analysisResult,
-      matching_result: matchingResult,
-      project_name: projectName
-    }),
-
-  // 导出时间轴
-  exportTimeline: (timelineData, exportFormat = 'generic', outputPath = null) =>
-    apiClient.post('/environment-generation/export-timeline', {
-      timeline_data: timelineData,
-      export_format: exportFormat,
-      output_path: outputPath
-    }),
-
-  // 获取生成任务状态
-  getGenerationTaskStatus: (taskId) =>
-    apiClient.get(`/environment-generation/generation/status/${taskId}`),
+  analyzeSynthesisPlan: (request) =>
+    apiClient.post('/environment-generation/batch-generate', request),
 
   // === 项目管理API ===
 
@@ -1278,9 +1184,15 @@ export const environmentGenerationAPI = {
   getAnalysisDetail: (analysisId) =>
     apiClient.get(`/environment-generation/analysis/${analysisId}`),
 
-  // 批量生成环境音
-  batchGenerateEnvironmentSounds: (generationPlan) =>
-    apiClient.post('/environment-generation/batch-generate', generationPlan)
+  // === 分析API ===
+
+  // 章节环境音分析（原有）
+  analyzeChapters: (request) =>
+    apiClient.post('/environment-generation/chapters/analyze', request),
+
+  // 书籍环境音分析（新增）
+  analyzeBook: (request) =>
+    apiClient.post('/environment-generation/books/analyze', request)
 }
 
 // 环境混音API

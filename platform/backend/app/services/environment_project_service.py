@@ -39,16 +39,45 @@ class EnvironmentProjectService:
         env_project = self.get_by_novel_project_id(novel_project_id)
         
         if env_project:
-            # 更新现有项目
-            env_project.analysis_result = analysis_result
+            # 更新现有项目 - 合并分析结果而不是覆盖
+            existing_result = env_project.analysis_result or {}
+            
+            # 如果是多章节格式，合并章节数据
+            if isinstance(analysis_result, dict) and not analysis_result.get('environment_tracks'):
+                # 多章节格式，按章节ID合并
+                for chapter_id, chapter_analysis in analysis_result.items():
+                    if isinstance(chapter_analysis, dict):
+                        if chapter_id not in existing_result:
+                            existing_result[chapter_id] = chapter_analysis
+                        else:
+                            # 合并环境轨道
+                            existing_tracks = existing_result[chapter_id].get('environment_tracks', [])
+                            new_tracks = chapter_analysis.get('environment_tracks', [])
+                            existing_result[chapter_id]['environment_tracks'] = existing_tracks + new_tracks
+            else:
+                # 单章节格式，合并环境轨道
+                existing_tracks = existing_result.get('environment_tracks', [])
+                new_tracks = analysis_result.get('environment_tracks', [])
+                existing_result['environment_tracks'] = existing_tracks + new_tracks
+            
+            env_project.analysis_result = existing_result
+            
+            # 更新统计信息
+            existing_stats = env_project.matching_result.get('analysis_stats', {}) if env_project.matching_result else {}
+            if existing_stats:
+                existing_stats['total_chapters'] = existing_stats.get('total_chapters', 0) + analysis_stats.get('total_chapters', 0)
+                existing_stats['total_tracks'] = existing_stats.get('total_tracks', 0) + analysis_stats.get('total_tracks', 0)
+            else:
+                existing_stats = analysis_stats
+            
             env_project.matching_result = {
-                'analysis_stats': analysis_stats,
+                'analysis_stats': existing_stats,
                 'session_stage': 'analyzed'
             }
             env_project.analysis_options = analysis_options or {}
             env_project.updated_at = datetime.utcnow()
             
-            logger.info(f"更新环境音项目: {env_project.id}")
+            logger.info(f"合并更新环境音项目: {env_project.id}")
         else:
             # 获取合成项目信息
             novel_project = self.db.query(NovelProject).filter(

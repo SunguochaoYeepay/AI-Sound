@@ -1,7 +1,7 @@
 """add_environment_projects_table_only
 
 Revision ID: 5c31d42c13e8
-Revises: d3bf24b6ce52
+Revises: 20250202_add_character_consistency_fields
 Create Date: 2025-08-12 20:40:51.889969
 
 """

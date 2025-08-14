@@ -90,7 +90,7 @@ const toggleCollapse = () => {
 
 <style scoped>
 .chapter-selector {
-  background: white;
+  background: #fafafa;
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   overflow: hidden;
@@ -167,26 +167,42 @@ const toggleCollapse = () => {
   color: var(--ant-text-color-secondary);
 }
 
-/* 暗黑模式适配 */
+/* 暗色主题适配 */
 [data-theme='dark'] .chapter-selector {
-  background: #1f1f1f;
-  border: 1px solid #303030;
+  background: #2a2a2a;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 [data-theme='dark'] .section-header {
-  background: #262626;
-  border-bottom-color: #303030;
+  background: #333333;
+  border-bottom-color: var(--ant-border-color-split);
 }
 
 [data-theme='dark'] .section-header h3 {
-  color: #fff;
+  color: var(--ant-color-text);
 }
 
 [data-theme='dark'] .collapse-btn {
-  color: #999;
+  color: var(--ant-color-text-secondary);
 }
 
 [data-theme='dark'] .collapse-btn:hover {
-  color: #1890ff;
+  color: var(--ant-color-primary);
+}
+
+[data-theme='dark'] .chapter-menu {
+  background: var(--ant-color-bg-container);
+}
+
+[data-theme='dark'] .chapter-number {
+  color: var(--ant-color-text);
+}
+
+[data-theme='dark'] .chapter-title {
+  color: var(--ant-color-text-secondary);
+}
+
+[data-theme='dark'] .chapter-meta {
+  color: var(--ant-color-text-tertiary);
 }
 </style>

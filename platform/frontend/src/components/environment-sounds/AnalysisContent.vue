@@ -20,10 +20,7 @@
     <div v-else class="chapter-content">
       <!-- 环境音轨道分析结果 - 按段落分组 -->
       <div v-if="environmentTracks.length > 0" class="environment-tracks">
-        <div class="tracks-header">
-          <h3>环境音分析结果</h3>
-          <a-tag color="green">{{ environmentTracks.length }} 个轨道</a-tag>
-        </div>
+        
         
         <!-- 按段落分组显示 -->
         <div class="paragraphs-container">
@@ -53,18 +50,19 @@
             <!-- 该段落的环境音轨道 -->
             <div class="paragraph-tracks">
               <div 
-                v-for="track in paragraph.tracks" 
+                v-for="(track, trackIndex) in paragraph.tracks" 
                 :key="track.segment_id"
                 class="track-item"
-                :class="{ 'has-match': track.has_match }"
+                :class="{ 'has-match': track.has_match, 'has-generated': track.has_generated }"
               >
                 <div class="track-header">
                   <div class="track-time">
                     {{ formatTime(track.start_time) }} - {{ formatTime(track.start_time + track.duration) }}
                   </div>
                   <div class="track-status">
-                    <a-tag v-if="track.has_match" color="success" size="small">已匹配</a-tag>
-                    <a-tag v-else color="warning" size="small">需生成</a-tag>
+                    <a-tag v-if="track.has_generated" color="success" size="small">已生成</a-tag>
+                    <a-tag v-else-if="track.has_match" color="warning" size="small">已匹配</a-tag>
+                    <a-tag v-else color="default" size="small">需生成</a-tag>
                   </div>
                 </div>
                 
@@ -96,15 +94,64 @@
                   />
                   <span class="confidence-text">{{ (track.confidence * 100).toFixed(0) }}%</span>
                 </div>
+                
+                <!-- 轨道操作按钮 -->
+                <div class="track-actions">
+                  <a-space size="small">
+                    <!-- 生成按钮 -->
+                    <a-button 
+                      v-if="!track.has_generated"
+                      type="primary" 
+                      size="small"
+                      :loading="track.generating"
+                      @click="$emit('generate-track', track, trackIndex)"
+                    >
+                      🎵 生成
+                    </a-button>
+                    
+                    <!-- 播放按钮 -->
+                    <a-button 
+                      v-if="track.has_generated"
+                      size="small"
+                      :loading="track.playing"
+                      @click="$emit('play-track', track, trackIndex)"
+                    >
+                      🎵 播放
+                    </a-button>
+                    
+                    <!-- 下载按钮 -->
+                    <a-button 
+                      v-if="track.has_generated"
+                      size="small"
+                      @click="$emit('download-track', track, trackIndex)"
+                    >
+                      ⬇️ 下载
+                    </a-button>
+                    
+                    <!-- 重新生成按钮 -->
+                    <a-button 
+                      v-if="track.has_generated"
+                      size="small"
+                      :loading="track.regenerating"
+                      @click="$emit('regenerate-track', track, trackIndex)"
+                    >
+                      🔄 重新生成
+                    </a-button>
+                  </a-space>
+                </div>
               </div>
             </div>
           </div>
         </div>
       </div>
       
-      <!-- 无环境音轨道 -->
+      <!-- 没有环境音轨道 -->
       <div v-else class="no-tracks">
-        <a-empty description="未检测到环境音轨道" />
+        <a-empty description="未找到环境音轨道">
+          <template #image>
+            <SoundOutlined style="font-size: 64px; color: #d9d9d9;" />
+          </template>
+        </a-empty>
       </div>
     </div>
   </div>
@@ -112,8 +159,9 @@
 
 <script setup>
 import { computed } from 'vue'
-import { BulbOutlined } from '@ant-design/icons-vue'
+import { BulbOutlined, SoundOutlined } from '@ant-design/icons-vue'
 
+// Props
 const props = defineProps({
   selectedChapter: {
     type: Object,
@@ -126,85 +174,101 @@ const props = defineProps({
   environmentTracks: {
     type: Array,
     default: () => []
+  },
+  generationLoading: {
+    type: Boolean,
+    default: false
+  },
+  mixingLoading: {
+    type: Boolean,
+    default: false
+  },
+  hasMixingFile: {
+    type: Boolean,
+    default: false
   }
 })
 
-// 按段落分组的计算属性
+// Emits
+const emit = defineEmits([
+  'generate-all-sounds',
+  'mix-sounds',
+  'play-mixing',
+  'download-mixing',
+  'generate-track',
+  'play-track',
+  'download-track',
+  'regenerate-track'
+])
+
+// 计算属性：按段落分组轨道
 const groupedTracks = computed(() => {
   if (!props.environmentTracks || props.environmentTracks.length === 0) {
     return []
   }
   
-  // 按segment_id分组（假设segment_id包含段落信息）
-  const groups = {}
+  // 按段落分组
+  const paragraphs = {}
   
-  props.environmentTracks.forEach((track, index) => {
-    const segmentId = track.segment_id || `segment_${index + 1}`
-    if (!groups[segmentId]) {
-      groups[segmentId] = {
-        segmentId,
+  props.environmentTracks.forEach(track => {
+    const paragraphKey = track.paragraph_index || track.segment_id || 0
+    
+    if (!paragraphs[paragraphKey]) {
+      paragraphs[paragraphKey] = {
+        paragraphIndex: paragraphKey,
         startTime: track.start_time,
         endTime: track.start_time + track.duration,
-        narrationText: track.narration_text || track.scene_description || '',
+        narrationText: track.narration_text || track.text || '',
         tracks: []
       }
     }
-    groups[segmentId].tracks.push(track)
     
-    // 更新时间范围
+    // 更新段落时间范围
     const trackEndTime = track.start_time + track.duration
-    if (trackEndTime > groups[segmentId].endTime) {
-      groups[segmentId].endTime = trackEndTime
+    if (track.start_time < paragraphs[paragraphKey].startTime) {
+      paragraphs[paragraphKey].startTime = track.start_time
     }
+    if (trackEndTime > paragraphs[paragraphKey].endTime) {
+      paragraphs[paragraphKey].endTime = trackEndTime
+    }
+    
+    // 添加轨道
+    paragraphs[paragraphKey].tracks.push({
+      ...track,
+      has_generated: track.generated_file_path && track.generated_file_path.length > 0,
+      generating: false,
+      playing: false,
+      regenerating: false
+    })
   })
   
-  // 转换为数组并按时间排序
-  const result = Object.values(groups).sort((a, b) => a.startTime - b.startTime)
-  
-  return result
+  // 转换为数组并按段落索引排序
+  return Object.values(paragraphs).sort((a, b) => a.paragraphIndex - b.paragraphIndex)
 })
 
+// 工具函数：格式化时间
 const formatTime = (seconds) => {
-  const minutes = Math.floor(seconds / 60)
-  const remainingSeconds = Math.floor(seconds % 60)
-  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`
+  if (!seconds || seconds === 0) return '0:00'
+  const mins = Math.floor(seconds / 60)
+  const secs = Math.floor(seconds % 60)
+  return `${mins}:${secs.toString().padStart(2, '0')}`
 }
 </script>
 
 <style scoped>
 .analysis-content {
-  height: 100%;
+  padding: 16px;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
-.empty-state {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  min-height: 300px;
-}
-
+.empty-state,
 .analysis-prompt {
   display: flex;
-  align-items: center;
   justify-content: center;
-  height: 100%;
-}
-
-.prompt-content {
-  text-align: center;
-}
-
-.chapter-content {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-}
-
-.environment-tracks {
-  background-color: var(--ant-item-hover-bg);
-  border-radius: 8px;
-  padding: 20px;
+  align-items: center;
+  min-height: 300px;
 }
 
 .tracks-header {
@@ -212,39 +276,39 @@ const formatTime = (seconds) => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #f0f0f0;
 }
 
 .tracks-header h3 {
   margin: 0;
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--ant-text-color);
+  color: #1890ff;
+}
+
+.batch-actions {
+  display: flex;
+  gap: 8px;
 }
 
 .paragraphs-container {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 16px;
 }
 
 .paragraph-section {
-  background-color: var(--ant-component-background);
-  border: 1px solid var(--ant-border-color-split);
-  border-radius: 6px;
-  padding: 16px;
-  transition: all 0.2s ease;
-}
-
-.paragraph-section:hover {
-  border-color: var(--ant-primary-color);
-  box-shadow: 0 2px 8px var(--ant-box-shadow);
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  overflow: hidden;
 }
 
 .paragraph-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
+  padding: 12px 16px;
+  background: #fafafa;
+  border-bottom: 1px solid #f0f0f0;
 }
 
 .paragraph-info {
@@ -254,62 +318,55 @@ const formatTime = (seconds) => {
 }
 
 .paragraph-number {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--ant-text-color);
+  font-weight: 600;
+  color: #1890ff;
 }
 
 .paragraph-time {
-  font-size: 14px;
-  color: var(--ant-text-color-secondary);
-}
-
-.paragraph-stats {
-  display: flex;
-  align-items: center;
+  color: #666;
+  font-size: 12px;
 }
 
 .paragraph-text {
-  margin-bottom: 16px;
+  padding: 12px 16px;
+  background: #f9f9f9;
+  border-bottom: 1px solid #f0f0f0;
 }
 
 .text-label {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--ant-text-color);
-  margin-bottom: 8px;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 4px;
 }
 
 .text-content {
-  line-height: 1.6;
-  color: var(--ant-text-color);
-  max-height: 200px;
-  overflow-y: auto;
-  white-space: pre-wrap;
+  color: #666;
+  line-height: 1.5;
 }
 
 .paragraph-tracks {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+  padding: 16px;
 }
 
 .track-item {
-  background-color: var(--ant-item-hover-bg);
-  border: 1px solid var(--ant-border-color-split);
+  border: 1px solid #e8e8e8;
   border-radius: 6px;
   padding: 12px;
-  transition: all 0.2s ease;
+  margin-bottom: 12px;
+  background: #fff;
+  transition: all 0.3s ease;
 }
 
 .track-item:hover {
-  border-color: var(--ant-primary-color);
-  box-shadow: 0 2px 8px var(--ant-box-shadow);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .track-item.has-match {
-  border-color: var(--ant-success-color);
-  background-color: rgba(82, 196, 26, 0.05);
+  border-left: 4px solid #faad14;
+}
+
+.track-item.has-generated {
+  border-left: 4px solid #52c41a;
 }
 
 .track-header {
@@ -320,9 +377,8 @@ const formatTime = (seconds) => {
 }
 
 .track-time {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--ant-text-color);
+  font-size: 12px;
+  color: #666;
 }
 
 .track-keywords {
@@ -330,38 +386,151 @@ const formatTime = (seconds) => {
 }
 
 .more-keywords {
+  color: #999;
   font-size: 12px;
-  color: var(--ant-text-color-secondary);
   margin-left: 4px;
 }
 
 .track-description {
-  font-size: 13px;
-  color: var(--ant-text-color-secondary);
-  line-height: 1.4;
+  color: #333;
   margin-bottom: 8px;
+  line-height: 1.4;
 }
 
 .track-confidence {
   display: flex;
   align-items: center;
-  font-size: 12px;
+  margin-bottom: 12px;
 }
 
 .confidence-label {
-  color: var(--ant-text-color-secondary);
-  margin-right: 4px;
+  font-size: 12px;
+  color: #666;
+  margin-right: 8px;
 }
 
 .confidence-text {
-  color: var(--ant-text-color-secondary);
-  font-weight: 500;
+  font-size: 12px;
+  color: #666;
+}
+
+.track-actions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .no-tracks {
   display: flex;
-  align-items: center;
   justify-content: center;
+  align-items: center;
   min-height: 200px;
+}
+
+/* 移动端适配 */
+@media (max-width: 768px) {
+  .analysis-content {
+    padding: 12px;
+  }
+  
+  .tracks-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  
+  .batch-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  
+  .paragraph-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  
+  .track-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+  
+  .track-actions {
+    justify-content: flex-start;
+  }
+}
+
+/* 暗色主题适配 */
+[data-theme='dark'] .analysis-content {
+  background: var(--ant-color-bg-container);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme='dark'] .tracks-header {
+  border-bottom-color: var(--ant-border-color-split);
+}
+
+[data-theme='dark'] .tracks-header h3 {
+  color: var(--ant-color-text);
+}
+
+[data-theme='dark'] .paragraph-section {
+  border-color: var(--ant-border-color-split);
+  background: var(--ant-color-bg-container);
+}
+
+[data-theme='dark'] .paragraph-header {
+  background: var(--ant-color-bg-layout);
+  border-bottom-color: var(--ant-border-color-split);
+}
+
+[data-theme='dark'] .paragraph-number {
+  color: var(--ant-color-primary);
+}
+
+[data-theme='dark'] .paragraph-time {
+  color: var(--ant-color-text-secondary);
+}
+
+[data-theme='dark'] .paragraph-text {
+  background: var(--ant-color-bg-layout);
+  border-bottom-color: var(--ant-border-color-split);
+}
+
+[data-theme='dark'] .text-label {
+  color: var(--ant-color-text);
+}
+
+[data-theme='dark'] .text-content {
+  color: var(--ant-color-text-secondary);
+}
+
+[data-theme='dark'] .track-item {
+  border-color: var(--ant-border-color-split);
+  background: var(--ant-color-bg-container);
+}
+
+[data-theme='dark'] .track-item:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme='dark'] .track-time {
+  color: var(--ant-color-text-secondary);
+}
+
+[data-theme='dark'] .more-keywords {
+  color: var(--ant-color-text-tertiary);
+}
+
+[data-theme='dark'] .track-description {
+  color: var(--ant-color-text);
+}
+
+[data-theme='dark'] .confidence-label {
+  color: var(--ant-color-text-secondary);
+}
+
+[data-theme='dark'] .confidence-text {
+  color: var(--ant-color-text-secondary);
 }
 </style>

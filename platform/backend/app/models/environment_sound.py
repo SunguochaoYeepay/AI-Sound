@@ -58,6 +58,12 @@ class EnvironmentSound(Base):
     sort_order = Column(Integer, default=0, comment="排序顺序")
     color = Column(String(7), default="#1890ff", comment="显示颜色")
     
+    # 项目关联字段 - 新增
+    environment_project_id = Column(Integer, comment="关联的环境音项目ID")
+    track_index = Column(Integer, comment="轨道索引")
+    chapter_id = Column(Integer, comment="章节ID")
+    novel_project_id = Column(Integer, comment="关联的合成项目ID")
+    
     # 创建者和时间戳
     created_by = Column(String(100), comment="创建者")
     created_at = Column(DateTime, default=datetime.utcnow)

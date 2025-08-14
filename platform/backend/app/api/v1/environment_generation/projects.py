@@ -28,32 +28,24 @@ async def create_environment_project(
 ) -> Dict[str, Any]:
     """
     创建环境音分析项目
+    基于书籍的环境音分析，自动分析整本书的所有章节
     """
     try:
         logger.info(f"[ENV_GEN_API] 创建环境音项目: {request.name}")
         
-        # 获取书籍和章节信息
+        # 获取书籍信息
         book_name = "未知书籍"
-        chapter_name = "未知章节"
         
         if request.book_id:
             # 通过book_id获取书籍名称
             book = db.query(Book).filter(Book.id == request.book_id).first()
             if book:
                 book_name = book.title
-                
-                # 如果有章节ID，获取章节名称
-                if request.chapter_ids and len(request.chapter_ids) > 0:
-                    chapter = db.query(BookChapter).filter(BookChapter.id == request.chapter_ids[0]).first()
-                    if chapter:
-                        chapter_name = f"第{chapter.chapter_number}章 {chapter.chapter_title}"
-                else:
-                    # 如果没有指定章节，获取书籍的第一个章节
-                    first_chapter = db.query(BookChapter).filter(BookChapter.book_id == request.book_id).order_by(BookChapter.chapter_number).first()
-                    if first_chapter:
-                        chapter_name = f"第{first_chapter.chapter_number}章 {first_chapter.chapter_title}"
+                logger.info(f"[ENV_GEN_API] 关联书籍: {book_name} (ID: {request.book_id})")
+            else:
+                logger.warning(f"[ENV_GEN_API] 未找到书籍: {request.book_id}")
         
-        # 创建新项目
+        # 创建新项目 - 基于书籍，不指定具体章节
         new_project = EnvironmentProject(
             name=request.name,
             description=request.description,
@@ -61,10 +53,10 @@ async def create_environment_project(
             book_id=request.book_id,  # 设置书籍ID
             analysis_result={},  # 空的分析结果
             matching_result={},  # 空的匹配结果
-            chapter_ids=request.chapter_ids,
+            chapter_ids=[],  # 空数组表示分析整本书的所有章节
             analysis_options=request.analysis_options,
             book_name=book_name,
-            chapter_name=chapter_name
+            chapter_name="整本书"  # 表示分析整本书
         )
         
         # 保存到数据库

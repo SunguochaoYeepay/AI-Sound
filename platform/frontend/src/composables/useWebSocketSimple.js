@@ -18,7 +18,6 @@ export function useWebSocket() {
           return import.meta.env.VITE_WS_URL
         }
 
-        const wsUrl = (() => {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
         // 统一使用当前域名和端口，通过Vite代理处理
         return `${protocol}//${window.location.host}/ws`
