@@ -1196,12 +1196,18 @@ async def generate_preview(
                 # 获取音频文件路径
                 file_id = clip.get('fileId', '')
                 filename = clip.get('filename', '')
+                audio_file_path = clip.get('audioFilePath', '')  # 从章节导入的音频文件路径
                 
-                # 如果fileId为空，尝试使用filename
-                if not file_id and filename:
-                    file_id = filename
-                
-                audio_file_path = get_uploaded_audio_file_path(file_id)
+                # 优先使用audioFilePath（从章节导入的绝对路径）
+                if audio_file_path and os.path.exists(audio_file_path):
+                    logger.debug(f"使用章节音频文件路径: {audio_file_path}")
+                else:
+                    # 如果fileId为空，尝试使用filename
+                    if not file_id and filename:
+                        file_id = filename
+                    
+                    # 使用fileId查找上传的音频文件
+                    audio_file_path = get_uploaded_audio_file_path(file_id)
                 
                 if not audio_file_path or not os.path.exists(audio_file_path):
                     logger.warning(f"音频文件不存在: {audio_file_path}")
