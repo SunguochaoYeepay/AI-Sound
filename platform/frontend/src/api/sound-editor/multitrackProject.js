@@ -145,7 +145,8 @@ export function createEmptyProject(title = '新建项目') {
         clips: []
       }
     ],
-    markers: []
+    markers: [],
+    audioFiles: []
   }
 }
 

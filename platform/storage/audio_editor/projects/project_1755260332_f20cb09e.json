@@ -88,37 +88,20 @@
       "created_at": "2025-07-08T19:14:19.434283"
     },
     {
-      "id": "audio_9482",
-      "filename": "🌲 ##第一章：穿越 - 完整音频",
-      "original_name": "🌲 ##第一章：穿越 - 完整音频",
+      "id": "env_mixed_environment_72_20250815_205301",
+      "filename": "🎵 背景音 - mixed_environment_72_20250815_205301.wav",
+      "original_name": "🎵 背景音 - mixed_environment_72_20250815_205301.wav",
       "category": "environment",
-      "duration": 81.359,
+      "duration": 300,
       "file_size": 0,
       "format": "wav",
       "sample_rate": 44100,
       "channels": 2,
-      "url": "/api/v1/sound-editor/audio-files/download/audio_9482",
-      "created_at": "2025-08-15T12:52:05.642Z",
+      "url": "/api/v1/sound-editor/audio-files/download/env_mixed_environment_72_20250815_205301",
+      "created_at": "2025-08-15T13:32:50.495Z",
       "metadata": {
-        "audioType": "chapter",
-        "filePath": "outputs/projects/130\\chapter_001_第一章穿越.wav"
-      }
-    },
-    {
-      "id": "audio_9482",
-      "filename": "🌲 ##第一章：穿越 - 完整音频",
-      "original_name": "🌲 ##第一章：穿越 - 完整音频",
-      "category": "environment",
-      "duration": 81.359,
-      "file_size": 0,
-      "format": "wav",
-      "sample_rate": 44100,
-      "channels": 2,
-      "url": "/api/v1/sound-editor/audio-files/download/audio_9482",
-      "created_at": "2025-08-15T12:53:14.004Z",
-      "metadata": {
-        "audioType": "chapter",
-        "filePath": "outputs/projects/130\\chapter_001_第一章穿越.wav"
+        "audioType": "mixed_environment",
+        "filePath": "D:\\AI-Sound\\platform\\backend\\data\\environment_sounds\\mixed\\mixed_environment_72_20250815_205301.wav"
       }
     },
     {
@@ -132,7 +115,7 @@
       "sample_rate": 44100,
       "channels": 2,
       "url": "/api/v1/sound-editor/audio-files/download/audio_9497",
-      "created_at": "2025-08-15T13:00:17.093Z",
+      "created_at": "2025-08-15T13:32:59.078Z",
       "metadata": {
         "character": null,
         "content": null,
@@ -140,60 +123,9 @@
         "audioType": "final",
         "filePath": "outputs/projects/130/final_audio_130_1755241192.wav"
       }
-    },
-    {
-      "id": "audio_9482",
-      "filename": "🎵 背景音 - 🌲 ##第一章：穿越 - 完整音频",
-      "original_name": "🎵 背景音 - 🌲 ##第一章：穿越 - 完整音频",
-      "category": "environment",
-      "duration": 81.359,
-      "file_size": 0,
-      "format": "wav",
-      "sample_rate": 44100,
-      "channels": 2,
-      "url": "/api/v1/sound-editor/audio-files/download/audio_9482",
-      "created_at": "2025-08-15T13:05:16.968Z",
-      "metadata": {
-        "audioType": "chapter",
-        "filePath": "outputs/projects/130\\chapter_001_第一章穿越.wav"
-      }
-    },
-    {
-      "id": "env_mixed_environment_72_20250815_150735",
-      "filename": "🎵 背景音 - mixed_environment_72_20250815_150735.wav",
-      "original_name": "🎵 背景音 - mixed_environment_72_20250815_150735.wav",
-      "category": "environment",
-      "duration": 300,
-      "file_size": 0,
-      "format": "wav",
-      "sample_rate": 44100,
-      "channels": 2,
-      "url": "/api/v1/sound-editor/audio-files/download/env_mixed_environment_72_20250815_150735",
-      "created_at": "2025-08-15T13:14:57.365Z",
-      "metadata": {
-        "audioType": "mixed_environment",
-        "filePath": "data\\environment_sounds\\mixed\\mixed_environment_72_20250815_150735.wav"
-      }
-    },
-    {
-      "id": "env_mixed_environment_72_20250815_205301",
-      "filename": "🎵 背景音 - mixed_environment_72_20250815_205301.wav",
-      "original_name": "🎵 背景音 - mixed_environment_72_20250815_205301.wav",
-      "category": "environment",
-      "duration": 300,
-      "file_size": 0,
-      "format": "wav",
-      "sample_rate": 44100,
-      "channels": 2,
-      "url": "/api/v1/sound-editor/audio-files/download/env_mixed_environment_72_20250815_205301",
-      "created_at": "2025-08-15T13:14:57.365Z",
-      "metadata": {
-        "audioType": "mixed_environment",
-        "filePath": "data\\environment_sounds\\mixed\\mixed_environment_72_20250815_205301.wav"
-      }
     }
   ],
   "selectedChapterId": 836,
   "searchKeyword": "",
-  "activeAudioTab": "dialogue"
+  "activeAudioTab": "environment"
 }

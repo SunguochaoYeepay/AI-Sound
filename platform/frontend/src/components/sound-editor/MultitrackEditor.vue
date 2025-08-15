@@ -169,7 +169,8 @@
     uploadMultipleAudioFiles,
     uploadAudioFile,
     listAudioFiles,
-    deleteAudioFile
+    deleteAudioFile,
+    removeAudioFileFromProject
   } from '../../api/sound-editor/audioFiles'
   import {
     createProject,
@@ -462,12 +463,46 @@
   // 文件删除
   async function handleDeleteAudioFile(file) {
     try {
-      const response = await deleteAudioFile(file.id)
-      if (response.success) {
-        message.success('文件删除成功')
-        refreshAudioFiles()
+      // 检查是否是导入的文件（通过检查是否有metadata.filePath来判断）
+      const isImportedFile = file.metadata && file.metadata.filePath
+      
+      if (isImportedFile) {
+        // 对于导入的文件，从项目中移除引用
+        if (currentProject.project.id) {
+          const response = await removeAudioFileFromProject(currentProject.project.id, file.id)
+          if (response.success) {
+            message.success('导入文件已从项目中移除')
+            // 从当前项目的audioFiles中移除
+            if (currentProject.audioFiles && Array.isArray(currentProject.audioFiles)) {
+              currentProject.audioFiles = currentProject.audioFiles.filter(f => f.id !== file.id)
+            }
+            // 从显示的文件列表中移除
+            if (audioFiles.value && Array.isArray(audioFiles.value)) {
+              audioFiles.value = audioFiles.value.filter(f => f.id !== file.id)
+            }
+            // 从所有轨道的clips中移除对该文件的引用
+            if (currentProject.tracks && Array.isArray(currentProject.tracks)) {
+              currentProject.tracks.forEach(track => {
+                if (track.clips && Array.isArray(track.clips)) {
+                  track.clips = track.clips.filter(clip => clip.fileId !== file.id)
+                }
+              })
+            }
+          } else {
+            message.error('移除导入文件失败')
+          }
+        } else {
+          message.warning('无法移除导入文件：项目未保存')
+        }
       } else {
-        message.error('文件删除失败')
+        // 对于上传的文件，直接删除
+        const response = await deleteAudioFile(file.id)
+        if (response.success) {
+          message.success('文件删除成功')
+          refreshAudioFiles()
+        } else {
+          message.error('文件删除失败')
+        }
       }
     } catch (error) {
       console.error('文件删除失败:', error)

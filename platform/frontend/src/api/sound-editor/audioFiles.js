@@ -167,6 +167,26 @@ export async function deleteAudioFile(fileId) {
 }
 
 /**
+ * 从项目中移除音频文件引用
+ */
+export async function removeAudioFileFromProject(projectId, fileId) {
+  try {
+    const response = await fetch(`/api/v1/sound-editor/multitrack/project/${projectId}/audio-files/${fileId}`, {
+      method: 'DELETE'
+    })
+
+    if (!response.ok) {
+      throw new Error(`移除文件失败: ${response.statusText}`)
+    }
+
+    return await response.json()
+  } catch (error) {
+    console.error('从项目中移除音频文件失败:', error)
+    throw error
+  }
+}
+
+/**
  * 下载音频文件
  */
 export async function downloadAudioFile(fileId) {
