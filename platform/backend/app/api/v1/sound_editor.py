@@ -16,6 +16,12 @@ import shutil
 import json
 from datetime import datetime
 
+# 音频处理相关导入
+try:
+    import mutagen
+except ImportError:
+    mutagen = None
+
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, BackgroundTasks
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
@@ -24,6 +30,7 @@ from pydantic import BaseModel, Field
 
 from ...database import get_db
 from ...config.environment import get_environment_config
+from ...models import AudioFile
 
 logger = logging.getLogger(__name__)
 env_config = get_environment_config()
@@ -64,6 +71,8 @@ class ProjectInfo(BaseModel):
     title: str
     description: str
     author: str
+    bookId: Optional[int] = None  # 新增：书籍ID
+    chapterId: Optional[int] = None  # 新增：章节ID
     totalDuration: float
     sampleRate: int
     channels: int
@@ -101,6 +110,13 @@ class ProjectData(BaseModel):
     project: ProjectInfo
     tracks: List[TrackInfo] = []
     markers: List[Dict] = []
+    # 新增：素材区配置
+    audioFiles: List[Dict] = []
+    # 新增：章节选择信息
+    selectedChapterId: Optional[int] = None
+    # 新增：搜索配置
+    searchKeyword: str = ""
+    activeAudioTab: str = "dialogue"
 
 class ProjectCreateRequest(BaseModel):
     """创建项目请求"""
@@ -431,6 +447,10 @@ def get_uploaded_audio_file_path(file_id: str) -> Optional[str]:
 def get_audio_info(file_path: str) -> Dict[str, Any]:
     """获取音频文件信息"""
     try:
+        # 检查mutagen是否可用
+        if mutagen is None:
+            raise ImportError("mutagen库未安装")
+            
         # 使用mutagen获取音频信息
         audio_file = mutagen.File(file_path)
         if audio_file is None:
@@ -665,6 +685,66 @@ async def download_audio_file(
         logger.error(f"下载音频文件失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"文件下载失败: {str(e)}")
 
+@router.get("/audio-files/waveform/{file_id}")
+async def get_audio_waveform(
+    file_id: str,
+    width: int = Query(800, description="波形图宽度"),
+    height: int = Query(100, description="波形图高度"),
+    db: Session = Depends(get_db)
+):
+    """获取音频文件波形数据"""
+    try:
+        # 处理audio_前缀的文件ID
+        if file_id.startswith('audio_'):
+            # 从数据库查找对应的音频文件
+            audio_id = int(file_id.replace('audio_', ''))
+            audio_file = db.query(AudioFile).filter(AudioFile.id == audio_id).first()
+            if audio_file and audio_file.file_path:
+                file_path = Path(audio_file.file_path)
+            else:
+                raise HTTPException(status_code=404, detail="音频文件不存在")
+        else:
+            # 直接从存储路径查找
+            storage_path = get_audio_storage_path()
+            file_path = None
+            
+            # 在所有子目录中查找文件
+            for ext in ['.wav', '.mp3', '.flac', '.aac', '.ogg', '.m4a']:
+                for subdir in ['dialogue', 'environment', 'theme', 'background']:
+                    test_path = storage_path / subdir / f"{file_id}{ext}"
+                    if test_path.exists():
+                        file_path = test_path
+                        break
+                if file_path:
+                    break
+            
+            if not file_path:
+                raise HTTPException(status_code=404, detail="音频文件不存在")
+        
+        # 获取音频文件基本信息
+        try:
+            audio_info = get_audio_info(str(file_path))
+            duration = audio_info['duration']
+        except Exception as e:
+            logger.warning(f"无法获取音频信息: {e}")
+            duration = 5.0  # 默认时长
+        
+        # 返回基本信息，不需要波形数据
+        return {
+            "success": True,
+            "data": {
+                "fileId": file_id,
+                "duration": duration,
+                "exists": True
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取音频波形失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取波形失败: {str(e)}")
+
 @router.delete("/audio-files/{file_id}")
 async def delete_audio_file(
     file_id: str,
@@ -748,11 +828,18 @@ async def create_multitrack_project(
             )
         ]
         
-        # 构建完整项目数据
+        # 构建完整项目数据，包含所有必要字段
         project_data = ProjectData(
             project=request.project,
             tracks=default_tracks,
-            markers=[]
+            markers=[],
+            # 初始化素材区配置
+            audioFiles=[],
+            # 初始化章节选择信息
+            selectedChapterId=request.project.chapterId if hasattr(request.project, 'chapterId') else None,
+            # 初始化搜索配置
+            searchKeyword="",
+            activeAudioTab="dialogue"
         )
         
         # 保存项目文件
@@ -785,12 +872,22 @@ async def save_multitrack_project(
         # 更新项目ID（如果需要）
         request.project.project.id = project_id
         
+        # 添加调试日志
+        logger.info(f"保存项目数据 - audioFiles: {len(request.project.audioFiles)}")
+        logger.info(f"保存项目数据 - selectedChapterId: {request.project.selectedChapterId}")
+        logger.info(f"保存项目数据 - searchKeyword: {request.project.searchKeyword}")
+        logger.info(f"保存项目数据 - activeAudioTab: {request.project.activeAudioTab}")
+        
         # 保存项目文件
         storage_path = get_project_storage_path()
         project_file = storage_path / f"{project_id}.json"
         
+        # 序列化数据
+        serialized_data = request.project.model_dump()
+        logger.info(f"序列化后的数据包含字段: {list(serialized_data.keys())}")
+        
         with open(project_file, 'w', encoding='utf-8') as f:
-            json.dump(request.project.model_dump(), f, indent=2, ensure_ascii=False)
+            json.dump(serialized_data, f, indent=2, ensure_ascii=False)
         
         logger.info(f"多轨项目保存成功: {project_id}")
         
@@ -906,7 +1003,7 @@ async def get_chapter_audio_resources(
 ):
     """获取章节相关的音频资源"""
     try:
-        from ...models import Book, Chapter, NovelProject, SynthesisResult, SynthesisPlan, EnvironmentSound, BackgroundMusic
+        from ...models import Book, BookChapter, NovelProject, AudioFile, EnvironmentSound, BackgroundMusic
         from ...services.audio_editor_book_integration_service import AudioEditorBookIntegrationService
         
         # 验证书籍和章节
@@ -914,9 +1011,9 @@ async def get_chapter_audio_resources(
         if not book:
             raise HTTPException(status_code=404, detail="书籍不存在")
             
-        chapter = db.query(Chapter).filter(
-            Chapter.id == chapter_id,
-            Chapter.book_id == book_id
+        chapter = db.query(BookChapter).filter(
+            BookChapter.id == chapter_id,
+            BookChapter.book_id == book_id
         ).first()
         if not chapter:
             raise HTTPException(status_code=404, detail="章节不存在")
@@ -924,77 +1021,103 @@ async def get_chapter_audio_resources(
         # 创建集成服务实例
         integration_service = AudioEditorBookIntegrationService(db)
         
-        # 获取章节的合成结果（对话音频）
-        synthesis_results = db.query(SynthesisResult).join(NovelProject).filter(
+        # 获取章节的对话音频文件（包括章节级别和项目级别的完整合成结果）
+        dialogue_files = db.query(AudioFile).join(NovelProject).filter(
             NovelProject.book_id == book_id,
-            SynthesisResult.chapter_id == chapter_id,
-            SynthesisResult.status == "completed"
-        ).all()
+            # 查询条件：章节ID匹配 或者 是项目级别的完整音频
+            (AudioFile.chapter_id == chapter_id) | (AudioFile.audio_type == "final"),
+            AudioFile.audio_type.in_(["chapter_final", "final"]),  # 只返回完整音频
+            AudioFile.status == "active"
+        ).order_by(AudioFile.created_at.desc()).all()  # 按创建时间倒序，最新的在前
         
         dialogues = []
-        for result in synthesis_results:
-            if result.audio_file_path and Path(result.audio_file_path).exists():
-                dialogues.append({
-                    "fileId": f"synthesis_{result.id}",
-                    "filename": f"{result.character_name} - {result.text[:20]}...",
-                    "duration": result.duration or 5.0,
-                    "character": result.character_name,
-                    "content": result.text,
-                    "voiceId": result.voice_id,
-                    "filePath": result.audio_file_path
-                })
+        latest_final_audio = None  # 记录最新的项目级别完整音频
         
-        # 获取章节的合成计划（环境音和背景音乐）
-        synthesis_plan = db.query(SynthesisPlan).filter(
-            SynthesisPlan.book_id == book_id,
-            SynthesisPlan.chapter_id == chapter_id
-        ).first()
+        for audio_file in dialogue_files:
+            if audio_file.file_path and Path(audio_file.file_path).exists():
+                # 根据音频类型生成文件名
+                if audio_file.audio_type == "chapter_final":
+                    # 章节完整音频
+                    filename = f"📖 {chapter.chapter_title or f'第{chapter.chapter_number}章'} - 对话音"
+                    dialogues.append({
+                        "fileId": f"audio_{audio_file.id}",
+                        "filename": filename,
+                        "duration": audio_file.duration or 5.0,
+                        "character": audio_file.character_name,
+                        "content": audio_file.text_content,
+                        "voiceId": audio_file.voice_profile_id,
+                        "filePath": audio_file.file_path,
+                        "audioType": audio_file.audio_type
+                    })
+                elif audio_file.audio_type == "final":
+                    # 项目完整音频 - 只保留最新的一个
+                    if latest_final_audio is None:
+                        latest_final_audio = audio_file
+                        filename = f"🎵 {book.title} - 完整音频"
+                        dialogues.append({
+                            "fileId": f"audio_{audio_file.id}",
+                            "filename": filename,
+                            "duration": audio_file.duration or 5.0,
+                            "character": audio_file.character_name,
+                            "content": audio_file.text_content,
+                            "voiceId": audio_file.voice_profile_id,
+                            "filePath": audio_file.file_path,
+                            "audioType": audio_file.audio_type
+                        })
+                else:
+                    filename = audio_file.original_name or f"音频_{audio_file.id}"
+                    dialogues.append({
+                        "fileId": f"audio_{audio_file.id}",
+                        "filename": filename,
+                        "duration": audio_file.duration or 5.0,
+                        "character": audio_file.character_name,
+                        "content": audio_file.text_content,
+                        "voiceId": audio_file.voice_profile_id,
+                        "filePath": audio_file.file_path,
+                        "audioType": audio_file.audio_type
+                    })
+        
+        # 获取章节的环境音文件（包括环境音和章节级别完整音频）
+        environment_files = db.query(AudioFile).join(NovelProject).filter(
+            NovelProject.book_id == book_id,
+            AudioFile.chapter_id == chapter_id,
+            AudioFile.audio_type.in_(["environment", "environment_final", "chapter"]),  # 包括章节级别音频
+            AudioFile.status == "active"
+        ).all()
         
         environments = []
-        background_music = []
+        for audio_file in environment_files:
+            if audio_file.file_path and Path(audio_file.file_path).exists():
+                # 根据音频类型生成不同的文件名
+                if audio_file.audio_type == "environment":
+                    # 单个环境音
+                    filename = f"🌲 {audio_file.original_name or '环境音'}"
+                elif audio_file.audio_type == "environment_final":
+                    # 章节环境音完整音频
+                    filename = f"🌲 {chapter.chapter_title or f'第{chapter.chapter_number}章'} - 环境音"
+                elif audio_file.audio_type == "chapter":
+                    # 章节级别完整音频
+                    filename = f"🌲 {chapter.chapter_title or f'第{chapter.chapter_number}章'} - 完整音频"
+                elif audio_file.audio_type == "final":
+                    # 项目完整音频（包含环境音）
+                    filename = f"🌲 {book.title} - 完整环境音"
+                else:
+                    filename = audio_file.original_name or f"环境音_{audio_file.id}"
+                
+                environments.append({
+                    "fileId": f"audio_{audio_file.id}",
+                    "filename": filename,
+                    "duration": audio_file.duration or 60.0,  # 环境音通常较长
+                    "filePath": audio_file.file_path,
+                    "audioType": audio_file.audio_type
+                })
         
-        if synthesis_plan:
-            # 解析环境音
-            if synthesis_plan.environment_sounds:
-                env_data = json.loads(synthesis_plan.environment_sounds) if isinstance(synthesis_plan.environment_sounds, str) else synthesis_plan.environment_sounds
-                for env in env_data:
-                    if env.get('sound_id'):
-                        env_sound = db.query(EnvironmentSound).filter(EnvironmentSound.id == env['sound_id']).first()
-                        if env_sound and env_sound.file_path:
-                            environments.append({
-                                "fileId": f"env_{env_sound.id}",
-                                "filename": env_sound.name,
-                                "duration": env.get('duration', 60),
-                                "startTime": env.get('start_time', 0),
-                                "scene": env_sound.scene,
-                                "description": env_sound.description,
-                                "filePath": env_sound.file_path
-                            })
-            
-            # 解析背景音乐
-            if synthesis_plan.background_music:
-                music_data = json.loads(synthesis_plan.background_music) if isinstance(synthesis_plan.background_music, str) else synthesis_plan.background_music
-                for music in music_data:
-                    if music.get('music_id'):
-                        bg_music = db.query(BackgroundMusic).filter(BackgroundMusic.id == music['music_id']).first()
-                        if bg_music and bg_music.file_path:
-                            background_music.append({
-                                "fileId": f"music_{bg_music.id}",
-                                "filename": bg_music.name,
-                                "duration": music.get('duration', 180),
-                                "startTime": music.get('start_time', 0),
-                                "genre": bg_music.genre,
-                                "mood": bg_music.mood,
-                                "filePath": bg_music.file_path
-                            })
+        # 暂时返回空的背景音乐（后续可以扩展）
+        background_music = []
         
         # 获取章节配图（如果有）
         images = []
-        if chapter.image_path:
-            images.append({
-                "url": chapter.image_path,
-                "description": f"第{chapter.chapter_number}章配图"
-            })
+        # BookChapter模型暂时没有image_path字段，后续可以扩展
         
         return {
             "success": True,
@@ -1004,7 +1127,7 @@ async def get_chapter_audio_resources(
                 "backgroundMusic": background_music,
                 "images": images,
                 "chapterInfo": {
-                    "title": chapter.title,
+                    "title": chapter.chapter_title,
                     "number": chapter.chapter_number,
                     "bookTitle": book.title
                 }
@@ -1538,6 +1661,8 @@ async def create_project_from_chapters(
     except Exception as e:
         logger.error(f"从章节创建项目失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
 
 
 # ========== 健康检查 ==========

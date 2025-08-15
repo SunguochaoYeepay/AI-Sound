@@ -5,18 +5,24 @@
       <div class="header-content">
         <div class="title-section">
           <div class="title-with-back">
-            <a-button type="text" @click="handleBack" class="back-button">
-              <template #icon><ArrowLeftOutlined /></template>
-            </a-button>
+       
             <h1 class="page-title">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" class="title-icon">
-                <path
-                  d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6zM10 19c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"
-                />
-                <path d="M2 7h4v2H2V7zm0 3h4v2H2v-2zm0 3h4v2H2v-2z" />
-              </svg>
-              多轨音频编辑器 {{ projectTitle || '专业的音频编辑工具，支持多轨混音和精确编辑' }}
+              
+              音频混合编辑器 {{ projectTitle || '专业的音频混合工具，支持对话、环境音、背景音乐智能混合' }}
             </h1>
+            <!-- 新增：章节选择器 -->
+            <div class="chapter-selector" v-if="projectBookId">
+              <a-select 
+                v-model:value="selectedChapterId" 
+                @change="handleChapterChange"
+                placeholder="选择章节"
+                style="margin-left: 16px; width: 200px;"
+              >
+                <a-select-option v-for="chapter in chapters" :key="chapter.id" :value="chapter.id">
+                  第{{ chapter.chapter_number }}章 - {{ chapter.chapter_title }}
+                </a-select-option>
+              </a-select>
+            </div>
           </div>
         
         </div>
@@ -66,7 +72,11 @@
 
     <!-- 主编辑器区域 -->
     <div class="editor-content" :class="{ 'fullscreen-content': isAppFullscreen }">
-      <MultitrackEditor @project-change="handleProjectChange" />
+      <MultitrackEditor 
+        :selected-chapter-id="selectedChapterId"
+        @project-change="handleProjectChange"
+        @chapter-change="handleChapterChange"
+      />
     </div>
 
     <!-- 帮助对话框 -->
@@ -144,8 +154,10 @@
 
 <script setup>
   import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
-  import { useRouter } from 'vue-router'
-  import { message } from 'ant-design-vue'
+import { useRouter } from 'vue-router'
+import { message } from 'ant-design-vue'
+import { booksAPI } from '@/api'
+import { createEmptyProject } from '@/api/sound-editor/multitrackProject'
   import {
     QuestionCircleOutlined,
     SettingOutlined,
@@ -163,11 +175,16 @@
   const helpVisible = ref(false)
   const settingsVisible = ref(false)
   const isAppFullscreen = ref(false)
-  const currentProject = ref(null)
+  const currentProject = ref(createEmptyProject())
+
+  // 章节相关数据
+  const chapters = ref([])
+  const selectedChapterId = ref(null)
+  const projectBookId = ref(null)
 
   // 计算属性
   const projectTitle = computed(() => {
-    return currentProject.value?.title || '多轨音频编辑器'
+    return currentProject.value?.title || '音频混合编辑器'
   })
 
 
@@ -226,6 +243,35 @@
 
   const handleProjectChange = (project) => {
     currentProject.value = project
+    // 如果项目有关联书籍，加载章节信息
+    if (project && project.bookId) {
+      projectBookId.value = project.bookId
+      loadChapters(project.bookId)
+    }
+  }
+
+  // 加载章节列表
+  const loadChapters = async (bookId) => {
+    try {
+      console.log('开始加载章节列表，bookId:', bookId)
+      const response = await booksAPI.getBookChapters(bookId)
+      console.log('章节API响应:', response)
+      if (response.data && response.data.success) {
+        chapters.value = response.data.data || []
+        console.log('加载到的章节:', chapters.value)
+      } else {
+        console.error('章节API返回失败:', response)
+      }
+    } catch (error) {
+      console.error('加载章节列表失败:', error)
+    }
+  }
+
+  // 处理章节选择变化
+  const handleChapterChange = (chapterId) => {
+    console.log('选择章节:', chapterId)
+    selectedChapterId.value = chapterId
+    // 可以在这里添加章节选择后的逻辑
   }
 
   // 组件挂载时加载设置
@@ -257,7 +303,7 @@
   .page-header {
     background: white;
     border-bottom: 1px solid #e8e8e8;
-    padding: 24px;
+    padding: 12px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     flex-shrink: 0;
   }
@@ -278,7 +324,6 @@
     display: flex;
     align-items: center;
     gap: 12px;
-    margin-bottom: 8px;
   }
 
   .back-button {

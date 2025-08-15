@@ -26,8 +26,8 @@ async def match_characters_by_chapter(
     """根据章节匹配角色"""
     try:
         # 验证章节是否存在
-        from app.models.chapter import Chapter
-        chapter = db.query(Chapter).filter(Chapter.id == chapter_id).first()
+        from app.models import BookChapter
+        chapter = db.query(BookChapter).filter(BookChapter.id == chapter_id).first()
         if not chapter:
             raise HTTPException(status_code=404, detail="章节不存在")
         
@@ -206,8 +206,8 @@ async def auto_match_characters(
         
         if chapter_id:
             # 验证章节是否存在
-            from app.models.chapter import Chapter
-            chapter = db.query(Chapter).filter(Chapter.id == chapter_id).first()
+            from app.models import BookChapter
+            chapter = db.query(BookChapter).filter(BookChapter.id == chapter_id).first()
             if not chapter:
                 raise HTTPException(status_code=404, detail="章节不存在")
         

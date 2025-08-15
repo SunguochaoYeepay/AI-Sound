@@ -3,28 +3,13 @@
     <div class="panel-header">
       <h4>{{ selectedClip ? '音频片段信息' : '项目信息' }}</h4>
       <a-space size="small" v-if="!selectedClip">
-        <a-button size="small" @click="$emit('create-project')" type="primary">
-          <template #icon><PlusOutlined /></template>
-          新建
-        </a-button>
-        <a-button size="small" @click="$emit('open-project')">
-          <template #icon><FolderOpenOutlined /></template>
-          打开
-        </a-button>
+       
+       
         <a-button size="small" @click="$emit('save-project')" :disabled="!hasProject">
           <template #icon><SaveOutlined /></template>
           保存
         </a-button>
-        <a-button
-          size="small"
-          @click="$emit('export-project')"
-          :disabled="!hasProject"
-          :loading="exportLoading"
-          type="primary"
-        >
-          <template #icon><ExportOutlined /></template>
-          导出
-        </a-button>
+        
       </a-space>
     </div>
     <div class="panel-content">
@@ -137,10 +122,7 @@
 <script setup>
   import { h } from 'vue'
   import {
-    PlusOutlined,
-    FolderOpenOutlined,
-    SaveOutlined,
-    ExportOutlined
+    SaveOutlined
   } from '@ant-design/icons-vue'
   import EditableText from '../common/EditableText.vue'
 
@@ -157,19 +139,12 @@
     hasProject: {
       type: Boolean,
       default: false
-    },
-    exportLoading: {
-      type: Boolean,
-      default: false
     }
   })
 
   // Emits
   const emit = defineEmits([
-    'create-project',
-    'open-project',
     'save-project',
-    'export-project',
     'update-project',
     'update-clip',
     'clear-selection'
@@ -206,7 +181,7 @@
 
   /* 面板头部 */
   .panel-header {
-    padding: 12px 16px;
+    padding: 8px;
     background: #333;
     border-bottom: 1px solid #444;
     display: flex;

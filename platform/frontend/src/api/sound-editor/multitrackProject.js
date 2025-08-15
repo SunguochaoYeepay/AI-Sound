@@ -1,59 +1,59 @@
-import axios from 'axios'
+import apiClient from '../config.js'
 
 // 适配AI-Sound后端API
-const API_BASE = '/api/v1/sound-editor/multitrack'
+const API_BASE = '/sound-editor/multitrack'
 
 // 项目管理接口
 export async function createProject(projectData) {
-  const res = await axios.post(`${API_BASE}/create`, projectData)
+  const res = await apiClient.post(`${API_BASE}/create`, projectData)
   return res.data
 }
 
 export async function loadProject(projectId) {
-  const res = await axios.get(`${API_BASE}/load/${projectId}`)
+  const res = await apiClient.get(`${API_BASE}/load/${projectId}`)
   return res.data
 }
 
 export async function saveProject(projectId, projectData) {
-  const res = await axios.put(`${API_BASE}/save/${projectId}`, { project: projectData })
+  const res = await apiClient.put(`${API_BASE}/save/${projectId}`, projectData)
   return res.data
 }
 
 export async function listProjects() {
-  const res = await axios.get(`${API_BASE}/list`)
+  const res = await apiClient.get(`${API_BASE}/list`)
   return res.data
 }
 
 export async function deleteProject(projectId) {
-  const res = await axios.delete(`${API_BASE}/${projectId}`)
+  const res = await apiClient.delete(`${API_BASE}/${projectId}`)
   return res.data
 }
 
 // 格式转换接口
 export async function convertToStandardFormat(conversionData) {
-  const res = await axios.post(`${API_BASE}/convert`, conversionData)
+  const res = await apiClient.post(`${API_BASE}/convert`, conversionData)
   return res.data
 }
 
 // 项目验证接口
 export async function validateProject(projectId) {
-  const res = await axios.get(`${API_BASE}/validate/${projectId}`)
+  const res = await apiClient.get(`${API_BASE}/validate/${projectId}`)
   return res.data
 }
 
 // 导出相关接口
 export async function exportProject(projectId) {
-  const res = await axios.post(`${API_BASE}/export/${projectId}`)
+  const res = await apiClient.post(`${API_BASE}/export/${projectId}`)
   return res.data
 }
 
 export async function getExportStatus(exportTaskId) {
-  const res = await axios.get(`${API_BASE}/export/status/${exportTaskId}`)
+  const res = await apiClient.get(`${API_BASE}/export/status/${exportTaskId}`)
   return res.data
 }
 
 export async function downloadExportedAudio(exportTaskId) {
-  const response = await axios.get(`${API_BASE}/export/download/${exportTaskId}`, {
+  const response = await apiClient.get(`${API_BASE}/export/download/${exportTaskId}`, {
     responseType: 'blob'
   })
 
@@ -75,7 +75,7 @@ export async function generatePreviewAudio(projectId, startTime = 0, duration = 
     params.duration = duration
   }
 
-  const res = await axios.post(`${API_BASE}/preview/${projectId}`, null, { params })
+  const res = await apiClient.post(`${API_BASE}/preview/${projectId}`, null, { params })
   return res.data
 }
 
@@ -86,11 +86,13 @@ export function getPreviewAudioUrl(fileId) {
 }
 
 export async function deletePreviewFile(filename) {
-  const res = await axios.delete(`/api/v1/sound-editor/preview/${filename}`)
+  const res = await apiClient.delete(`/sound-editor/preview/${filename}`)
   return res.data
 }
 
 // 工具函数：创建空项目模板
+
+
 export function createEmptyProject(title = '新建项目') {
   return {
     project: {
@@ -98,6 +100,8 @@ export function createEmptyProject(title = '新建项目') {
       title,
       description: '',
       author: 'AI-Sound',
+      bookId: null, // 新增：书籍ID
+      chapterId: null, // 新增：章节ID
       totalDuration: 60, // 最小时长，会根据内容自动扩展
       sampleRate: 44100,
       channels: 2,

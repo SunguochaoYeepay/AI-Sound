@@ -219,7 +219,7 @@
                 <span>背景音乐</span>
               </a-menu-item>
 
-              <a-menu-item key="sound-editor" @click="navigateTo('sound-editor')">
+              <a-menu-item key="audio-mixing" @click="navigateTo('audio-mixing')">
                 <template #icon>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
                     <path
@@ -228,7 +228,7 @@
                     <path d="M2 7h4v2H2V7zm0 3h4v2H2v-2zm0 3h4v2H2v-2z" />
                   </svg>
                 </template>
-                <span>音频编辑器</span>
+                <span>音频混合</span>
               </a-menu-item>
             </a-menu>
           </div>
@@ -566,7 +566,7 @@
     { key: 'books', label: '书籍管理', icon: '📚', route: '/books' },
     { key: 'novel-projects', label: '语音合成', icon: '🎵', route: '/novel-reader' },
     { key: 'voice-clone', label: '声音克隆', icon: '🎤', route: '/basic-tts' },
-    { key: 'sound-editor', label: '音频编辑器', icon: '🎛️', route: '/sound-editor' }
+    { key: 'audio-mixing', label: '音频混合', icon: '🎛️', route: '/audio-mixing' }
   ])
 
   // 最近访问记录
@@ -597,7 +597,7 @@
       '/novel-reader/create': 'novel-projects',
       '/novel-reader/edit': 'novel-projects',
       '/synthesis': 'novel-projects',
-      '/sound-editor': 'sound-editor', // 🎵 新增音频编辑器路由映射
+      '/audio-mixing': 'audio-mixing', // 🎵 音频混合路由映射
   
       '/users': 'users',
       '/roles': 'roles',
@@ -679,7 +679,7 @@
       'image-library': '/image-library', // 🖼️ 添加图片库路由映射
       'novel-projects': '/novel-reader',
   
-      'sound-editor': '/sound-editor', // 🎵 新增音频编辑器路由映射
+      'audio-mixing': '/sound-editor', // 🎵 音频混合路由映射
       users: '/users',
       roles: '/roles',
       logs: '/logs',
@@ -720,7 +720,7 @@
       '/novel-reader/create': '语音合成',
       '/novel-reader/edit': '语音合成',
       '/synthesis': '创作中心',
-      '/sound-editor': '多轨音频编辑器', // 🎵 新增音频编辑器页面标题
+      '/sound-editor': '音频混合', // 🎵 音频混合页面标题
   
       '/users': '用户管理',
       '/roles': '角色权限',

@@ -13,6 +13,9 @@
           :active-tab="activeAudioTab"
           @refresh="refreshAudioFiles"
           @import-json="showImportDialog = true"
+          @dialogue-import="handleDialogueImport"
+          @environment-import="handleEnvironmentImport"
+          @theme-import="handleThemeImport"
           @tab-change="activeAudioTab = $event"
           @upload="handleBeforeUpload"
           @search="handleSearch"
@@ -41,11 +44,7 @@
           :project="currentProject.project"
           :selected-clip="selectedClip"
           :has-project="!!currentProject.project.id"
-          :export-loading="exportLoading"
-          @create-project="showCreateProject = true"
-          @open-project="showProjectList = true"
           @save-project="saveCurrentProject"
-          @export-project="exportCurrentProject"
           @update-project="updateProjectInfo"
           @update-clip="updateSelectedClip"
           @clear-selection="clearAllSelections"
@@ -105,6 +104,8 @@
       @update:open="showImportDialog = $event"
       @success="handleImportSuccess"
     />
+
+
 
     <!-- 导出进度对话框 -->
     <a-modal
@@ -177,6 +178,7 @@
     listProjects,
     deleteProject,
     convertToStandardFormat,
+
     validateProject,
     exportProject,
     getExportStatus,
@@ -193,8 +195,16 @@
     getChapterAudioResources
   } from '../../api/sound-editor/bookIntegration'
 
+  // 定义props
+  const props = defineProps({
+    selectedChapterId: {
+      type: [String, Number],
+      default: null
+    }
+  })
+
   // 定义emit
-  const emit = defineEmits(['project-change'])
+  const emit = defineEmits(['project-change', 'chapter-change'])
 
   // ========== 响应式数据 ==========
   // 音频文件相关
@@ -279,6 +289,8 @@
   const showImportDialog = ref(false)
   const exportLoading = ref(false)
   const showExportProgress = ref(false)
+
+
 
   // 导出相关状态
   const exportStatus = ref('')
@@ -1126,9 +1138,45 @@
       const result = await loadProject(projectId)
       if (result.success) {
         // 正确地更新reactive对象的每个属性，保持响应性
-        Object.assign(currentProject.project, result.data.project)
-        currentProject.tracks.splice(0, currentProject.tracks.length, ...result.data.tracks)
-        currentProject.markers = result.data.markers || []
+        const projectData = result.data
+        
+        // 恢复项目基本信息
+        if (projectData.project) {
+          Object.assign(currentProject.project, projectData.project)
+        }
+        
+        // 恢复音轨信息
+        if (projectData.tracks) {
+          currentProject.tracks.splice(0, currentProject.tracks.length, ...projectData.tracks)
+        }
+        
+        // 恢复标记信息
+        if (projectData.markers) {
+          currentProject.markers = projectData.markers
+        }
+        
+        // 恢复素材区配置
+        if (projectData.audioFiles) {
+          audioFiles.value = projectData.audioFiles
+          console.log('恢复素材区配置:', projectData.audioFiles)
+        }
+        
+        // 恢复搜索关键词
+        if (projectData.searchKeyword) {
+          searchKeyword.value = projectData.searchKeyword
+        }
+        
+        // 恢复激活的音频标签页
+        if (projectData.activeAudioTab) {
+          activeAudioTab.value = projectData.activeAudioTab
+        }
+        
+        // 恢复章节选择信息
+        if (projectData.selectedChapterId) {
+          console.log('恢复章节选择:', projectData.selectedChapterId)
+          emit('chapter-change', projectData.selectedChapterId)
+        }
+        
         showProjectList.value = false
         // 保存到本地存储
         saveCurrentProjectToLocalStorage()
@@ -1169,9 +1217,43 @@
       const result = await convertToStandardFormat(conversionData)
       if (result.success) {
         // 正确地更新reactive对象的每个属性，保持响应性
-        Object.assign(currentProject.project, result.data.project)
-        currentProject.tracks.splice(0, currentProject.tracks.length, ...result.data.tracks)
-        currentProject.markers = result.data.markers || []
+        const projectData = result.data
+        
+        // 恢复项目基本信息
+        if (projectData.project) {
+          Object.assign(currentProject.project, projectData.project)
+        }
+        
+        // 恢复音轨信息
+        if (projectData.tracks) {
+          currentProject.tracks.splice(0, currentProject.tracks.length, ...projectData.tracks)
+        }
+        
+        // 恢复标记信息
+        if (projectData.markers) {
+          currentProject.markers = projectData.markers
+        }
+        
+        // 恢复素材区配置
+        if (projectData.audioFiles) {
+          audioFiles.value = projectData.audioFiles
+        }
+        
+        // 恢复搜索关键词
+        if (projectData.searchKeyword) {
+          searchKeyword.value = projectData.searchKeyword
+        }
+        
+        // 恢复激活的音频标签页
+        if (projectData.activeAudioTab) {
+          activeAudioTab.value = projectData.activeAudioTab
+        }
+        
+        // 恢复章节选择信息
+        if (projectData.selectedChapterId) {
+          emit('chapter-change', projectData.selectedChapterId)
+        }
+        
         // 发送项目变化事件
         emit('project-change', currentProject.project)
         message.success('JSON导入成功')
@@ -1195,8 +1277,38 @@
     try {
       // 更新总时长
       currentProject.project.totalDuration = calculateProjectDuration(currentProject)
+      
+      // 更新章节选择信息
+      if (props.selectedChapterId) {
+        currentProject.project.chapterId = props.selectedChapterId
+      }
+      
+      // 构建完整的项目数据，符合后端API期望的格式
+      const projectDataToSave = {
+        project: {
+          project: currentProject.project,
+          tracks: currentProject.tracks,
+          markers: currentProject.markers,
+          // 添加素材区配置
+          audioFiles: audioFiles.value,
+          // 添加章节选择信息
+          selectedChapterId: props.selectedChapterId,
+          // 添加搜索关键词
+          searchKeyword: searchKeyword.value,
+          // 添加当前激活的音频标签页
+          activeAudioTab: activeAudioTab.value
+        }
+      }
+      
+      // 添加调试日志
+      console.log('保存项目数据:', {
+        audioFiles: audioFiles.value,
+        selectedChapterId: props.selectedChapterId,
+        searchKeyword: searchKeyword.value,
+        activeAudioTab: activeAudioTab.value
+      })
 
-      const result = await saveProject(projectId, currentProject)
+      const result = await saveProject(projectId, projectDataToSave)
       if (result.success) {
         message.success('项目保存成功')
       } else {
@@ -1311,8 +1423,30 @@
       try {
         // 更新总时长
         currentProject.project.totalDuration = calculateProjectDuration(currentProject)
+        
+        // 更新章节选择信息
+        if (props.selectedChapterId) {
+          currentProject.project.chapterId = props.selectedChapterId
+        }
+        
+        // 构建完整的项目数据，符合后端API期望的格式
+        const projectDataToSave = {
+          project: {
+            project: currentProject.project,
+            tracks: currentProject.tracks,
+            markers: currentProject.markers,
+            // 添加素材区配置
+            audioFiles: audioFiles.value,
+            // 添加章节选择信息
+            selectedChapterId: props.selectedChapterId,
+            // 添加搜索关键词
+            searchKeyword: searchKeyword.value,
+            // 添加当前激活的音频标签页
+            activeAudioTab: activeAudioTab.value
+          }
+        }
 
-        const result = await saveProject(currentProject.project.id, currentProject)
+        const result = await saveProject(currentProject.project.id, projectDataToSave)
         if (result.success) {
           console.log('项目已自动保存到服务器:', currentProject.project.title)
           // 同时保存到本地缓存
@@ -1330,8 +1464,23 @@
   // 项目持久化
   function saveCurrentProjectToLocalStorage() {
     if (currentProject.project.id) {
+      // 构建完整的项目数据，包含素材区配置和章节选择
+      const projectDataToCache = {
+        project: currentProject.project,
+        tracks: currentProject.tracks,
+        markers: currentProject.markers,
+        // 添加素材区配置
+        audioFiles: audioFiles.value,
+        // 添加章节选择信息
+        selectedChapterId: props.selectedChapterId,
+        // 添加搜索关键词
+        searchKeyword: searchKeyword.value,
+        // 添加当前激活的音频标签页
+        activeAudioTab: activeAudioTab.value
+      }
+      
       localStorage.setItem('sound-edit-current-project-id', currentProject.project.id)
-      localStorage.setItem('sound-edit-current-project-data', JSON.stringify(currentProject))
+      localStorage.setItem('sound-edit-current-project-data', JSON.stringify(projectDataToCache))
       console.log('项目已自动保存到本地缓存:', currentProject.project.title)
     }
   }
@@ -1351,17 +1500,54 @@
         // 尝试从服务器加载最新的项目数据
         try {
           const result = await loadProject(savedProjectId)
-          if (result.success) {
-            // 正确地更新reactive对象的每个属性，保持响应性
-            Object.assign(currentProject.project, result.data.project)
-            currentProject.tracks.splice(0, currentProject.tracks.length, ...result.data.tracks)
-            currentProject.markers = result.data.markers || []
-            // 发送项目变化事件
-            emit('project-change', currentProject.project)
-            console.log('从服务器恢复项目:', currentProject.project.title)
-            message.success('项目已从服务器恢复')
-            return
-          }
+                                     if (result.success) {
+           // 正确地更新reactive对象的每个属性，保持响应性
+           const projectData = result.data
+           
+           // 恢复项目基本信息
+           if (projectData.project) {
+             Object.assign(currentProject.project, projectData.project)
+           }
+           
+           // 恢复音轨信息
+           if (projectData.tracks) {
+             currentProject.tracks.splice(0, currentProject.tracks.length, ...projectData.tracks)
+           }
+           
+           // 恢复标记信息
+           if (projectData.markers) {
+             currentProject.markers = projectData.markers
+           }
+           
+           // 恢复素材区配置
+           if (projectData.audioFiles) {
+             audioFiles.value = projectData.audioFiles
+             console.log('恢复素材区配置:', projectData.audioFiles)
+           }
+           
+           // 恢复搜索关键词
+           if (projectData.searchKeyword) {
+             searchKeyword.value = projectData.searchKeyword
+           }
+           
+           // 恢复激活的音频标签页
+           if (projectData.activeAudioTab) {
+             activeAudioTab.value = projectData.activeAudioTab
+           }
+           
+           // 恢复章节选择信息
+           if (projectData.selectedChapterId) {
+             // 通过emit通知父组件恢复章节选择
+             console.log('恢复章节选择:', projectData.selectedChapterId)
+             emit('chapter-change', projectData.selectedChapterId)
+           }
+           
+           // 发送项目变化事件
+           emit('project-change', currentProject.project)
+           console.log('从服务器恢复项目:', currentProject.project.title)
+           message.success('项目已从服务器恢复')
+           return
+         }
         } catch (error) {
           console.warn('从服务器加载项目失败，使用本地缓存:', error)
         }
@@ -1369,13 +1555,47 @@
         // 如果服务器加载失败，使用本地缓存
         try {
           const localProject = JSON.parse(savedProjectData)
-          Object.assign(currentProject.project, localProject.project)
-          currentProject.tracks.splice(0, currentProject.tracks.length, ...localProject.tracks)
-          currentProject.markers = localProject.markers || []
-          // 发送项目变化事件
-          emit('project-change', currentProject.project)
-          console.log('从本地缓存恢复项目:', currentProject.project.title)
-          message.info('项目已从本地缓存恢复')
+          
+          // 恢复项目基本信息
+          if (localProject.project) {
+            Object.assign(currentProject.project, localProject.project)
+          }
+          
+          // 恢复音轨信息
+          if (localProject.tracks) {
+            currentProject.tracks.splice(0, currentProject.tracks.length, ...localProject.tracks)
+          }
+          
+          // 恢复标记信息
+          if (localProject.markers) {
+            currentProject.markers = localProject.markers
+          }
+          
+          // 恢复素材区配置
+          if (localProject.audioFiles) {
+            audioFiles.value = localProject.audioFiles
+          }
+          
+          // 恢复搜索关键词
+          if (localProject.searchKeyword) {
+            searchKeyword.value = localProject.searchKeyword
+          }
+          
+                     // 恢复激活的音频标签页
+           if (localProject.activeAudioTab) {
+             activeAudioTab.value = localProject.activeAudioTab
+           }
+           
+           // 恢复章节选择信息
+           if (localProject.selectedChapterId) {
+             // 通过emit通知父组件恢复章节选择
+             emit('chapter-change', localProject.selectedChapterId)
+           }
+           
+           // 发送项目变化事件
+           emit('project-change', currentProject.project)
+           console.log('从本地缓存恢复项目:', currentProject.project.title)
+           message.info('项目已从本地缓存恢复')
         } catch (parseError) {
           console.error('解析本地项目数据失败:', parseError)
           clearProjectCache()
@@ -1557,6 +1777,8 @@
     )
   }
 
+
+
   // ========== 生命周期 ==========
   onMounted(async () => {
     // 获取路由参数
@@ -1592,6 +1814,160 @@
       }
     }
   )
+
+  // ========== 章节音频导入处理 ==========
+  
+  // 处理对话音导入
+  const handleDialogueImport = async () => {
+    console.log('处理对话音导入')
+    try {
+      // 检查currentProject是否存在
+      if (!currentProject || !currentProject.project) {
+        message.error('项目数据异常，请重新加载页面')
+        return
+      }
+
+      // 检查是否有选中的章节
+      if (!props.selectedChapterId) {
+        message.warning('请先选择章节')
+        return
+      }
+
+      // 检查项目是否有bookId
+      if (!currentProject.project.bookId) {
+        message.error('项目未关联书籍，请先选择书籍')
+        return
+      }
+
+      // 调用现有的章节音频接口
+      const response = await fetch(`/api/v1/sound-editor/book/${currentProject.project.bookId}/chapter/${props.selectedChapterId}/resources`)
+      if (!response.ok) {
+        throw new Error('获取章节音频失败')
+      }
+      
+            const data = await response.json()
+      if (!data.success) {
+        throw new Error(data.message || '获取章节音频失败')
+      }
+
+      const dialogues = data.data?.dialogues || []
+      if (dialogues.length === 0) {
+        message.warning('该章节没有可用的对话音频')
+        return
+      }
+
+      // 将对话音频添加到素材库显示
+      console.log('获取到对话音频:', dialogues)
+      
+      // 将对话音频转换为素材库格式并添加到列表
+      const dialogueAudioFiles = dialogues.map(dialogue => ({
+        id: dialogue.fileId,
+        filename: dialogue.filename,
+        original_name: dialogue.filename,
+        category: 'dialogue',
+        duration: dialogue.duration,
+        file_size: 0, // 暂时设为0
+        format: 'wav',
+        sample_rate: 44100,
+        channels: 2,
+        url: `/api/v1/sound-editor/audio-files/download/${dialogue.fileId}`,
+        created_at: new Date().toISOString(),
+        metadata: {
+          character: dialogue.character,
+          content: dialogue.content,
+          voiceId: dialogue.voiceId,
+          audioType: dialogue.audioType,
+          filePath: dialogue.filePath
+        }
+      }))
+      
+      // 添加到素材库音频文件列表
+      audioFiles.value = [...audioFiles.value, ...dialogueAudioFiles]
+      
+      message.success(`对话音加载成功，共 ${dialogues.length} 个音频文件`)
+    } catch (error) {
+      console.error('导入对话音失败:', error)
+      message.error('导入对话音失败: ' + error.message)
+    }
+  }
+
+  // 处理环境音导入
+  const handleEnvironmentImport = async () => {
+    console.log('处理环境音导入')
+    try {
+      // 检查currentProject是否存在
+      if (!currentProject || !currentProject.project) {
+        message.error('项目数据异常，请重新加载页面')
+        return
+      }
+
+      // 检查是否有选中的章节
+      if (!props.selectedChapterId) {
+        message.warning('请先选择章节')
+        return
+      }
+
+      // 检查项目是否有bookId
+      if (!currentProject.project.bookId) {
+        message.error('项目未关联书籍，请先选择书籍')
+        return
+      }
+
+      // 调用现有的环境音接口
+      const response = await fetch(`/api/v1/sound-editor/book/${currentProject.project.bookId}/chapter/${props.selectedChapterId}/resources`)
+      if (!response.ok) {
+        throw new Error('获取环境音失败')
+      }
+      
+            const data = await response.json()
+      if (!data.success) {
+        throw new Error(data.message || '获取环境音失败')
+      }
+
+      const environments = data.data?.environments || []
+      if (environments.length === 0) {
+        message.warning('该章节没有可用的环境音')
+        return
+      }
+
+      // 将环境音添加到素材库显示
+      console.log('获取到环境音:', environments)
+      
+      // 将环境音转换为素材库格式并添加到列表
+      const environmentAudioFiles = environments.map(environment => ({
+        id: environment.fileId,
+        filename: environment.filename,
+        original_name: environment.filename,
+        category: 'environment',
+        duration: environment.duration,
+        file_size: 0, // 暂时设为0
+        format: 'wav',
+        sample_rate: 44100,
+        channels: 2,
+        url: `/api/v1/sound-editor/audio-files/download/${environment.fileId}`,
+        created_at: new Date().toISOString(),
+        metadata: {
+          audioType: environment.audioType,
+          filePath: environment.filePath
+        }
+      }))
+      
+      // 添加到素材库音频文件列表
+      audioFiles.value = [...audioFiles.value, ...environmentAudioFiles]
+      
+      message.success(`环境音加载成功，共 ${environments.length} 个音频文件`)
+    } catch (error) {
+      console.error('导入环境音失败:', error)
+      message.error('导入环境音失败: ' + error.message)
+    }
+  }
+
+  // 处理主题音导入
+  const handleThemeImport = () => {
+    console.log('处理主题音导入')
+    // 主题音暂时使用JSON导入
+    showImportDialog.value = true
+  }
 
   onUnmounted(() => {
     // 清理音频播放

@@ -9,9 +9,9 @@
               d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"
             />
           </svg>
-          音频编辑器
+          音频混合
         </h1>
-        <p class="page-description">专业级多轨音频编辑工具，支持对话、环境音、背景音乐混合制作</p>
+        <p class="page-description">专业级多轨音频混合工具，支持对话、环境音、背景音乐智能混合</p>
       </div>
 
       <div class="header-actions">
@@ -21,19 +21,10 @@
               <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
             </svg>
           </template>
-          新建项目
+          新建混合项目
         </a-button>
 
-        <a-button size="large" @click="importFromBook">
-          <template #icon>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-              <path
-                d="M21,5c-1.11-0.35-2.33-0.5-3.5-0.5c-1.95,0-4.05,0.4-5.5,1.5c-1.45-1.1-3.55-1.5-5.5-1.5S2.45,4.9,1,6v14.65 c0,0.25,0.25,0.5,0.5,0.5c0.1,0,0.15-0.05,0.25-0.05C3.1,20.45,5.05,20,6.5,20c1.95,0,4.05,0.4,5.5,1.5c1.35-0.85,3.8-1.5,5.5-1.5 c1.65,0,3.35,0.3,4.75,1.05c0.1,0.05,0.15,0.05,0.25,0.05c0.25,0,0.5-0.25,0.5-0.5V6C22.4,5.55,21.75,5.25,21,5z M21,18.5 c-1.1-0.35-2.3-0.5-3.5-0.5c-1.7,0-4.15,0.65-5.5,1.5V8c1.35-0.85,3.8-1.5,5.5-1.5c1.2,0,2.4,0.15,3.5,0.5V18.5z"
-              />
-            </svg>
-          </template>
-          从书籍导入
-        </a-button>
+        
       </div>
     </div>
 
@@ -253,7 +244,7 @@
     <!-- 新建项目弹窗 -->
     <a-modal
       v-model:open="newProjectModalVisible"
-      title="新建音频项目"
+      title="新建音频混合项目"
       width="600px"
       @ok="handleCreateProject"
       @cancel="newProjectModalVisible = false"
@@ -266,6 +257,20 @@
               placeholder="输入项目名称"
               :maxlength="50"
             />
+          </a-form-item>
+
+          <!-- 新增：书籍选择 -->
+          <a-form-item label="选择书籍" required>
+            <a-select 
+              v-model:value="newProjectForm.bookId" 
+              placeholder="请选择书籍"
+              @change="handleBookChange"
+              :loading="booksLoading"
+            >
+              <a-select-option v-for="book in books" :key="book.id" :value="book.id">
+                {{ book.title }} - {{ book.author }}
+              </a-select-option>
+            </a-select>
           </a-form-item>
 
           <a-form-item label="项目描述">
@@ -325,6 +330,7 @@
     deleteProject,
     createEmptyProject
   } from '@/api/sound-editor/multitrackProject'
+  import { booksAPI } from '@/api'
 
 
   const router = useRouter()
@@ -353,8 +359,13 @@
   const newProjectForm = ref({
     title: '',
     description: '',
-    template: 'default'
+    template: 'default',
+    bookId: null
   })
+
+  // 书籍相关数据
+  const books = ref([])
+  const booksLoading = ref(false)
 
   // 从书籍导入弹窗状态
   const bookImportModalVisible = ref(false)
@@ -371,15 +382,45 @@
 
   // 页面加载
   onMounted(() => {
+    console.log('SoundEditorProjects组件已挂载')
     loadProjects()
+    loadBooks()
   })
+
+  // 加载书籍列表
+  const loadBooks = async () => {
+    try {
+      booksLoading.value = true
+      console.log('开始加载书籍列表...')
+      const response = await booksAPI.getBooks({ page: 1, page_size: 100 })
+      console.log('书籍API响应:', response)
+      if (response.data && response.data.success) {
+        books.value = response.data.data || []
+        console.log('加载到的书籍:', books.value)
+      } else {
+        console.error('书籍API返回失败:', response)
+        message.error('加载书籍列表失败: ' + (response.data?.message || '未知错误'))
+      }
+    } catch (error) {
+      console.error('加载书籍列表失败:', error)
+      message.error('加载书籍列表失败: ' + error.message)
+    } finally {
+      booksLoading.value = false
+    }
+  }
+
+  // 处理书籍选择变化
+  const handleBookChange = (bookId) => {
+    console.log('选择书籍:', bookId)
+    // 可以在这里添加书籍选择后的逻辑
+  }
 
   // 加载项目列表
   const loadProjects = async () => {
     loading.value = true
     try {
       const response = await listProjects()
-      console.log('音频编辑器项目列表:', response)
+      console.log('音频混合项目列表:', response)
 
       if (response && response.success) {
         let projectList = response.projects || []
@@ -418,7 +459,8 @@
     newProjectForm.value = {
       title: '',
       description: '',
-      template: 'default'
+      template: 'default',
+      bookId: null
     }
     newProjectModalVisible.value = true
   }
@@ -430,12 +472,18 @@
       return
     }
 
+    if (!newProjectForm.value.bookId) {
+      message.error('请选择书籍')
+      return
+    }
+
     try {
       // 创建项目信息（确保所有必需字段都有正确的数据类型）
       const projectInfo = {
         title: String(newProjectForm.value.title || ''),
         description: String(newProjectForm.value.description || ''),
         author: 'AI-Sound',
+        bookId: newProjectForm.value.bookId, // 新增：书籍ID
         totalDuration: 0.0, // 确保是浮点数
         sampleRate: 44100, // 确保是整数
         channels: 2, // 确保是整数
@@ -459,9 +507,9 @@
         loadProjects()
 
         // 创建后直接进入编辑器
-        if (response.data && response.data.project && response.data.project.id) {
-          router.push(`/sound-editor/edit/${response.data.project.id}`)
-        }
+          if (response.data && response.data.data && response.data.data.project && response.data.data.project.id) {
+            router.push(`/sound-editor/edit/${response.data.data.project.id}`)
+          }
       } else {
         message.error('创建项目失败')
       }
@@ -486,10 +534,10 @@
     }
   }
 
-  // 打开项目
-  const openProject = (project) => {
-    router.push(`/sound-editor/edit/${project.id}`)
-  }
+                  // 打开项目
+                const openProject = (project) => {
+                  router.push(`/sound-editor/edit/${project.id}`)
+                }
 
   // 从书籍导入资源
   const importFromBook = () => {

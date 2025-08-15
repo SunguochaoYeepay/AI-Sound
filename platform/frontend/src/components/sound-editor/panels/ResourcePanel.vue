@@ -27,7 +27,7 @@
               empty-text="暂无对话音文件"
               empty-desc="点击上传或导入按钮添加对话音文件"
               @upload="handleUpload"
-              @import="$emit('import-json')"
+              @import="handleDialogueImport"
               @search="$emit('search', $event)"
               @select="$emit('select-file', $event)"
               @play="$emit('play-file', $event)"
@@ -50,7 +50,7 @@
               empty-text="暂无环境音文件"
               empty-desc="点击上传或导入按钮添加环境音文件"
               @upload="handleUpload"
-              @import="$emit('import-json')"
+              @import="handleEnvironmentImport"
               @search="$emit('search', $event)"
               @select="$emit('select-file', $event)"
               @play="$emit('play-file', $event)"
@@ -73,7 +73,7 @@
               empty-text="暂无主题音文件"
               empty-desc="点击上传或导入按钮添加主题音文件"
               @upload="handleUpload"
-              @import="$emit('import-json')"
+              @import="handleThemeImport"
               @search="$emit('search', $event)"
               @select="$emit('select-file', $event)"
               @play="$emit('play-file', $event)"
@@ -118,10 +118,13 @@
     }
   })
 
-  // Emits
+    // Emits
   const emit = defineEmits([
     'refresh',
     'import-json',
+    'dialogue-import',
+    'environment-import',
+    'theme-import',
     'tab-change',
     'upload',
     'search',
@@ -163,6 +166,23 @@
   function handleUpload(file, category) {
     emit('upload', file, category)
   }
+
+  // 处理对话音导入
+  function handleDialogueImport() {
+    emit('dialogue-import')
+  }
+
+  // 处理环境音导入
+  function handleEnvironmentImport() {
+    emit('environment-import')
+  }
+
+  // 处理主题音导入
+  function handleThemeImport() {
+    emit('theme-import')
+  }
+
+
 </script>
 
 <style scoped>
@@ -177,7 +197,7 @@
 
   /* 面板头部 */
   .panel-header {
-    padding: 12px 16px;
+    padding: 4px 8px;
     background: #333;
     border-bottom: 1px solid #444;
     display: flex;

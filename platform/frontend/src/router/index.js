@@ -201,25 +201,23 @@ const routes = [
     }
   },
 
-  // 音频编辑器路由（新增）
+  // 音频混合路由
   {
     path: '/sound-editor',
-    name: 'SoundEditorProjects',
+    name: 'AudioMixingProjects',
     component: () => import('../views/SoundEditorProjects.vue'),
     meta: {
-      title: '音频编辑器',
-      requiresAuth: true,
-      permission: PERMISSIONS.EDITOR_USE
+      title: '音频混合',
+      requiresAuth: true
     }
   },
   {
     path: '/sound-editor/edit/:projectId',
-    name: 'SoundEditor',
+    name: 'AudioMixingEditor',
     component: () => import('../views/SoundEditor.vue'),
     meta: {
-      title: '编辑器',
-      requiresAuth: true,
-      permission: PERMISSIONS.EDITOR_USE
+      title: '音频混合编辑器',
+      requiresAuth: true
     }
   },
   {

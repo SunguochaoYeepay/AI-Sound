@@ -103,7 +103,7 @@
 
   /* 面板头部 */
   .panel-header {
-    padding: 12px 16px;
+    padding: 8px;
     background: #333;
     border-bottom: 1px solid #444;
     display: flex;
