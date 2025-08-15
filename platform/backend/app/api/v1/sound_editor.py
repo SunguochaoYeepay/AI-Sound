@@ -410,6 +410,12 @@ def get_uploaded_audio_file_path(file_id: str) -> Optional[str]:
         audio_uploads_dir / "background"
     ]
     
+    # 如果是环境音混合文件（以env_开头），添加环境音混合目录
+    if file_id.startswith("env_"):
+        current_dir = Path(__file__).parent.parent.parent.parent.parent  # 回到项目根目录
+        mixed_dir = current_dir / "backend" / "data" / "environment_sounds" / "mixed"
+        search_dirs.append(mixed_dir)
+    
     # 尝试不同的文件扩展名
     possible_extensions = ['.wav', '.mp3', '.m4a', '.flac', '.ogg']
     
@@ -643,6 +649,44 @@ async def download_audio_file(
 ):
     """下载音频文件"""
     try:
+        # 处理audio_前缀的文件ID（从章节导入的音频文件）
+        if file_id.startswith('audio_'):
+            # 从数据库查找对应的音频文件
+            audio_id = int(file_id.replace('audio_', ''))
+            audio_file = db.query(AudioFile).filter(AudioFile.id == audio_id).first()
+            if audio_file and audio_file.file_path:
+                # 构建绝对路径
+                current_dir = Path(__file__).parent.parent.parent.parent.parent  # 回到项目根目录
+                file_path = current_dir / "backend" / audio_file.file_path
+                if file_path.exists():
+                    return FileResponse(
+                        path=str(file_path),
+                        filename=Path(audio_file.file_path).name,
+                        media_type="audio/mpeg"
+                    )
+                else:
+                    logger.warning(f"章节音频文件不存在: {file_path}")
+                    raise HTTPException(status_code=404, detail="章节音频文件不存在")
+            else:
+                raise HTTPException(status_code=404, detail="音频文件记录不存在")
+        
+        # 处理env_前缀的文件ID（从环境音项目导入的音频文件）
+        if file_id.startswith('env_'):
+            # 从环境音混合目录查找文件
+            mixed_dir = Path("data/environment_sounds/mixed")
+            file_stem = file_id.replace('env_', '')
+            
+            for file_path in mixed_dir.glob(f"{file_stem}*.wav"):
+                if file_path.exists():
+                    return FileResponse(
+                        path=str(file_path),
+                        filename=file_path.name,
+                        media_type="audio/mpeg"
+                    )
+            
+            raise HTTPException(status_code=404, detail="环境音文件不存在")
+        
+        # 处理普通上传的音频文件
         storage_path = get_audio_storage_path()
         
         # 在所有可能的位置查找文件
@@ -1140,6 +1184,59 @@ async def get_chapter_audio_resources(
         logger.error(f"获取章节音频资源失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"获取资源失败: {str(e)}")
 
+@router.get("/environment-projects/{book_id}/audio-files")
+async def get_environment_project_audio_files(
+    book_id: int,
+    db: Session = Depends(get_db)
+):
+    """获取环境音项目的音频文件"""
+    try:
+        from ...models import EnvironmentProject
+        
+        # 查找该书籍的环境音项目
+        env_project = db.query(EnvironmentProject).filter(
+            EnvironmentProject.book_id == book_id
+        ).first()
+        
+        if not env_project:
+            return {
+                "success": True,
+                "data": {
+                    "audioFiles": []
+                }
+            }
+        
+        # 获取环境音混合文件
+        mixed_files = []
+        # 使用绝对路径，从当前文件位置计算
+        current_dir = Path(__file__).parent.parent.parent.parent.parent  # 回到项目根目录
+        mixed_dir = current_dir / "backend" / "data" / "environment_sounds" / "mixed"
+        
+        if mixed_dir.exists():
+            # 查找该项目的混合环境音文件
+            for file_path in mixed_dir.glob(f"mixed_environment_{env_project.id}*.wav"):
+                if file_path.exists():
+                    mixed_files.append({
+                        "fileId": f"env_{file_path.stem}",
+                        "filename": file_path.name,
+                        "duration": 300.0,  # 默认5分钟
+                        "filePath": str(file_path),
+                        "audioType": "mixed_environment"
+                    })
+        
+        return {
+            "success": True,
+            "data": {
+                "audioFiles": mixed_files
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取环境音项目音频文件失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取环境音文件失败: {str(e)}")
+
 # ========== 预览播放 API ==========
 
 class PreviewResponse(BaseModel):
@@ -1198,9 +1295,67 @@ async def generate_preview(
                 filename = clip.get('filename', '')
                 audio_file_path = clip.get('audioFilePath', '')  # 从章节导入的音频文件路径
                 
-                # 优先使用audioFilePath（从章节导入的绝对路径）
-                if audio_file_path and os.path.exists(audio_file_path):
-                    logger.debug(f"使用章节音频文件路径: {audio_file_path}")
+                # 如果audioFilePath为空，尝试从audioFiles中查找
+                if not audio_file_path and filename:
+                    for audio_file in project_data.get('audioFiles', []):
+                        audio_filename = audio_file.get('filename', '')
+                        audio_original_name = audio_file.get('original_name', '')
+                        
+                        # 精确匹配
+                        if audio_filename == filename or audio_original_name == filename:
+                            audio_file_path = audio_file.get('metadata', {}).get('filePath', '')
+                            logger.info(f"从audioFiles中找到文件路径: {filename} -> {audio_file_path}")
+                            break
+                        
+                        # 处理.wav后缀不匹配的情况
+                        if filename.endswith('.wav'):
+                            filename_without_ext = filename[:-4]
+                            if (audio_filename.endswith('.wav') and audio_filename[:-4] == filename_without_ext) or \
+                               (audio_original_name.endswith('.wav') and audio_original_name[:-4] == filename_without_ext):
+                                audio_file_path = audio_file.get('metadata', {}).get('filePath', '')
+                                logger.info(f"从audioFiles中找到文件路径(处理后缀): {filename} -> {audio_file_path}")
+                                break
+                        else:
+                            # filename没有后缀，但audio_file有后缀
+                            if audio_filename == filename + '.wav' or audio_original_name == filename + '.wav':
+                                audio_file_path = audio_file.get('metadata', {}).get('filePath', '')
+                                logger.info(f"从audioFiles中找到文件路径(添加后缀): {filename} -> {audio_file_path}")
+                                break
+                
+                # 如果fileId不为空，也尝试从audioFiles中查找
+                if not audio_file_path and file_id:
+                    for audio_file in project_data.get('audioFiles', []):
+                        if audio_file.get('id') == file_id:
+                            audio_file_path = audio_file.get('metadata', {}).get('filePath', '')
+                            logger.info(f"从audioFiles中找到文件路径: {file_id} -> {audio_file_path}")
+                            break
+                # 优先使用audioFilePath（从章节导入的路径）
+                if audio_file_path:
+                    # 检查是否是相对路径，如果是则转换为绝对路径
+                    if not os.path.isabs(audio_file_path):
+                        current_dir = Path(__file__).parent.parent.parent.parent.parent  # 回到项目根目录
+                        # 统一路径分隔符
+                        normalized_path = audio_file_path.replace('\\', '/')
+                        
+                        # 根据路径类型选择不同的处理方式
+                        if normalized_path.startswith('data/environment_sounds/'):
+                            # 环境音文件路径
+                            absolute_path = current_dir / "backend" / normalized_path
+                        elif normalized_path.startswith('outputs/'):
+                            # 章节音频文件路径
+                            absolute_path = current_dir / "backend" / normalized_path
+                        else:
+                            # 其他路径
+                            absolute_path = current_dir / "backend" / normalized_path
+                        
+                        audio_file_path = str(absolute_path)
+                        logger.info(f"转换音频文件路径: {audio_file_path}")
+                    
+                    if os.path.exists(audio_file_path):
+                        logger.info(f"使用音频文件路径: {audio_file_path}")
+                    else:
+                        logger.warning(f"音频文件不存在: {audio_file_path}")
+                        audio_file_path = None
                 else:
                     # 如果fileId为空，尝试使用filename
                     if not file_id and filename:
@@ -1237,6 +1392,10 @@ async def generate_preview(
         preview_url = f"/api/v1/sound-editor/preview/download/{preview_id}"
         
         if audio_tracks:
+            logger.info(f"开始音频混合，轨道数量: {len(audio_tracks)}")
+            for i, track in enumerate(audio_tracks):
+                logger.info(f"轨道 {i}: 文件={track['file_path']}, 存在={os.path.exists(track['file_path'])}, 时长={track['duration']}, 音量={track['volume']}")
+            
             # 使用FFmpeg进行真正的音频混合
             try:
                 result_path = await ffmpeg_service.mix_audio_tracks(
@@ -1248,7 +1407,9 @@ async def generate_preview(
                 logger.info(f"真实音频混合完成: {result_path}")
             except Exception as e:
                 logger.error(f"FFmpeg音频混合失败: {e}")
+                logger.error(f"详细错误信息: {str(e)}")
                 # 降级到静音文件
+                logger.info("降级到生成静音文件")
                 await generate_silence_file(output_path, duration)
         else:
             # 没有音频轨道，生成静音文件
@@ -1285,6 +1446,8 @@ async def generate_silence_file(output_path: str, duration: float):
     """生成静音文件 - 需要FFmpeg"""
     try:
         ffmpeg_path = ffmpeg_service.ffmpeg_path
+        logger.info(f"开始生成静音文件: {output_path}, 时长: {duration}秒")
+        logger.info(f"FFmpeg路径: {ffmpeg_path}")
         
         cmd = [
             ffmpeg_path,
@@ -1293,6 +1456,8 @@ async def generate_silence_file(output_path: str, duration: float):
             '-t', str(duration),
             '-y', output_path
         ]
+        
+        logger.info(f"FFmpeg命令: {' '.join(cmd)}")
         
         # Windows兼容性：使用同步subprocess
         import subprocess

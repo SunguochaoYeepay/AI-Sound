@@ -1913,18 +1913,18 @@
         return
       }
 
-      // 调用现有的环境音接口
-      const response = await fetch(`/api/v1/sound-editor/book/${currentProject.project.bookId}/chapter/${props.selectedChapterId}/resources`)
+      // 调用环境音项目音频文件接口
+      const response = await fetch(`/api/v1/sound-editor/environment-projects/${currentProject.project.bookId}/audio-files`)
       if (!response.ok) {
         throw new Error('获取环境音失败')
       }
       
-            const data = await response.json()
+      const data = await response.json()
       if (!data.success) {
         throw new Error(data.message || '获取环境音失败')
       }
 
-      const environments = data.data?.environments || []
+      const environments = data.data?.audioFiles || []
       if (environments.length === 0) {
         message.warning('该章节没有可用的环境音')
         return
@@ -1936,8 +1936,8 @@
       // 将环境音转换为素材库格式并添加到列表
       const environmentAudioFiles = environments.map(environment => ({
         id: environment.fileId,
-        filename: environment.filename,
-        original_name: environment.filename,
+        filename: `🎵 背景音 - ${environment.filename}`,
+        original_name: `🎵 背景音 - ${environment.filename}`,
         category: 'environment',
         duration: environment.duration,
         file_size: 0, // 暂时设为0
