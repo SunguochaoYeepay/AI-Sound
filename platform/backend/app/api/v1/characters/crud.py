@@ -4,7 +4,8 @@ import os
 import json
 import logging
 from typing import List, Optional, Dict, Any
-from fastapi import APIRouter, Depends, HTTPException, Query, File, UploadFile, Form
+from fastapi import APIRouter, Depends, HTTPException, Query, File, UploadFile, Form, Request
+from typing import List
 from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 
@@ -14,7 +15,6 @@ from app.schemas.character import (
     CharacterCreate, CharacterUpdate, CharacterResponse, CharacterListResponse
 )
 from app.services.character_management_service import CharacterManagementService
-from app.services.character_crud_service import CharacterCRUDService
 from app.utils.character_utils import (
     validate_character_name, validate_voice_type, validate_quality_score, validate_tags, validate_audio_file, validate_image_file
 )
@@ -158,7 +158,7 @@ async def create_character(
             if not is_valid:
                 raise HTTPException(status_code=400, detail=error_msg)
         
-        service = CharacterCRUDService(db)
+        service = CharacterManagementService(db)
         return service.create_character(character_data)
     except HTTPException:
         raise
@@ -224,7 +224,7 @@ async def update_character(
             if not is_valid:
                 raise HTTPException(status_code=400, detail=error_msg)
         
-        service = CharacterCRUDService(db)
+        service = CharacterManagementService(db)
         
         # 处理文件上传
         if avatar:
@@ -240,9 +240,9 @@ async def update_character(
             service.upload_character_audio(character_id, reference_audio, "reference")
         
         if latent_file:
-            is_valid, error_msg = validate_audio_file(latent_file)
-            if not is_valid:
-                raise HTTPException(status_code=400, detail=error_msg)
+            # NPY文件验证：检查文件扩展名
+            if not latent_file.filename.lower().endswith('.npy'):
+                raise HTTPException(status_code=400, detail="Latent文件必须是.npy格式")
             service.upload_character_audio(character_id, latent_file, "latent")
         
         # 处理头像移除
@@ -289,7 +289,7 @@ async def upload_character_audio(
         if not is_valid:
             raise HTTPException(status_code=400, detail=error_msg)
         
-        service = CharacterCRUDService(db)
+        service = CharacterManagementService(db)
         return service.upload_character_audio(character_id, audio_file, audio_type)
     except HTTPException:
         raise
@@ -310,7 +310,7 @@ async def upload_character_avatar(
         if not is_valid:
             raise HTTPException(status_code=400, detail=error_msg)
         
-        service = CharacterCRUDService(db)
+        service = CharacterManagementService(db)
         return service.upload_character_avatar(character_id, avatar_file)
     except HTTPException:
         raise
@@ -427,54 +427,124 @@ async def get_character_avatar(
         logger.error(f"获取头像失败: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/batch-create")
-async def batch_create_characters(
-    characters_data: List[CharacterCreate],
+@router.get("/{character_id}/audio/reference")
+async def get_character_reference_audio(
+    character_id: int,
     db: Session = Depends(get_db)
 ):
-    """批量创建角色"""
+    """获取角色参考音频文件"""
     try:
-        if not characters_data:
+        service = CharacterManagementService(db)
+        character = service.get_character_by_id(character_id)
+        
+        if not character:
+            raise HTTPException(status_code=404, detail="角色不存在")
+        
+        if not character.reference_audio_path:
+            raise HTTPException(status_code=404, detail="角色没有参考音频文件")
+        
+        # 检查文件是否存在
+        if not os.path.exists(character.reference_audio_path):
+            logger.error(f"参考音频文件不存在: {character.reference_audio_path}")
+            raise HTTPException(status_code=404, detail="参考音频文件不存在")
+        
+        # 根据文件扩展名确定媒体类型
+        file_ext = os.path.splitext(character.reference_audio_path)[1].lower()
+        if file_ext == '.wav':
+            media_type = "audio/wav"
+        elif file_ext == '.mp3':
+            media_type = "audio/mpeg"
+        elif file_ext == '.flac':
+            media_type = "audio/flac"
+        elif file_ext == '.m4a':
+            media_type = "audio/mp4"
+        elif file_ext == '.ogg':
+            media_type = "audio/ogg"
+        else:
+            media_type = "audio/wav"  # 默认使用WAV
+        
+        filename = f"reference_{character_id}{file_ext}"
+        
+        # 返回音频文件
+        return FileResponse(
+            character.reference_audio_path,
+            media_type=media_type,
+            filename=filename
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取参考音频失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/batch-create")
+async def batch_create_characters(
+    request: Request,
+    characters_data: str = Form(..., description="角色数据JSON字符串"),
+    book_id: Optional[int] = Form(None, description="书籍ID"),
+    chapter_id: Optional[int] = Form(None, description="章节ID"),
+    db: Session = Depends(get_db)
+):
+    """批量创建角色（简化版：只创建角色信息）"""
+    try:
+        # 🔧 调试：输出接收到的参数
+        logger.info(f"批量创建角色 - 接收到的参数: book_id={book_id}, chapter_id={chapter_id}")
+        logger.info(f"角色数据JSON: {characters_data}")
+        
+        # 解析JSON字符串
+        try:
+            characters_list = json.loads(characters_data)
+        except json.JSONDecodeError as e:
+            raise HTTPException(status_code=400, detail=f"角色数据JSON格式错误: {str(e)}")
+        
+        if not characters_list:
             raise HTTPException(status_code=400, detail="角色数据不能为空")
         
-        if len(characters_data) > 100:
+        if len(characters_list) > 100:
             raise HTTPException(status_code=400, detail="单次最多创建100个角色")
         
+        # 转换为CharacterCreate对象列表
+        characters_data_objects = []
+        for i, char_dict in enumerate(characters_list):
+            try:
+                # 过滤出CharacterCreate期望的字段
+                allowed_fields = {
+                    'name', 'description', 'voice_profile', 'voice_config', 
+                    'book_id', 'chapter_id'
+                }
+                filtered_dict = {k: v for k, v in char_dict.items() if k in allowed_fields}
+                
+                # 🔧 修复：优先使用角色数据中的book_id和chapter_id，如果没有则使用FormData中的值
+                if 'book_id' not in filtered_dict or filtered_dict['book_id'] is None:
+                    filtered_dict['book_id'] = book_id
+                if 'chapter_id' not in filtered_dict or filtered_dict['chapter_id'] is None:
+                    filtered_dict['chapter_id'] = chapter_id
+                
+                char_data = CharacterCreate(**filtered_dict)
+                characters_data_objects.append(char_data)
+                
+                # 🔧 调试：输出处理后的角色数据
+                logger.info(f"处理后的角色数据: {char_data.name}, book_id={char_data.book_id}, chapter_id={char_data.chapter_id}")
+            except Exception as e:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"第{i+1}个角色数据格式错误: {str(e)}"
+                )
+        
         # 验证所有角色数据
-        for i, char_data in enumerate(characters_data):
+        for i, char_data in enumerate(characters_data_objects):
             is_valid, error_msg = validate_character_name(char_data.name)
             if not is_valid:
                 raise HTTPException(
                     status_code=400, 
                     detail=f"第{i+1}个角色名称无效: {error_msg}"
                 )
-            
-            if char_data.voice_type:
-                is_valid, error_msg = validate_voice_type(char_data.voice_type)
-                if not is_valid:
-                    raise HTTPException(
-                        status_code=400, 
-                        detail=f"第{i+1}个角色声音类型无效: {error_msg}"
-                    )
-            
-            if char_data.quality_score is not None:
-                is_valid, error_msg = validate_quality_score(char_data.quality_score)
-                if not is_valid:
-                    raise HTTPException(
-                        status_code=400, 
-                        detail=f"第{i+1}个角色质量分数无效: {error_msg}"
-                    )
-            
-            if char_data.tags:
-                is_valid, error_msg = validate_tags(char_data.tags)
-                if not is_valid:
-                    raise HTTPException(
-                        status_code=400, 
-                        detail=f"第{i+1}个角色标签无效: {error_msg}"
-                    )
         
-        service = CharacterCRUDService(db)
-        return service.batch_create_characters(characters_data)
+        # 🔥 简化：移除文件处理逻辑
+        logger.info(f"📋 准备创建 {len(characters_data_objects)} 个角色")
+        
+        service = CharacterManagementService(db)
+        return service.batch_create_characters(characters_data_objects)
     except HTTPException:
         raise
     except Exception as e:

@@ -484,7 +484,7 @@ async def update_preparation_result(
                     
                     if character_voice_mappings:
                         # 导入同步函数
-                        from ..books import _sync_character_voice_to_synthesis_plans
+                        from app.api.v1.books import _sync_character_voice_to_synthesis_plans
                         
                         # 同步角色语音配置到相关章节
                         updated_chapters_count = await _sync_character_voice_to_synthesis_plans(

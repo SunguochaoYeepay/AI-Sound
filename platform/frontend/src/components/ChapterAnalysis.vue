@@ -227,7 +227,16 @@ const loadBookCharacters = async () => {
   loadingBookCharacters.value = true
   try {
     const response = await charactersAPI.getCharacters({ book_id: props.chapter.book_id })
-    if (response.data?.success && response.data.data) {
+    // 🔧 修复：适配后端返回的CharacterListResponse格式
+    if (response.data?.characters) {
+      bookCharacters.value = response.data.characters.map((char) => ({
+        ...char,
+        is_voice_configured: char.is_voice_configured || false,
+        avatarUrl: char.avatarUrl || null
+      }))
+      console.log('本书角色加载成功:', bookCharacters.value.length, '个角色')
+    } else if (response.data?.success && response.data.data) {
+      // 兼容旧格式
       bookCharacters.value = response.data.data.map((char) => ({
         ...char,
         is_voice_configured: char.is_voice_configured || false,
@@ -235,7 +244,7 @@ const loadBookCharacters = async () => {
       }))
       console.log('本书角色加载成功:', bookCharacters.value.length, '个角色')
     } else {
-      console.warn('加载角色失败:', response.data?.message)
+      console.warn('加载角色失败: 响应格式不正确', response.data)
     }
   } catch (error) {
     console.error('加载角色失败:', error)
@@ -383,8 +392,26 @@ const refreshCharacterLibrary = async () => {
     return char
   })
   
+  // 🔥 新增：同步更新段落中的角色信息
+  console.log('[ChapterAnalysis] 开始同步段落角色信息')
+  editableSegments.value = editableSegments.value.map(segment => {
+    const bookChar = bookCharacters.value.find(bc => bc.name === segment.speaker)
+    if (bookChar) {
+      console.log('[ChapterAnalysis] 同步段落角色信息:', segment.speaker, segment.segment_id, '->', bookChar)
+      return {
+        ...segment,
+        character_id: bookChar.id,
+        voice_id: bookChar.voice_id || bookChar.id?.toString() || '',
+        voice_name: bookChar.name,
+        voice_type: bookChar.voice_type || segment.voice_type || 'neutral',
+        _forceUpdate: Date.now()
+      }
+    }
+    return segment
+  })
+  
   markChanged()
-  message.success('角色配音库已刷新')
+  message.success('角色配音库已刷新，段落信息已同步更新')
 }
 
 const markChanged = () => {

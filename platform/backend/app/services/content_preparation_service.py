@@ -199,7 +199,7 @@ class ContentPreparationService:
                             
                             # 导入同步函数并执行
                             try:
-                                from ..api.v1.books import _sync_character_voice_to_synthesis_plans
+                                from app.api.v1.books import _sync_character_voice_to_synthesis_plans
                                 updated_chapters = await _sync_character_voice_to_synthesis_plans(
                                     book.id, voice_mappings, self.db
                                 )

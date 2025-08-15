@@ -141,8 +141,23 @@
         page_size: 10
       })
 
-      if (response.data?.success && response.data.data?.length > 0) {
+      // 🔧 修复：适配后端返回的CharacterListResponse格式
+      if (response.data?.characters?.length > 0) {
         // 查找完全匹配的角色
+        const matchedCharacter = response.data.characters.find(
+          (char) =>
+            char.name === displaySpeaker.value ||
+            char.name.toLowerCase() === displaySpeaker.value.toLowerCase()
+        )
+
+        if (matchedCharacter) {
+          characterInfo.value = {
+            color: matchedCharacter.color,
+            avatarUrl: matchedCharacter.avatarUrl
+          }
+        }
+      } else if (response.data?.success && response.data.data?.length > 0) {
+        // 兼容旧格式
         const matchedCharacter = response.data.data.find(
           (char) =>
             char.name === displaySpeaker.value ||

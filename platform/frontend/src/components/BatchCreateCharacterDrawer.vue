@@ -1,9 +1,9 @@
 <template>
   <div>
-    <!-- 🔥 批量创建角色抽屉 - 第一步：选择角色 -->
+    <!-- 🔥 批量创建角色抽屉 - 简化版：只创建角色信息 -->
     <a-drawer
       v-model:open="batchCreateModalVisible"
-      title="🎭 批量添加角色到配音库 - 选择角色"
+      title="🎭 批量添加角色到配音库"
       :width="800"
       placement="right"
       @close="cancelBatchCreate"
@@ -26,10 +26,11 @@
             <a-button @click="cancelBatchCreate">取消</a-button>
             <a-button
               type="primary"
-              @click="goToAudioConfig"
-              :disabled="selectedCharactersForBatch.length === 0"
+              @click="executeBatchCreate"
+              :disabled="selectedCharactersForBatch.length === 0 || batchCreating"
+              :loading="batchCreating"
             >
-              下一步：配置音频 ({{ selectedCharactersForBatch.length }}个角色)
+              创建角色 ({{ selectedCharactersForBatch.length }}个)
             </a-button>
           </a-space>
         </div>
@@ -41,7 +42,7 @@
           <div class="batch-description">
             <a-alert
               message="智能角色检测"
-              :description="`AI已从章节中检测到 ${missingCharacters.length} 个尚未加入配音库的角色，您可以选择批量添加并配置语音。`"
+              :description="`AI已从章节中检测到 ${missingCharacters.length} 个尚未加入配音库的角色，您可以选择批量添加。音频和头像配置请在角色配音库中单独设置。`"
               type="info"
               show-icon
               style="margin-bottom: 16px"
@@ -101,156 +102,20 @@
                 </template>
               </a-table>
             </div>
-          </div>
 
-          <div v-if="selectedCharactersForBatch.length > 0" class="batch-summary">
-            <a-divider />
-            <div class="summary-info">
-              <h4>📋 批量操作摘要</h4>
-              <p>
-                将创建 <strong>{{ selectedCharactersForBatch.length }}</strong> 个新角色到
-                <strong>{{ chapter?.book_id ? '角色配音库' : '当前书籍' }}</strong>
-              </p>
-              <p class="summary-note">
-                💡 创建完成后，这些角色将自动关联到合成计划中，您就可以立即开始语音合成了！
-              </p>
+            <!-- 🔥 简化：移除音频配置部分，只保留统一描述 -->
+            <div class="unified-config" style="margin-top: 16px; padding: 16px; background: #f5f5f5; border-radius: 6px;">
+              <h4>统一配置</h4>
+              <a-form layout="vertical">
+                <a-form-item label="统一描述（可选）">
+                  <a-textarea
+                    v-model:value="unifiedDescription"
+                    placeholder="为所有选中的角色设置统一描述，留空则使用默认描述"
+                    :rows="3"
+                  />
+                </a-form-item>
+              </a-form>
             </div>
-          </div>
-        </div>
-      </div>
-    </a-drawer>
-
-    <!-- 🔥 第二个抽屉 - 统一音频配置 -->
-    <a-drawer
-      :open="audioConfigModalVisible"
-      title="🎧 统一配置音频文件"
-      :width="700"
-      placement="right"
-      @close="cancelAudioConfig"
-    >
-      <div class="audio-config-content">
-        <div
-          class="drawer-footer"
-          style="
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            padding: 16px;
-            border-top: 1px solid var(--ant-border-color-split);
-            background: var(--ant-component-background);
-            z-index: 1000;
-          "
-        >
-          <a-space style="float: right">
-            <a-button @click="cancelAudioConfig">取消</a-button>
-            <a-button @click="goBackToCharacterSelection">上一步</a-button>
-            <a-button type="primary" @click="executeBatchCreate" :loading="batchCreating">
-              创建 {{ selectedCharactersForBatch.length }} 个角色
-            </a-button>
-          </a-space>
-        </div>
-
-        <div
-          class="audio-config-body"
-          style="padding-bottom: 80px; max-height: calc(100vh - 120px); overflow-y: auto"
-        >
-          <!-- 选中角色摘要 -->
-          <div class="selected-characters-summary">
-            <a-alert
-              message="即将创建的角色"
-              :description="`已选择 ${selectedCharactersForBatch.length} 个角色：${selectedCharactersForBatch.join('、')}`"
-              type="info"
-              show-icon
-              style="margin-bottom: 20px"
-            />
-          </div>
-
-          <!-- 统一音频配置 -->
-          <div class="unified-audio-config">
-            <h3>🎧 统一音频配置</h3>
-            <p class="config-description">
-              为所有选中的角色设置相同的语音配置。如果某些角色需要个性化设置，您可以在创建后到角色配音库中单独修改。
-            </p>
-
-            <a-form layout="vertical" size="middle">
-              <a-row :gutter="16">
-                <a-col :span="12">
-                  <a-form-item label="默认声音类型">
-                    <a-select
-                      v-model="unifiedVoiceType"
-                      :options="voiceTypeOptions"
-                      placeholder="选择默认声音类型"
-                    />
-                  </a-form-item>
-                </a-col>
-                <a-col :span="12">
-                  <a-form-item label="默认描述">
-                    <a-input
-                      v-model="unifiedDescription"
-                      placeholder="如：温柔女声、沉稳男声等"
-                    />
-                  </a-form-item>
-                </a-col>
-              </a-row>
-
-              <!-- 音频文件上传 -->
-              <a-form-item label="统一语音示例文件（可选，用于声音克隆）">
-                <div class="unified-audio-upload">
-                  <a-row :gutter="16">
-                    <a-col :span="12">
-                      <a-form-item label="WAV 音频文件">
-                        <a-upload
-                          v-model="unifiedWavFileList"
-                          name="unified_wav_file"
-                          accept=".wav"
-                          :max-count="1"
-                          :before-upload="() => false"
-                          @change="handleUnifiedFileChange($event, 'wav')"
-                        >
-                          <a-button size="large" type="dashed" style="width: 100%; height: 80px">
-                            <div style="text-align: center">
-                              <div>📁</div>
-                              <div>选择 WAV 文件</div>
-                              <div style="font-size: 12px; color: #666">将应用到所有角色</div>
-                            </div>
-                          </a-button>
-                        </a-upload>
-                      </a-form-item>
-                    </a-col>
-                    <a-col :span="12">
-                      <a-form-item label="NPY 特征文件">
-                        <a-upload
-                          v-model="unifiedNpyFileList"
-                          name="unified_npy_file"
-                          accept=".npy"
-                          :max-count="1"
-                          :before-upload="() => false"
-                          @change="handleUnifiedFileChange($event, 'npy')"
-                        >
-                          <a-button size="large" type="dashed" style="width: 100%; height: 80px">
-                            <div style="text-align: center">
-                              <div>📊</div>
-                              <div>选择 NPY 文件</div>
-                              <div style="font-size: 12px; color: #666">将应用到所有角色</div>
-                            </div>
-                          </a-button>
-                        </a-upload>
-                      </a-form-item>
-                    </a-col>
-                  </a-row>
-
-                  <div class="upload-tips">
-                    <a-alert
-                      message="💡 统一配置说明"
-                      description="上传的音频文件将作为所有选中角色的默认语音示例。WAV格式要求：单声道, 16kHz-48kHz采样率。NPY文件为对应的音频特征文件。"
-                      type="info"
-                      show-icon
-                    />
-                  </div>
-                </div>
-              </a-form-item>
-            </a-form>
           </div>
         </div>
       </div>
@@ -259,72 +124,65 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { message } from 'ant-design-vue'
 import { charactersAPI } from '@/api'
 
+// Props
 const props = defineProps({
-  // 章节信息
-  chapter: {
-    type: Object,
-    default: null
-  },
-  // 缺失的角色列表
-  missingCharacters: {
-    type: Array,
-    default: () => []
-  },
-  // 是否显示批量创建抽屉
   visible: {
     type: Boolean,
     default: false
   },
-  // 批量创建状态
+  missingCharacters: {
+    type: Array,
+    default: () => []
+  },
+  chapter: {
+    type: Object,
+    default: null
+  },
   batchCreating: {
     type: Boolean,
     default: false
   }
 })
 
+// Emits
 const emit = defineEmits([
   'update:visible',
-  'update:batchCreating', 
+  'update:batchCreating',
   'characters-created',
-  'refresh-library',
   'close'
 ])
 
-// 响应式状态
-const batchCreateModalVisible = computed({
-  get: () => {
-    console.log('[BatchCreateCharacterDrawer] batchCreateModalVisible get:', props.visible)
-    return props.visible
-  },
-  set: (value) => {
-    console.log('[BatchCreateCharacterDrawer] batchCreateModalVisible set:', value)
-    emit('update:visible', value)
+// 响应式数据
+const batchCreateModalVisible = ref(false)
+const selectedCharactersForBatch = ref([])
+const unifiedDescription = ref('')
+
+// 监听visible变化
+watch(
+  () => props.visible,
+  (newVal) => {
+    batchCreateModalVisible.value = newVal
+    if (newVal) {
+      // 重置状态
+      selectedCharactersForBatch.value = []
+      unifiedDescription.value = ''
+    }
+  }
+)
+
+// 监听抽屉状态变化
+watch(batchCreateModalVisible, (newVal) => {
+  emit('update:visible', newVal)
+  if (!newVal) {
+    emit('close')
   }
 })
 
-const selectedCharactersForBatch = ref([])
-const audioConfigModalVisible = ref(false)
-const unifiedVoiceType = ref('neutral')
-const unifiedDescription = ref('')
-const unifiedWavFileList = ref([])
-const unifiedNpyFileList = ref([])
-const unifiedWavFile = ref(null)
-const unifiedNpyFile = ref(null)
-
-// 🔥 语音类型选项
-const voiceTypeOptions = [
-  { label: '男声', value: 'male' },
-  { label: '女声', value: 'female' },
-  { label: '童声', value: 'child' },
-  { label: '中性', value: 'neutral' },
-  { label: '旁白', value: 'narrator' }
-]
-
-// 🔥 角色表格列配置
+// 表格列配置
 const characterTableColumns = [
   {
     title: '头像',
@@ -335,7 +193,7 @@ const characterTableColumns = [
   {
     title: '角色名称',
     key: 'name',
-    width: 150
+    width: 200
   },
   {
     title: '出现次数',
@@ -344,83 +202,29 @@ const characterTableColumns = [
     align: 'center'
   },
   {
-    title: '角色描述',
+    title: '描述',
     key: 'description',
     ellipsis: true
   }
 ]
 
-// 🔥 表格行选择配置
-const characterRowSelection = {
-  selectedRowKeys: selectedCharactersForBatch,
-  onChange: (selectedRowKeys) => {
+// 表格行选择配置
+const characterRowSelection = computed(() => ({
+  selectedRowKeys: selectedCharactersForBatch.value,
+  onChange: (selectedRowKeys, selectedRows) => {
     selectedCharactersForBatch.value = selectedRowKeys
-    console.log('📋 选中角色:', selectedRowKeys)
-  },
-  onSelectAll: (selected, selectedRows) => {
-    console.log(
-      '📋 全选操作:',
-      selected,
-      selectedRows.map((r) => r.name)
-    )
   }
-}
+}))
 
-// 方法定义
-const showBatchCreateModal = () => {
-  // 初始化缺失角色的配置
-  props.missingCharacters.forEach((char) => {
-    char.selected_voice_type = char.voice_type || 'neutral'
-    char.description = char.description || ''
-  })
-  selectedCharactersForBatch.value = []
-  batchCreateModalVisible.value = true
-}
-
+// 取消批量创建
 const cancelBatchCreate = () => {
   batchCreateModalVisible.value = false
   selectedCharactersForBatch.value = []
+  unifiedDescription.value = ''
   emit('close')
 }
 
-// 🔥 进入音频配置步骤
-const goToAudioConfig = () => {
-  if (selectedCharactersForBatch.value.length === 0) {
-    message.warning('请先选择要创建的角色')
-    return
-  }
-
-  // 关闭第一个抽屉，打开第二个抽屉
-  batchCreateModalVisible.value = false
-  audioConfigModalVisible.value = true
-
-  // 重置统一配置
-  unifiedVoiceType.value = 'neutral'
-  unifiedDescription.value = ''
-  unifiedWavFileList.value = []
-  unifiedNpyFileList.value = []
-  unifiedWavFile.value = null
-  unifiedNpyFile.value = null
-}
-
-// 🔥 取消音频配置
-const cancelAudioConfig = () => {
-  audioConfigModalVisible.value = false
-  selectedCharactersForBatch.value = []
-  // 重置配置
-  unifiedVoiceType.value = 'neutral'
-  unifiedDescription.value = ''
-  unifiedWavFileList.value = []
-  unifiedNpyFileList.value = []
-  emit('close')
-}
-
-// 🔥 返回角色选择
-const goBackToCharacterSelection = () => {
-  audioConfigModalVisible.value = false
-  batchCreateModalVisible.value = true
-}
-
+// 全选/取消全选
 const selectAllMissingCharacters = () => {
   selectedCharactersForBatch.value = props.missingCharacters.map((char) => char.name)
 }
@@ -429,42 +233,7 @@ const deselectAllMissingCharacters = () => {
   selectedCharactersForBatch.value = []
 }
 
-// 🔥 统一文件上传处理
-const handleUnifiedFileChange = (info, fileType) => {
-  console.log(`📁 统一文件变化 - 类型: ${fileType}`, info)
-
-  if (fileType === 'wav') {
-    unifiedWavFileList.value = info.fileList.slice(-1) // 保持最新的一个文件
-    unifiedWavFile.value =
-      unifiedWavFileList.value.length > 0 ? unifiedWavFileList.value[0].originFileObj : null
-  } else if (fileType === 'npy') {
-    unifiedNpyFileList.value = info.fileList.slice(-1) // 保持最新的一个文件
-    unifiedNpyFile.value =
-      unifiedNpyFileList.value.length > 0 ? unifiedNpyFileList.value[0].originFileObj : null
-  }
-
-  // 验证文件格式
-  if (unifiedWavFile.value) {
-    const fileName = unifiedWavFile.value.name.toLowerCase()
-    if (!fileName.endsWith('.wav')) {
-      message.warning('音频文件格式不正确，请选择 WAV 格式')
-      unifiedWavFileList.value = []
-      unifiedWavFile.value = null
-      return
-    }
-  }
-
-  if (unifiedNpyFile.value) {
-    const fileName = unifiedNpyFile.value.name.toLowerCase()
-    if (!fileName.endsWith('.npy')) {
-      message.warning('特征文件格式不正确，请选择 NPY 格式')
-      unifiedNpyFileList.value = []
-      unifiedNpyFile.value = null
-      return
-    }
-  }
-}
-
+// 🔥 简化：直接执行批量创建，不包含音频配置
 const executeBatchCreate = async () => {
   if (selectedCharactersForBatch.value.length === 0) {
     message.warning('请选择要添加的角色')
@@ -480,58 +249,26 @@ const executeBatchCreate = async () => {
   try {
     console.log('🎭 开始批量创建角色...')
 
-    // 🔥 使用统一配置创建角色数据
+    // 🔥 简化：只创建角色基本信息，不包含音频文件
     const charactersToCreate = selectedCharactersForBatch.value.map((characterName) => {
       const character = props.missingCharacters.find((char) => char.name === characterName)
       return {
         name: character.name,
-        voice_type: unifiedVoiceType.value || character.voice_type || 'neutral',
         description:
           unifiedDescription.value ||
           character.description ||
-          `从第${props.chapter.number}章智能识别的角色`,
-        chapter_id: props.chapter.id,
-        frequency: character.count || 1,
-        is_main_character: character.count > 5, // 出现超过5次认为是主要角色
-        // 保留智能分析的原始信息
-        detection_source: 'ai_analysis',
-        confidence: character.confidence || 0.8
+          `从第${props.chapter.number}章智能识别的角色`
       }
     })
 
     console.log('📝 准备创建的角色数据:', charactersToCreate)
 
-    // 调用批量创建API
+    // 调用批量创建API（不包含文件）
     const formData = new FormData()
     formData.append('characters_data', JSON.stringify(charactersToCreate))
     formData.append('book_id', props.chapter.book_id)
     if (props.chapter.id) {
       formData.append('chapter_id', props.chapter.id)
-    }
-
-    // 🔥 添加统一文件到FormData（为所有角色使用相同文件）
-    if (unifiedWavFile.value || unifiedNpyFile.value) {
-      selectedCharactersForBatch.value.forEach((characterName, index) => {
-        // 为每个角色添加统一的WAV文件
-        if (unifiedWavFile.value) {
-          formData.append(
-            `characters[${index}].wav_file`,
-            unifiedWavFile.value,
-            unifiedWavFile.value.name
-          )
-          console.log(`📁 添加统一WAV文件: ${characterName} -> ${unifiedWavFile.value.name}`)
-        }
-
-        // 为每个角色添加统一的NPY文件
-        if (unifiedNpyFile.value) {
-          formData.append(
-            `characters[${index}].npy_file`,
-            unifiedNpyFile.value,
-            unifiedNpyFile.value.name
-          )
-          console.log(`📊 添加统一NPY文件: ${characterName} -> ${unifiedNpyFile.value.name}`)
-        }
-      })
     }
 
     const response = await charactersAPI.batchCreateCharacters(formData)
@@ -540,26 +277,34 @@ const executeBatchCreate = async () => {
 
     if (response.data?.success) {
       const responseData = response.data.data || {}
-      const createdCharacters = responseData.created || []
-      const skippedCharacters = responseData.skipped || []
+      const createdCharacters = responseData.created_characters || []
+      const failedCharacters = responseData.failed_characters || []
 
       console.log('📋 创建的角色:', createdCharacters)
-      console.log('⏭️ 跳过的角色:', skippedCharacters)
+      console.log('❌ 失败的角色:', failedCharacters)
 
       if (createdCharacters.length > 0) {
         message.success(
-          `✅ 成功添加 ${createdCharacters.length} 个角色到配音库！${skippedCharacters.length > 0 ? ` (跳过 ${skippedCharacters.length} 个已存在的角色)` : ''}`
+          `✅ 成功添加 ${createdCharacters.length} 个角色到配音库！${failedCharacters.length > 0 ? ` (失败 ${failedCharacters.length} 个角色)` : ''}`
         )
         
-        // 通知父组件角色已创建 - 传递完整的角色对象数组
+        // 提示用户去角色配音库配置音频
+        message.info('💡 请在角色配音库中为这些角色配置音频和头像')
+        
+        // 通知父组件角色已创建
         console.log('[BatchCreateCharacterDrawer] 传递给父组件的角色数据:', createdCharacters)
         emit('characters-created', createdCharacters)
       } else {
-        message.warning('没有创建新角色，所选角色可能已存在')
+        if (failedCharacters.length > 0) {
+          const failedNames = failedCharacters.map(char => char.name).join('、')
+          message.warning(`没有创建新角色，以下角色已存在：${failedNames}`)
+        } else {
+          message.warning('没有创建新角色，所选角色可能已存在')
+        }
       }
 
-      // 关闭音频配置抽屉
-      audioConfigModalVisible.value = false
+      // 关闭抽屉
+      batchCreateModalVisible.value = false
       selectedCharactersForBatch.value = []
       emit('close')
     } else {
@@ -567,25 +312,33 @@ const executeBatchCreate = async () => {
     }
   } catch (error) {
     console.error('❌ 批量创建角色失败:', error)
-    message.error(`批量创建角色失败: ${error.message || '未知错误'}`)
+    let errorMessage = '未知错误'
+    if (error.response?.data?.detail) {
+      errorMessage = error.response.data.detail
+    } else if (error.response?.data?.message) {
+      errorMessage = error.response.data.message
+    } else if (error.response?.data?.error === 'http_error' && error.response?.data?.message) {
+      errorMessage = error.response.data.message
+    } else if (error.message) {
+      errorMessage = error.message
+    }
+    message.error(`批量创建角色失败: ${errorMessage}`)
   } finally {
     emit('update:batchCreating', false)
   }
 }
-
-// 暴露方法给父组件
-defineExpose({
-  showBatchCreateModal
-})
 </script>
 
 <style scoped>
 .batch-create-content {
   height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
 .batch-create-body {
-  padding-bottom: 80px;
+  flex: 1;
+  overflow-y: auto;
 }
 
 .batch-description {
@@ -593,7 +346,7 @@ defineExpose({
 }
 
 .characters-selection {
-  margin-bottom: 20px;
+  flex: 1;
 }
 
 .selection-header {
@@ -605,11 +358,11 @@ defineExpose({
 
 .selection-header h4 {
   margin: 0;
+  color: var(--ant-text-color);
 }
 
 .characters-table {
-  border: 1px solid var(--ant-border-color-split);
-  border-radius: 6px;
+  margin-bottom: 16px;
 }
 
 .character-name-cell {
@@ -620,6 +373,7 @@ defineExpose({
 
 .character-name-cell .name {
   font-weight: 500;
+  color: var(--ant-text-color);
 }
 
 .character-name-cell .meta {
@@ -628,69 +382,16 @@ defineExpose({
 }
 
 .description-cell {
-  max-width: 200px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.batch-summary {
-  margin-top: 20px;
-}
-
-.summary-info h4 {
-  margin-bottom: 8px;
-  color: var(--ant-primary-color);
-}
-
-.summary-info p {
-  margin-bottom: 8px;
-}
-
-.summary-note {
   color: var(--ant-text-color-secondary);
-  font-size: 14px;
+  font-size: 12px;
 }
 
-.audio-config-content {
-  height: 100%;
+.unified-config {
+  border: 1px solid var(--ant-border-color-split);
 }
 
-.audio-config-body {
-  padding-bottom: 80px;
-}
-
-.selected-characters-summary {
-  margin-bottom: 20px;
-}
-
-.unified-audio-config h3 {
-  margin-bottom: 8px;
-  color: var(--ant-primary-color);
-}
-
-.config-description {
-  color: var(--ant-text-color-secondary);
-  margin-bottom: 20px;
-  line-height: 1.6;
-}
-
-.unified-audio-upload {
-  margin-top: 16px;
-}
-
-.upload-tips {
-  margin-top: 16px;
-}
-
-.drawer-footer {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  padding: 16px;
-  border-top: 1px solid var(--ant-border-color-split);
-  background: var(--ant-component-background);
-  z-index: 1000;
+.unified-config h4 {
+  margin: 0 0 12px 0;
+  color: var(--ant-text-color);
 }
 </style>

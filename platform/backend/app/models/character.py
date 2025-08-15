@@ -164,8 +164,8 @@ class Character(BaseModel):
             result['avatarUrl'] = f"/api/v1/characters/avatar/default?name={encoded_name}&voice_type={self.voice_type}"
             
         if self.reference_audio_path:
-            filename = os.path.basename(self.reference_audio_path)
-            result['referenceAudioUrl'] = f"/api/v1/voice_profiles/{filename}"
+            # 🔥 修复：使用正确的音频文件访问路径
+            result['referenceAudioUrl'] = f"/api/v1/characters/{self.id}/audio/reference"
         else:
             result['referenceAudioUrl'] = None
             

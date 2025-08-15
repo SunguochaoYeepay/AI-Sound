@@ -114,7 +114,7 @@ export const charactersAPI = {
 
   // 批量创建角色（智能分析后）
   batchCreateCharacters: (formData) => {
-    return apiClient.post('/characters/batch-create-characters', formData, {
+    return apiClient.post('/characters/batch-create', formData, {
       headers: {
         'Content-Type': 'multipart/form-data'
       }

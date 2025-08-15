@@ -16,7 +16,7 @@ from app.models.character import Character
 from app.models import AnalysisResult
 from app.schemas.character import CharacterCreate, CharacterUpdate
 from app.utils import log_system_event
-from app.services.character_crud_service import CharacterCRUDService
+from app.services.character_management_service import CharacterManagementService
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ class CharacterBatchService:
     
     def __init__(self, db: Session):
         self.db = db
-        self.crud_service = CharacterCRUDService(db)
+        self.crud_service = CharacterManagementService(db)
     
     def batch_update_characters(
         self, 
