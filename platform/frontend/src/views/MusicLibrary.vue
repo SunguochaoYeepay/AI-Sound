@@ -5,10 +5,9 @@
       <div class="header-content">
         <div class="title-section">
           <h1 class="page-title">
-            <SoundOutlined style="margin-right: 12px" />
-            背景音乐
+            <SoundOutlined style="margin-right: 8px" />
+            背景音效
           </h1>
-          <p class="page-description">管理项目中使用的背景音乐，支持上传、分类、预览和智能推荐</p>
         </div>
 
         <div class="action-section">
@@ -1137,7 +1136,7 @@
 
   .page-header {
     margin-bottom: 24px;
-    padding: 32px;
+    padding: 20px 32px;
     background: linear-gradient(135deg, #722ed1 0%, #531dab 100%);
     border-radius: 12px;
     box-shadow: 0 8px 32px rgba(114, 46, 209, 0.3);
@@ -1159,16 +1158,9 @@
     display: flex;
     align-items: center;
     margin: 0;
-    font-size: 28px;
-    font-weight: 600;
+    font-size: 20px;
+    font-weight: 500;
     color: white;
-  }
-
-  .page-description {
-    margin: 0;
-    color: rgba(255, 255, 255, 0.85);
-    font-size: 14px;
-    line-height: 1.5;
   }
 
   .action-section {

@@ -54,6 +54,21 @@
 
       <!-- 手风琴导航菜单 -->
       <div class="accordion-menu">
+        <!-- 首页独立显示 -->
+        <a-menu
+          v-model:selectedKeys="selectedKeys"
+          mode="inline"
+          theme="dark"
+          :style="{ background: 'transparent', border: 'none' }"
+        >
+          <a-menu-item key="home" @click="navigateTo('home')">
+            <template #icon>
+              <HomeOutlined />
+            </template>
+            <span>首页</span>
+          </a-menu-item>
+        </a-menu>
+
         <!-- 内容管理组 -->
         <div class="menu-group">
           <div 
@@ -62,7 +77,12 @@
             :class="{ active: activeGroups.contentManagement }"
           >
             <div class="group-title">
-              <span>📚 内容管理</span>
+              <div class="group-title-left">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 8px;">
+                  <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/>
+                </svg>
+                <span>内容管理</span>
+              </div>
               <svg 
                 width="12" 
                 height="12" 
@@ -81,28 +101,18 @@
               theme="dark"
               :style="{ background: 'transparent', border: 'none' }"
             >
-              <a-menu-item key="home" @click="navigateTo('home')">
-                <template #icon>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z" />
-                  </svg>
-                </template>
-                <span>首页</span>
+              <a-menu-item key="books" @click="navigateTo('books')">
+                <span>书籍管理</span>
               </a-menu-item>
 
-              <a-menu-item key="books" @click="navigateTo('books')">
-                <template #icon>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                    <path
-                      d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"
-                    />
-                  </svg>
-                </template>
-                <span>书籍管理</span>
+              <a-menu-item key="voice-library" @click="navigateTo('voice-library')">
+                <span>角色管理</span>
               </a-menu-item>
             </a-menu>
           </div>
         </div>
+
+
 
         <!-- 音频制作组 -->
         <div class="menu-group">
@@ -112,7 +122,12 @@
             :class="{ active: activeGroups.audioProduction }"
           >
             <div class="group-title">
-              <span>🎵 音频制作</span>
+              <div class="group-title-left">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 8px;">
+                  <path d="M12 3v9.28c-.47-.17-.97-.28-1.5-.28C8.01 12 6 14.01 6 16.5S8.01 21 10.5 21s4.5-2.01 4.5-4.5V7h4V3h-6zM10.5 19C9.12 19 8 17.88 8 16.5S9.12 14 10.5 14s2.5 1.12 2.5 2.5S11.88 19 10.5 19z"/>
+                </svg>
+                <span>音频制作</span>
+              </div>
               <svg 
                 width="12" 
                 height="12" 
@@ -131,110 +146,30 @@
               theme="dark"
               :style="{ background: 'transparent', border: 'none' }"
             >
-              <a-menu-item key="voice-clone" @click="navigateTo('voice-clone')">
-                <template #icon>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                    <path
-                      d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"
-                    />
-                    <path
-                      d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"
-                    />
-                  </svg>
-                </template>
-                <span>声音克隆</span>
-              </a-menu-item>
-
-              <a-menu-item key="voice-library" @click="navigateTo('voice-library')">
-                <template #icon>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                    <path
-                      d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
-                    />
-                  </svg>
-                </template>
-                <span>角色配音</span>
-              </a-menu-item>
-
               <a-menu-item key="novel-projects" @click="navigateTo('novel-projects')">
-                <template #icon>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                    <path
-                      d="M21 5c-1.11-.35-2.33-.5-3.5-.5-1.95 0-4.05.4-5.5 1.5-1.45-1.1-3.55-1.5-5.5-1.5S2.45 4.9 1 6v14.65c0 .25.25.5.5.5.1 0 .15-.05.25-.05C3.1 20.45 5.05 20 6.5 20c1.95 0 4.05.4 5.5 1.5 1.35-.85 3.8-1.5 5.5-1.5 1.65 0 3.35.3 4.75 1.05.1.05.15.05.25.05.25 0 .5-.25.5-.5V6c-.6-.45-1.25-.75-2-1zm0 13.5c-1.1-.35-2.3-.5-3.5-.5-1.7 0-4.15.65-5.5 1.5V8c1.35-.85 3.8-1.5 5.5-1.5 1.2 0 2.4.15 3.5.5v11.5z"
-                    />
-                  </svg>
-                </template>
-                <span>语音合成</span>
+                <span>对话音合成</span>
               </a-menu-item>
-            </a-menu>
-          </div>
-        </div>
 
-        <!-- 创作工具组 -->
-        <div class="menu-group">
-          <div 
-            class="group-header" 
-            @click="toggleGroup('creationTools')"
-            :class="{ active: activeGroups.creationTools }"
-          >
-            <div class="group-title">
-              <span>🎬 创作工具</span>
-              <svg 
-                width="12" 
-                height="12" 
-                viewBox="0 0 24 24" 
-                fill="currentColor"
-                :class="{ rotated: !activeGroups.creationTools }"
-              >
-                <path d="M7 10l5 5 5-5z"/>
-              </svg>
-            </div>
-          </div>
-          <div class="group-content" :class="{ collapsed: !activeGroups.creationTools }">
-            <a-menu
-              v-model:selectedKeys="selectedKeys"
-              mode="inline"
-              theme="dark"
-              :style="{ background: 'transparent', border: 'none' }"
-            >
               <a-menu-item key="environment-sounds" @click="navigateTo('environment-sounds')">
-                <template #icon>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 3v9.28c-.47-.17-.97-.28-1.5-.28C8.01 12 6 14.01 6 16.5S8.01 21 10.5 21s4.5-2.01 4.5-4.5V7h4V3h-6zM10.5 19C9.12 19 8 17.88 8 16.5S9.12 14 10.5 14s2.5 1.12 2.5 2.5S11.88 19 10.5 19z"/>
-                    <path d="M3 9h2v6H3zM19 9h2v6h-2z"/>
-                  </svg>
-                </template>
-                <span>🌍 环境音</span>
+                <span>环境音合成</span>
               </a-menu-item>
 
               <a-menu-item key="music-library" @click="navigateTo('music-library')">
-                <template #icon>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                    <path
-                      d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
-                    />
-                    <path d="M12 9c-.83 0-1.5.67-1.5 1.5s.67 1.5 1.5 1.5 1.5-.67 1.5-1.5S12.83 9 12 9z" />
-                  </svg>
-                </template>
-                <span>背景音乐</span>
+                <span>背景音效</span>
               </a-menu-item>
 
               <a-menu-item key="audio-mixing" @click="navigateTo('audio-mixing')">
-                <template #icon>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                    <path
-                      d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6zM10 19c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"
-                    />
-                    <path d="M2 7h4v2H2V7zm0 3h4v2H2v-2zm0 3h4v2H2v-2z" />
-                  </svg>
-                </template>
-                <span>音频混合</span>
+                <span>合成中心</span>
+              </a-menu-item>
+
+              <a-menu-item key="audio-library" @click="navigateTo('audio-library')">
+                <span>音频库</span>
               </a-menu-item>
             </a-menu>
           </div>
         </div>
 
-        <!-- 资源库组 -->
+        <!-- 视觉资源组 -->
         <div class="menu-group">
           <div 
             class="group-header" 
@@ -242,7 +177,12 @@
             :class="{ active: activeGroups.resourceLibrary }"
           >
             <div class="group-title">
-              <span>📦 资源库</span>
+              <div class="group-title-left">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 8px;">
+                  <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>
+                </svg>
+                <span>视觉资源</span>
+              </div>
               <svg 
                 width="12" 
                 height="12" 
@@ -261,36 +201,11 @@
               theme="dark"
               :style="{ background: 'transparent', border: 'none' }"
             >
-              <a-menu-item key="audio-library" @click="navigateTo('audio-library')">
-                <template #icon>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                    <path
-                      d="M12 3v9.28c-.47-.17-.97-.28-1.5-.28C8.01 12 6 14.01 6 16.5S8.01 21 10.5 21s4.5-2.01 4.5-4.5V7h4V3h-7z"
-                    />
-                  </svg>
-                </template>
-                <span>音频库</span>
-              </a-menu-item>
-
               <a-menu-item key="image-generation" @click="navigateTo('image-generation')">
-                <template #icon>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                    <path
-                      d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"
-                    />
-                  </svg>
-                </template>
                 <span>图片生成</span>
               </a-menu-item>
 
               <a-menu-item key="image-library" @click="navigateTo('image-library')">
-                <template #icon>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                    <path
-                      d="M22 16V4c0-1.1-.9-2-2-2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2zm-11.5-6L9 12.5l2.5 3.01L15.5 11l4.5 6H8l2.5-3.5zM2 6v14c0 1.1.9 2 2 2h14v-2H4V6H2z"
-                    />
-                  </svg>
-                </template>
                 <span>图片库</span>
               </a-menu-item>
             </a-menu>
@@ -305,7 +220,12 @@
             :class="{ active: activeGroups.systemManagement }"
           >
             <div class="group-title">
-              <span>⚙️ 系统管理</span>
+              <div class="group-title-left">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 8px;">
+                  <path d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.07-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61 l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41 h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.74,8.87 C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.82,11.69,4.82,12s0.02,0.64,0.07,0.94l-2.03,1.58 c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54 c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.44-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96 c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.47-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6 s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"/>
+                </svg>
+                <span>系统工具</span>
+              </div>
               <svg 
                 width="12" 
                 height="12" 
@@ -324,58 +244,27 @@
               theme="dark"
               :style="{ background: 'transparent', border: 'none' }"
             >
+              <a-menu-item key="voice-clone" @click="navigateTo('voice-clone')">
+                <span>声音克隆</span>
+              </a-menu-item>
+
               <a-menu-item key="users" @click="navigateTo('users')">
-                <template #icon>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                    <path
-                      d="M16 7c0-2.21-1.79-4-4-4S8 4.79 8 7s1.79 4 4 4 4-1.79 4-4zm-4 6c-2.67 0-8 1.34-8 4v3h16v-3c0-2.66-5.33-4-8-4z"
-                    />
-                  </svg>
-                </template>
                 <span>用户管理</span>
               </a-menu-item>
 
               <a-menu-item key="roles" @click="navigateTo('roles')">
-                <template #icon>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                    <path
-                      d="M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1M12,7C13.4,7 14.8,8.6 14.8,10V11.5C14.8,12.6 14.4,13.5 13.29,13.5H10.71C9.6,13.5 9.2,12.6 9.2,11.5V10C9.2,8.6 10.6,7 12,7Z"
-                    />
-                  </svg>
-                </template>
                 <span>角色权限</span>
               </a-menu-item>
 
               <a-menu-item key="logs" @click="navigateTo('logs')">
-                <template #icon>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                    <path
-                      d="M9 3h6l1.83 2H21v2H3V5h4.17L9 3zm0 2l-.5 2h7l-.5-2H9zm-.5 4h7l-.5 2h-6l-.5-2zm-1 4h8l-.5 2H8.5l-.5-2zm-1 4h10v2H6v-2z"
-                    />
-                  </svg>
-                </template>
                 <span>日志监控</span>
               </a-menu-item>
 
               <a-menu-item key="backup" @click="navigateTo('backup')">
-                <template #icon>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                    <path
-                      d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z"
-                    />
-                  </svg>
-                </template>
                 <span>数据备份</span>
               </a-menu-item>
 
               <a-menu-item key="settings" @click="navigateTo('settings')">
-                <template #icon>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                    <path
-                      d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.07-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61 l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41 h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.74,8.87 C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.82,11.69,4.82,12s0.02,0.64,0.07,0.94l-2.03,1.58 c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54 c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.44-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96 c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.47-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6 s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"
-                    />
-                  </svg>
-                </template>
                 <span>系统配置</span>
               </a-menu-item>
             </a-menu>
@@ -402,26 +291,6 @@
 
     <!-- 主内容区域 -->
     <a-layout>
-      <!-- 快速访问栏 -->
-      <div class="quick-access-bar" v-if="!collapsed">
-        <div class="quick-access-container">
-          <div class="quick-access-title">🚀 快速访问</div>
-          <div class="quick-access-items">
-            <a-button
-              v-for="item in quickAccessItems"
-              :key="item.key"
-              type="text"
-              size="small"
-              class="quick-access-btn"
-              @click="quickNavigate(item.route)"
-              :class="{ active: route.path === item.route }"
-            >
-              <span class="quick-access-icon">{{ item.icon }}</span>
-              <span class="quick-access-label">{{ item.label }}</span>
-            </a-button>
-          </div>
-        </div>
-      </div>
 
       <!-- 顶部状态栏 -->
       <a-layout-header class="app-header">
@@ -533,6 +402,7 @@
   import { systemAPI } from './api/v2.js'
   import DevConsole from './components/DevConsole.vue'
   import GlobalAudioPlayer from './components/GlobalAudioPlayer.vue'
+  import { HomeOutlined } from '@ant-design/icons-vue'
   // import stagewiseConfigFile from '../stagewise.config.js'
 
   const router = useRouter()
@@ -555,22 +425,13 @@
   const activeGroups = ref({
     contentManagement: true,
     audioProduction: true,
-    creationTools: true,
     resourceLibrary: false,
     systemManagement: false
   })
 
-  // 快速访问功能
-  const quickAccessItems = ref([
-    { key: 'home', label: '首页', icon: '🏠', route: '/' },
-    { key: 'books', label: '书籍管理', icon: '📚', route: '/books' },
-    { key: 'novel-projects', label: '语音合成', icon: '🎵', route: '/novel-reader' },
-    { key: 'voice-clone', label: '声音克隆', icon: '🎤', route: '/basic-tts' },
-    { key: 'audio-mixing', label: '音频混合', icon: '🎛️', route: '/audio-mixing' }
-  ])
 
-  // 最近访问记录
-  const recentVisits = ref([])
+
+
 
   // 检查是否为开发环境
   const isDev = computed(() => import.meta.env.DEV)
@@ -590,14 +451,14 @@
       '/characters': 'voice-library',
       '/environment-sounds': 'environment-sounds',
       '/audio-library': 'audio-library',
-      '/music-library': 'music-library', // 🎵 添加背景音乐路由映射
-      '/image-generation': 'image-generation', // 🖼️ 添加图片生成路由映射
-      '/image-library': 'image-library', // 🖼️ 添加图片库路由映射
+      '/music-library': 'music-library',
+      '/image-generation': 'image-generation',
+      '/image-library': 'image-library',
       '/novel-reader': 'novel-projects',
       '/novel-reader/create': 'novel-projects',
       '/novel-reader/edit': 'novel-projects',
       '/synthesis': 'novel-projects',
-      '/audio-mixing': 'audio-mixing', // 🎵 音频混合路由映射
+      '/audio-mixing': 'audio-mixing',
   
       '/users': 'users',
       '/roles': 'roles',
@@ -640,31 +501,6 @@
     updateSelectedKeys()
   })
 
-  // 快速导航函数
-  const quickNavigate = (targetRoute) => {
-    if (route.path !== targetRoute) {
-      router.push(targetRoute)
-      // 添加到最近访问记录
-      addToRecentVisits(targetRoute)
-    }
-  }
-
-  // 添加到最近访问记录
-  const addToRecentVisits = (route) => {
-    const visitItem = quickAccessItems.value.find(item => item.route === route)
-    if (visitItem) {
-      const existingIndex = recentVisits.value.findIndex(item => item.route === route)
-      if (existingIndex > -1) {
-        recentVisits.value.splice(existingIndex, 1)
-      }
-      recentVisits.value.unshift(visitItem)
-      // 只保留最近5个访问记录
-      if (recentVisits.value.length > 5) {
-        recentVisits.value = recentVisits.value.slice(0, 5)
-      }
-    }
-  }
-
   // 导航函数 - 使用Vue Router
   const navigateTo = (view) => {
     const viewToRoute = {
@@ -674,12 +510,11 @@
       'voice-library': '/characters',
       'environment-sounds': '/environment-sounds',
       'audio-library': '/audio-library',
-      'music-library': '/music-library', // 🎵 添加背景音乐路由映射
-      'image-generation': '/image-generation', // 🖼️ 添加图片生成路由映射
-      'image-library': '/image-library', // 🖼️ 添加图片库路由映射
+      'music-library': '/music-library',
+      'image-generation': '/image-generation',
+      'image-library': '/image-library',
       'novel-projects': '/novel-reader',
-  
-      'audio-mixing': '/sound-editor', // 🎵 音频混合路由映射
+      'audio-mixing': '/sound-editor',
       users: '/users',
       roles: '/roles',
       logs: '/logs',
@@ -692,12 +527,12 @@
     // 只有在路由真正改变时才跳转
     if (route.path !== targetRoute) {
       router.push(targetRoute)
-      // 添加到最近访问记录
-      addToRecentVisits(targetRoute)
     }
 
     selectedKeys.value = [view]
   }
+
+
 
   // 切换菜单分组展开状态
   const toggleGroup = (groupName) => {
@@ -707,20 +542,20 @@
   // 根据当前路由获取页面标题
   const getPageTitle = () => {
     const titles = {
-      '/': 'AI-Sound 智能语音平台',
+      '/': '首页',
       '/books': '书籍管理',
       '/basic-tts': '声音克隆',
-      '/characters': '角色配音',
-      '/environment-sounds': '环境音分析',
+      '/characters': '角色管理',
+      '/environment-sounds': '环境音合成',
       '/audio-library': '音频库',
-      '/music-library': '背景音乐', // 🎵 添加背景音乐页面标题
-      '/image-generation': '图片生成', // 🖼️ 添加图片生成页面标题
-      '/image-library': '图片库', // 🖼️ 添加图片库页面标题
-      '/novel-reader': '语音合成',
-      '/novel-reader/create': '语音合成',
-      '/novel-reader/edit': '语音合成',
-      '/synthesis': '创作中心',
-      '/sound-editor': '音频混合', // 🎵 音频混合页面标题
+      '/music-library': '背景音效',
+      '/image-generation': '图片生成',
+      '/image-library': '图片库',
+      '/novel-reader': '对话音合成',
+      '/novel-reader/create': '对话音合成',
+      '/novel-reader/edit': '对话音合成',
+      '/synthesis': '合成中心',
+      '/sound-editor': '合成中心',
   
       '/users': '用户管理',
       '/roles': '角色权限',
@@ -736,7 +571,7 @@
       }
     }
 
-    return 'AI-Sound 智能语音平台'
+    return '首页'
   }
 
   // 获取系统状态颜色
@@ -896,6 +731,10 @@
   }
 
   /* 菜单分组样式 */
+  .menu-group {
+    margin-bottom: 8px;
+  }
+
   .menu-group-divider {
     background-color: rgba(255, 255, 255, 0.1) !important;
     margin: 8px 0 !important;
@@ -916,6 +755,59 @@
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 1px;
+  }
+
+  /* 新的菜单分组样式 */
+  .group-header {
+    cursor: pointer;
+    padding: 8px 16px;
+    border-radius: 6px;
+    margin: 4px 8px;
+    transition: all 0.3s;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .group-header:hover {
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+  .group-header.active {
+    background: rgba(255, 255, 255, 0.15);
+  }
+
+  .group-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .group-title-left {
+    display: flex;
+    align-items: center;
+  }
+
+  .group-title svg {
+    transition: transform 0.3s;
+  }
+
+  .group-title svg.rotated {
+    transform: rotate(-90deg);
+  }
+
+  .group-content {
+    overflow: hidden;
+    transition: all 0.3s;
+  }
+
+  .group-content.collapsed {
+    max-height: 0;
+    opacity: 0;
   }
 
   /* 收起状态下的按钮位置调整 - 确保在80px宽度内 */
@@ -1032,6 +924,19 @@
 
   [data-theme='dark'] .menu-group-title {
     color: rgba(255, 255, 255, 0.6) !important;
+  }
+
+  /* 暗黑模式下新的菜单分组样式 */
+  [data-theme='dark'] .group-header:hover {
+    background: rgba(255, 255, 255, 0.15) !important;
+  }
+
+  [data-theme='dark'] .group-header.active {
+    background: rgba(255, 255, 255, 0.2) !important;
+  }
+
+  [data-theme='dark'] .group-title {
+    color: rgba(255, 255, 255, 0.9) !important;
   }
 
   /* 顶部状态栏优化 */
@@ -2500,7 +2405,7 @@
   .app-header {
     background: linear-gradient(135deg, #ffffff 0%, #fdf9f4 100%) !important;
     border-bottom: 1px solid rgba(255, 123, 84, 0.1) !important;
-    height: 58px;
+    height: 48px;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -2527,13 +2432,13 @@
 
   .page-title-header {
     margin: 0;
-    color: #2c3e50;
-    font-weight: 600;
-    font-size: 18px;
+    color: #666;
+    font-weight: 500;
+    font-size: 14px;
   }
 
   [data-theme='dark'] .page-title-header {
-    color: #fff;
+    color: #ccc;
   }
 
   .header-icon-btn {
@@ -2567,91 +2472,7 @@
     gap: 8px;
   }
 
-  /* 快速访问栏样式 */
-  .quick-access-bar {
-    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-    border-bottom: 1px solid rgba(0, 0, 0, 0.1);
-    padding: 8px 24px;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
-  }
 
-  [data-theme='dark'] .quick-access-bar {
-    background: linear-gradient(135deg, #2d2d2d 0%, #1f1f1f 100%);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  }
-
-  .quick-access-container {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-  }
-
-  .quick-access-title {
-    font-size: 12px;
-    font-weight: 600;
-    color: #666;
-    white-space: nowrap;
-  }
-
-  [data-theme='dark'] .quick-access-title {
-    color: #ccc;
-  }
-
-  .quick-access-items {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
-
-  .quick-access-btn {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 4px 8px;
-    border-radius: 6px;
-    transition: all 0.2s ease;
-    font-size: 12px;
-    height: 28px;
-  }
-
-  .quick-access-btn:hover {
-    background: rgba(var(--primary-color-rgb), 0.1);
-    transform: translateY(-1px);
-  }
-
-  .quick-access-btn.active {
-    background: rgba(var(--primary-color-rgb), 0.2);
-    color: var(--primary-color);
-  }
-
-  .quick-access-icon {
-    font-size: 14px;
-  }
-
-  .quick-access-label {
-    font-weight: 500;
-  }
-
-  /* 响应式设计 */
-  @media (max-width: 768px) {
-    .quick-access-container {
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 8px;
-    }
-    
-    .quick-access-items {
-      width: 100%;
-      justify-content: flex-start;
-    }
-    
-    .quick-access-btn {
-      flex: 1;
-      justify-content: center;
-      min-width: 80px;
-    }
-  }
 
   /* 音频编辑器全屏模式样式 */
   body.sound-editor-fullscreen .ant-layout-sider {

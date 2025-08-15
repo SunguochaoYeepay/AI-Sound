@@ -5,7 +5,7 @@
       <div class="header-content">
         <div class="title-section">
           <h1 class="page-title">
-            <svg class="title-icon" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+            <svg class="title-icon" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
               <path
                 d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"
               />
@@ -13,11 +13,8 @@
                 d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"
               />
             </svg>
-            声音克隆测试平台
+            声音克隆
           </h1>
-          <p class="page-description">
-            基于MegaTTS3 WaveVAE decoder-only架构，需要同时提供音频文件和latent特征文件
-          </p>
         </div>
         <div class="action-section">
           <div class="status-badges">
@@ -814,7 +811,7 @@
 
   .page-header {
     margin-bottom: 24px;
-    padding: 32px;
+    padding: 20px 32px;
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     border-radius: 12px;
     box-shadow: 0 8px 32px rgba(102, 126, 234, 0.3);
@@ -836,21 +833,14 @@
     display: flex;
     align-items: center;
     margin: 0;
-    font-size: 28px;
-    font-weight: 600;
+    font-size: 20px;
+    font-weight: 500;
     color: white;
   }
 
   .title-icon {
-    margin-right: 12px;
+    margin-right: 8px;
     color: #ffffff;
-  }
-
-  .page-description {
-    margin: 0;
-    color: rgba(255, 255, 255, 0.85);
-    font-size: 14px;
-    line-height: 1.5;
   }
 
   .action-section {

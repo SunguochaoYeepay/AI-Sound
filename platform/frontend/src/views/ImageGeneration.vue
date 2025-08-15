@@ -4,7 +4,6 @@
     <div class="header-section">
       <div class="page-title">
         <h1>🖼️ 图片生成</h1>
-        <p>基于书籍智能准备结果生成配图</p>
       </div>
     </div>
     
@@ -864,13 +863,13 @@ onUnmounted(() => {
   min-height: 100vh;
 }
 
-.header-section {
-  margin-bottom: 24px;
-  padding: 32px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border-radius: 12px;
-  box-shadow: 0 8px 32px rgba(102, 126, 234, 0.3);
-}
+  .header-section {
+    margin-bottom: 24px;
+    padding: 20px 32px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(102, 126, 234, 0.3);
+  }
 
 .page-title {
   display: flex;
@@ -880,9 +879,9 @@ onUnmounted(() => {
 
 .page-title h1 {
   margin: 0;
-  font-size: 28px;
+  font-size: 20px;
   color: white;
-  font-weight: 600;
+  font-weight: 500;
   display: flex;
   align-items: center;
 }

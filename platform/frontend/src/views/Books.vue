@@ -8,7 +8,6 @@
             <BookOutlined class="title-icon" />
             书籍管理
           </h1>
-          <p class="page-description">管理您的小说、图书内容，为语音合成项目提供文本素材</p>
         </div>
         <div class="action-section">
           <a-button type="primary" size="large" @click="$router.push('/books/create')">
@@ -440,7 +439,7 @@
 
   .page-header {
     margin-bottom: 24px;
-    padding: 32px;
+    padding: 20px 32px;
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     border-radius: 12px;
     box-shadow: 0 8px 32px rgba(102, 126, 234, 0.3);
@@ -455,22 +454,15 @@
   .title-section .page-title {
     display: flex;
     align-items: center;
-    margin: 0 0 8px 0;
-    font-size: 28px;
-    font-weight: 600;
+    margin: 0;
+    font-size: 20px;
+    font-weight: 500;
     color: white;
   }
 
   .title-icon {
-    margin-right: 12px;
+    margin-right: 8px;
     color: #ffffff;
-  }
-
-  .page-description {
-    margin: 0;
-    color: rgba(255, 255, 255, 0.85);
-    font-size: 14px;
-    line-height: 1.5;
   }
 
   .search-section {

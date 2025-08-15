@@ -1,7 +1,7 @@
 <template>
   <div class="environment-sounds-page">
     <!-- 页面头部 -->
-    <PageHeader title="环境音管理" subtitle="管理和生成环境音效，为故事场景增添氛围">
+    <PageHeader title="环境音合成">
       <template #actions>
         <a-button type="primary" size="large" @click="startNewAnalysis">
           <BulbOutlined />

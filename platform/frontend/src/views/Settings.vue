@@ -8,7 +8,6 @@
             <SettingOutlined class="title-icon" />
             系统设置
           </h1>
-          <p class="page-description">管理站点基本信息和系统核心配置</p>
         </div>
         <div class="action-section">
           <a-button type="primary" size="large" @click="saveAllSettings" :loading="saving" ghost>
@@ -917,7 +916,7 @@
 
   .page-header {
     margin-bottom: 24px;
-    padding: 32px;
+    padding: 20px 32px;
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     border-radius: 12px;
     box-shadow: 0 8px 32px rgba(102, 126, 234, 0.3);
@@ -939,21 +938,14 @@
     display: flex;
     align-items: center;
     margin: 0;
-    font-size: 28px;
-    font-weight: 600;
+    font-size: 20px;
+    font-weight: 500;
     color: white;
   }
 
   .title-icon {
-    margin-right: 12px;
+    margin-right: 8px;
     color: #ffffff;
-  }
-
-  .page-description {
-    margin: 0;
-    color: rgba(255, 255, 255, 0.85);
-    font-size: 14px;
-    line-height: 1.5;
   }
 
   .action-section {

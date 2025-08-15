@@ -8,7 +8,6 @@
             <SoundOutlined class="title-icon" />
             音频资源库
           </h1>
-          <p class="page-description">统一管理所有生成的音频文件</p>
         </div>
         <div class="action-section">
           <a-button type="primary" size="large" @click="syncAudioFiles" :loading="syncing" ghost>
@@ -679,7 +678,7 @@
 
   .page-header {
     margin-bottom: 24px;
-    padding: 32px;
+    padding: 20px 32px;
     background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
     border-radius: 12px;
     box-shadow: 0 8px 32px rgba(6, 182, 212, 0.3);
@@ -701,21 +700,14 @@
     display: flex;
     align-items: center;
     margin: 0;
-    font-size: 28px;
-    font-weight: 600;
+    font-size: 20px;
+    font-weight: 500;
     color: white;
   }
 
   .title-icon {
-    margin-right: 12px;
+    margin-right: 8px;
     color: #ffffff;
-  }
-
-  .page-description {
-    margin: 0;
-    color: rgba(255, 255, 255, 0.85);
-    font-size: 14px;
-    line-height: 1.5;
   }
 
   .action-section {

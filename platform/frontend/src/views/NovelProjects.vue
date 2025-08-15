@@ -6,9 +6,8 @@
         <div class="title-section">
           <h1 class="page-title">
             <SoundOutlined class="title-icon" />
-            语音合成项目
+            对话音合成
           </h1>
-          <p class="page-description">管理文本转语音项目，创建和生成多角色朗读音频</p>
         </div>
         <div class="action-section">
           <a-button type="primary" size="large" @click="goToCreatePage">
@@ -820,7 +819,7 @@
   /* 页面头部 */
   .page-header {
     margin-bottom: 24px;
-    padding: 32px;
+    padding: 20px 32px;
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     border-radius: 12px;
     box-shadow: 0 8px 32px rgba(102, 126, 234, 0.3);
@@ -842,8 +841,8 @@
     display: flex;
     align-items: center;
     margin: 0;
-    font-size: 28px;
-    font-weight: 600;
+    font-size: 20px;
+    font-weight: 500;
     color: white;
   }
 
@@ -853,15 +852,8 @@
   }
 
   .title-icon {
-    margin-right: 12px;
+    margin-right: 8px;
     color: #ffffff;
-  }
-
-  .page-description {
-    margin: 0;
-    color: rgba(255, 255, 255, 0.85);
-    font-size: 14px;
-    line-height: 1.5;
   }
 
   /* 统计卡片 */

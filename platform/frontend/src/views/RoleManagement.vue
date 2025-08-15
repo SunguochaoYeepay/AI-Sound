@@ -6,9 +6,8 @@
         <div class="title-section">
           <h1 class="page-title">
             <TeamOutlined class="title-icon" />
-            角色管理
+            角色权限
           </h1>
-          <p class="page-description">管理系统角色权限，配置用户访问控制</p>
         </div>
         <div class="action-section">
           <a-button type="primary" size="large" @click="showCreateModal = true">
@@ -658,7 +657,7 @@
   .page-header {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
-    padding: 32px;
+    padding: 20px 32px;
   }
 
   .header-content {
@@ -673,22 +672,16 @@
   }
 
   .page-title {
-    font-size: 28px;
-    font-weight: 600;
-    margin: 0 0 8px 0;
+    font-size: 20px;
+    font-weight: 500;
+    margin: 0;
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 8px;
   }
 
   .title-icon {
-    font-size: 32px;
-  }
-
-  .page-description {
-    font-size: 16px;
-    opacity: 0.9;
-    margin: 0;
+    font-size: 20px;
   }
 
   .action-section {

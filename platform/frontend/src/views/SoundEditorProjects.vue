@@ -3,28 +3,26 @@
     <!-- 页面头部 -->
     <div class="page-header">
       <div class="header-content">
-        <h1 class="page-title">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" class="title-icon">
-            <path
-              d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"
-            />
-          </svg>
-          音频混合
-        </h1>
-        <p class="page-description">专业级多轨音频混合工具，支持对话、环境音、背景音乐智能混合</p>
-      </div>
-
-      <div class="header-actions">
-        <a-button type="primary" size="large" @click="createNewProject">
-          <template #icon>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
+        <div class="title-section">
+          <h1 class="page-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" class="title-icon">
+              <path
+                d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"
+              />
             </svg>
-          </template>
-          新建混合项目
-        </a-button>
-
-        
+            合成中心
+          </h1>
+        </div>
+        <div class="action-section">
+          <a-button type="primary" size="large" @click="createNewProject">
+            <template #icon>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
+              </svg>
+            </template>
+            新建混合项目
+          </a-button>
+        </div>
       </div>
     </div>
 
@@ -663,38 +661,42 @@
   }
 
   .page-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 24px;
-    border-radius: 8px;
     margin-bottom: 24px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    padding: 20px 32px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(102, 126, 234, 0.3);
   }
 
-  .header-content .page-title {
+  .header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+  }
+
+  .title-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .page-title {
     display: flex;
     align-items: center;
     margin: 0;
-    font-size: 24px;
-    font-weight: 600;
-    color: #1f2937;
+    font-size: 20px;
+    font-weight: 500;
+    color: white;
   }
 
   .title-icon {
-    margin-right: 12px;
-    color: #3b82f6;
+    margin-right: 8px;
+    color: #ffffff;
   }
 
-  .page-description {
-    margin: 8px 0 0 0;
-    color: #6b7280;
-    font-size: 14px;
-  }
-
-  .header-actions {
+  .action-section {
     display: flex;
-    gap: 12px;
+    gap: 16px;
   }
 
   .filters-section {

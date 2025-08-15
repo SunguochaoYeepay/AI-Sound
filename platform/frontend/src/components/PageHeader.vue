@@ -28,12 +28,11 @@
 
 <style scoped>
   .page-header {
-    background: #fff;
-    padding: 16px 24px;
-    margin-bottom: 16px;
-    border-radius: 6px;
-    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03);
-    border: 1px solid #f0f0f0;
+    margin-bottom: 24px;
+    padding: 20px 32px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(102, 126, 234, 0.3);
   }
 
   .header-content {
@@ -43,26 +42,29 @@
   }
 
   .title-section {
-    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
   }
 
   .page-title {
     margin: 0;
     font-size: 20px;
-    font-weight: 600;
-    color: #262626;
+    font-weight: 500;
+    color: white;
     line-height: 28px;
   }
 
   .page-subtitle {
-    margin: 4px 0 0 0;
+    margin: 0;
+    color: rgba(255, 255, 255, 0.85);
     font-size: 14px;
-    color: #8c8c8c;
-    line-height: 22px;
+    line-height: 1.5;
   }
 
-  .extra-section {
-    margin-left: 16px;
+  .actions-section {
+    display: flex;
+    gap: 16px;
   }
 
   .content-section {
