@@ -197,30 +197,15 @@
               theme="dark"
               :style="{ background: 'transparent', border: 'none' }"
             >
-              <a-sub-menu key="environment-sounds-group">
-                <template #title>
+              <a-menu-item key="environment-sounds" @click="navigateTo('environment-sounds')">
+                <template #icon>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M12 3v9.28c-.47-.17-.97-.28-1.5-.28C8.01 12 6 14.01 6 16.5S8.01 21 10.5 21s4.5-2.01 4.5-4.5V7h4V3h-6zM10.5 19C9.12 19 8 17.88 8 16.5S9.12 14 10.5 14s2.5 1.12 2.5 2.5S11.88 19 10.5 19z"/>
                     <path d="M3 9h2v6H3zM19 9h2v6h-2z"/>
                   </svg>
-                  <span>🎵 环境音制作</span>
                 </template>
-                
-                <a-menu-item key="environment-sounds" @click="navigateTo('environment-sounds')">
-                  <template #icon>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z" />
-                      <path
-                        d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"
-                      />
-                      <path d="M11 7h2v2h-2zm0 4h2v6h-2z" />
-                    </svg>
-                  </template>
-                  <span>🌍 环境音管理</span>
-                </a-menu-item>
-
-
-              </a-sub-menu>
+                <span>🌍 环境音</span>
+              </a-menu-item>
 
               <a-menu-item key="music-library" @click="navigateTo('music-library')">
                 <template #icon>
