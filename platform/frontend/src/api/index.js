@@ -1195,8 +1195,8 @@ export const environmentGenerationAPI = {
     apiClient.post('/environment-generation/books/analyze', request),
 
   // 混音环境音
-  mixEnvironmentSounds: (projectId) =>
-    apiClient.post(`/environment-generation/mix/${projectId}`),
+  mixEnvironmentSounds: (projectId, data = {}) =>
+    apiClient.post(`/environment-generation/mix/${projectId}`, data),
 
   // 下载混音环境音
   downloadMixedEnvironmentSounds: (projectId) =>

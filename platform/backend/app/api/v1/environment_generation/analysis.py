@@ -136,9 +136,8 @@ async def analyze_book_environment(
                 # 更新统计信息
                 existing_project.analysis_tracks = total_tracks
                 
-                # 如果没有book_id，使用novel_project_id
-                if not book_id and analysis_options.get('novel_project_id'):
-                    existing_project.novel_project_id = analysis_options['novel_project_id']
+                # 环境音项目已独立，不再关联合成项目
+                # 移除novel_project_id关联逻辑
                 
                 db.commit()
                 logger.info(f"[ENV_GEN_API] 更新指定项目: {project_id}")
@@ -148,19 +147,13 @@ async def analyze_book_environment(
             # 查找或创建环境音项目
             env_service = EnvironmentProjectService(db)
             
-            # 确定novel_project_id
-            novel_project_id = book_id
-            if not book_id and analysis_options.get('novel_project_id'):
-                novel_project_id = analysis_options['novel_project_id']
-                logger.info(f"[ENV_GEN_API] 使用novel_project_id: {novel_project_id}")
-            
-            # 查找现有项目（通过novel_project_id）
-            existing_env_project = db.query(EnvironmentProject).filter(EnvironmentProject.novel_project_id == novel_project_id).first()
+            # 查找现有项目（通过book_id）
+            existing_env_project = db.query(EnvironmentProject).filter(EnvironmentProject.book_id == book_id).first()
             
             if existing_env_project:
                 # 更新现有项目
                 env_service.create_or_update(
-                    novel_project_id=novel_project_id,
+                    book_id=book_id,
                     analysis_result=multi_chapter_result, # 保存多章节结果
                     analysis_stats=analysis_stats,
                     analysis_options=analysis_options
@@ -170,7 +163,7 @@ async def analyze_book_environment(
             else:
                 # 创建新项目
                 env_project = env_service.create_or_update(
-                    novel_project_id=novel_project_id,
+                    book_id=book_id,
                     analysis_result=multi_chapter_result, # 保存多章节结果
                     analysis_stats=analysis_stats,
                     analysis_options=analysis_options
@@ -239,25 +232,25 @@ async def analyze_chapters_environment(
         project_id = None
         create_project = analysis_options.get('create_project', False)
         
-        # 通过书籍ID找到对应的合成项目
-        novel_project = db.query(NovelProject).filter(NovelProject.book_id == book.id).first()
-        if not novel_project:
-            logger.warning(f"[ENV_GEN_API] 书籍 {book.id} 没有对应的合成项目")
-            # 如果没有合成项目，使用书籍ID作为后备
-            novel_project_id = book.id
-        else:
-            novel_project_id = novel_project.id
-        
         if existing_project_id:
-            # 使用指定的现有项目ID
+            # 使用指定的现有项目ID，直接更新项目
             project_id = existing_project_id
-            create_project = True  # 强制保存到现有项目
             logger.info(f"[ENV_GEN_API] 使用现有项目ID: {project_id}")
+            
+            # 直接更新现有项目
+            env_service = EnvironmentProjectService(db)
+            env_service.create_or_update(
+                book_id=book.id,
+                analysis_result=analysis_result,
+                analysis_stats=analysis_stats,
+                analysis_options=analysis_options
+            )
+            logger.info(f"[ENV_GEN_API] 更新现有项目: {project_id}")
         elif create_project:
             # 创建新项目
             env_service = EnvironmentProjectService(db)
             env_project = env_service.create_or_update(
-                novel_project_id=novel_project_id,  # 使用合成项目ID
+                book_id=book.id,
                 analysis_result=analysis_result,
                 analysis_stats=analysis_stats,
                 analysis_options=analysis_options
@@ -265,14 +258,14 @@ async def analyze_chapters_environment(
             project_id = env_project.id
             logger.info(f"[ENV_GEN_API] 创建新环境音项目: {project_id}")
         else:
-            # 查找现有项目（通过合成项目ID）
+            # 查找现有项目（通过书籍ID）
             env_service = EnvironmentProjectService(db)
-            existing_env_project = env_service.get_by_novel_project_id(novel_project_id)
+            existing_env_project = db.query(EnvironmentProject).filter(EnvironmentProject.book_id == book.id).first()
             
             if existing_env_project:
                 # 更新现有项目
                 env_service.create_or_update(
-                    novel_project_id=novel_project_id,
+                    book_id=book.id,
                     analysis_result=analysis_result,
                     analysis_stats=analysis_stats,
                     analysis_options=analysis_options
@@ -323,14 +316,33 @@ async def analyze_environment_from_synthesis_plan(
     
     logger.info(f"[ENV_GEN_API] 开始环境音分析，项目ID: {request.project_id}，强制重新分析: {force_reanalyze}")
     
-    # 🚀 检查数据库中是否已有分析结果 - 使用独立的环境音项目
-    project = db.query(NovelProject).filter(NovelProject.id == request.project_id).first()
-    if not project:
-        raise HTTPException(status_code=404, detail=f"项目 {request.project_id} 不存在")
+    # 🚀 检查数据库中是否已有分析结果 - 支持环境音项目ID和小说项目ID
+    project = None
+    book_id = None
+    existing_env_project = None
     
-    # 使用环境音项目服务检查现有分析结果
-    env_service = EnvironmentProjectService(db)
-    existing_env_project = env_service.get_by_novel_project_id(request.project_id)
+    # 首先尝试查找环境音项目
+    env_project = db.query(EnvironmentProject).filter(EnvironmentProject.id == request.project_id).first()
+    if env_project:
+        # 这是环境音项目ID
+        project = env_project
+        book_id = env_project.book_id
+        existing_env_project = env_project
+        logger.info(f"[ENV_GEN_API] 使用环境音项目ID: {request.project_id}")
+    else:
+        # 尝试查找小说项目
+        novel_project = db.query(NovelProject).filter(NovelProject.id == request.project_id).first()
+        if novel_project:
+            # 这是小说项目ID
+            project = novel_project
+            book_id = novel_project.book_id
+            logger.info(f"[ENV_GEN_API] 使用小说项目ID: {request.project_id}")
+            
+            # 通过书籍ID查找环境音项目
+            env_service = EnvironmentProjectService(db)
+            existing_env_project = db.query(EnvironmentProject).filter(EnvironmentProject.book_id == book_id).first()
+        else:
+            raise HTTPException(status_code=404, detail=f"项目 {request.project_id} 不存在（既不是环境音项目也不是小说项目）")
     
     if not force_reanalyze and existing_env_project and existing_env_project.analysis_result:
         logger.info(f"[ENV_GEN_API] 发现已有分析结果，项目ID: {request.project_id}")
@@ -346,7 +358,7 @@ async def analyze_environment_from_synthesis_plan(
     
     try:
         # 🚨 验证项目状态（项目已在前面查询过）
-        if project.status == 'cancelled':
+        if hasattr(project, 'status') and project.status == 'cancelled':
             raise HTTPException(
                 status_code=422, 
                 detail=f"项目 {request.project_id} 已被取消，无法进行环境音分析。请重新启动项目或选择其他项目。"
@@ -355,8 +367,8 @@ async def analyze_environment_from_synthesis_plan(
         # 🚨 验证synthesis_plan数据
         if not request.synthesis_plan:
             # 尝试从数据库获取synthesis_plan
-            # 通过项目ID -> 书籍ID -> 章节 -> 分析结果的路径查找
-            chapters = db.query(BookChapter).filter(BookChapter.book_id == getattr(project, 'book_id', None)).all()
+            # 通过书籍ID -> 章节 -> 分析结果的路径查找
+            chapters = db.query(BookChapter).filter(BookChapter.book_id == book_id).all()
             
             analysis_result = None
             for chapter in chapters:
@@ -416,7 +428,7 @@ async def analyze_environment_from_synthesis_plan(
         # 🚀 保存到数据库 - 使用独立的环境音项目
         env_service = EnvironmentProjectService(db)
         env_project = env_service.create_or_update(
-            novel_project_id=request.project_id,
+            book_id=book_id,
             analysis_result=analysis_result,
             analysis_stats=analysis_stats,
             analysis_options=request.options

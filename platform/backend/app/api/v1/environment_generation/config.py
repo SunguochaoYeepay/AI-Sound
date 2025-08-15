@@ -28,7 +28,7 @@ async def get_environment_config(
         
         # 使用环境音项目服务获取配置
         env_service = EnvironmentProjectService(db)
-        env_project = env_service.get_by_novel_project_id(project_id)
+        env_project = env_service.get_by_id(project_id)
         
         if not env_project or not env_project.analysis_result:
             return {

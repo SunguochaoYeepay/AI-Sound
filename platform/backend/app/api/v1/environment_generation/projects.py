@@ -52,7 +52,6 @@ async def create_environment_project(
             description=request.description,
             status="created",  # 初始状态为created，表示项目已创建但未分析
             book_id=request.book_id,  # 设置书籍ID
-            novel_project_id=request.book_id,  # 同时设置novel_project_id为book_id
             analysis_result={},  # 空的分析结果
             matching_result={},  # 空的匹配结果
             chapter_ids=[],  # 空数组，等待用户选择具体章节

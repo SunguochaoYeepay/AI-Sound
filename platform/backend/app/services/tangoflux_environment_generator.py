@@ -272,23 +272,38 @@ class TangoFluxEnvironmentGenerator:
                     task.progress = 0.7
                     
                     if response.status == 200:
-                        # 获取音频数据
-                        audio_data = await response.read()
-                        
-                        # 验证音频数据
-                        if not audio_data or len(audio_data) == 0:
-                            logger.error(f"[TANGOFLUX_GEN] 音频数据为空: {task_id}")
-                            task.error_message = "音频数据为空"
-                            return None
-                        
-                        logger.info(f"[TANGOFLUX_GEN] 收到音频数据: {len(audio_data)} 字节")
-                        
-                        # 保存文件
-                        timestamp = int(time.time())
-                        filename = f"{task.keyword}_{timestamp}.wav"
-                        output_path = self.output_dir / filename
+                        # 获取JSON响应
+                        response_text = await response.text()
+                        logger.info(f"[TANGOFLUX_GEN] 收到响应: {len(response_text)} 字符")
                         
                         try:
+                            # 解析JSON响应
+                            response_data = json.loads(response_text)
+                            
+                            # 检查是否包含音频数据
+                            if 'audio_base64' not in response_data:
+                                logger.error(f"[TANGOFLUX_GEN] 响应中没有audio_base64字段: {task_id}")
+                                task.error_message = "响应中没有音频数据"
+                                return None
+                            
+                            # 解码base64音频数据
+                            import base64
+                            audio_base64 = response_data['audio_base64']
+                            audio_data = base64.b64decode(audio_base64)
+                            
+                            logger.info(f"[TANGOFLUX_GEN] 解码音频数据: {len(audio_data)} 字节")
+                            
+                            # 验证音频数据
+                            if not audio_data or len(audio_data) == 0:
+                                logger.error(f"[TANGOFLUX_GEN] 音频数据为空: {task_id}")
+                                task.error_message = "音频数据为空"
+                                return None
+                            
+                            # 保存文件
+                            timestamp = int(time.time())
+                            filename = f"{task.keyword}_{timestamp}.wav"
+                            output_path = self.output_dir / filename
+                            
                             # 确保输出目录存在
                             self.output_dir.mkdir(parents=True, exist_ok=True)
                             
@@ -312,9 +327,13 @@ class TangoFluxEnvironmentGenerator:
                             logger.info(f"[TANGOFLUX_GEN] 音频文件已保存: {output_path} ({actual_size} 字节)")
                             return str(output_path)
                             
-                        except Exception as save_error:
-                            logger.error(f"[TANGOFLUX_GEN] 文件保存异常: {str(save_error)}")
-                            task.error_message = f"文件保存异常: {str(save_error)}"
+                        except json.JSONDecodeError as e:
+                            logger.error(f"[TANGOFLUX_GEN] JSON解析失败: {str(e)}")
+                            task.error_message = f"JSON解析失败: {str(e)}"
+                            return None
+                        except Exception as e:
+                            logger.error(f"[TANGOFLUX_GEN] 处理响应失败: {str(e)}")
+                            task.error_message = f"处理响应失败: {str(e)}"
                             return None
                     else:
                         error_text = await response.text()
@@ -399,7 +418,8 @@ class TangoFluxEnvironmentGenerator:
                                               db: Session,
                                               session_id: Optional[int] = None,
                                               project_id: Optional[int] = None,
-                                              track_mapping: Optional[Dict[int, int]] = None) -> List[EnvironmentSound]:
+                                              track_mapping: Optional[Dict[int, int]] = None,
+                                              chapter_id: Optional[str] = None) -> List[EnvironmentSound]:
         """
         将生成的环境音保存到数据库
         
@@ -468,12 +488,13 @@ class TangoFluxEnvironmentGenerator:
         
         # 提交所有更改
         try:
-            db.commit()
-            logger.info(f"[TANGOFLUX_GEN] 成功保存{len(saved_sounds)}个环境音到数据库")
-            
             # 更新项目生成状态
             if project_id:
-                await self._update_project_generation_status(db, project_id, saved_sounds)
+                await self._update_project_generation_status(db, project_id, saved_sounds, chapter_id)
+            
+            # 提交所有更改
+            db.commit()
+            logger.info(f"[TANGOFLUX_GEN] 成功保存{len(saved_sounds)}个环境音到数据库")
                 
         except Exception as e:
             db.rollback()
@@ -482,7 +503,7 @@ class TangoFluxEnvironmentGenerator:
         
         return saved_sounds
     
-    async def _update_project_generation_status(self, db: Session, project_id: int, saved_sounds: List[EnvironmentSound]):
+    async def _update_project_generation_status(self, db: Session, project_id: int, saved_sounds: List[EnvironmentSound], chapter_id: str = None):
         """更新项目生成状态"""
         try:
             from app.models.environment_generation import EnvironmentProject
@@ -496,22 +517,90 @@ class TangoFluxEnvironmentGenerator:
             env_project.generation_count = len(saved_sounds)
             env_project.updated_at = datetime.utcnow()
             
-            # 更新轨道状态
+            # 更新轨道状态 - 支持多章节格式
             if env_project.analysis_result:
-                tracks = env_project.analysis_result.get('environment_tracks', [])
-                for sound in saved_sounds:
-                    if sound.track_index is not None and sound.track_index < len(tracks):
-                        tracks[sound.track_index]['generated_sound_id'] = sound.id
-                        tracks[sound.track_index]['generation_status'] = 'completed'
-                        tracks[sound.track_index]['generated_file_path'] = sound.file_path
+                analysis_result = env_project.analysis_result
                 
-                env_project.analysis_result['environment_tracks'] = tracks
+                # 检查是否是多章节格式（键是章节ID）
+                if isinstance(analysis_result, dict) and not analysis_result.get('environment_tracks'):
+                    # 多章节格式，需要找到对应的轨道
+                    logger.info(f"[TANGOFLUX_GEN] 处理多章节格式的分析结果")
+                    
+                    # 收集所有章节的轨道，按全局索引更新
+                    all_tracks = []
+                    chapter_track_mapping = {}  # 记录每个轨道属于哪个章节
+                    
+                    for current_chapter_id, chapter_data in analysis_result.items():
+                        if isinstance(chapter_data, dict) and chapter_data.get('environment_tracks'):
+                            chapter_tracks = chapter_data['environment_tracks']
+                            start_index = len(all_tracks)
+                            
+                            for i, track in enumerate(chapter_tracks):
+                                all_tracks.append(track)
+                                chapter_track_mapping[start_index + i] = current_chapter_id
+                    
+                    # 更新轨道状态
+                    if chapter_id:
+                        # 多章节项目，只更新指定章节的轨道
+                        if chapter_id in analysis_result:
+                            chapter_tracks = analysis_result[chapter_id]['environment_tracks']
+                            for sound in saved_sounds:
+                                if sound.track_index is not None and sound.track_index < len(chapter_tracks):
+                                    track = chapter_tracks[sound.track_index]
+                                    track['generated_sound_id'] = sound.id
+                                    track['generation_status'] = 'completed'
+                                    track['generated_file_path'] = sound.file_path
+                                    
+                                    logger.info(f"[TANGOFLUX_GEN] 更新章节{chapter_id}轨道 {sound.track_index} 状态: {sound.file_path}")
+                        else:
+                            logger.warning(f"[TANGOFLUX_GEN] 未找到章节 {chapter_id}")
+                    else:
+                        # 单章节项目，使用全局索引更新
+                        for sound in saved_sounds:
+                            if sound.track_index is not None and sound.track_index < len(all_tracks):
+                                track = all_tracks[sound.track_index]
+                                track['generated_sound_id'] = sound.id
+                                track['generation_status'] = 'completed'
+                                track['generated_file_path'] = sound.file_path
+                                
+                                logger.info(f"[TANGOFLUX_GEN] 更新轨道 {sound.track_index} 状态: {sound.file_path}")
+                else:
+                    # 单章节格式，直接更新environment_tracks
+                    tracks = analysis_result.get('environment_tracks', [])
+                    for sound in saved_sounds:
+                        if sound.track_index is not None and sound.track_index < len(tracks):
+                            tracks[sound.track_index]['generated_sound_id'] = sound.id
+                            tracks[sound.track_index]['generation_status'] = 'completed'
+                            tracks[sound.track_index]['generated_file_path'] = sound.file_path
+                    
+                    analysis_result['environment_tracks'] = tracks
+                
+                # 更新项目的分析结果
+                env_project.analysis_result = analysis_result
+                
+                # 强制标记JSON字段为已修改
+                from sqlalchemy.orm.attributes import flag_modified
+                flag_modified(env_project, "analysis_result")
+                
+                # 强制刷新数据库会话
+                db.flush()
+                
+                # 添加调试日志
+                logger.info(f"[TANGOFLUX_GEN] 更新后的analysis_result类型: {type(env_project.analysis_result)}")
+                if isinstance(env_project.analysis_result, dict) and '830' in env_project.analysis_result:
+                    chapter_830 = env_project.analysis_result['830']
+                    if isinstance(chapter_830, dict) and 'environment_tracks' in chapter_830:
+                        tracks = chapter_830['environment_tracks']
+                        logger.info(f"[TANGOFLUX_GEN] 章节830轨道数量: {len(tracks)}")
+                        for i, track in enumerate(tracks):
+                            logger.info(f"[TANGOFLUX_GEN] 轨道{i} 生成路径: {track.get('generated_file_path')}")
             
-            db.commit()
             logger.info(f"[TANGOFLUX_GEN] 项目 {project_id} 生成状态已更新")
             
         except Exception as e:
             logger.error(f"[TANGOFLUX_GEN] 更新项目状态失败: {str(e)}")
+            import traceback
+            logger.error(f"[TANGOFLUX_GEN] 错误堆栈: {traceback.format_exc()}")
     
     async def check_existing_environment_sound(self, 
                                              keyword: str, 
@@ -587,7 +676,8 @@ class TangoFluxEnvironmentGenerator:
     async def generate_project_environment_sounds(self, 
                                                 project_id: int,
                                                 tracks_to_generate: List[tuple],
-                                                task_id: str) -> Dict[str, Any]:
+                                                task_id: str,
+                                                chapter_id: str = None) -> Dict[str, Any]:
         """
         为项目生成环境音文件
         
@@ -595,6 +685,7 @@ class TangoFluxEnvironmentGenerator:
             project_id: 项目ID
             tracks_to_generate: 要生成的轨道列表，每个元素为(index, track_data)
             task_id: 任务ID
+            chapter_id: 章节ID（可选，用于多章节项目）
             
         Returns:
             生成结果字典
@@ -640,8 +731,15 @@ class TangoFluxEnvironmentGenerator:
             try:
                 logger.info(f"[TANGOFLUX_GEN] 开始保存生成结果到数据库，项目ID: {project_id}")
                 
-                # 构建轨道映射
-                track_mapping = {index: i for i, (index, _) in enumerate(tracks_to_generate)}
+                # 构建轨道映射 - 如果指定了章节ID，使用章节内索引
+                if chapter_id:
+                    # 多章节项目，使用章节内索引
+                    track_mapping = {index: i for i, (index, _) in enumerate(tracks_to_generate)}
+                    logger.info(f"[TANGOFLUX_GEN] 多章节项目，章节ID: {chapter_id}，轨道映射: {track_mapping}")
+                else:
+                    # 单章节项目，使用全局索引
+                    track_mapping = {index: i for i, (index, _) in enumerate(tracks_to_generate)}
+                    logger.info(f"[TANGOFLUX_GEN] 单章节项目，轨道映射: {track_mapping}")
                 
                 # 保存到数据库，包含项目关联
                 saved_sounds = await self.save_generated_sounds_to_database(
@@ -649,7 +747,8 @@ class TangoFluxEnvironmentGenerator:
                     db=db,
                     session_id=project_id,  # 使用项目ID作为session_id
                     project_id=project_id,
-                    track_mapping=track_mapping
+                    track_mapping=track_mapping,
+                    chapter_id=chapter_id  # 传递章节ID
                 )
                 
                 logger.info(f"[TANGOFLUX_GEN] 成功保存{len(saved_sounds)}个环境音到数据库")
@@ -684,16 +783,19 @@ class TangoFluxEnvironmentGenerator:
                     logger.info(f"[TANGOFLUX_GEN] 找到环境轨道数量: {len(environment_tracks)}")
                     
                     # 更新轨道文件路径和关联信息
-                    for i, (index, track) in enumerate(tracks_to_generate):
-                        if i < len(generation_tasks) and generation_tasks[i].status == 'completed':
-                            if index < len(environment_tracks):
-                                environment_tracks[index]['generated_file_path'] = generation_tasks[i].result_path
-                                environment_tracks[index]['generation_status'] = 'completed'
-                                environment_tracks[index]['generation_task_id'] = task_id
-                                
-                                # 添加数据库记录关联
-                                if i < len(saved_sounds):
-                                    environment_tracks[index]['generated_sound_id'] = saved_sounds[i].id
+                    # 多章节格式已经在_update_project_generation_status中处理了
+                    # 这里只需要处理单章节格式
+                    if not isinstance(analysis_result, dict) or analysis_result.get('environment_tracks'):
+                        for i, (index, track) in enumerate(tracks_to_generate):
+                            if i < len(generation_tasks) and generation_tasks[i].status == 'completed':
+                                if index < len(environment_tracks):
+                                    environment_tracks[index]['generated_file_path'] = generation_tasks[i].result_path
+                                    environment_tracks[index]['generation_status'] = 'completed'
+                                    environment_tracks[index]['generation_task_id'] = task_id
+                                    
+                                    # 添加数据库记录关联
+                                    if i < len(saved_sounds):
+                                        environment_tracks[index]['generated_sound_id'] = saved_sounds[i].id
                                 
                                 # 通过WebSocket推送单个轨道完成消息
                                 logger.info(f"[TANGOFLUX_GEN] 准备推送轨道完成消息: 轨道{index}, websocket_manager={websocket_manager is not None}")
@@ -720,42 +822,9 @@ class TangoFluxEnvironmentGenerator:
                                     logger.warning(f"[TANGOFLUX_GEN] websocket_manager为None，跳过WebSocket推送")
                     
                     # 保存更新后的分析结果
-                    # 将更新后的轨道数据重新组装到多章节格式中
-                    if isinstance(analysis_result, dict) and not analysis_result.get('environment_tracks'):
-                        # 多章节格式，需要将更新后的轨道重新分配回各章节
-                        # 按章节ID数字顺序排序，确保与收集顺序一致
-                        track_index = 0
-                        sorted_chapter_ids = sorted(analysis_result.keys(), key=lambda x: int(x))
-                        logger.info(f"[TANGOFLUX_GEN] 重新分配轨道到多章节格式，章节IDs: {sorted_chapter_ids}")
-                        
-                        # 创建新的environment_tracks数组，保持原始顺序
-                        updated_environment_tracks = []
-                        
-                        for chapter_id in sorted_chapter_ids:
-                            chapter_analysis = analysis_result[chapter_id]
-                            if isinstance(chapter_analysis, dict) and chapter_analysis.get('environment_tracks'):
-                                original_track_count = len(chapter_analysis['environment_tracks'])
-                                logger.info(f"[TANGOFLUX_GEN] 章节{chapter_id}原有轨道数: {original_track_count}, 从索引{track_index}开始分配")
-                                
-                                # 直接修改analysis_result中的轨道数据
-                                chapter_tracks = analysis_result[chapter_id]['environment_tracks']
-                                
-                                # 检查是否有对应的生成任务结果
-                                for i, track in enumerate(chapter_tracks):
-                                    global_track_index = track_index + i
-                                    # 查找对应的生成任务
-                                    for task_i, (task_index, _) in enumerate(tracks_to_generate):
-                                        if task_index == global_track_index and task_i < len(generation_tasks) and generation_tasks[task_i].status == 'completed':
-                                            track['generated_file_path'] = generation_tasks[task_i].result_path
-                                            track['generation_status'] = 'completed'
-                                            track['generation_task_id'] = task_id
-                                            if task_i < len(saved_sounds):
-                                                track['generated_sound_id'] = saved_sounds[task_i].id
-                                            logger.info(f"[TANGOFLUX_GEN] 更新章节{chapter_id}轨道{global_track_index}: {track['generated_file_path']}")
-                                            break
-                                track_index += original_track_count
-                                logger.info(f"[TANGOFLUX_GEN] 章节{chapter_id}更新后轨道数: {len(chapter_analysis['environment_tracks'])}")
-                    else:
+                    # 多章节格式已经在_update_project_generation_status中处理了
+                    # 这里只需要处理单章节格式
+                    if not isinstance(analysis_result, dict) or analysis_result.get('environment_tracks'):
                         # 单章节格式，直接更新
                         logger.info(f"[TANGOFLUX_GEN] 单章节格式，直接更新轨道数据")
                         analysis_result['environment_tracks'] = environment_tracks

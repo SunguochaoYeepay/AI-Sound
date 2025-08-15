@@ -8,6 +8,11 @@
     </div>
     
     <div class="header-actions">
+      <!-- 调试信息 -->
+      <div style="background: #fff3cd; padding: 5px; margin-bottom: 10px; border: 1px solid #ffeaa7; border-radius: 4px; font-size: 12px;">
+        🔍 按钮状态: hasAnalysis={{ hasAnalysis }}, hasTracks={{ hasTracks }}, hasGeneratedTracks={{ hasGeneratedTracks }}
+      </div>
+      
       <a-space>
         <!-- 环境音分析 -->
         <a-button 
@@ -22,7 +27,7 @@
         
         <!-- 生成当前章节环境音 -->
         <a-button 
-          v-if="hasAnalysis && hasTracks"
+          v-if="hasAnalysis && hasTracks && !hasGeneratedTracks"
           type="default" 
           @click="$emit('generate-all-sounds')"
           :loading="generationLoading"

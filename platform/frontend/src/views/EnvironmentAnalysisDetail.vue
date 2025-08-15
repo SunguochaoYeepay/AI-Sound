@@ -63,14 +63,17 @@
     </div>
     
     <!-- 调试信息 -->
-    <div style="display: none;">
+    <div style="display: block; background: #f0f0f0; padding: 10px; margin: 10px 0; border: 1px solid #ccc;">
+      <h4>🔍 调试信息</h4>
       <p>Debug: selectedChapter = {{ selectedChapter?.id }}</p>
       <p>Debug: hasAnalysis = {{ hasAnalysis }}</p>
       <p>Debug: environmentTracks.length = {{ environmentTracks.length }}</p>
+      <p>Debug: hasGeneratedTracks = {{ hasGeneratedTracks }}</p>
       <p>Debug: currentChapterAnalysis = {{ selectedChapter?.id ? (analysisResults[selectedChapter.id] ? '有数据' : '无数据') : '无章节' }}</p>
       <p>Debug: projectInfo.id = {{ projectInfo?.id }}</p>
       <p>Debug: projectInfo.status = {{ projectInfo?.status }}</p>
       <p>Debug: analysisResults.keys = {{ Object.keys(analysisResults).join(', ') }}</p>
+      <p>Debug: 轨道生成状态 = {{ environmentTracks.map(track => ({ keywords: track.environment_keywords?.[0], hasGenerated: !!track.generated_file_path })) }}</p>
     </div>
 
     <!-- 环境音生成进度条 -->
@@ -218,6 +221,7 @@ const handleWebSocketMessage = async (event) => {
   try {
     const data = JSON.parse(event.detail)
     
+    // 处理环境音生成进度
     if (data.type === 'environment_generation_progress' && data.data.task_id === currentTaskId.value) {
       const progressData = data.data
       
@@ -251,19 +255,43 @@ const handleWebSocketMessage = async (event) => {
           })
           
           // 只更新当前轨道的生成文件路径，不重新加载整个项目
-          if (progressData.file_path && environmentTracks.value[progressData.track_index]) {
-            // 使用Vue 3的响应式更新方法
-            const track = environmentTracks.value[progressData.track_index]
-            track.generated_file_path = progressData.file_path
+          // 需要将全局轨道索引转换为当前章节的局部索引
+          const currentChapterId = selectedChapter.value?.id
+          if (currentChapterId && progressData.file_path) {
+            // 计算当前章节的轨道在全局中的起始索引
+            let globalStartIndex = 0
+            const sortedChapterIds = Object.keys(analysisResults.value).sort((a, b) => parseInt(a) - parseInt(b))
             
-            // 强制触发响应式更新
-            environmentTracks.value = [...environmentTracks.value]
+            for (const chapterId of sortedChapterIds) {
+              if (parseInt(chapterId) < currentChapterId) {
+                const chapterAnalysis = analysisResults.value[chapterId]
+                if (chapterAnalysis && chapterAnalysis.environment_tracks) {
+                  globalStartIndex += chapterAnalysis.environment_tracks.length
+                }
+              } else {
+                break
+              }
+            }
             
-            console.log(`📁 更新轨道${progressData.track_index}文件路径:`, progressData.file_path)
-            console.log(`✅ 轨道${progressData.track_index}状态更新:`, {
-              hasGenerated: track.generated_file_path && track.generated_file_path.length > 0,
-              generatedFilePath: track.generated_file_path
-            })
+            // 计算局部索引
+            const localIndex = progressData.track_index - globalStartIndex
+            
+            if (localIndex >= 0 && localIndex < environmentTracks.value.length) {
+              // 使用Vue 3的响应式更新方法
+              const track = environmentTracks.value[localIndex]
+              track.generated_file_path = progressData.file_path
+              
+              // 强制触发响应式更新
+              environmentTracks.value = [...environmentTracks.value]
+              
+              console.log(`📁 更新轨道${progressData.track_index}(局部索引${localIndex})文件路径:`, progressData.file_path)
+              console.log(`✅ 轨道${progressData.track_index}状态更新:`, {
+                hasGenerated: track.generated_file_path && track.generated_file_path.length > 0,
+                generatedFilePath: track.generated_file_path
+              })
+            } else {
+              console.warn(`⚠️ 轨道索引不匹配: 全局${progressData.track_index}, 局部${localIndex}, 当前章节轨道数${environmentTracks.value.length}`)
+            }
           }
         } else {
           // 整体生成完成
@@ -303,6 +331,29 @@ const handleWebSocketMessage = async (event) => {
           tracksProgress.value = []
           generationErrorMessage.value = ''
         }, 3000)
+      }
+    }
+    // 处理环境音混音进度
+    else if (data.type === 'environment_mixing_progress') {
+      const progressData = data.data
+      
+      console.log('🎵 环境音混音进度更新:', progressData)
+      
+      if (progressData.status === 'completed') {
+        console.log('🎵 环境音混音完成！')
+        message.success('🎵 环境音混音完成！')
+        
+        // 刷新项目信息以获取最新的混音文件路径
+        await loadProjectInfo()
+        
+        // 重置混音loading状态
+        mixingLoading.value = false
+      } else if (progressData.status === 'failed') {
+        console.error('❌ 环境音混音失败:', progressData.error_message)
+        message.error(`环境音混音失败: ${progressData.error_message}`)
+        
+        // 重置混音loading状态
+        mixingLoading.value = false
       }
     }
   } catch (error) {
@@ -472,14 +523,15 @@ const loadProjectInfo = async () => {
                 }
               })
             } else if (newTracks.length > 0) {
-              // 如果前端没有轨道状态，检查数据库中是否已有生成的文件路径
-              console.log('🔍 检查数据库中轨道生成状态:', newTracks.map((track, index) => ({
-                index,
-                hasGeneratedPath: !!track.generated_file_path,
-                generatedPath: track.generated_file_path,
-                trackKeywords: track.environment_keywords?.[0] || '未命名',
-                allFields: Object.keys(track)
-              })))
+                          // 如果前端没有轨道状态，检查数据库中是否已有生成的文件路径
+            console.log('🔍 检查数据库中轨道生成状态:', newTracks.map((track, index) => ({
+              index,
+              hasGeneratedPath: !!track.generated_file_path,
+              generatedPath: track.generated_file_path,
+              trackKeywords: track.environment_keywords?.[0] || '未命名',
+              allFields: Object.keys(track),
+              fullTrack: JSON.stringify(track, null, 2)  // 添加完整轨道数据用于调试
+            })))
               
               // 检查是否有生成路径的轨道
               const tracksWithPath = newTracks.filter(track => track.generated_file_path)
@@ -932,8 +984,22 @@ const handleMixSounds = async () => {
   try {
     mixingLoading.value = true
     
+    // 获取当前选中的章节ID
+    const currentChapterId = selectedChapter.value?.id
+    if (!currentChapterId) {
+      message.error('请先选择一个章节')
+      return
+    }
+    
+    console.log('🎵 开始混音当前章节环境音:', {
+      projectId: projectInfo.value.id,
+      chapterId: currentChapterId,
+      chapterTitle: selectedChapter.value?.chapter_title
+    })
+    
     const response = await environmentGenerationAPI.mixEnvironmentSounds(
-      projectInfo.value.id
+      projectInfo.value.id,
+      { chapter_id: currentChapterId }  // 传递当前章节ID
     )
     
     if (response.data.success) {
