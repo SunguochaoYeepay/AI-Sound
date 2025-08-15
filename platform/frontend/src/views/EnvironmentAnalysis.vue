@@ -207,7 +207,7 @@ import {
   BookOutlined,
   FileTextOutlined
 } from '@ant-design/icons-vue'
-import { readerAPI } from '@/api'
+import { readerAPI, booksAPI } from '@/api'
 
 const router = useRouter()
 
@@ -238,7 +238,7 @@ onMounted(() => {
 const loadBooks = async () => {
   try {
     booksLoading.value = true
-    const response = await readerAPI.getBooks()
+    const response = await booksAPI.getBooks()
     if (response.data.success) {
       books.value = response.data.data || []
     } else {

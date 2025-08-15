@@ -242,6 +242,28 @@ export class AudioService {
     await this.store.playAudio(audioInfo)
   }
 
+  /**
+   * 播放环境音混音
+   * @param {number} projectId 项目ID
+   * @param {string} mixTitle 混音标题
+   */
+  async playEnvironmentMix(projectId, mixTitle = `环境音混音`) {
+    const audioInfo = {
+      id: `env_mix_${projectId}`,
+      title: mixTitle,
+      url: `/api/v1/environment-generation/mix-play/${projectId}`,
+      type: 'environment_mix',
+      metadata: {
+        projectId,
+        onEnded: () => {
+          console.log(`环境音混音播放完成`)
+        }
+      }
+    }
+
+    await this.store.playAudio(audioInfo)
+  }
+
 
 
   /**
@@ -334,6 +356,7 @@ export const playVoicePreview = (...args) => getAudioService().playVoicePreview(
 export const playCustomAudio = (...args) => getAudioService().playCustomAudio(...args)
 export const playEnvironmentSound = (...args) => getAudioService().playEnvironmentSound(...args)
 export const playEnvironmentTrack = (...args) => getAudioService().playEnvironmentTrack(...args)
+export const playEnvironmentMix = (...args) => getAudioService().playEnvironmentMix(...args)
 
 export const pauseAudio = () => getAudioService().pause()
 export const stopAudio = () => getAudioService().stop()

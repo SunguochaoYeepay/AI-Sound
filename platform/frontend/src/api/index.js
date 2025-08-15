@@ -1198,6 +1198,12 @@ export const environmentGenerationAPI = {
   mixEnvironmentSounds: (projectId, data = {}) =>
     apiClient.post(`/environment-generation/mix/${projectId}`, data),
 
+  // 播放混音环境音
+  playMixedEnvironmentSounds: (projectId) =>
+    apiClient.get(`/environment-generation/mix-play/${projectId}`, {
+      responseType: 'blob'
+    }),
+
   // 下载混音环境音
   downloadMixedEnvironmentSounds: (projectId) =>
     apiClient.get(`/environment-generation/mix-download/${projectId}`, {

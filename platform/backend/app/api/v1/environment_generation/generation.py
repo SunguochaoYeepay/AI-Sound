@@ -455,6 +455,43 @@ async def preview_mixed_environment_sounds(
         raise HTTPException(status_code=500, detail=f"预览混音环境音失败: {str(e)}")
 
 
+@router.get("/mix-play/{project_id}")
+async def play_mixed_environment_sounds(
+    project_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    播放混音后的环境音文件
+    """
+    try:
+        logger.info(f"[ENV_GEN_API] 播放混音环境音，项目ID: {project_id}")
+        
+        # 获取环境音项目
+        env_service = EnvironmentProjectService(db)
+        env_project = env_service.get_by_project_id(project_id)
+        
+        if not env_project:
+            raise HTTPException(status_code=404, detail="未找到环境音项目")
+        
+        # 检查是否有混音文件
+        mixed_file_path = env_project.matching_result.get('mixed_file_path')
+        if not mixed_file_path or not os.path.exists(mixed_file_path):
+            raise HTTPException(status_code=404, detail="混音文件尚未生成")
+        
+        # 返回混音文件用于播放
+        return FileResponse(
+            path=mixed_file_path,
+            media_type="audio/wav",
+            headers={"Content-Disposition": "inline"}
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[ENV_GEN_API] 播放混音环境音失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"播放混音环境音失败: {str(e)}")
+
+
 @router.get("/mix-download/{project_id}")
 async def download_mixed_environment_sounds(
     project_id: int,

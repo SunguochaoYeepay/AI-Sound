@@ -107,7 +107,7 @@ import EnvironmentProgressBar from '@/components/environment-sounds/EnvironmentP
 import { environmentGenerationAPI } from '@/api'
 import { chaptersAPI } from '@/api'
 import { booksAPI } from '@/api'
-import { playEnvironmentTrack } from '@/utils/audioService'
+import { playEnvironmentTrack, playEnvironmentMix } from '@/utils/audioService'
 import { useWebSocket } from '@/composables/useWebSocketSimple'
 
 // 路由参数
@@ -1015,9 +1015,31 @@ const handleMixSounds = async () => {
   }
 }
 
-// 播放混音功能已禁用
+// 播放混音
 const handlePlayMixing = async () => {
-  message.warning('环境音混音功能已禁用')
+  try {
+    // 检查是否有混音文件
+    if (!projectInfo.value.matching_result?.mixed_file_path) {
+      message.warning('混音文件尚未生成，请先生成混音')
+      return
+    }
+    
+    // 构建混音标题
+    const mixTitle = `环境音混音 (项目 ${projectInfo.value.id})`
+    
+    console.log('🎵 播放环境音混音:', {
+      项目ID: projectInfo.value.id,
+      混音标题: mixTitle,
+      文件路径: projectInfo.value.matching_result.mixed_file_path
+    })
+    
+    // 使用统一的音频播放服务
+    await playEnvironmentMix(projectInfo.value.id, mixTitle)
+    message.success(`🎵 播放: ${mixTitle}`)
+  } catch (error) {
+    console.error('播放混音失败:', error)
+    message.error('播放混音失败: ' + (error.response?.data?.detail || error.message))
+  }
 }
 
 // 下载混音
