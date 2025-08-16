@@ -295,7 +295,7 @@
 
 <script setup>
   import { ref, computed, onMounted, watch } from 'vue'
-  import { message, Empty } from 'ant-design-vue'
+  import { message, Empty, Modal } from 'ant-design-vue'
   import { ReloadOutlined, EditOutlined } from '@ant-design/icons-vue'
   import api from '@/api'
 
@@ -528,8 +528,43 @@
   }
 
   const removeTrack = async (trackIndex) => {
-    // TODO: 实现删除轨道功能
-    message.info('删除功能待实现')
+    try {
+      // 确认删除
+      await new Promise((resolve, reject) => {
+        Modal.confirm({
+          title: '确认删除',
+          content: `确定要删除轨道 ${trackIndex + 1} 吗？此操作不可恢复。`,
+          okText: '删除',
+          okType: 'danger',
+          cancelText: '取消',
+          onOk: resolve,
+          onCancel: reject
+        })
+      })
+
+      // 调用删除API
+      const response = await api.environmentGenerationAPI.deleteTrack(
+        props.projectId,
+        trackIndex
+      )
+
+      if (response.data.success) {
+        // 从本地配置中移除轨道
+        config.value.config.environment_tracks.splice(trackIndex, 1)
+        
+        // 更新轨道总数
+        config.value.config.total_tracks = config.value.config.environment_tracks.length
+        
+        message.success('轨道删除成功')
+      } else {
+        message.error(response.data.message || '删除失败')
+      }
+    } catch (error) {
+      if (error !== 'cancel') { // 用户取消不显示错误
+        console.error('删除轨道失败:', error)
+        message.error('删除失败: ' + (error.response?.data?.detail || error.message))
+      }
+    }
   }
 
   const openBatchEdit = () => {

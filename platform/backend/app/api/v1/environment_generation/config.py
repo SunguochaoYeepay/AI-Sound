@@ -143,3 +143,42 @@ async def update_track_config(
     except Exception as e:
         logger.error(f"[ENV_GEN_API] 更新轨道配置失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"更新轨道配置失败: {str(e)}")
+
+
+@router.delete("/track/{project_id}/{track_index}")
+async def delete_track(
+    project_id: int,
+    track_index: int,
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """
+    删除环境音轨道
+    """
+    try:
+        logger.info(f"[ENV_GEN_API] 删除轨道，项目ID: {project_id}，轨道索引: {track_index}")
+        
+        # 使用环境音项目服务删除轨道
+        env_service = EnvironmentProjectService(db)
+        
+        # 删除轨道
+        success = env_service.delete_track(project_id, track_index)
+        
+        if not success:
+            raise HTTPException(status_code=404, detail="未找到环境音分析结果或轨道索引超出范围")
+        
+        logger.info(f"[ENV_GEN_API] 轨道删除成功，项目ID: {project_id}，轨道索引: {track_index}")
+        
+        return {
+            "success": True,
+            "data": {
+                "project_id": project_id,
+                "track_index": track_index
+            },
+            "message": "轨道删除成功"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[ENV_GEN_API] 删除轨道失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"删除轨道失败: {str(e)}")

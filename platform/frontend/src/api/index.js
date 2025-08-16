@@ -1218,7 +1218,23 @@ export const environmentGenerationAPI = {
 
   // 更新项目分析结果
   updateProjectAnalysis: (projectId, data) =>
-    apiClient.put(`/environment-generation/projects/${projectId}/analysis`, data)
+    apiClient.put(`/environment-generation/projects/${projectId}/analysis`, data),
+
+  // === 配置管理API ===
+
+  // 获取环境音配置
+  getEnvironmentConfig: (projectId) =>
+    apiClient.get(`/environment-generation/config/${projectId}`),
+
+  // 更新轨道配置
+  updateTrackConfig: (projectId, trackIndex, configUpdate) =>
+    apiClient.put(`/environment-generation/track/${projectId}/${trackIndex}`, {
+      manual_edits: configUpdate
+    }),
+
+  // 删除轨道
+  deleteTrack: (projectId, trackIndex) =>
+    apiClient.delete(`/environment-generation/track/${projectId}/${trackIndex}`)
 }
 
 

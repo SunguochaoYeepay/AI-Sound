@@ -52,7 +52,14 @@ export const ENVIRONMENT_PROJECT_TABLE_COLUMNS = [
     title: '创建时间',
     dataIndex: 'createdAt',
     key: 'createdAt',
-    width: '20%'
+    width: '15%'
+  },
+  {
+    title: '操作',
+    dataIndex: 'actions',
+    key: 'actions',
+    width: '20%',
+    fixed: 'right'
   }
 ]
 

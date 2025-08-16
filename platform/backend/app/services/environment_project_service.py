@@ -150,6 +150,37 @@ class EnvironmentProjectService:
         logger.info(f"更新轨道配置: 项目{project_id}, 轨道{track_index}")
         return True
     
+    def delete_track(
+        self, 
+        project_id: int, 
+        track_index: int
+    ) -> bool:
+        """删除轨道"""
+        
+        env_project = self.get_by_id(project_id)
+        if not env_project or not env_project.analysis_result:
+            return False
+        
+        environment_tracks = env_project.analysis_result.get('environment_tracks', [])
+        if track_index >= len(environment_tracks):
+            return False
+        
+        # 删除指定轨道
+        environment_tracks.pop(track_index)
+        
+        # 更新项目
+        env_project.analysis_result['environment_tracks'] = environment_tracks
+        env_project.updated_at = datetime.utcnow()
+        
+        # 更新统计信息
+        if env_project.matching_result and 'analysis_stats' in env_project.matching_result:
+            stats = env_project.matching_result['analysis_stats']
+            stats['total_tracks'] = max(0, stats.get('total_tracks', 0) - 1)
+        
+        self.db.commit()
+        logger.info(f"删除轨道: 项目{project_id}, 轨道{track_index}")
+        return True
+    
     def finalize_project(self, project_id: int) -> bool:
         """完成环境音项目"""
         
