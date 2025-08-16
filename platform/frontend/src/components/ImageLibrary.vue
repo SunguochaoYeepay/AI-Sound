@@ -411,7 +411,7 @@ const chapters = computed(() => {
 // 过滤后的图片数据
 const filteredImages = computed(() => {
   const result = images.value || []
-  console.log('🔍 filteredImages计算中... images.value:', images.value, '结果:', result)
+  
   return result
 })
 

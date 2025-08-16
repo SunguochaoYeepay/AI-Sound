@@ -464,23 +464,21 @@
         params.end_time = filters.timeRange[1].toISOString()
       }
 
-      console.log('🔍 获取日志参数:', params)
       const response = await logApi.getLogs(params)
-      console.log('📊 API响应:', response)
 
       if (response.success) {
         logs.value = response.data.logs || []
         pagination.total = response.data.pagination?.total || 0
-        console.log(`✅ 成功加载 ${logs.value.length} 条日志，总计 ${pagination.total} 条`)
+
 
         // 强制刷新统计数据
         await fetchStats()
       } else {
-        console.error('❌ API响应失败:', response)
+
         message.error('获取日志失败: ' + (response.message || '未知错误'))
       }
     } catch (error) {
-      console.error('❌ 获取日志异常:', error)
+
       message.error('获取日志失败: ' + error.message)
       // 重置数据
       logs.value = []

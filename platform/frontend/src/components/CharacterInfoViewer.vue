@@ -153,18 +153,10 @@ const missingCharactersCount = computed(() => {
 
 // 方法
 const handleBatchCreateClick = () => {
-  console.log('[CharacterInfoViewer] 批量创建按钮被点击')
-  console.log('[CharacterInfoViewer] missingCharactersCount:', missingCharactersCount.value)
-  console.log('[CharacterInfoViewer] characters:', props.characters)
-  console.log('[CharacterInfoViewer] 缺失的角色:', props.characters.filter(char => !char.in_character_library))
-  console.log('[CharacterInfoViewer] batchCreating状态:', props.batchCreating)
-  
   if (props.batchCreating) {
-    console.log('[CharacterInfoViewer] 当前正在批量创建中，忽略点击')
     return
   }
   
-  console.log('[CharacterInfoViewer] 发送batch-create事件')
   emit('batch-create')
 }
 

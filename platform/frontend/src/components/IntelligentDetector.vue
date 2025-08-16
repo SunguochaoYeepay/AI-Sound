@@ -291,19 +291,14 @@ const runDetection = async () => {
   showDetails.value = false
   
   try {
-    console.log('[智能检测] 开始检测:', {
-      bookId: props.bookId,
-      chapterId: props.chapterId,
-      segmentsCount: props.segments.length,
-      charactersCount: props.characters.length
-    })
+
 
     const response = await intelligentDetection(props.chapterId, true)
-    console.log('[智能检测] 收到响应:', response)
+
 
     // 从 Axios 响应中提取实际数据
     const responseData = response.data || response
-    console.log('[智能检测] 处理后的响应数据:', responseData)
+
 
     // 检查响应是否成功
     if (responseData.success) {
@@ -329,12 +324,10 @@ const runDetection = async () => {
         )
         const filteredCount = detectionResult.value.issues.length
         
-        if (originalCount > filteredCount) {
-          console.log(`[智能检测] 已过滤 ${originalCount - filteredCount} 个被忽略的问题`)
-        }
+
       }
 
-      console.log('[智能检测] 处理后的结果:', detectionResult.value)
+
       
       if (detectionResult.value.issues.length === 0) {
         message.success(responseData.message || '检测完成，未发现问题')

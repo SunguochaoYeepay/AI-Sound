@@ -385,8 +385,7 @@
       </a-layout-content>
     </a-layout>
 
-    <!-- 开发者控制台 -->
-    <DevConsole v-if="isDev" />
+
 
     <!-- 全局音频播放器 -->
     <GlobalAudioPlayer />
@@ -400,7 +399,7 @@
   import { useAppStore } from './stores/app.js'
   import { useUserStore } from './stores/user.js'
   import { systemAPI } from './api/v2.js'
-  import DevConsole from './components/DevConsole.vue'
+
   import GlobalAudioPlayer from './components/GlobalAudioPlayer.vue'
   import { HomeOutlined } from '@ant-design/icons-vue'
   // import stagewiseConfigFile from '../stagewise.config.js'

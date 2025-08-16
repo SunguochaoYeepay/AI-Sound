@@ -95,7 +95,7 @@
       const response = await booksAPI.getPreparationResult(props.chapter.id, { force_refresh: true })
       if (response.data && response.data.success) {
         analysisData.value = response.data.data
-        console.log('[ChapterDetail] 加载最新分析数据成功')
+    
       } else {
         analysisData.value = null
         message.error(response.data?.message || '加载分析数据失败')
@@ -134,7 +134,7 @@
     async (newPreparing, oldPreparing) => {
       // 当从准备中变为准备完成时，自动刷新分析数据
       if (oldPreparing === true && newPreparing === false && props.chapter?.id) {
-        console.log('[ChapterDetail] 智能准备完成，自动刷新分析数据')
+    
         await loadAnalysisData()
       }
     }
@@ -147,7 +147,7 @@
 
   // 🔥 新增：处理分析数据刷新（不触发智能准备）
   const handleRefreshAnalysisData = async () => {
-    console.log('[ChapterDetail] 收到刷新分析数据请求')
+
     await loadAnalysisData()
   }
 
@@ -163,7 +163,7 @@
 
   // 处理重新加载章节
   const handleReloadChapter = async () => {
-    console.log('[ChapterDetail] 收到重新加载章节请求')
+
     await loadAnalysisData()
   }
 

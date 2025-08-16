@@ -359,12 +359,7 @@ import BatchConfigModal from './Characters/components/BatchConfigModal.vue'
 
   // 筛选变化处理（兼容新的管理模式）
   const handleFilterChange = async () => {
-    console.log('🎯 筛选器变化:', {
-      audioFilter: audioFilter.value,
-      avatarFilter: avatarFilter.value,
-      typeFilter: typeFilter.value,
-      statusFilter: statusFilter.value
-    })
+    // 更新筛选条件
     pagination.current = 1 // 重置到第一页
     await loadVoiceLibrary()
   }
@@ -392,7 +387,7 @@ import BatchConfigModal from './Characters/components/BatchConfigModal.vue'
   const saveVoiceToBackend = async (voiceData) => {
     try {
       // 调试：打印voiceData内容
-      console.log('[DEBUG] 保存声音数据:', voiceData)
+
 
       // 构建FormData格式数据（后端期望Form格式）
       const formData = new FormData()
@@ -419,10 +414,6 @@ import BatchConfigModal from './Characters/components/BatchConfigModal.vue'
       }
 
       // 调试：打印FormData内容
-      console.log('[DEBUG] FormData内容:')
-      for (let [key, value] of formData.entries()) {
-        console.log(`  ${key}: ${value}`)
-      }
 
       // 添加音频文件（如果有新上传的）
       if (voiceData.audioFileList && voiceData.audioFileList.length > 0) {
@@ -543,7 +534,7 @@ import BatchConfigModal from './Characters/components/BatchConfigModal.vue'
         quality: voice.quality,
         type: voice.type,
         onEnded: () => {
-          console.log(`角色 ${voice.name} 试听完成`)
+          // console.log(`角色 ${voice.name} 试听完成`)
         }
       })
 
@@ -761,10 +752,9 @@ import BatchConfigModal from './Characters/components/BatchConfigModal.vue'
   }
 
   // 书籍搜索
-  const handleBookSearch = (searchValue) => {
-    // 可以在这里实现实时搜索功能
-    console.log('搜索书籍:', searchValue)
-  }
+             const handleBookSearch = () => {
+       // 可以在这里实现实时搜索功能
+     }
 
 
 
@@ -825,7 +815,7 @@ import BatchConfigModal from './Characters/components/BatchConfigModal.vue'
   // 删除角色
   const deleteCharacter = async (character, force = false) => {
     try {
-      console.log('删除角色:', character.id, '强制删除:', force)
+              // console.log('删除角色:', character.id, '强制删除:', force)
       const success = await deleteVoiceFromBackend(character.id, force)
       if (success) {
         message.success('角色删除成功')
@@ -872,7 +862,7 @@ import BatchConfigModal from './Characters/components/BatchConfigModal.vue'
             voiceName: editingVoice.value.name,
             description: editingVoice.value.description,
             onEnded: () => {
-              console.log(`编辑音频 ${editingVoice.value.name} 试听完成`)
+              // console.log(`编辑音频 ${editingVoice.value.name} 试听完成`)
             }
           }
         )

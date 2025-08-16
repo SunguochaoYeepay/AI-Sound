@@ -247,7 +247,7 @@ const executeBatchCreate = async () => {
 
   emit('update:batchCreating', true)
   try {
-    console.log('🎭 开始批量创建角色...')
+
 
     // 🔥 简化：只创建角色基本信息，不包含音频文件
     const charactersToCreate = selectedCharactersForBatch.value.map((characterName) => {

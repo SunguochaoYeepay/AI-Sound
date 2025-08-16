@@ -1,20 +1,7 @@
 <template>
   <div class="environment-project-header">
     <div class="header-content">
-      <!-- 返回按钮 -->
-      <div class="back-section">
-        <a-button
-          type="text"
-          size="large"
-          @click="handleBack"
-          class="back-button"
-        >
-          <template #icon>
-            <ArrowLeftOutlined />
-          </template>
-          返回
-        </a-button>
-      </div>
+      
 
       <!-- 项目信息 -->
       <div class="project-info">
@@ -69,35 +56,7 @@
       </div>
     </div>
 
-    <!-- 项目统计 -->
-    <div class="project-stats" v-if="showStats">
-      <a-row :gutter="16">
-        <a-col :span="6">
-          <div class="stat-card">
-            <div class="stat-number">{{ stats.totalChapters || 0 }}</div>
-            <div class="stat-label">总章节数</div>
-          </div>
-        </a-col>
-        <a-col :span="6">
-          <div class="stat-card">
-            <div class="stat-number">{{ stats.analyzedChapters || 0 }}</div>
-            <div class="stat-label">已分析章节</div>
-          </div>
-        </a-col>
-        <a-col :span="6">
-          <div class="stat-card">
-            <div class="stat-number">{{ stats.totalTracks || 0 }}</div>
-            <div class="stat-label">环境音轨道</div>
-          </div>
-        </a-col>
-        <a-col :span="6">
-          <div class="stat-card">
-            <div class="stat-number">{{ stats.generatedTracks || 0 }}</div>
-            <div class="stat-label">已生成轨道</div>
-          </div>
-        </a-col>
-      </a-row>
-    </div>
+   
   </div>
 </template>
 

@@ -46,25 +46,14 @@ export function useCharacters() {
       if (avatarFilter.value) apiParams.avatar_filter = avatarFilter.value
       if (audioFilter.value) apiParams.audio_filter = audioFilter.value
 
-      // 调试日志
-      console.log('🔍 音频筛选调试:', {
-        audioFilter: audioFilter.value,
-        apiParams: apiParams
-      })
+
 
       const response = await charactersAPI.getCharacters(apiParams)
 
       // axios响应的实际数据在response.data中
       const responseData = response.data
 
-      // 🔧 调试：打印API响应数据结构
-      console.log('🔍 API响应数据结构:', {
-        hasSuccess: 'success' in responseData,
-        success: responseData.success,
-        hasData: 'data' in responseData,
-        hasCharacters: 'characters' in responseData,
-        dataKeys: Object.keys(responseData)
-      })
+
 
       // 🔧 修复：支持多种API响应格式
       let data = null
@@ -85,30 +74,14 @@ export function useCharacters() {
       }
 
       if (data && Array.isArray(data)) {
-        // 🔧 调试：打印API响应数据
-        console.log('🔍 API响应数据:', {
-          dataLength: data.length,
-          total: total,
-          firstItem: data[0]
-        })
+
         
         // 更新分页总数
         pagination.total = total
 
         // 统一处理角色数据
         voiceLibrary.value = data.map((character) => {
-          // 🔧 调试：打印角色数据映射
-          console.log(`🔍 角色数据映射 - ${character.name}:`, {
-            id: character.id,
-            status: character.status,
-            is_voice_configured: character.is_voice_configured,
-            reference_audio_path: character.reference_audio_path,
-            latent_file_path: character.latent_file_path,
-            avatar_path: character.avatar_path,
-            referenceAudioUrl: character.referenceAudioUrl,
-            latentFileUrl: character.latentFileUrl,
-            avatarUrl: character.avatarUrl
-          })
+
           
           return {
             id: character.id,
@@ -149,23 +122,10 @@ export function useCharacters() {
           }
         })
         
-        // 🔧 调试：打印更新后的数据状态
-        console.log('🔍 数据更新完成:', {
-          voiceLibraryLength: voiceLibrary.value.length,
-          firstCharacter: voiceLibrary.value[0]?.name,
-          lastCharacter: voiceLibrary.value[voiceLibrary.value.length - 1]?.name
-        })
-        
-        // 🔧 强制触发响应式更新
+        // 强制触发响应式更新
         await nextTick()
-        console.log('🔍 响应式更新完成，当前列表长度:', voiceLibrary.value.length)
       } else {
-        // 🔧 调试：打印错误情况
-        console.error('🔍 数据处理失败:', {
-          responseData: responseData,
-          hasData: !!data,
-          isArray: Array.isArray(data)
-        })
+
         const errorMsg = responseData?.message || '数据格式错误'
         message.error('加载数据失败：' + errorMsg)
         voiceLibrary.value = []

@@ -46,11 +46,7 @@ export function useCharacters() {
       if (avatarFilter.value) apiParams.avatar_filter = avatarFilter.value
       if (audioFilter.value) apiParams.audio_filter = audioFilter.value
 
-      // 调试日志
-      console.log('🔍 音频筛选调试:', {
-        audioFilter: audioFilter.value,
-        apiParams: apiParams
-      })
+
 
       const response = await charactersAPI.getCharacters(apiParams)
 
@@ -60,31 +56,14 @@ export function useCharacters() {
       if (responseData && responseData.success) {
         const data = responseData.data
         
-        // 🔧 调试：打印API响应数据
-        console.log('🔍 API响应数据:', {
-          success: responseData.success,
-          dataLength: data.length,
-          pagination: responseData.pagination,
-          filters: responseData.filters
-        })
+
         
         // 更新分页总数
         pagination.total = responseData.pagination?.total || data.length
 
         // 统一处理角色数据
         voiceLibrary.value = data.map((character) => {
-          // 🔧 调试：打印角色数据映射
-          console.log(`🔍 角色数据映射 - ${character.name}:`, {
-            id: character.id,
-            status: character.status,
-            is_voice_configured: character.is_voice_configured,
-            reference_audio_path: character.reference_audio_path,
-            latent_file_path: character.latent_file_path,
-            avatar_path: character.avatar_path,
-            referenceAudioUrl: character.referenceAudioUrl,
-            latentFileUrl: character.latentFileUrl,
-            avatarUrl: character.avatarUrl
-          })
+
           
           return {
             id: character.id,
@@ -125,16 +104,8 @@ export function useCharacters() {
           }
         })
         
-        // 🔧 调试：打印更新后的数据状态
-        console.log('🔍 数据更新完成:', {
-          voiceLibraryLength: voiceLibrary.value.length,
-          firstCharacter: voiceLibrary.value[0]?.name,
-          lastCharacter: voiceLibrary.value[voiceLibrary.value.length - 1]?.name
-        })
-        
-        // 🔧 强制触发响应式更新
+        // 强制触发响应式更新
         await nextTick()
-        console.log('🔍 响应式更新完成，当前列表长度:', voiceLibrary.value.length)
       } else {
         const errorMsg = responseData?.message || '未知错误'
         message.error('加载数据失败：' + errorMsg)

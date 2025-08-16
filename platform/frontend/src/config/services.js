@@ -36,11 +36,7 @@ const SERVICE_CONFIG = {
       // 使用当前域名和端口，通过Vite代理处理
       const wsUrl = `${protocol}//${window.location.host}/ws`
 
-      console.log('[WebSocket配置]', {
-        环境: isDevelopment ? '开发' : '生产',
-        WebSocket地址: wsUrl,
-        当前域名: window.location.host
-      })
+
 
       return wsUrl
     },
@@ -124,8 +120,4 @@ export const getBackendUrl = () => '' // 返回空字符串，使用相对路径
 export const getApiBaseUrl = () => SERVICE_CONFIG.API_BASE_URL
 export const getSongGenerationUrl = (endpoint = '') => getServiceUrl('SONG_GENERATION', endpoint)
 
-console.log('[服务配置] 初始化完成', {
-  environment: isDevelopment ? '开发' : '生产',
-  backendUrl: SERVICE_CONFIG.BACKEND_BASE_URL,
-  apiBaseUrl: SERVICE_CONFIG.API_BASE_URL
-})
+

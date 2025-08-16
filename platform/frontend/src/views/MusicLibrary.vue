@@ -518,7 +518,7 @@
   const loadMusicList = async () => {
     loading.value = true
     try {
-      console.log('🔍 开始加载音乐列表（背景音乐 + 生成任务）...')
+  
 
       // 🎯 同时获取背景音乐和音乐生成任务
       const [backgroundResponse, generationResponse] = await Promise.allSettled([
@@ -594,7 +594,7 @@
 
       pagination.total = totalCount
       console.log(`📋 加载了 ${musicList.value.length} 条音乐记录 (背景音乐+生成任务)`)
-      console.log('🔍 处理后的数据:', musicList.value.length > 0 ? musicList.value[0] : '无数据')
+      
     } catch (error) {
       console.error('❌ 加载音乐列表失败:', error)
 
@@ -643,7 +643,7 @@
 
   const loadCategories = async () => {
     try {
-      console.log('🔍 开始加载音乐分类...')
+  
       const response = await backgroundMusicAPI.getCategories(true)
       console.log('✅ 分类API响应:', response)
 

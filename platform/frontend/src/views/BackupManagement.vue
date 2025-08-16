@@ -606,19 +606,19 @@
 
   // 处理任务取消事件
   const handleTaskCancelled = (taskId: number) => {
-    console.log('任务已取消:', taskId)
+    
     refreshBackupList()
   }
 
   // 处理任务完成事件
   const handleTaskCompleted = (taskId: number) => {
-    console.log('任务已完成:', taskId)
+    
     refreshBackupList()
   }
 
   // 处理任务失败事件
   const handleTaskFailed = (taskId: number) => {
-    console.log('任务执行失败:', taskId)
+    
     refreshBackupList()
   }
 
@@ -635,14 +635,14 @@
 
   // 处理恢复任务完成事件
   const handleRestoreCompleted = (restoreId: number) => {
-    console.log('恢复任务已完成:', restoreId)
+    
     message.success('恢复任务已完成！')
     refreshBackupList()
   }
 
   // 处理恢复任务失败事件
   const handleRestoreFailed = (restoreId: number) => {
-    console.log('恢复任务执行失败:', restoreId)
+    
     message.error('恢复任务执行失败')
     refreshBackupList()
   }

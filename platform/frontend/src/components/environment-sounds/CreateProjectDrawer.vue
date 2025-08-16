@@ -51,15 +51,7 @@
         </a-select>
       </a-form-item>
 
-      <!-- 项目说明 -->
-      <a-form-item label="项目说明">
-        <a-alert
-          message="项目创建说明"
-          description="项目创建后，您需要在详情页面选择具体章节，然后手动触发分析。这样可以避免一次性分析整本书的所有章节，提高效率。"
-          type="info"
-          show-icon
-        />
-      </a-form-item>
+  
 
 
     </a-form>

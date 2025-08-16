@@ -150,12 +150,12 @@
 
   // 处理函数
   const handlePause = () => {
-    console.log('📌 暂停按钮被点击')
+
     emit('pauseSynthesis')
   }
 
   const handleCancel = () => {
-    console.log('📌 取消按钮被点击')
+
     emit('cancelSynthesis')
   }
 
@@ -214,12 +214,6 @@
   const correctProgress = computed(() => {
     // 🔥 只使用章节进度数据
     const chapterPercent = props.chapterProgress.percent || 0
-
-    console.log('🔍 章节进度显示:', {
-      completed: props.chapterProgress.completed,
-      total: props.chapterProgress.total,
-      percent: chapterPercent
-    })
 
     return chapterPercent
   })

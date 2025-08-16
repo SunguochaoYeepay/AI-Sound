@@ -467,7 +467,7 @@ const onChapterChange = async (chapterId) => {
       // 优先选择有头像的主要角色
       const mainCharacter = availableCharacters.value.find(c => c.avatar_url) || availableCharacters.value[0]
       if (mainCharacter) {
-        console.log('🎭 自动启用角色一致性，选择角色:', mainCharacter.name)
+    
         onCharacterSelect(mainCharacter.id)
       }
     }
@@ -533,7 +533,7 @@ const startStatusRefresh = (chapterId) => {
       }
     } else {
       clearStatusRefresh()
-      console.log('📌 章节已切换，停止自动刷新')
+  
     }
   }, 5000) // 改为5秒刷新一次，减少频率
 }
@@ -831,13 +831,13 @@ onMounted(async () => {
   
   // 检查是否有默认选择
   if (selectedBookId.value) {
-    console.log('📚 已选择书籍:', selectedBookId.value)
+
     await booksStore.fetchChapters(selectedBookId.value)
     await loadBookConfig(selectedBookId.value)
   }
   
   if (selectedChapterId.value) {
-    console.log('📖 已选择章节:', selectedChapterId.value)
+
     await loadImageTasks(selectedChapterId.value)
   } else {
     console.log('⚠️ 请先选择书籍和章节')

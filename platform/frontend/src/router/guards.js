@@ -15,7 +15,7 @@ export function setupRouterGuards(router) {
     // 如果没有token，重定向到登录页
     if (!token) {
       if (to.path !== '/login') {
-        console.log('No token, redirecting to login')
+    
         next('/login')
         return
       }
@@ -25,7 +25,7 @@ export function setupRouterGuards(router) {
 
     // 如果有token但没有用户信息，尝试获取用户信息
     if (!user) {
-      console.log('Token exists but no user info, fetching...')
+  
       const success = await authStore.fetchUserInfo()
       if (!success) {
         console.error('获取用户信息失败，跳转登录')
@@ -101,6 +101,6 @@ export function setupRouterAfterGuards(router) {
     }
 
     // 记录页面访问日志
-    console.log(`页面访问: ${to.path}`)
+
   })
 }

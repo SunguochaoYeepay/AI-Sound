@@ -857,7 +857,7 @@
             return
           }
         } catch (error) {
-          console.log('🔍 未找到已有环境音配置，开始新的分析流程')
+  
         }
 
         // 如果没有配置，重置finalResult并开始分析

@@ -64,11 +64,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
         const wsUrl = getWebSocketUrl()
 
         console.log('🔌 尝试连接WebSocket:', wsUrl)
-        console.log('🔍 环境信息:', {
-          dev: import.meta.env.DEV,
-          baseUrl: import.meta.env.VITE_API_BASE_URL,
-          location: window.location.host
-        })
+
 
         ws.value = new WebSocket(wsUrl)
 

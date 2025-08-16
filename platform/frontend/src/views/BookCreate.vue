@@ -163,7 +163,7 @@
                     <!-- 章节检测结果预览 -->
                     <div v-if="detectedChapters.length > 0" class="chapters-detection-result">
                       <div class="detection-header">
-                        <span>🔍 检测到 {{ detectedChapters.length }} 个章节</span>
+                        <span>检测到 {{ detectedChapters.length }} 个章节</span>
                         <div class="detection-actions">
                           <a-button
                             type="link"
@@ -648,7 +648,7 @@
 
     // 如果当前在章节管理模式下，不执行自动检测，避免覆盖已有章节
     if (contentInputMethod.value === 'chapters') {
-      console.log('[BookCreate] 章节管理模式下跳过自动检测')
+
       return
     }
 

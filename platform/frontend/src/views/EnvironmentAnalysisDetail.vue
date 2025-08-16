@@ -62,19 +62,7 @@
       </a-row>
     </div>
     
-    <!-- 调试信息 -->
-    <div style="display: block; background: #f0f0f0; padding: 10px; margin: 10px 0; border: 1px solid #ccc;">
-      <h4>🔍 调试信息</h4>
-      <p>Debug: selectedChapter = {{ selectedChapter?.id }}</p>
-      <p>Debug: hasAnalysis = {{ hasAnalysis }}</p>
-      <p>Debug: environmentTracks.length = {{ environmentTracks.length }}</p>
-      <p>Debug: hasGeneratedTracks = {{ hasGeneratedTracks }}</p>
-      <p>Debug: currentChapterAnalysis = {{ selectedChapter?.id ? (analysisResults[selectedChapter.id] ? '有数据' : '无数据') : '无章节' }}</p>
-      <p>Debug: projectInfo.id = {{ projectInfo?.id }}</p>
-      <p>Debug: projectInfo.status = {{ projectInfo?.status }}</p>
-      <p>Debug: analysisResults.keys = {{ Object.keys(analysisResults).join(', ') }}</p>
-      <p>Debug: 轨道生成状态 = {{ environmentTracks.map(track => ({ keywords: track.environment_keywords?.[0], hasGenerated: !!track.generated_file_path })) }}</p>
-    </div>
+
 
     <!-- 环境音生成进度条 -->
     <EnvironmentProgressBar
@@ -154,7 +142,6 @@ const LOAD_DEBOUNCE_TIME = 1000 // 1秒防抖
 // 计算属性
 const hasAnalysis = computed(() => {
   if (!selectedChapter.value) {
-    console.log('❌ hasAnalysis: 没有选中章节')
     return false
   }
   
@@ -163,13 +150,7 @@ const hasAnalysis = computed(() => {
   
   const result = chapterAnalysis && Object.keys(chapterAnalysis).length > 0 && environmentTracks.value.length > 0
   
-  console.log('🔍 hasAnalysis计算:', {
-    chapterId,
-    chapterAnalysis: chapterAnalysis ? '有数据' : '无数据',
-    analysisResultsKeys: Object.keys(analysisResults.value),
-    environmentTracksLength: environmentTracks.value.length,
-    result
-  })
+
   
   return result
 })
@@ -177,7 +158,7 @@ const hasAnalysis = computed(() => {
 // 计算属性：是否有已生成的环境音轨道
 const hasGeneratedTracks = computed(() => {
   if (!environmentTracks.value || environmentTracks.value.length === 0) {
-    console.log('🔍 hasGeneratedTracks: 没有环境轨道')
+
     return false
   }
   
@@ -186,17 +167,7 @@ const hasGeneratedTracks = computed(() => {
     track.generated_file_path && track.generated_file_path.length > 0
   )
   
-      console.log('🔍 hasGeneratedTracks检查:', {
-      tracksCount: environmentTracks.value.length,
-      tracks: environmentTracks.value.map(track => ({
-        keywords: track.environment_keywords?.[0] || '未命名',
-        hasGenerated: track.generated_file_path && track.generated_file_path.length > 0,
-        generatedFilePath: track.generated_file_path,
-        allFields: Object.keys(track),
-        fullTrack: JSON.stringify(track, null, 2)
-      })),
-      result: hasGenerated
-    })
+
   
   return hasGenerated
 })
@@ -453,7 +424,7 @@ const loadProjectInfo = async () => {
     isLoadingProject.value = true
     lastLoadTime.value = now
     projectLoading.value = true
-    console.log('🔍 开始加载项目信息:', analysisId)
+
     
     const response = await environmentGenerationAPI.getProjectDetail(analysisId)
     
@@ -466,11 +437,7 @@ const loadProjectInfo = async () => {
       
       // 检查并加载分析结果
       if (response.data.data.analysis_result && Object.keys(response.data.data.analysis_result).length > 0) {
-        console.log('🔍 检查分析结果:', {
-          analysisResult: response.data.data.analysis_result,
-          chapterIds: projectInfo.value.chapter_ids,
-          analysisResultKeys: Object.keys(response.data.data.analysis_result)
-        })
+
         
         // 如果是多章节分析结果格式（字典格式，key是章节ID）
         if (typeof response.data.data.analysis_result === 'object' && 
@@ -524,24 +491,11 @@ const loadProjectInfo = async () => {
               })
             } else if (newTracks.length > 0) {
                           // 如果前端没有轨道状态，检查数据库中是否已有生成的文件路径
-            console.log('🔍 检查数据库中轨道生成状态:', newTracks.map((track, index) => ({
-              index,
-              hasGeneratedPath: !!track.generated_file_path,
-              generatedPath: track.generated_file_path,
-              trackKeywords: track.environment_keywords?.[0] || '未命名',
-              allFields: Object.keys(track),
-              fullTrack: JSON.stringify(track, null, 2)  // 添加完整轨道数据用于调试
-            })))
+
               
               // 检查是否有生成路径的轨道
               const tracksWithPath = newTracks.filter(track => track.generated_file_path)
-              console.log('🔍 有生成路径的轨道数量:', tracksWithPath.length)
-              if (tracksWithPath.length > 0) {
-                console.log('🔍 有生成路径的轨道详情:', tracksWithPath.map(track => ({
-                  keywords: track.environment_keywords?.[0] || '未命名',
-                  generatedPath: track.generated_file_path
-                })))
-              }
+
             }
             
             environmentTracks.value = newTracks
@@ -587,16 +541,10 @@ const loadChaptersByIds = async (chapterIds) => {
                 const existingTrack = environmentTracks.value[index]
                 if (existingTrack && existingTrack.generated_file_path && !newTrack.generated_file_path) {
                   newTrack.generated_file_path = existingTrack.generated_file_path
-                  console.log(`🔄 保留轨道${index}的生成文件路径:`, existingTrack.generated_file_path)
                 }
               })
             } else if (newTracks.length > 0) {
               // 如果前端没有轨道状态，检查数据库中是否已有生成的文件路径
-              console.log('🔍 检查数据库中轨道生成状态:', newTracks.map((track, index) => ({
-                index,
-                hasGeneratedPath: !!track.generated_file_path,
-                generatedPath: track.generated_file_path
-              })))
             }
             
             environmentTracks.value = newTracks
@@ -616,24 +564,20 @@ const loadChaptersByIds = async (chapterIds) => {
 const loadChaptersByBookName = async (bookName) => {
   try {
     chaptersLoading.value = true
-    console.log('📚 开始通过书籍名称加载章节:', bookName)
+
     
     const booksResponse = await booksAPI.getBooks({ search: bookName })
     if (booksResponse.data.success && booksResponse.data.data.length > 0) {
       const book = booksResponse.data.data[0]
-      console.log('📖 找到书籍:', book)
+
       
       const response = await chaptersAPI.getChapters({ book_id: book.id })
       if (response.data.success) {
         chapters.value = response.data.data || []
-        console.log('📑 章节加载成功:', {
-          chaptersCount: chapters.value.length,
-          chapters: chapters.value.map(ch => ({ id: ch.id, title: ch.chapter_title }))
-        })
+
         
         if (chapters.value.length > 0) {
           selectedChapter.value = chapters.value[0]
-          console.log('🎯 设置选中章节:', selectedChapter.value)
           
           // 设置当前选中章节的环境轨道
           if (selectedChapter.value) {
@@ -655,16 +599,10 @@ const loadChaptersByBookName = async (bookName) => {
                   const existingTrack = environmentTracks.value[index]
                   if (existingTrack && existingTrack.generated_file_path && !newTrack.generated_file_path) {
                     newTrack.generated_file_path = existingTrack.generated_file_path
-                    console.log(`🔄 保留轨道${index}的生成文件路径:`, existingTrack.generated_file_path)
                   }
                 })
               } else if (newTracks.length > 0) {
                 // 如果前端没有轨道状态，检查数据库中是否已有生成的文件路径
-                console.log('🔍 检查数据库中轨道生成状态:', newTracks.map((track, index) => ({
-                  index,
-                  hasGeneratedPath: !!track.generated_file_path,
-                  generatedPath: track.generated_file_path
-                })))
               }
               
               environmentTracks.value = newTracks
@@ -691,19 +629,15 @@ const loadChaptersByBookName = async (bookName) => {
 const loadChaptersByBookId = async (bookId) => {
   try {
     chaptersLoading.value = true
-    console.log('📚 开始通过书籍ID加载章节:', bookId)
+
     
     const response = await chaptersAPI.getChapters({ book_id: bookId })
     if (response.data.success) {
       chapters.value = response.data.data || []
-      console.log('📑 章节加载成功:', {
-        chaptersCount: chapters.value.length,
-        chapters: chapters.value.map(ch => ({ id: ch.id, title: ch.chapter_title }))
-      })
       
-      if (chapters.value.length > 0) {
-        selectedChapter.value = chapters.value[0]
-        console.log('🎯 设置选中章节:', selectedChapter.value)
+      
+              if (chapters.value.length > 0) {
+          selectedChapter.value = chapters.value[0]
         
         // 设置当前选中章节的环境轨道
         if (selectedChapter.value) {
@@ -802,7 +736,7 @@ const startAnalysis = async () => {
 
 
     // 总是使用章节分析API，只分析当前选中的章节
-    console.log('📑 分析当前选中章节:', selectedChapter.value.id)
+
     
     const response = await environmentGenerationAPI.analyzeChapters({
       chapter_ids: [selectedChapter.value.id],

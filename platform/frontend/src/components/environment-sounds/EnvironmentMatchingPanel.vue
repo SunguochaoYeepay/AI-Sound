@@ -172,12 +172,7 @@
         const results = props.matchingResult || matchingResults.value
         const hasEnhanced = results && results.enhanced_analysis_result
 
-        // 添加调试信息
-        console.log('[EnvironmentMatchingPanel] hasResults 计算:')
-        console.log('- props.matchingResult:', props.matchingResult)
-        console.log('- matchingResults.value:', matchingResults.value)
-        console.log('- 最终results:', results)
-        console.log('- hasEnhanced:', hasEnhanced)
+
 
         return hasEnhanced
       })
@@ -186,9 +181,7 @@
         const results = props.matchingResult || matchingResults.value
         const summary = results?.matching_summary || null
 
-        console.log('[EnvironmentMatchingPanel] matchingSummary 计算:')
-        console.log('- results:', results)
-        console.log('- summary:', summary)
+
 
         return summary
       })

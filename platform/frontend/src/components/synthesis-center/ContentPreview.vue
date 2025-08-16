@@ -459,13 +459,7 @@
 
       if (result.success) {
         segmentsStatusData.value = result.data
-        console.log('🔍 段落状态加载成功:', {
-          projectId: props.project.id,
-          chapterId,
-          totalSegments: result.data.total_segments,
-          completedSegments: result.data.completed_segments,
-          chaptersCount: Object.keys(result.data.chapters || {}).length
-        })
+
       } else {
         console.warn('⚠️ 段落状态加载失败:', result.error)
         // 失败时清空状态数据，使用降级逻辑
@@ -507,11 +501,8 @@
       return
     }
 
-    console.log('🎭 准备智能准备章节:', {
-      selectedChapter: props.selectedChapter,
-      chapterInfo: getSelectedChapterInfo(),
-      project: props.project?.name
-    })
+    // 显示确认对话框
+    console.log('📋 显示智能准备确认对话框...')
 
     // 显示确认对话框
     console.log('📋 显示智能准备确认对话框...')

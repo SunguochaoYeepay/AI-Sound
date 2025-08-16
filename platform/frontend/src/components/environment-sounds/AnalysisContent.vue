@@ -207,17 +207,7 @@ const groupedTracks = computed(() => {
     return []
   }
   
-  console.log('🔍 AnalysisContent groupedTracks计算:', {
-    tracksCount: props.environmentTracks.length,
-    tracks: props.environmentTracks.map(track => ({
-      keywords: track.environment_keywords?.[0] || '未命名',
-      hasGeneratedPath: !!track.generated_file_path,
-      generatedPath: track.generated_file_path,
-      generatedFilePathType: typeof track.generated_file_path,
-      generatedFilePathLength: track.generated_file_path ? track.generated_file_path.length : 0,
-      allFields: Object.keys(track)
-    }))
-  })
+
   
   // 按段落分组
   const paragraphs = {}
@@ -254,22 +244,13 @@ const groupedTracks = computed(() => {
       regenerating: false
     })
     
-    console.log(`🔍 轨道${track.environment_keywords?.[0] || '未命名'} has_generated:`, hasGenerated, {
-      generatedFilePath: track.generated_file_path,
-      generatedFilePathType: typeof track.generated_file_path,
-      generatedFilePathLength: track.generated_file_path ? track.generated_file_path.length : 0,
-      hasGeneratedResult: hasGenerated
-    })
+
   })
   
   // 转换为数组并按段落索引排序
   const result = Object.values(paragraphs).sort((a, b) => a.paragraphIndex - b.paragraphIndex)
   
-  console.log('🔍 groupedTracks结果:', result.map(paragraph => ({
-    paragraphIndex: paragraph.paragraphIndex,
-    tracksCount: paragraph.tracks.length,
-    tracksWithGenerated: paragraph.tracks.filter(track => track.has_generated).length
-  })))
+
   
   return result
 })

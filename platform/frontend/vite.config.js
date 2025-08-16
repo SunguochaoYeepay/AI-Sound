@@ -10,7 +10,7 @@ export default defineConfig(({ mode }) => {
     ? 'http://localhost:8001'  // 本地开发端口
     : 'http://localhost:8000'  // Docker 生产端口
   
-  console.log(`[Vite配置] 模式: ${mode}, API代理目标: ${API_TARGET}`)
+  
 
   return {
     root: resolve(__dirname, '.'),  // 明确指定项目根目录
@@ -51,10 +51,10 @@ export default defineConfig(({ mode }) => {
           secure: false,
           configure: (proxy, _options) => {
             proxy.on('error', (err, _req, _res) => {
-              console.log('[Vite API Proxy] 代理错误:', err.message)
+      
             })
             proxy.on('proxyReq', (proxyReq, req, _res) => {
-              console.log('[Vite API Proxy] 代理请求:', req.method, req.url)
+              
             })
           }
         },
@@ -77,21 +77,21 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           secure: false,
           onError: (err, req, res) => {
-            console.log('[Vite WS Proxy] WebSocket代理错误:', err.message)
+    
           },
           onProxyReqWs: (proxyReq, req, socket) => {
             socket.on('error', (err) => {
-              console.log('[Vite WS Proxy] Socket错误:', err.message)
+      
             })
           },
           onOpen: (proxySocket) => {
-            console.log('[Vite WS Proxy] WebSocket代理连接已建立')
+    
             proxySocket.on('error', (err) => {
-              console.log('[Vite WS Proxy] ProxySocket错误:', err.message)
+              
             })
           },
           onClose: (res, socket, head) => {
-            console.log('[Vite WS Proxy] WebSocket代理连接已关闭')
+    
           }
         }
       }

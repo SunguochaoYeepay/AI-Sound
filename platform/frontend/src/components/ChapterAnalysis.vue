@@ -234,7 +234,6 @@ const loadBookCharacters = async () => {
         is_voice_configured: char.is_voice_configured || false,
         avatarUrl: char.avatarUrl || null
       }))
-      console.log('本书角色加载成功:', bookCharacters.value.length, '个角色')
     } else if (response.data?.success && response.data.data) {
       // 兼容旧格式
       bookCharacters.value = response.data.data.map((char) => ({
@@ -242,7 +241,6 @@ const loadBookCharacters = async () => {
         is_voice_configured: char.is_voice_configured || false,
         avatarUrl: char.avatarUrl || null
       }))
-      console.log('本书角色加载成功:', bookCharacters.value.length, '个角色')
     } else {
       console.warn('加载角色失败: 响应格式不正确', response.data)
     }
@@ -254,13 +252,13 @@ const loadBookCharacters = async () => {
 }
 
 const forceRefreshSegments = async () => {
-  console.log('[角色分析] 强制刷新segments数据')
+
   await nextTick()
   const temp = [...editableSegments.value]
   editableSegments.value = []
   await nextTick()
   editableSegments.value = temp
-  console.log('[角色分析] 强制刷新完成，当前segments数量:', editableSegments.value.length)
+
 }
 
 const initEditableData = async () => {
@@ -272,10 +270,10 @@ const initEditableData = async () => {
   const synthesisJson = props.analysisData.synthesis_json
 
   try {
-    console.log('[角色分析] 开始提取角色信息')
+
 
     if (synthesisJson.characters && synthesisJson.characters.length > 0) {
-      console.log('[角色分析] 使用characters字段')
+
       editableCharacters.value = synthesisJson.characters.map((char) => ({
         ...char,
         character_id: char.character_id || null,
@@ -288,7 +286,7 @@ const initEditableData = async () => {
         avatarUrl: char.avatarUrl || null
       }))
     } else {
-      console.log('[角色分析] 从synthesis_plan中提取角色信息')
+
       const segments = synthesisJson.synthesis_plan || []
       const characterMap = new Map()
 

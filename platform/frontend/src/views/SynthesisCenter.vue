@@ -598,7 +598,7 @@ import apiClient from '@/api/config.js'
     }
 
     contentLoading.value = true
-    console.log(`🔍 开始加载章节 ${selectedChapter.value} 的智能准备结果...`)
+
 
     try {
       // 只获取选中章节的智能准备结果
@@ -666,12 +666,7 @@ import apiClient from '@/api/config.js'
       websocket = new WebSocket(wsUrl)
 
       // 🔧 立即检查连接状态
-      console.log('🔍 WebSocket创建状态:', {
-        readyState: websocket.readyState,
-        url: websocket.url,
-        CONNECTING: WebSocket.CONNECTING,
-        OPEN: WebSocket.OPEN
-      })
+
 
       websocket.onopen = () => {
         websocketStatus.value = 'connected'
@@ -694,7 +689,7 @@ import apiClient from '@/api/config.js'
 
           // 添加订阅确认机制
           setTimeout(() => {
-            console.log('🔍 检查订阅状态，topic:', `synthesis_${projectId}`)
+  
             // 🔥 修复：先检查websocket是否存在，再检查连接状态
             if (websocket && websocket.readyState === WebSocket.OPEN) {
               websocket.send(JSON.stringify(subscribeMsg))
@@ -729,7 +724,7 @@ import apiClient from '@/api/config.js'
         // 处理主题消息
         if (wsMessage.type === 'topic_message' && wsMessage.topic === `synthesis_${projectId}`) {
           const data = wsMessage.data
-          console.log('🎯 收到合成进度消息:', data)
+      
 
           // 更新进度数据
           if (data.type === 'progress_update' && data.data) {
@@ -815,7 +810,7 @@ import apiClient from '@/api/config.js'
             }
           }
         } else if (message.type === 'topic_message') {
-          console.log('🔍 收到其他主题消息:', message.topic, '期望主题:', `synthesis_${projectId}`)
+  
         }
       }
 
@@ -855,14 +850,7 @@ import apiClient from '@/api/config.js'
     })
 
     if (websocket) {
-      console.log('🔍 WebSocket详细信息:', {
-        url: websocket.url,
-        readyState: websocket.readyState,
-        CONNECTING: WebSocket.CONNECTING,
-        OPEN: WebSocket.OPEN,
-        CLOSING: WebSocket.CLOSING,
-        CLOSED: WebSocket.CLOSED
-      })
+
 
       // 尝试发送测试消息
       if (websocket.readyState === WebSocket.OPEN) {
@@ -989,7 +977,7 @@ import apiClient from '@/api/config.js'
               chapterProgress.total > 0 && chapterProgress.completed === chapterProgress.total
 
             if (isChapterCompleted) {
-              console.log('🎯 轮询检测到章节合成完成:', chapterProgress)
+      
 
               // 显示完成提醒（避免重复）
               if (!hasShownCompletionMessage.value) {
@@ -1026,7 +1014,7 @@ import apiClient from '@/api/config.js'
 
   const handlePauseSynthesis = async () => {
     try {
-      console.log('📌 开始暂停合成，项目ID:', project.value.id)
+  
               await readerAPI.pauseGeneration(project.value.id)
       message.success('已暂停合成')
       synthesisRunning.value = false
@@ -1047,7 +1035,7 @@ import apiClient from '@/api/config.js'
 
   const handleCancelSynthesis = async () => {
     try {
-      console.log('📌 开始取消合成，项目ID:', project.value.id)
+  
               await readerAPI.cancelGeneration(project.value.id)
       message.success('已取消合成')
       synthesisRunning.value = false
@@ -1173,34 +1161,18 @@ import apiClient from '@/api/config.js'
       // 🔧 修复：优先使用segment_id，其次是id，最后才是index
       const segmentId = segment.segment_id || segment.id || segment.index || segment.ui_index
 
-      console.log('🎵 handlePlaySegment调用 - 完整调试信息:', {
-        当前选中章节: selectedChapter.value,
-        段落对象: segment,
-        segment_id字段: segment.segment_id,
-        id字段: segment.id,
-        index字段: segment.index,
-        ui_index字段: segment.ui_index,
-        最终使用的段落ID: segmentId,
-        项目ID: project.value.id,
-        文本预览: segment.text?.substring(0, 50),
-        即将调用API: `/api/v1/novel-reader/projects/${project.value.id}/segments/${segmentId}/download`
-      })
+
 
       // 🚨 重要检查：如果segment_id异常大，发出警告
       if (segmentId > 50) {
-        console.warn('🚨 异常检测：段落ID过大！', {
-          异常段落ID: segmentId,
-          当前选中章节: selectedChapter.value,
-          可能原因: '这个segment_id可能是全局累计的，而不是当前章节的段落序号',
-          建议: '需要修复segment_id生成逻辑或查找逻辑'
-        })
+
 
         // 显示用户警告但不阻止播放
         message.warning(`⚠️ 段落ID为${segmentId}，可能播放错误的音频`)
       }
 
       if (!segmentId) {
-        console.error('❌ 无法获取段落ID:', segment)
+
         message.error('无法获取段落ID')
         return
       }
@@ -1534,7 +1506,7 @@ import apiClient from '@/api/config.js'
               chapterProgress.total > 0 && chapterProgress.completed === chapterProgress.total
 
             if (isChapterCompleted) {
-              console.log('🎯 轮询检测到章节重新合成完成:', chapterProgress)
+      
 
               // 显示完成提醒（避免重复）
               if (!hasShownCompletionMessage.value) {
@@ -1673,7 +1645,7 @@ import apiClient from '@/api/config.js'
               chapterProgress.total > 0 && chapterProgress.completed === chapterProgress.total
 
             if (isChapterCompleted) {
-              console.log('🎯 轮询检测到章节继续合成完成:', chapterProgress)
+      
 
               // 显示完成提醒（避免重复）
               if (!hasShownCompletionMessage.value) {
@@ -1769,20 +1741,20 @@ import apiClient from '@/api/config.js'
           if (newStatus === 'failed' && serverChapter.synthesis_status === 'completed') {
             // 情况1：WebSocket报告失败，但服务器显示完成
             // 可能是音频合并成功但WebSocket状态判断有误
-            console.log('🔍 状态不一致分析：WebSocket报告失败但服务器显示完成，以服务器状态为准')
+    
             if (chapter) {
               chapter.synthesis_status = serverChapter.synthesis_status
             }
           } else if (newStatus === 'completed' && serverChapter.synthesis_status === 'failed') {
             // 情况2：WebSocket报告完成，但服务器显示失败
             // 可能是音频合并失败但WebSocket状态判断有误
-            console.log('🔍 状态不一致分析：WebSocket报告完成但服务器显示失败，以服务器状态为准')
+    
             if (chapter) {
               chapter.synthesis_status = serverChapter.synthesis_status
             }
           } else {
             // 其他情况：以服务器状态为准
-            console.log('🔍 状态不一致分析：其他情况，以服务器状态为准')
+    
             if (chapter) {
               chapter.synthesis_status = serverChapter.synthesis_status
             }
