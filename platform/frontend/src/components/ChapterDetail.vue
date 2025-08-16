@@ -205,8 +205,8 @@
     height: 100%;
 
     :deep(.ant-card-body) {
+      padding: 16px;
       height: calc(100% - 57px);
-      padding: 12px;
       overflow: hidden;
     }
   }

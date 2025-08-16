@@ -1023,8 +1023,14 @@
   }
 
   [data-theme='dark'] .ant-card-body {
-    color: #d1d5db !important;
-  }
+  color: #d1d5db !important;
+  padding: 16px !important;
+}
+
+/* 全局调整卡片内边距 */
+.ant-card-body {
+  padding: 16px !important;
+}
 
   /* 表格全局适配 */
   [data-theme='dark'] .ant-table {
@@ -2405,7 +2411,7 @@
   .app-header {
     background: linear-gradient(135deg, #ffffff 0%, #fdf9f4 100%) !important;
     border-bottom: 1px solid rgba(255, 123, 84, 0.1) !important;
-    height: 48px;
+    height: 28px;
     display: flex;
     align-items: center;
     justify-content: space-between;

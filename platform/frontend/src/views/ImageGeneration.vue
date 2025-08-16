@@ -921,7 +921,7 @@ onUnmounted(() => {
 }
 
 .section-card .ant-card-body {
-  padding: 24px;
+  padding: 16px;
 }
 
 .chapter-selection {
@@ -1201,6 +1201,7 @@ onUnmounted(() => {
 
 [data-theme='dark'] .section-card .ant-card-body {
   background: #1f1f1f !important;
+  padding: 16px;
 }
 
 [data-theme='dark'] .chapter-selection {

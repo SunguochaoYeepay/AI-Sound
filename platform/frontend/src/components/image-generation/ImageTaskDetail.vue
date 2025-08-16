@@ -810,7 +810,7 @@ watch(() => props.task, (newTask) => {
 }
 
 :deep(.ant-card-body) {
-  padding: 12px;
+  padding: 16px;
 }
 
 /* 暗黑模式适配 */

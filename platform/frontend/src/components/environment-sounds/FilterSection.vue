@@ -105,7 +105,7 @@ const handleReset = () => {
 }
 
 .filter-card :deep(.ant-card-body) {
-  padding: 16px 24px;
+  padding: 16px;
 }
 
 .filter-card :deep(.ant-form-item) {

@@ -984,7 +984,7 @@
   }
 
   .setting-card :deep(.ant-card-body) {
-    padding: 24px;
+    padding: 16px;
   }
 
   /* LOGO上传样式 */
