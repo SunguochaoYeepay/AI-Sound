@@ -1,346 +1,169 @@
 <template>
-  <div class="sound-editor-projects">
-    <!-- 页面头部 -->
-    <div class="page-header">
-      <div class="header-content">
-        <div class="title-section">
-          <h1 class="page-title">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" class="title-icon">
-              <path
-                d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"
-              />
-            </svg>
-            合成中心
-          </h1>
+  <PageContainerWithStats
+    title="合成中心"
+    title-icon="SoundOutlined"
+    :data="projects"
+    :loading="loading"
+    loading-tip="加载项目中..."
+    
+    :search-value="searchParams.search"
+    search-placeholder="搜索项目名称..."
+    :filters="searchFilters"
+    :actions="headerActions"
+    :table-columns="tableColumns"
+    :show-pagination="true"
+    :pagination="pagination"
+    empty-title="暂无混合项目"
+    empty-description="创建您的第一个混合项目"
+    :empty-action="{ text: '立即创建', action: 'create' }"
+    
+    :show-stats="true"
+    :stats="stats"
+    :stats-config="statsConfig"
+    
+    @search="handleSearch"
+    @filter-change="handleFilterChange"
+    @refresh="loadProjects"
+    @action="handleAction"
+    
+    @item-click="openProject"
+    @edit="openProject"
+    @view="openProject"
+    @delete="deleteProject"
+    @empty-action="createNewProject"
+    @page-change="handlePageChange"
+  >
+    <!-- 自定义表格视图 -->
+    <template #table-name="{ record }">
+      <div style="display: flex; align-items: center; gap: 12px">
+        <div class="table-avatar">
+          {{ (record.title || record.name) ? (record.title || record.name).charAt(0) : '项' }}
         </div>
-        <div class="action-section">
-          <a-button type="primary" size="large" @click="createNewProject">
-            <template #icon>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
-              </svg>
-            </template>
-            新建混合项目
-          </a-button>
+        <div>
+          <div style="font-weight: 500">{{ record.title || record.name }}</div>
+          <div style="font-size: 12px; color: #6b7280">{{ record.description || '暂无描述' }}</div>
         </div>
       </div>
-    </div>
+    </template>
 
-    <!-- 过滤器和搜索 -->
-    <div class="filters-section">
-      <div class="filters-left">
-        <a-input-search
-          v-model:value="searchTerm"
-          placeholder="搜索项目名称..."
-          style="width: 300px"
-          allow-clear
-          @search="loadProjects"
-        />
+    <template #table-type="{ record }">
+      <a-tag :color="getProjectTypeColor(record)">
+        {{ getProjectTypeLabel(record) }}
+      </a-tag>
+    </template>
 
-        <a-select
-          v-model:value="typeFilter"
-          placeholder="项目类型"
-          style="width: 150px"
-          allow-clear
-          @change="loadProjects"
-        >
-          <a-select-option value="dialogue">对话项目</a-select-option>
-          <a-select-option value="environment">环境音项目</a-select-option>
-          <a-select-option value="music">音乐项目</a-select-option>
-          <a-select-option value="mixed">混合项目</a-select-option>
-        </a-select>
-      </div>
+    <template #table-status="{ record }">
+      <a-tag :color="getStatusColor(record.status)">
+        {{ getStatusText(record.status) }}
+      </a-tag>
+    </template>
 
-      <div class="filters-right">
-        <a-tooltip title="刷新项目列表">
-          <a-button @click="loadProjects" :loading="loading">
-            <template #icon>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                <path
-                  d="M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z"
-                />
-              </svg>
-            </template>
-          </a-button>
-        </a-tooltip>
+    <template #table-created_at="{ record }">
+      {{ formatDate(record.createdAt) }}
+    </template>
 
-        <a-dropdown>
-          <a-button>
-            <template #icon>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M3,6H21V8H3V6M3,11H21V13H3V11M3,16H21V18H3V16Z" />
-              </svg>
-            </template>
-            视图
-          </a-button>
-          <template #overlay>
-            <a-menu @click="handleViewChange">
-              <a-menu-item key="grid">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M3,11H11V3H3M3,21H11V13H3M13,21H21V13H13M13,3V11H21V3" />
-                </svg>
-                网格视图
-              </a-menu-item>
-              <a-menu-item key="list">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M3,5H21V7H3V5M3,13V11H21V13H3M3,19V17H21V19H3Z" />
-                </svg>
-                列表视图
-              </a-menu-item>
-            </a-menu>
-          </template>
-        </a-dropdown>
-      </div>
-    </div>
+    <template #table-actions="{ record }">
+      <TableActions
+        :record="record"
+        :show-edit="true"
+        :show-view="true"
+        :show-delete="true"
+        @edit="openProject"
+        @view="openProject"
+        @delete="handleDeleteProject"
+      />
+    </template>
+  </PageContainerWithStats>
 
-    <!-- 项目列表 -->
-    <div class="projects-container">
-      <a-spin :spinning="loading" tip="加载项目中...">
-        <div v-if="!loading && projects.length === 0" class="empty-state">
-          <div class="empty-content">
-            <svg width="64" height="64" viewBox="0 0 24 24" fill="#d9d9d9">
-              <path
-                d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"
-              />
-            </svg>
-            <h3>暂无音频项目</h3>
-            <p>创建您的第一个多轨音频编辑项目，开始专业音频制作。</p>
-            <a-button type="primary" @click="createNewProject">
-              <template #icon>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
-                </svg>
-              </template>
-              创建新项目
-            </a-button>
-          </div>
-        </div>
+  <!-- 新建项目弹窗 -->
+  <a-modal
+    v-model:open="newProjectModalVisible"
+    title="新建混合项目"
+    width="600px"
+    @ok="handleCreateProject"
+    @cancel="newProjectModalVisible = false"
+  >
+    <div class="new-project-content">
+      <a-form :model="newProjectForm" layout="vertical">
+        <a-form-item label="项目名称" required>
+          <a-input
+            v-model:value="newProjectForm.title"
+            placeholder="输入项目名称"
+            :maxlength="50"
+          />
+        </a-form-item>
 
-        <!-- 网格视图 -->
-        <div v-else-if="viewMode === 'grid'" class="projects-grid">
-          <div
-            v-for="project in projects"
-            :key="project.id"
-            class="project-card"
-            @click="openProject(project)"
+        <!-- 书籍选择 -->
+        <a-form-item label="选择书籍" required>
+          <a-select 
+            v-model:value="newProjectForm.bookId" 
+            placeholder="请选择书籍"
+            :loading="booksLoading"
           >
-            <div class="card-header">
-              <div class="project-type">
-                <a-tag :color="getProjectTypeColor(project)">
-                  {{ getProjectTypeLabel(project) }}
-                </a-tag>
-              </div>
-              <div class="project-status">
-                <span class="project-version">v{{ project.version || '1.0' }}</span>
-              </div>
-            </div>
+            <a-select-option v-for="book in books" :key="book.id" :value="book.id">
+              {{ book.title }} - {{ book.author }}
+            </a-select-option>
+          </a-select>
+        </a-form-item>
 
-            <div class="card-content">
-              <h3 class="project-name">{{ project.title || project.name }}</h3>
-              <p class="project-description">{{ project.description || '暂无描述' }}</p>
+        <a-form-item label="项目描述">
+          <a-textarea
+            v-model:value="newProjectForm.description"
+            placeholder="输入项目描述（可选）"
+            :rows="3"
+            :maxlength="200"
+          />
+        </a-form-item>
 
-              <div class="project-stats">
-                <div class="stat-item">
-                  <span class="stat-label">轨道数:</span>
-                  <span class="stat-value">{{ getTrackCount(project) }}</span>
-                </div>
-                <div class="stat-item">
-                  <span class="stat-label">时长:</span>
-                  <span class="stat-value">{{ formatDuration(project.totalDuration || 0) }}</span>
-                </div>
-              </div>
-            </div>
-
-            <div class="card-footer">
-              <div class="project-meta">
-                <span class="create-time">{{ formatTime(project.createdAt) }}</span>
-                <span class="update-time"
-                  >更新于 {{ formatTime(project.updatedAt || project.createdAt) }}</span
-                >
-              </div>
-
-              <div class="project-actions" @click.stop>
-                <a-button type="text" size="small" @click="openProject(project)"> 编辑 </a-button>
-                <a-dropdown>
-                  <a-button type="text" size="small">
-                    <template #icon>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                        <path
-                          d="M12,16A2,2 0 0,1 14,18A2,2 0 0,1 12,20A2,2 0 0,1 10,18A2,2 0 0,1 12,16M12,10A2,2 0 0,1 14,12A2,2 0 0,1 12,14A2,2 0 0,1 10,12A2,2 0 0,1 12,10M12,4A2,2 0 0,1 14,6A2,2 0 0,1 12,8A2,2 0 0,1 10,6A2,2 0 0,1 12,4Z"
-                        />
-                      </svg>
-                    </template>
-                  </a-button>
-                  <template #overlay>
-                    <a-menu @click="(e) => handleProjectAction(e, project)">
-                      <a-menu-item key="duplicate">复制项目</a-menu-item>
-                      <a-menu-item key="export">导出音频</a-menu-item>
-                      <a-menu-divider />
-                      <a-menu-item key="delete" class="danger-item">删除项目</a-menu-item>
-                    </a-menu>
-                  </template>
-                </a-dropdown>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- 列表视图 -->
-        <div v-else class="projects-list">
-          <a-table
-            :columns="tableColumns"
-            :data-source="projects"
-            :pagination="pagination"
-            @change="handleTableChange"
-            row-key="id"
-          >
-            <template #bodyCell="{ column, record }">
-              <template v-if="column.key === 'name'">
-                <a @click="openProject(record)">{{ record.title || record.name }}</a>
-              </template>
-              <template v-else-if="column.key === 'type'">
-                <a-tag :color="getProjectTypeColor(record)">
-                  {{ getProjectTypeLabel(record) }}
-                </a-tag>
-              </template>
-              <template v-else-if="column.key === 'tracks'">
-                {{ getTrackCount(record) }}
-              </template>
-              <template v-else-if="column.key === 'duration'">
-                {{ formatDuration(record.totalDuration || 0) }}
-              </template>
-              <template v-else-if="column.key === 'created_at'">
-                {{ formatTime(record.createdAt) }}
-              </template>
-              <template v-else-if="column.key === 'actions'">
-                <a-space>
-                  <a-button type="link" @click="openProject(record)">编辑</a-button>
-                  <a-dropdown>
-                    <a-button type="link">
-                      更多
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M7,10L12,15L17,10H7Z" />
-                      </svg>
-                    </a-button>
-                    <template #overlay>
-                      <a-menu @click="(e) => handleProjectAction(e, record)">
-                        <a-menu-item key="duplicate">复制项目</a-menu-item>
-                        <a-menu-item key="export">导出音频</a-menu-item>
-                        <a-menu-divider />
-                        <a-menu-item key="delete" class="danger-item">删除项目</a-menu-item>
-                      </a-menu>
-                    </template>
-                  </a-dropdown>
-                </a-space>
-              </template>
-            </template>
-          </a-table>
-        </div>
-      </a-spin>
+        <a-form-item label="项目模板">
+          <a-select v-model:value="newProjectForm.template" placeholder="选择项目模板">
+            <a-select-option value="default">标准三轨模板</a-select-option>
+            <a-select-option value="dialogue">对话专用模板</a-select-option>
+            <a-select-option value="music">音乐制作模板</a-select-option>
+            <a-select-option value="empty">空白项目</a-select-option>
+          </a-select>
+        </a-form-item>
+      </a-form>
     </div>
-
-    <!-- 新建项目弹窗 -->
-    <a-modal
-      v-model:open="newProjectModalVisible"
-      title="新建音频混合项目"
-      width="600px"
-      @ok="handleCreateProject"
-      @cancel="newProjectModalVisible = false"
-    >
-      <div class="new-project-content">
-        <a-form :model="newProjectForm" layout="vertical">
-          <a-form-item label="项目名称" required>
-            <a-input
-              v-model:value="newProjectForm.title"
-              placeholder="输入项目名称"
-              :maxlength="50"
-            />
-          </a-form-item>
-
-          <!-- 新增：书籍选择 -->
-          <a-form-item label="选择书籍" required>
-            <a-select 
-              v-model:value="newProjectForm.bookId" 
-              placeholder="请选择书籍"
-              @change="handleBookChange"
-              :loading="booksLoading"
-            >
-              <a-select-option v-for="book in books" :key="book.id" :value="book.id">
-                {{ book.title }} - {{ book.author }}
-              </a-select-option>
-            </a-select>
-          </a-form-item>
-
-          <a-form-item label="项目描述">
-            <a-textarea
-              v-model:value="newProjectForm.description"
-              placeholder="输入项目描述（可选）"
-              :rows="3"
-              :maxlength="200"
-            />
-          </a-form-item>
-
-          <a-form-item label="项目模板">
-            <a-select v-model:value="newProjectForm.template" placeholder="选择项目模板">
-              <a-select-option value="default">标准三轨模板</a-select-option>
-              <a-select-option value="dialogue">对话专用模板</a-select-option>
-              <a-select-option value="music">音乐制作模板</a-select-option>
-              <a-select-option value="empty">空白项目</a-select-option>
-            </a-select>
-          </a-form-item>
-        </a-form>
-      </div>
-    </a-modal>
-
-    <!-- 从书籍导入资源弹窗 -->
-    <a-modal
-      v-model:open="bookImportModalVisible"
-      title="从书籍导入资源"
-      width="900px"
-      :footer="null"
-      :destroyOnClose="true"
-    >
-      <div class="book-import-placeholder">
-        <a-result
-          status="info"
-          title="书籍导入功能已优化"
-          sub-title="现在可以直接在新建项目时选择书籍和章节，无需单独的导入流程"
-        >
-          <template #extra>
-            <a-button type="primary" @click="bookImportModalVisible = false">
-              关闭
-            </a-button>
-          </template>
-        </a-result>
-      </div>
-    </a-modal>
-  </div>
+  </a-modal>
 </template>
 
 <script setup>
   import { ref, onMounted } from 'vue'
   import { useRouter } from 'vue-router'
   import { message, Modal } from 'ant-design-vue'
-  import dayjs from 'dayjs'
   import {
     listProjects,
     createProject,
-    deleteProject,
-    createEmptyProject
+    deleteProject
   } from '@/api/sound-editor/multitrackProject'
   import { booksAPI } from '@/api'
-
+  import PageContainerWithStats from '@/components/common/PageContainerWithStats.vue'
+  import TableActions from '@/components/common/TableActions.vue'
+  import { useErrorHandler } from '@/composables/useErrorHandler'
+  import { getStatusColor, getStatusText, formatDate } from '@/utils/formatters'
+  import {
+    PROJECT_TABLE_COLUMNS,
+    PROJECT_SEARCH_FILTERS,
+    PROJECT_HEADER_ACTIONS,
+    PROJECT_DEFAULT_SEARCH_PARAMS,
+    PROJECT_STATS_CONFIG
+  } from '@/config/soundEditorConfig'
 
   const router = useRouter()
+  const { handleApiError } = useErrorHandler()
 
   // 数据状态
   const projects = ref([])
   const loading = ref(false)
-  const viewMode = ref('grid') // 'grid' | 'list'
+  const stats = ref({})
 
-  // 过滤器状态
-  const searchTerm = ref('')
-  const typeFilter = ref(undefined)
+  // 搜索和筛选参数
+  const searchParams = ref({ ...PROJECT_DEFAULT_SEARCH_PARAMS })
+  const searchFilters = PROJECT_SEARCH_FILTERS
+  const headerActions = PROJECT_HEADER_ACTIONS
+  const tableColumns = PROJECT_TABLE_COLUMNS
+  const statsConfig = PROJECT_STATS_CONFIG
 
   // 分页状态
   const pagination = ref({
@@ -365,25 +188,40 @@
   const books = ref([])
   const booksLoading = ref(false)
 
-  // 从书籍导入弹窗状态
-  const bookImportModalVisible = ref(false)
-
-  // 表格列配置
-  const tableColumns = [
-    { title: '项目名称', dataIndex: 'title', key: 'name', width: 200 },
-    { title: '类型', dataIndex: 'type', key: 'type', width: 120 },
-    { title: '轨道数', dataIndex: 'tracks', key: 'tracks', width: 80 },
-    { title: '时长', dataIndex: 'totalDuration', key: 'duration', width: 100 },
-    { title: '创建时间', dataIndex: 'createdAt', key: 'created_at', width: 150 },
-    { title: '操作', key: 'actions', width: 120 }
-  ]
-
   // 页面加载
   onMounted(() => {
     console.log('SoundEditorProjects组件已挂载')
     loadProjects()
     loadBooks()
   })
+
+  // 事件处理方法
+  const handleSearch = (value) => {
+    searchParams.value.search = value
+    loadProjects()
+  }
+
+  const handleFilterChange = (filters) => {
+    Object.assign(searchParams.value, filters)
+    loadProjects()
+  }
+
+  const handleAction = (action) => {
+    switch (action.action) {
+      case 'create':
+        createNewProject()
+        break
+      case 'refresh':
+        loadProjects()
+        break
+    }
+  }
+
+  const handlePageChange = (page, pageSize) => {
+    pagination.value.current = page
+    pagination.value.pageSize = pageSize
+    loadProjects()
+  }
 
   // 加载书籍列表
   const loadBooks = async () => {
@@ -407,12 +245,6 @@
     }
   }
 
-  // 处理书籍选择变化
-  const handleBookChange = (bookId) => {
-    console.log('选择书籍:', bookId)
-    // 可以在这里添加书籍选择后的逻辑
-  }
-
   // 加载项目列表
   const loadProjects = async () => {
     loading.value = true
@@ -423,32 +255,70 @@
       if (response && response.success) {
         let projectList = response.projects || []
 
-        // 应用过滤器
-        if (searchTerm.value) {
+        // 应用搜索过滤
+        if (searchParams.value.search) {
           projectList = projectList.filter((project) =>
             (project.title || project.name || '')
               .toLowerCase()
-              .includes(searchTerm.value.toLowerCase())
+              .includes(searchParams.value.search.toLowerCase())
           )
         }
 
-        if (typeFilter.value) {
+        // 应用类型过滤
+        if (searchParams.value.type) {
           projectList = projectList.filter((project) => {
             const projectType = getProjectType(project)
-            return projectType === typeFilter.value
+            return projectType === searchParams.value.type
+          })
+        }
+
+        // 应用状态过滤
+        if (searchParams.value.status) {
+          projectList = projectList.filter((project) => 
+            project.status === searchParams.value.status
+          )
+        }
+
+        // 排序
+        if (searchParams.value.sort_by) {
+          projectList.sort((a, b) => {
+            const aValue = a[searchParams.value.sort_by]
+            const bValue = b[searchParams.value.sort_by]
+            if (searchParams.value.sort_order === 'desc') {
+              return bValue > aValue ? 1 : -1
+            } else {
+              return aValue > bValue ? 1 : -1
+            }
           })
         }
 
         projects.value = projectList
         pagination.value.total = projectList.length
+
+        // 更新统计数据
+        updateStats(projectList)
       } else {
         message.error('加载项目列表失败')
       }
     } catch (error) {
-      console.error('加载项目列表失败:', error)
-      message.error('加载项目列表失败')
+      handleApiError(error, '加载项目列表')
     } finally {
       loading.value = false
+    }
+  }
+
+  // 更新统计数据
+  const updateStats = (projectList) => {
+    const total = projectList.length
+    const completed = projectList.filter(p => p.status === 'completed').length
+    const processing = projectList.filter(p => p.status === 'processing').length
+    const failed = projectList.filter(p => p.status === 'failed').length
+
+    stats.value = {
+      total_projects: total,
+      completed_projects: completed,
+      processing_projects: processing,
+      failed_projects: failed
     }
   }
 
@@ -476,17 +346,17 @@
     }
 
     try {
-      // 创建项目信息（确保所有必需字段都有正确的数据类型）
+      // 创建项目信息
       const projectInfo = {
         title: String(newProjectForm.value.title || ''),
         description: String(newProjectForm.value.description || ''),
         author: 'AI-Sound',
-        bookId: newProjectForm.value.bookId, // 新增：书籍ID
-        totalDuration: 0.0, // 确保是浮点数
-        sampleRate: 44100, // 确保是整数
-        channels: 2, // 确保是整数
-        bitDepth: 16, // 确保是整数
-        exportFormat: 'wav', // 确保是字符串
+        bookId: newProjectForm.value.bookId,
+        totalDuration: 0.0,
+        sampleRate: 44100,
+        channels: 2,
+        bitDepth: 16,
+        exportFormat: 'wav',
         createdAt: new Date().toISOString(),
         version: '1.0'
       }
@@ -503,91 +373,37 @@
         message.success('项目创建成功')
         newProjectModalVisible.value = false
         loadProjects()
-
-        // 创建后直接进入编辑器
-          if (response.data && response.data.data && response.data.data.project && response.data.data.project.id) {
-            router.push(`/sound-editor/edit/${response.data.data.project.id}`)
-          }
       } else {
-        message.error('创建项目失败')
+        message.error('创建项目失败: ' + (response?.message || '未知错误'))
       }
     } catch (error) {
-      console.error('创建项目失败:', error)
-      if (error.response) {
-        console.error('API响应错误:', error.response.data)
+      handleApiError(error, '创建项目')
+    }
+  }
 
-        // 显示详细的验证错误
-        if (error.response.data.detail && Array.isArray(error.response.data.detail)) {
-          const errors = error.response.data.detail
-            .map((err) => `${err.loc?.join('.')}: ${err.msg}`)
-            .join('\n')
-          console.error('验证错误详情:', errors)
-          message.error(`数据验证失败:\n${errors}`)
-        } else {
-          message.error(`创建项目失败: ${error.response.data.detail || error.response.statusText}`)
+  // 打开项目
+  const openProject = (project) => {
+    router.push(`/sound-editor/edit/${project.id}`)
+  }
+
+  // 删除项目
+  const handleDeleteProject = (project) => {
+    Modal.confirm({
+      title: '确认删除',
+      content: `确定要删除项目 "${project.title || project.name}" 吗？`,
+      okText: '删除',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: async () => {
+        try {
+          await deleteProject(project.id)
+          message.success('项目删除成功')
+          loadProjects()
+        } catch (error) {
+          handleApiError(error, '删除项目')
         }
-      } else {
-        message.error('创建项目失败: 网络错误')
       }
-    }
-  }
-
-                  // 打开项目
-                const openProject = (project) => {
-                  router.push(`/sound-editor/edit/${project.id}`)
-                }
-
-  // 从书籍导入资源
-  const importFromBook = () => {
-    bookImportModalVisible.value = true
-  }
-
-
-
-  // 处理视图切换
-  const handleViewChange = ({ key }) => {
-    viewMode.value = key
-  }
-
-  // 处理表格变化
-  const handleTableChange = (pag) => {
-    pagination.value.current = pag.current
-    pagination.value.pageSize = pag.pageSize
-  }
-
-  // 处理项目操作
-  const handleProjectAction = async ({ key }, project) => {
-    switch (key) {
-      case 'duplicate':
-        message.info('复制功能开发中')
-        break
-      case 'export':
-        message.info('导出功能开发中')
-        break
-      case 'delete':
-        Modal.confirm({
-          title: '确认删除',
-          content: `确定要删除项目 "${project.title || project.name}" 吗？此操作不可恢复。`,
-          okText: '确认删除',
-          okType: 'danger',
-          cancelText: '取消',
-          onOk: async () => {
-            try {
-              const response = await deleteProject(project.id)
-              if (response && response.success) {
-                message.success('项目删除成功')
-                loadProjects()
-              } else {
-                message.error('删除项目失败')
-              }
-            } catch (error) {
-              console.error('删除项目失败:', error)
-              message.error('删除项目失败')
-            }
-          }
-        })
-        break
-    }
+    })
   }
 
   // 获取项目类型
@@ -634,226 +450,24 @@
     }
     return colors[type] || 'purple'
   }
-
-  // 获取轨道数量
-  const getTrackCount = (project) => {
-    return project.tracks ? project.tracks.length : 3
-  }
-
-  // 时间格式化
-  const formatTime = (time) => {
-    if (!time) return '暂无'
-    return dayjs(time).format('YYYY-MM-DD HH:mm')
-  }
-
-  // 时长格式化
-  const formatDuration = (seconds) => {
-    if (!seconds || seconds <= 0) return '00:00'
-    const minutes = Math.floor(seconds / 60)
-    const remainingSeconds = Math.floor(seconds % 60)
-    return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`
-  }
 </script>
 
 <style scoped>
-  .sound-editor-projects {
-    min-height: 100vh;
-  }
-
-  .page-header {
-    margin-bottom: 24px;
-    padding: 20px 32px;
+  .table-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    border-radius: 12px;
-    box-shadow: 0 8px 32px rgba(102, 126, 234, 0.3);
-  }
-
-  .header-content {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-  }
-
-  .title-section {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .page-title {
     display: flex;
     align-items: center;
-    margin: 0;
-    font-size: 20px;
-    font-weight: 500;
+    justify-content: center;
     color: white;
-  }
-
-  .title-icon {
-    margin-right: 8px;
-    color: #ffffff;
-  }
-
-  .action-section {
-    display: flex;
-    gap: 16px;
-  }
-
-  .filters-section {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 16px 24px;
-    border-radius: 8px;
-    margin-bottom: 24px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-  }
-
-  .filters-left {
-    display: flex;
-    gap: 12px;
-    align-items: center;
-  }
-
-  .filters-right {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-  }
-
-  .projects-container {
-    border-radius: 8px;
-    padding: 16px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-  }
-
-  .empty-state {
-    text-align: center;
-    padding: 60px 20px;
-  }
-
-  .empty-content h3 {
-    margin: 16px 0 8px 0;
-    color: #4b5563;
-  }
-
-  .empty-content p {
-    color: #6b7280;
-    margin-bottom: 24px;
-  }
-
-  .projects-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-    gap: 20px;
-  }
-
-  .project-card {
-    border: 1px solid #e5e7eb;
-    border-radius: 8px;
-    padding: 16px;
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-
-  .project-card:hover {
-    border-color: #3b82f6;
-    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
-    transform: translateY(-2px);
-  }
-
-  .card-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 16px;
-  }
-
-  .project-version {
-    font-size: 12px;
-    color: #6b7280;
-    background: #f3f4f6;
-    padding: 2px 8px;
-    border-radius: 4px;
-  }
-
-  .card-content {
-    margin-bottom: 16px;
-  }
-
-  .project-name {
-    margin: 0 0 8px 0;
+    font-weight: 600;
     font-size: 16px;
-    font-weight: 600;
-    color: #1f2937;
   }
 
-  .project-description {
-    margin: 0 0 16px 0;
-    color: #6b7280;
-    font-size: 14px;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-  }
-
-  .project-stats {
-    display: flex;
-    gap: 16px;
-  }
-
-  .stat-item {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-
-  .stat-label {
-    font-size: 12px;
-    color: #6b7280;
-  }
-
-  .stat-value {
-    font-size: 14px;
-    font-weight: 600;
-    color: #1f2937;
-  }
-
-  .card-footer {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding-top: 16px;
-    border-top: 1px solid #f3f4f6;
-  }
-
-  .project-meta {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-
-  .create-time,
-  .update-time {
-    font-size: 12px;
-    color: #6b7280;
-  }
-
-  .project-actions {
-    display: flex;
-    gap: 8px;
-  }
-
-  .projects-list {
-    overflow-x: auto;
-  }
-
-  .danger-item {
-    color: #ef4444 !important;
-  }
-
-  .new-project-content {
-    padding: 8px 0;
+  .book-import-placeholder {
+    padding: 20px;
+    text-align: center;
   }
 </style>
