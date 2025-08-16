@@ -117,3 +117,50 @@ export const truncateText = (text, length = 50, suffix = '...') => {
   if (text.length <= length) return text
   return text.substring(0, length) + suffix
 }
+
+/**
+ * 格式化时长（秒转时分秒）
+ * @param {number} seconds - 秒数
+ * @returns {string} 格式化后的时长
+ */
+export const formatDuration = (seconds) => {
+  if (!seconds || seconds === 0) return '0:00'
+  
+  const hours = Math.floor(seconds / 3600)
+  const minutes = Math.floor((seconds % 3600) / 60)
+  const secs = Math.floor(seconds % 60)
+  
+  if (hours > 0) {
+    return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+  } else {
+    return `${minutes}:${secs.toString().padStart(2, '0')}`
+  }
+}
+
+/**
+ * 格式化音乐状态
+ * @param {string} status - 状态值
+ * @returns {string} 状态文本
+ */
+export const getMusicStatusText = (status) => {
+  const statusMap = {
+    completed: '已完成',
+    processing: '处理中',
+    failed: '失败'
+  }
+  return statusMap[status] || status
+}
+
+/**
+ * 格式化音乐状态颜色
+ * @param {string} status - 状态值
+ * @returns {string} 颜色值
+ */
+export const getMusicStatusColor = (status) => {
+  const colorMap = {
+    completed: 'green',
+    processing: 'blue',
+    failed: 'red'
+  }
+  return colorMap[status] || 'default'
+}

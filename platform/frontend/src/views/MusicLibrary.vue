@@ -1,165 +1,107 @@
 <template>
-  <div class="music-library">
-    <!-- 页面头部 -->
-    <div class="page-header">
-      <div class="header-content">
-        <div class="title-section">
-          <h1 class="page-title">
-            <SoundOutlined style="margin-right: 8px" />
-            背景音效
-          </h1>
+  <PageContainerWithStats
+    title="音乐列表"
+    title-icon="SoundOutlined"
+    :data="musicList"
+    :loading="loading"
+    loading-tip="加载音乐列表中..."
+    
+    :search-value="searchParams.search"
+    search-placeholder="搜索音乐名称..."
+    :filters="searchFilters"
+    :actions="headerActions"
+    :table-columns="tableColumns"
+    :show-pagination="true"
+    :pagination="pagination"
+    empty-title="暂无背景音乐"
+    empty-description="创建您的第一首背景音乐"
+    :empty-action="{ text: '立即创建', action: 'generate' }"
+    
+    :show-stats="true"
+    :stats="stats"
+    :stats-config="statsConfig"
+    
+    @search="handleSearch"
+    @filter-change="handleFilterChange"
+    @refresh="refreshData"
+    @action="handleAction"
+    @item-click="playMusic"
+    @edit="playMusic"
+    @view="playMusic"
+    @delete="deleteMusic"
+    @empty-action="handleEmptyAction"
+    @page-change="handlePageChange"
+  >
+    <!-- 自定义表格视图 -->
+    <template #table-name="{ record }">
+      <div style="display: flex; align-items: center; gap: 12px">
+        <div class="table-avatar">
+          {{ record.name ? record.name.charAt(0) : '音' }}
         </div>
-
-        <div class="action-section">
-          <!-- 简化为单一直接生成按钮 -->
-          <a-button type="primary" @click="showDirectGenerationModal = true">
-            <SoundOutlined />
-            合成音乐
-          </a-button>
-          <a-button @click="showUploadModal = true">
-            <PlusOutlined />
-            上传音乐
-          </a-button>
-          <a-button @click="refreshData" :loading="refreshing">
-            <ReloadOutlined />
-            刷新
-          </a-button>
+        <div>
+          <div style="font-weight: 500">{{ record.name || '未命名音乐' }}</div>
+          <div style="font-size: 12px; color: #6b7280">{{ record.description || '暂无描述' }}</div>
         </div>
       </div>
-    </div>
+    </template>
 
-    <!-- 统计卡片 -->
-    <a-row :gutter="16" class="stats-cards">
-      <a-col :span="6">
-        <a-card size="small">
-          <a-statistic
-            title="总音乐数"
-            :value="stats.total_music"
-            :value-style="{ color: '#1890ff' }"
-          >
-            <template #prefix>
-              <SoundOutlined />
-            </template>
-          </a-statistic>
-        </a-card>
-      </a-col>
-      <a-col :span="6">
-        <a-card size="small">
-          <a-statistic
-            title="音乐分类"
-            :value="stats.total_categories"
-            :value-style="{ color: '#52c41a' }"
-          >
-            <template #prefix>
-              <AppstoreOutlined />
-            </template>
-          </a-statistic>
-        </a-card>
-      </a-col>
-      <a-col :span="6">
-        <a-card size="small">
-          <a-statistic
-            title="总时长"
-            :value="formatDuration(stats.total_duration)"
-            :value-style="{ color: '#faad14' }"
-          >
-            <template #prefix>
-              <ClockCircleOutlined />
-            </template>
-          </a-statistic>
-        </a-card>
-      </a-col>
-      <a-col :span="6">
-        <a-card size="small">
-          <a-statistic
-            title="总大小"
-            :value="formatFileSize(stats.total_size)"
-            :value-style="{ color: '#722ed1' }"
-          >
-            <template #prefix>
-              <DatabaseOutlined />
-            </template>
-          </a-statistic>
-        </a-card>
-      </a-col>
-    </a-row>
+    <template #table-category="{ record }">
+      <a-tag color="blue">
+        {{ record.category?.name || record.category_name || '未分类' }}
+      </a-tag>
+    </template>
 
-    <!-- 音乐列表 -->
-    <a-card title="音乐列表" class="music-table">
-      <a-table
-        :dataSource="musicList"
-        :columns="tableColumns"
-        :pagination="pagination"
-        :loading="loading"
-        row-key="id"
-        @change="handleTableChange"
+    <template #table-duration="{ record }">
+      {{ formatDuration(record.duration) }}
+    </template>
+
+    <template #table-file_size="{ record }">
+      {{ formatFileSize(record.file_size) }}
+    </template>
+
+    <template #table-created_at="{ record }">
+      {{ formatDate(record.created_at) }}
+    </template>
+
+    <template #table-actions="{ record }">
+      <TableActions
+        :record="record"
+        :show-edit="false"
+        :show-view="false"
+        :show-delete="true"
+        @delete="deleteMusic"
       >
-        <template #bodyCell="{ column, record }">
-          <template v-if="column.key === 'name'">
-            <div class="music-info">
-              <div class="music-name">{{ record.name }}</div>
-              <div class="music-description" v-if="record.description">
-                {{ record.description }}
-              </div>
-            </div>
-          </template>
+        <template #custom-actions="{ record }">
+          <!-- 播放按钮 -->
+          <a-tooltip :title="getPlayButtonTooltip(record)">
+            <a-button
+              size="small"
+              type="text"
+              @click.stop="playMusic(record)"
+              :disabled="!canPlayMusic(record)"
+              :loading="audioStore.loading && audioStore.currentAudio?.id === getMusicId(record)"
+              :type="audioStore.isCurrentlyPlaying(getMusicId(record)) ? 'primary' : 'default'"
+            >
+              <PlayCircleOutlined v-if="!audioStore.isCurrentlyPlaying(getMusicId(record))" />
+              <PauseCircleOutlined v-else />
+            </a-button>
+          </a-tooltip>
 
-          <template v-else-if="column.key === 'category'">
-            <a-tag color="blue">{{
-              record.category?.name || record.category_name || '未分类'
-            }}</a-tag>
-          </template>
-
-          <template v-else-if="column.key === 'duration'">
-            {{ formatDuration(record.duration) }}
-          </template>
-
-          <template v-else-if="column.key === 'file_size'">
-            {{ formatFileSize(record.file_size) }}
-          </template>
-
-          <template v-else-if="column.key === 'actions'">
-            <a-space>
-              <!-- 播放按钮 - 根据音乐类型和状态显示 -->
-              <a-tooltip :title="getPlayButtonTooltip(record)">
-                <a-button
-                  size="small"
-                  type="text"
-                  @click="playMusic(record)"
-                  :disabled="!canPlayMusic(record)"
-                  :loading="
-                    audioStore.loading && audioStore.currentAudio?.id === getMusicId(record)
-                  "
-                  :type="audioStore.isCurrentlyPlaying(getMusicId(record)) ? 'primary' : 'default'"
-                >
-                  <PlayCircleOutlined v-if="!audioStore.isCurrentlyPlaying(getMusicId(record))" />
-                  <PauseCircleOutlined v-else />
-                </a-button>
-              </a-tooltip>
-
-              <!-- 下载按钮 - 只有已完成的音乐才能下载 -->
-              <a-tooltip :title="getDownloadButtonTooltip(record)">
-                <a-button
-                  size="small"
-                  type="text"
-                  @click="downloadMusic(record)"
-                  :disabled="!canDownloadMusic(record)"
-                >
-                  <DownloadOutlined />
-                </a-button>
-              </a-tooltip>
-
-              <!-- 删除按钮 -->
-              <a-tooltip title="删除">
-                <a-button size="small" type="text" danger @click="deleteMusic(record)">
-                  <DeleteOutlined />
-                </a-button>
-              </a-tooltip>
-            </a-space>
-          </template>
+          <!-- 下载按钮 -->
+          <a-tooltip :title="getDownloadButtonTooltip(record)">
+            <a-button
+              size="small"
+              type="text"
+              @click.stop="downloadMusic(record)"
+              :disabled="!canDownloadMusic(record)"
+            >
+              <DownloadOutlined />
+            </a-button>
+          </a-tooltip>
         </template>
-      </a-table>
-    </a-card>
+      </TableActions>
+    </template>
+  </PageContainerWithStats>
 
     <!-- 智能生成模态框已移除 - 功能复杂，后期优化 -->
 
@@ -386,11 +328,10 @@
         </a-form-item>
       </a-form>
     </a-modal>
-  </div>
 </template>
 
 <script setup>
-  import { ref, reactive, onMounted } from 'vue'
+  import { ref, reactive, onMounted, computed } from 'vue'
   import { message, Modal } from 'ant-design-vue'
   import {
     SoundOutlined,
@@ -412,6 +353,17 @@
   import { useAudioPlayerStore } from '@/stores/audioPlayer'
   import { backgroundMusicAPI, musicGenerationAPI } from '@/api'
   import SongStructureHelper from '@/components/synthesis-center/SongStructureHelper.vue'
+  import { useErrorHandler } from '@/composables/useErrorHandler'
+  import { formatDate, formatDuration, formatFileSize, getMusicStatusColor, getMusicStatusText } from '@/utils/formatters'
+  import {
+    MUSIC_TABLE_COLUMNS,
+    MUSIC_SEARCH_FILTERS,
+    MUSIC_HEADER_ACTIONS,
+    MUSIC_DEFAULT_SEARCH_PARAMS,
+    MUSIC_STATS_CONFIG
+  } from '@/config/musicLibraryConfig'
+  import PageContainerWithStats from '@/components/common/PageContainerWithStats.vue'
+  import TableActions from '@/components/common/TableActions.vue'
   // import { booksAPI, chaptersAPI } from '@/api'  // 移除 - 智能生成功能已移除
 
   // 页面状态
@@ -419,7 +371,6 @@
   const refreshing = ref(false)
   const showUploadModal = ref(false)
   const uploading = ref(false)
-  // const showSmartGenerationModal = ref(false)  // 智能生成已移除
   const showDirectGenerationModal = ref(false)
   const generating = ref(false)
   const isServiceHealthy = ref(true)
@@ -427,6 +378,7 @@
   // 音频服务
   const audioService = getAudioService()
   const audioStore = useAudioPlayerStore()
+  const { handleApiError } = useErrorHandler()
 
   // 数据状态
   const musicList = ref([])
@@ -437,14 +389,41 @@
     total_size: 0
   })
 
+  // 搜索参数
+  const searchParams = reactive({
+    search: '',
+    ...MUSIC_DEFAULT_SEARCH_PARAMS
+  })
+
   // 分页状态
   const pagination = reactive({
-    current: 1,
+    page: 1,
     pageSize: 10,
-    total: 0,
-    showSizeChanger: true,
-    showQuickJumper: true
+    total: 0
   })
+
+  // 搜索筛选器配置
+  const searchFilters = computed(() => {
+    const filters = [...MUSIC_SEARCH_FILTERS]
+    // 动态更新分类选项
+    const categoryFilter = filters.find(f => f.key === 'category_id')
+    if (categoryFilter) {
+      categoryFilter.options = categories.value.map(cat => ({
+        value: cat.id,
+        label: cat.name
+      }))
+    }
+    return filters
+  })
+
+  // 头部操作按钮配置
+  const headerActions = computed(() => MUSIC_HEADER_ACTIONS)
+
+  // 表格列定义
+  const tableColumns = MUSIC_TABLE_COLUMNS
+
+  // 统计配置
+  const statsConfig = MUSIC_STATS_CONFIG
 
   // 上传数据
   const uploadData = reactive({
@@ -485,41 +464,44 @@
   // const booksLoading = ref(false)
   // const chaptersLoading = ref(false)
 
-  // 表格列定义
-  const tableColumns = [
-    {
-      title: '音乐名称',
-      dataIndex: 'name',
-      key: 'name',
-      width: 200
-    },
-    {
-      title: '分类',
-      dataIndex: 'category_name',
-      key: 'category',
-      width: 100
-    },
-    {
-      title: '时长',
-      dataIndex: 'duration',
-      key: 'duration',
-      width: 80
-    },
-    {
-      title: '大小',
-      dataIndex: 'file_size',
-      key: 'file_size',
-      width: 80
-    },
-    {
-      title: '操作',
-      key: 'actions',
-      width: 150,
-      fixed: 'right'
-    }
-  ]
 
-  // 方法
+
+  // 最佳实践事件处理方法
+  const handleSearch = (value) => {
+    searchParams.search = value
+    loadMusicList()
+  }
+
+  const handleFilterChange = (filters) => {
+    Object.assign(searchParams, filters)
+    loadMusicList()
+  }
+
+  const handlePageChange = ({ page, pageSize }) => {
+    pagination.page = page
+    pagination.pageSize = pageSize
+    loadMusicList()
+  }
+
+  const handleAction = (action) => {
+    switch (action.action) {
+      case 'generate':
+        showDirectGenerationModal.value = true
+        break
+      case 'upload':
+        showUploadModal.value = true
+        break
+      case 'refresh':
+        refreshData()
+        break
+    }
+  }
+
+  const handleEmptyAction = () => {
+    showDirectGenerationModal.value = true
+  }
+
+  // 原有方法
   const refreshData = async () => {
     refreshing.value = true
     try {
@@ -527,7 +509,7 @@
       await loadStats()
       message.success('数据刷新成功')
     } catch (error) {
-      message.error('数据刷新失败')
+      handleApiError(error, '刷新数据')
     } finally {
       refreshing.value = false
     }
@@ -541,12 +523,12 @@
       // 🎯 同时获取背景音乐和音乐生成任务
       const [backgroundResponse, generationResponse] = await Promise.allSettled([
         backgroundMusicAPI.getMusic({
-          page: pagination.current,
+          page: pagination.page,
           page_size: pagination.pageSize,
           active_only: true
         }),
         fetch(
-          `/api/v1/music-generation-async/music-tasks?page=${pagination.current}&page_size=${pagination.pageSize}`
+          `/api/v1/music-generation-async/music-tasks?page=${pagination.page}&page_size=${pagination.pageSize}`
         ).then((res) => res.json())
       ])
 
@@ -679,11 +661,7 @@
     }
   }
 
-  const handleTableChange = (pag) => {
-    pagination.current = pag.current
-    pagination.pageSize = pag.pageSize
-    loadMusicList()
-  }
+
 
   // 🎯 辅助函数：获取音乐唯一ID
   const getMusicId = (music) => {
@@ -1106,19 +1084,7 @@
   }
 
   // 工具函数
-  const formatDuration = (seconds) => {
-    if (!seconds || isNaN(seconds)) return '00:00'
-    const mins = Math.floor(seconds / 60)
-    const secs = Math.floor(seconds % 60)
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
-  }
 
-  const formatFileSize = (bytes) => {
-    if (!bytes || isNaN(bytes)) return '0 B'
-    const sizes = ['B', 'KB', 'MB', 'GB']
-    const i = Math.floor(Math.log(bytes) / Math.log(1024))
-    return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${sizes[i]}`
-  }
 
   // 生命周期
   onMounted(() => {
@@ -1130,67 +1096,17 @@
 </script>
 
 <style scoped>
-  .music-library {
-    padding: 0;
-  }
-
-  .page-header {
-    margin-bottom: 24px;
-    padding: 20px 32px;
+  .table-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
     background: linear-gradient(135deg, #722ed1 0%, #531dab 100%);
-    border-radius: 12px;
-    box-shadow: 0 8px 32px rgba(114, 46, 209, 0.3);
-  }
-
-  .header-content {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-  }
-
-  .title-section {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .page-title {
     display: flex;
     align-items: center;
-    margin: 0;
-    font-size: 20px;
-    font-weight: 500;
+    justify-content: center;
     color: white;
-  }
-
-  .action-section {
-    display: flex;
-    gap: 16px;
-  }
-
-  .stats-cards {
-    margin-bottom: 16px;
-  }
-
-  .music-table {
-    margin-bottom: 16px;
-  }
-
-  .music-info {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-
-  .music-name {
-    font-weight: 500;
-    color: #262626;
-  }
-
-  .music-description {
-    font-size: 12px;
-    color: #8c8c8c;
-    margin: 0;
+    font-weight: 600;
+    font-size: 16px;
   }
 
   .music-generation-form {
