@@ -190,20 +190,60 @@ class OllamaLLMSceneAnalyzer:
         return segment_count > 1
 
     def _create_batch_analysis_prompt(self, text: str) -> str:
-        """创建批量分析的提示词"""
-        return f"""请分析以下章节中每个段落的环境声音，提取环境中的声音元素：
+        """创建批量分析的提示词 - 增强时序分析"""
+        # 检查是否包含时序分析指导
+        if "时序分析要求" in text or "声音事件" in text:
+            logger.info("[LLM_ANALYZER] 检测到时序分析提示词，直接使用")
+            return text
+        else:
+            # 使用优化后的提示词
+            logger.info("[LLM_ANALYZER] 使用优化后的批量分析提示词")
+            return f"""请严格按照以下规则分析小说章节的旁白内容，评估每个段落是否有声音：
+
+🎯 核心任务：只识别文本中明确描述的声音，不要进行任何联想！
+
+🔍 判断标准：
+- 如果文本中明确提到声音词汇（如"嗡鸣"、"震动"、"传来"等），则识别该声音
+- 如果文本中只有场景描述、动作描述、状态描述，则返回空数组[]
+- 不要基于场景进行任何联想
+
+❌ 绝对禁止：
+- 不要因为看到"御书房"就联想"翻书声"
+- 不要因为看到"把玩钢笔"就联想"写字声"
+- 不要因为看到"汗水浸湿"就联想"水声"
+- 不要因为看到"裙摆扫过"就联想任何声音
+
+✅ 正确示例：
+- "空调发出轻微嗡鸣" → 有声音，返回["空调声"]
+- "手机震动" → 有声音，返回["手机震动声"]
+- "远处传来马蹄声" → 有声音，返回["马蹄声"]
+
+❌ 错误示例：
+- "御书房内" → 无声音，返回[]
+- "把玩钢笔" → 无声音，返回[]
+- "汗水浸湿" → 无声音，返回[]
+- "裙摆扫过" → 无声音，返回[]
+
+🔍 时序分析要求：
+1. 分析声音的持续时间：瞬间声音（如'叮'、'砰'）通常1-2秒，持续声音（如'雨声'、'空调声'）持续整个段落
+2. 分析声音的强度变化：高强度（如'雷声'、'爆炸声'）、中强度（如'脚步声'、'说话声'）、低强度（如'呼吸声'、'时钟声'）
+3. 分析声音的时序关系：哪些声音同时发生，哪些声音先后发生
+4. 识别无声段落：纯对话、心理描述、无声动作等
+5. 考虑声音的因果关系：如'手机震动'→'叮'声，'看消息'→无声
+
+⚠️ 重要提醒：只关注文本中明确的声音描述，不要联想！
 
 {text}
 
 请按段落顺序返回结果，每个段落一行，格式：
-段落1: ["关键词1", "关键词2"]
-段落2: ["关键词3", "关键词4"]
+段落1: ["关键词1", "关键词2"]  # 如果有声音
+段落2: []  # 如果无声音
 
 要求：
-- 只提取环境声音：风声、雨声、雷声、虫鸣、鸟叫、水声、脚步声、翻书声等
+- 严格按文本内容判断，不要联想
 - 不要提取人物名称或对话内容
 - 每个段落最多3个关键词
-- 如果段落没有环境声音，返回空数组[]
+- 如果段落没有明确的声音描述，必须返回空数组[]
 - 不要解释，直接返回结果"""
 
     def _create_single_analysis_prompt(self, text: str) -> str:
@@ -222,7 +262,110 @@ class OllamaLLMSceneAnalyzer:
 - 不要解释，直接返回结果"""
     
     def _parse_batch_llm_response(self, response_text: str) -> List[SceneAnalysis]:
-        """解析批量分析的LLM响应"""
+        """解析批量分析的LLM响应 - 增强时序分析"""
+        scenes = []
+        
+        # 首先尝试解析时序分析格式
+        if self._is_timeline_analysis_format(response_text):
+            logger.info("[BATCH_PARSER] 检测到时序分析格式，使用时序解析")
+            scenes = self._parse_timeline_analysis_response(response_text)
+        else:
+            # 回退到原有的段落格式解析
+            logger.info("[BATCH_PARSER] 使用原有段落格式解析")
+            scenes = self._parse_legacy_batch_response(response_text)
+        
+        return scenes
+    
+    def _is_timeline_analysis_format(self, response_text: str) -> bool:
+        """检测是否为时序分析格式"""
+        # 检查是否包含时序分析的特征
+        timeline_indicators = [
+            "声音事件", "无声段", "开始时间", "持续时间", "强度"
+        ]
+        return any(indicator in response_text for indicator in timeline_indicators)
+    
+    def _parse_timeline_analysis_response(self, response_text: str) -> List[SceneAnalysis]:
+        """解析时序分析响应 - 完全依赖LLM智能分析"""
+        scenes = []
+        
+        logger.info("[TIMELINE_PARSER] 开始解析LLM时序分析响应")
+        logger.info(f"[TIMELINE_PARSER] 原始响应: {response_text[:200]}...")
+        
+        # 解析声音事件（精确匹配）
+        sound_event_pattern = r'声音事件\\d+：([^0-9]+)\\s+([0-9.]+)s\\s+([0-9.]+)s\\s+([^0-9]+)\\s+(.+)'
+        matches = re.findall(sound_event_pattern, response_text)
+        
+        # 如果上面的模式没匹配到，尝试更宽松的模式
+        if not matches:
+            # 尝试匹配LLM实际返回的格式 - 修复正则表达式
+            sound_event_pattern = r'声音事件\\d+：([^\\n]+)'
+            matches = re.findall(sound_event_pattern, response_text)
+            logger.info(f"[TIMELINE_PARSER] 使用宽松模式匹配到 {len(matches)} 个声音事件")
+            
+            # 如果还是没有匹配到，尝试直接解析LLM输出
+            if not matches:
+                logger.info("[TIMELINE_PARSER] 尝试直接解析LLM输出")
+                # 直接查找所有包含声音事件的行，不依赖硬编码关键词
+                lines = response_text.split('\n')
+                for line in lines:
+                    if '声音事件' in line and '：' in line:
+                        # 提取声音类型
+                        parts = line.split('：')
+                        if len(parts) >= 2:
+                            sound_part = parts[1].strip()
+                            # 智能提取声音关键词，不依赖硬编码列表
+                            # 移除时间、强度等描述性信息，保留核心声音词汇
+                            sound_keyword = self._extract_sound_keyword_from_text(sound_part)
+                            if sound_keyword:
+                                matches.append(sound_keyword)
+                                logger.info(f"[TIMELINE_PARSER] 直接解析到声音: {sound_keyword}")
+                
+                if not matches:
+                    logger.info("[TIMELINE_PARSER] 时序解析失败，回退到段落格式解析")
+                    return self._parse_legacy_batch_response(response_text)
+        
+        for match in matches:
+            if len(match) == 5:  # 完整格式
+                sound_type, start_time, duration, intensity, description = match
+            else:  # 简化格式，只提取声音类型
+                sound_type = match.strip()
+                start_time = "0.0"
+                duration = "1.5"
+                intensity = "中强度"
+                description = sound_type
+            sound_type = sound_type.strip()
+            
+            # 创建场景分析（保留LLM的完整信息）
+            scenes.append(SceneAnalysis(
+                location=f"{sound_type}_{start_time}s",
+                keywords=[sound_type],  # 只保留声音类型，不添加额外信息
+                confidence=0.95  # 时序分析更准确
+            ))
+            logger.info(f"[TIMELINE_PARSER] 声音事件: {sound_type} {start_time}s-{float(start_time)+float(duration):.1f}s {intensity}")
+        
+        # 如果没有找到声音事件，尝试解析无声段
+        silent_pattern = r'无声段：([0-9.]+)s\\s+([0-9.]+)s\\s+(.+)'
+        silent_matches = re.findall(silent_pattern, response_text)
+        
+        for match in silent_matches:
+            start_time, duration, description = match
+            scenes.append(SceneAnalysis(
+                location=f"silent_{start_time}s",
+                keywords=[],  # 无声段没有关键词
+                confidence=0.90
+            ))
+            logger.info(f"[TIMELINE_PARSER] 无声段: {start_time}s-{float(start_time)+float(duration):.1f}s {description}")
+        
+        # 如果LLM返回了时序分析格式但没有解析到结果，不要回退到硬编码
+        if not scenes:
+            logger.warning("[TIMELINE_PARSER] LLM返回时序分析格式但未解析到结果，返回空列表")
+            return []
+        
+        logger.info(f"[TIMELINE_PARSER] 时序解析完成: {len(scenes)}个场景")
+        return scenes
+    
+    def _parse_legacy_batch_response(self, response_text: str) -> List[SceneAnalysis]:
+        """解析原有的批量分析响应格式"""
         scenes = []
         
         # 查找段落格式的响应
@@ -255,6 +398,9 @@ class OllamaLLMSceneAnalyzer:
                 except json.JSONDecodeError:
                     logger.warning(f"[BATCH_PARSER] 段落{segment_num}解析失败: {keywords_str}")
                     continue
+                except json.JSONDecodeError:
+                    logger.warning(f"[BATCH_PARSER] 段落{segment_num}解析失败: {keywords_str}")
+                    continue
         
         # 如果没有找到段落格式，尝试解析为整体结果
         if not scenes:
@@ -262,6 +408,8 @@ class OllamaLLMSceneAnalyzer:
             scenes = self._parse_single_llm_response(response_text)
         
         return scenes
+    
+
     
     def _parse_single_llm_response(self, response_text: str) -> List[SceneAnalysis]:
         """解析单段落分析的LLM响应"""
@@ -332,13 +480,46 @@ class OllamaLLMSceneAnalyzer:
         # 基于场景数量和关键词质量计算置信度
         total_confidence = sum(scene.confidence for scene in scenes)
         avg_confidence = total_confidence / len(scenes)
-        
+         
         # 根据响应质量调整
         if "json" in response_text.lower() or "[" in response_text:
             # 如果响应包含JSON格式，提高置信度
             avg_confidence = min(avg_confidence * 1.1, 1.0)
         
         return round(avg_confidence, 2)
+
+    def _extract_sound_keyword_from_text(self, text: str) -> str:
+        """智能提取声音关键词，不依赖硬编码列表"""
+        if not text or not isinstance(text, str):
+            return ""
+        
+        # 移除时间信息 (如 "0.0s", "1.5s", "中强度" 等)
+        import re
+        text = re.sub(r'\d+\.?\d*s', '', text)  # 移除时间
+        text = re.sub(r'[高中低]强度', '', text)  # 移除强度描述
+        text = re.sub(r'开始时间|持续时间|强度', '', text)  # 移除标签
+        
+        # 移除常见的描述性词汇
+        descriptive_words = ['的', '声', '音', '响', '传来', '发出', '产生', '响起']
+        for word in descriptive_words:
+            text = text.replace(word, '')
+        
+        # 清理并提取核心声音词汇
+        text = text.strip()
+        
+        # 如果文本太短或太长，可能不是有效的声音关键词
+        if len(text) < 2 or len(text) > 10:
+            return ""
+        
+        # 检查是否包含常见的声音相关字符
+        sound_indicators = ['声', '音', '响', '鸣', '叫', '吼', '啸', '嗡', '叮', '咚', '啪', '砰']
+        if not any(indicator in text for indicator in sound_indicators):
+            # 如果没有声音指示符，检查是否是动作产生的声音
+            action_sounds = ['步', '走', '跑', '跳', '敲', '打', '拍', '击', '撞', '摩擦']
+            if not any(action in text for action in action_sounds):
+                return ""
+        
+        return text
 
 # 创建全局分析器实例
 llm_scene_analyzer = OllamaLLMSceneAnalyzer()
