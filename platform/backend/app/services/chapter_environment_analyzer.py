@@ -18,8 +18,9 @@ logger = logging.getLogger(__name__)
 class ChapterEnvironmentAnalyzer(NarrationEnvironmentAnalyzer):
     """章节环境分析器 - 增强版分析引擎"""
     
-    def __init__(self):
+    def __init__(self, db_session=None):
         super().__init__()
+        self.db = db_session
         # 增强配置
         self.PRECISE_SPEECH_RATES = {
             '旁白': 280,  # 每分钟字符数 - 旁白语速较慢，更沉稳
@@ -382,6 +383,11 @@ class ChapterEnvironmentAnalyzer(NarrationEnvironmentAnalyzer):
                 'intensity_level': intensity_data['intensity_level'],
                 'continuity_type': continuity_data.get('continuity_type', 'event'),
                 
+                # 智能分析字段 - 保留新的智能分析结果
+                'english_prompt': original_track.get('english_prompt', ''),
+                'chinese_description': original_track.get('chinese_description', ''),
+                'duration_type': original_track.get('duration_type', 'continuous'),
+                
                 # 连接信息
                 'crossfade_enabled': continuity_data.get('crossfade_recommendation', False),
                 'prev_connection': continuity_data.get('prev_connection'),
@@ -491,6 +497,42 @@ class ChapterEnvironmentAnalyzer(NarrationEnvironmentAnalyzer):
         logger.info(f"[CHAPTER_ANALYZER] 开始分析{len(chapters)}个章节")
         
         try:
+            # 检查章节数据完整性
+            for chapter in chapters:
+                chapter_id = getattr(chapter, 'id', 0)
+                content = getattr(chapter, 'content', '') or getattr(chapter, 'text', '')
+                synthesis_plan = getattr(chapter, 'synthesis_plan', [])
+                
+                if not content:
+                    error_msg = f"章节{chapter_id}的内容为空！请先完成该章节的智能准备。"
+                    logger.error(f"[CHAPTER_ANALYZER] {error_msg}")
+                    return {
+                        'environment_tracks': [],
+                        'analysis_metadata': {
+                            'error': error_msg,
+                            'chapter_id': chapter_id,
+                            'suggestion': '请重新进行智能准备或检查章节数据完整性',
+                            'total_duration': 0,
+                            'track_count': 0,
+                            'analysis_timestamp': datetime.now().isoformat()
+                        }
+                    }
+                
+                if not synthesis_plan:
+                    error_msg = f"章节{chapter_id}的合成计划为空！请先完成该章节的智能准备，确保有完整的合成计划数据。"
+                    logger.error(f"[CHAPTER_ANALYZER] {error_msg}")
+                    return {
+                        'environment_tracks': [],
+                        'analysis_metadata': {
+                            'error': error_msg,
+                            'chapter_id': chapter_id,
+                            'suggestion': '请重新进行智能准备或检查章节数据完整性',
+                            'total_duration': 0,
+                            'track_count': 0,
+                            'analysis_timestamp': datetime.now().isoformat()
+                        }
+                    }
+            
             # 合并所有章节内容
             all_content = ""
             chapter_info = []
@@ -506,9 +548,55 @@ class ChapterEnvironmentAnalyzer(NarrationEnvironmentAnalyzer):
             
             logger.info(f"[CHAPTER_ANALYZER] 合并内容长度: {len(all_content)}字符")
             
-            # 生成合成计划
-            synthesis_plan = self._generate_synthesis_plan_from_chapters(chapters)
-            logger.info(f"[CHAPTER_ANALYZER] 生成合成计划: {len(synthesis_plan)}个段落")
+            # 🚨 修复：从AnalysisResult表正确获取合成计划
+            synthesis_plan = []
+            chapters_without_synthesis = []
+            
+            for chapter in chapters:
+                chapter_id = getattr(chapter, 'id', 0)
+                
+                # 从AnalysisResult表获取合成计划
+                from app.models.analysis_result import AnalysisResult
+                analysis_result = self.db.query(AnalysisResult).filter(
+                    AnalysisResult.chapter_id == chapter_id
+                ).order_by(AnalysisResult.id.desc()).first()
+                
+                if analysis_result and analysis_result.synthesis_plan:
+                    # 处理字典格式的synthesis_plan
+                    if isinstance(analysis_result.synthesis_plan, dict):
+                        if 'synthesis_plan' in analysis_result.synthesis_plan:
+                            chapter_synthesis_plan = analysis_result.synthesis_plan['synthesis_plan']
+                        else:
+                            chapter_synthesis_plan = []
+                    else:
+                        chapter_synthesis_plan = analysis_result.synthesis_plan
+                    
+                    if chapter_synthesis_plan and isinstance(chapter_synthesis_plan, list):
+                        synthesis_plan.extend(chapter_synthesis_plan)
+                        logger.info(f"[CHAPTER_ANALYZER] 从AnalysisResult获取章节{chapter_id}的合成计划，共{len(chapter_synthesis_plan)}个段落")
+                    else:
+                        chapters_without_synthesis.append(chapter_id)
+                        logger.warning(f"[CHAPTER_ANALYZER] 章节{chapter_id}的合成计划格式不正确: {type(chapter_synthesis_plan)}")
+                else:
+                    chapters_without_synthesis.append(chapter_id)
+                    logger.warning(f"[CHAPTER_ANALYZER] 章节{chapter_id}没有找到AnalysisResult或合成计划为空")
+            
+            if chapters_without_synthesis:
+                error_msg = f"章节{chapters_without_synthesis}的合成计划为空！请先完成这些章节的智能准备，确保有完整的合成计划数据。"
+                logger.error(f"[CHAPTER_ANALYZER] {error_msg}")
+                return {
+                    'environment_tracks': [],
+                    'analysis_metadata': {
+                        'error': error_msg,
+                        'chapter_ids': chapters_without_synthesis,
+                        'suggestion': '请重新进行智能准备或检查章节数据完整性',
+                        'total_duration': 0,
+                        'track_count': 0,
+                        'analysis_timestamp': datetime.now().isoformat()
+                    }
+                }
+            
+            logger.info(f"[CHAPTER_ANALYZER] 最终合成计划: {len(synthesis_plan)}个段落")
             
             # 调用单章节分析方法
             logger.info("[CHAPTER_ANALYZER] 开始调用analyze_chapter_environment")

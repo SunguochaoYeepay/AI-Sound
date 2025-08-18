@@ -152,43 +152,51 @@ class TangoFluxEnvironmentGenerator:
         """生成任务ID"""
         return f"env_gen_{int(time.time() * 1000)}"
     
-    def _build_generation_prompt(self, keyword: str, description: str, intensity: str) -> str:
+    def _build_generation_prompt(self, keyword: str, description: str, intensity: str, english_prompt: Optional[str] = None) -> str:
         """构建生成提示词"""
         intensity_config = self.INTENSITY_CONFIGS.get(intensity, self.INTENSITY_CONFIGS['medium'])
         
-        # 基础提示词模板
-        base_templates = {
-            '雨声': f"Heavy rain falling on leaves and ground, natural rainfall sounds, {keyword}",
-            '雷声': f"Thunder rumbling in the distance, natural thunder sounds, {keyword}",
-            '风声': f"Wind blowing through trees and leaves, natural wind sounds, {keyword}",
-            '鸟鸣': f"Birds singing in a peaceful forest, natural bird sounds, {keyword}",
-            '海浪声': f"Ocean waves gently crashing on shore, natural wave sounds, {keyword}",
-            '流水声': f"Water flowing in a peaceful stream, natural water sounds, {keyword}",
-            '虫鸣': f"Insects chirping in a quiet night, natural insect sounds, {keyword}",
-            '脚步声': f"Footsteps walking on different surfaces, human footstep sounds, {keyword}",
-            '火焰声': f"Fire crackling in a fireplace, natural fire sounds, {keyword}"
-        }
-        
-        # 获取基础提示词或使用通用模板
-        base_prompt = base_templates.get(keyword, f"Natural ambient sound of {keyword}, environmental audio")
-        
-        # 添加场景描述
-        if description and description.strip():
-            prompt = f"{base_prompt}, {description}"
+        # 如果提供了预生成的英文提示词，直接使用
+        if english_prompt and english_prompt.strip():
+            prompt = english_prompt.strip()
+            logger.info(f"[TANGOFLUX_GEN] 使用预生成提示词: {prompt}")
         else:
-            prompt = base_prompt
+            # 使用原有的模板逻辑
+            base_templates = {
+                '雨声': f"Heavy rain falling on leaves and ground, natural rainfall sounds, {keyword}",
+                '雷声': f"Thunder rumbling in the distance, natural thunder sounds, {keyword}",
+                '风声': f"Wind blowing through trees and leaves, natural wind sounds, {keyword}",
+                '鸟鸣': f"Birds singing in a peaceful forest, natural bird sounds, {keyword}",
+                '海浪声': f"Ocean waves gently crashing on shore, natural wave sounds, {keyword}",
+                '流水声': f"Water flowing in a peaceful stream, natural water sounds, {keyword}",
+                '虫鸣': f"Insects chirping in a quiet night, natural insect sounds, {keyword}",
+                '脚步声': f"Footsteps walking on different surfaces, human footstep sounds, {keyword}",
+                '火焰声': f"Fire crackling in a fireplace, natural fire sounds, {keyword}"
+            }
+            
+            # 获取基础提示词或使用通用模板
+            base_prompt = base_templates.get(keyword, f"Natural ambient sound of {keyword}, environmental audio")
+            
+            # 添加场景描述
+            if description and description.strip():
+                prompt = f"{base_prompt}, {description}"
+            else:
+                prompt = base_prompt
+            
+            logger.info(f"[TANGOFLUX_GEN] 使用模板提示词: {prompt}")
         
         # 添加强度描述
         prompt += intensity_config['description_suffix']
         
-        logger.info(f"[TANGOFLUX_GEN] 生成提示词: {prompt}")
+        logger.info(f"[TANGOFLUX_GEN] 最终提示词: {prompt}")
         return prompt
     
     async def generate_single_environment_sound(self, 
                                               keyword: str, 
                                               description: str = "",
                                               duration: float = 30.0,
-                                              intensity: str = 'medium') -> GenerationTask:
+                                              intensity: str = 'medium',
+                                              english_prompt: Optional[str] = None) -> GenerationTask:
         """
         生成单个环境音
         
@@ -197,6 +205,7 @@ class TangoFluxEnvironmentGenerator:
             description: 场景描述
             duration: 音频时长（秒）
             intensity: 强度级别 (low, medium, high)
+            english_prompt: 预生成的英文提示词
             
         Returns:
             生成任务对象
@@ -214,7 +223,7 @@ class TangoFluxEnvironmentGenerator:
             
             # 构建生成参数
             intensity_config = self.INTENSITY_CONFIGS.get(intensity, self.INTENSITY_CONFIGS['medium'])
-            prompt = self._build_generation_prompt(keyword, description, intensity)
+            prompt = self._build_generation_prompt(keyword, description, intensity, english_prompt)
             
             generation_params = self.DEFAULT_GENERATION_PARAMS.copy()
             generation_params.update({
@@ -379,7 +388,8 @@ class TangoFluxEnvironmentGenerator:
                     keyword=request.get('keyword', ''),
                     description=request.get('description', ''),
                     duration=request.get('duration', 30.0),
-                    intensity=request.get('intensity', 'medium')
+                    intensity=request.get('intensity', 'medium'),
+                    english_prompt=request.get('english_prompt', None)  # 添加英文提示词
                 )
         
         # 并发执行生成任务
@@ -709,11 +719,15 @@ class TangoFluxEnvironmentGenerator:
                 if not keyword and track.get('scene_description'):
                     keyword = track.get('scene_description')
                 
+                # 提取英文提示词
+                english_prompt = track.get('english_prompt', '')
+                
                 generation_request = {
                     'keyword': keyword,
                     'description': track.get('scene_description', ''),
                     'duration': track.get('duration', 30.0),
-                    'intensity': track.get('intensity_level', 'medium')
+                    'intensity': track.get('intensity_level', 'medium'),
+                    'english_prompt': english_prompt  # 添加英文提示词
                 }
                 generation_requests.append(generation_request)
             

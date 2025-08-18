@@ -16,6 +16,12 @@ from .schemas import (
     EnvironmentProjectCreateRequest,
     EnvironmentProjectUpdateRequest
 )
+from app.models.environment_generation import (
+    EnvironmentGenerationSession,
+    EnvironmentTrackConfig,
+    EnvironmentAudioMixingJob,
+    EnvironmentGenerationLog
+)
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -154,20 +160,56 @@ async def delete_project(
             raise HTTPException(status_code=404, detail="项目不存在")
         
         project_name = project.name or "未命名项目"
+        book_id = project.book_id
         
-        # 从数据库中删除项目
+        # 🚨 修复：删除项目前先清理所有相关数据
+        logger.info(f"[ENV_GEN_API] 开始清理项目 {project_id} 的相关数据...")
+        
+        # 1. 删除相关的环境音会话
+        sessions = db.query(EnvironmentGenerationSession).filter(
+            EnvironmentGenerationSession.project_id == project_id
+        ).all()
+        session_count = len(sessions)
+        for session in sessions:
+            # 删除会话下的所有轨道配置
+            tracks = db.query(EnvironmentTrackConfig).filter(
+                EnvironmentTrackConfig.session_id == session.id
+            ).all()
+            for track in tracks:
+                db.delete(track)
+            # 删除会话
+            db.delete(session)
+        
+        # 2. 删除相关的混合任务
+        mixing_jobs = db.query(EnvironmentAudioMixingJob).filter(
+            EnvironmentAudioMixingJob.project_id == project_id
+        ).all()
+        for job in mixing_jobs:
+            db.delete(job)
+        
+        # 3. 删除相关的生成日志
+        logs = db.query(EnvironmentGenerationLog).join(
+            EnvironmentGenerationSession, EnvironmentGenerationLog.session_id == EnvironmentGenerationSession.id
+        ).filter(EnvironmentGenerationSession.project_id == project_id).all()
+        for log in logs:
+            db.delete(log)
+        
+        # 4. 最后删除项目本身
         db.delete(project)
         db.commit()
         
         logger.info(f"[ENV_GEN_API] 项目删除成功: {project_name}")
+        logger.info(f"[ENV_GEN_API] 清理了 {session_count} 个会话及其相关数据")
         
         return {
             "success": True,
             "data": {
                 "project_id": project_id,
-                "project_name": project_name
+                "project_name": project_name,
+                "cleaned_sessions": session_count,
+                "book_id": book_id
             },
-            "message": f"项目 '{project_name}' 删除成功"
+            "message": f"项目 '{project_name}' 删除成功，已清理所有相关数据"
         }
         
     except HTTPException:

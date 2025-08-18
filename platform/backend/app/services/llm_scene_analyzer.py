@@ -28,6 +28,7 @@ class SceneAnalysis:
     location: str
     keywords: List[str]
     confidence: float
+    metadata: Optional[Dict[str, Any]] = None
 
 @dataclass
 class SceneAnalysisResult:

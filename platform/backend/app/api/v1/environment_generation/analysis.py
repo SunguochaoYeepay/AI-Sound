@@ -65,8 +65,25 @@ async def analyze_chapters_environment(
             raise HTTPException(status_code=404, detail="未找到章节对应的书籍")
         
         # 分析章节环境音
-        analyzer = ChapterEnvironmentAnalyzer()
+        analyzer = ChapterEnvironmentAnalyzer(db_session=db)
         analysis_result = await analyzer.analyze_chapters(chapters, analysis_options)
+        
+        # 检查分析结果是否有错误
+        if 'analysis_metadata' in analysis_result and analysis_result['analysis_metadata'].get('error'):
+            error_info = analysis_result['analysis_metadata']
+            error_msg = error_info['error']
+            suggestion = error_info.get('suggestion', '请检查数据完整性')
+            chapter_id = error_info.get('chapter_id', '未知')
+            
+            logger.error(f"[ENV_GEN_API] 环境音分析失败: {error_msg}")
+            
+            return {
+                "success": False,
+                "error": error_msg,
+                "suggestion": suggestion,
+                "chapter_id": chapter_id,
+                "message": f"环境音分析失败: {error_msg}"
+            }
         
         # 构建分析统计
         analysis_stats = {
@@ -78,6 +95,13 @@ async def analyze_chapters_environment(
         # 确定项目ID和保存策略
         project_id = None
         create_project = analysis_options.get('create_project', False)
+        force_reanalyze = analysis_options.get('force_reanalyze', False)
+        
+        # 🚨 修复：新增环境音项目时强制重新分析，避免使用旧数据
+        if not existing_project_id and not create_project:
+            # 新增项目时，强制重新分析
+            force_reanalyze = True
+            logger.info(f"[ENV_GEN_API] 新增环境音项目，强制重新分析以避免使用旧数据")
         
         if existing_project_id:
             # 使用指定的现有项目ID，直接更新项目
@@ -110,7 +134,11 @@ async def analyze_chapters_environment(
             existing_env_project = db.query(EnvironmentProject).filter(EnvironmentProject.book_id == book.id).first()
             
             if existing_env_project:
-                # 更新现有项目
+                # 🚨 修复：更新现有项目时，如果强制重新分析，则清理旧数据
+                if force_reanalyze:
+                    logger.info(f"[ENV_GEN_API] 强制重新分析：清理现有项目 {existing_env_project.id} 的旧数据")
+                    analysis_options['force_reanalyze'] = True
+                
                 env_service.create_or_update(
                     book_id=book.id,
                     analysis_result=analysis_result,

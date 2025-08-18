@@ -45,8 +45,59 @@ class EnvironmentProjectService:
     ) -> EnvironmentProject:
         """创建或更新环境音项目"""
         
+        # 检查是否强制重新分析
+        force_reanalyze = analysis_options and analysis_options.get('force_reanalyze', False)
+        
         # 查找现有项目
         env_project = self.get_by_book_id(book_id)
+        
+        if env_project and force_reanalyze:
+            # 🚨 强制重新分析：删除现有项目及其所有相关数据
+            logger.info(f"强制重新分析：删除现有项目 {env_project.id} 及其相关数据")
+            
+            # 删除相关的环境音会话
+            from app.models.environment_generation import (
+                EnvironmentGenerationSession,
+                EnvironmentTrackConfig,
+                EnvironmentAudioMixingJob,
+                EnvironmentGenerationLog
+            )
+            
+            sessions = self.db.query(EnvironmentGenerationSession).filter(
+                EnvironmentGenerationSession.project_id == env_project.id
+            ).all()
+            
+            for session in sessions:
+                # 删除会话下的所有轨道配置
+                tracks = self.db.query(EnvironmentTrackConfig).filter(
+                    EnvironmentTrackConfig.session_id == session.id
+                ).all()
+                for track in tracks:
+                    self.db.delete(track)
+                # 删除会话
+                self.db.delete(session)
+            
+            # 删除相关的混合任务
+            mixing_jobs = self.db.query(EnvironmentAudioMixingJob).filter(
+                EnvironmentAudioMixingJob.project_id == env_project.id
+            ).all()
+            for job in mixing_jobs:
+                self.db.delete(job)
+            
+            # 删除相关的生成日志
+            logs = self.db.query(EnvironmentGenerationLog).join(
+                EnvironmentGenerationSession, EnvironmentGenerationLog.session_id == EnvironmentGenerationSession.id
+            ).filter(EnvironmentGenerationSession.project_id == env_project.id).all()
+            for log in logs:
+                self.db.delete(log)
+            
+            # 删除项目本身
+            self.db.delete(env_project)
+            self.db.commit()
+            
+            # 重新创建项目
+            env_project = None
+            logger.info(f"现有项目已删除，将创建新项目")
         
         if env_project:
             # 更新现有项目 - 合并分析结果而不是覆盖
