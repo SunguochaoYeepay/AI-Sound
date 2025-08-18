@@ -85,8 +85,8 @@ class TangoFluxEnvironmentGenerator:
         
         # 生成参数配置
         self.DEFAULT_GENERATION_PARAMS = {
-            'num_inference_steps': 100,
-            'guidance_scale': 4.5,
+            'num_inference_steps': 150,  # 增加推理步数，提高质量
+            'guidance_scale': 7.5,  # 增加引导强度，减少噪音
             'audio_length_in_s': 30.0,
             'num_waveforms_per_prompt': 1
         }
@@ -94,16 +94,16 @@ class TangoFluxEnvironmentGenerator:
         # 强度级别配置
         self.INTENSITY_CONFIGS = {
             'low': {
-                'guidance_scale': 3.0,
-                'description_suffix': '，声音轻柔、安静、舒缓'
+                'guidance_scale': 6.0,
+                'description_suffix': '，声音轻柔、安静、舒缓，低音量背景音'
             },
             'medium': {
-                'guidance_scale': 4.5,
-                'description_suffix': '，声音清晰、自然、平衡'
+                'guidance_scale': 7.5,
+                'description_suffix': '，声音清晰、自然、平衡，中等音量环境音'
             },
             'high': {
-                'guidance_scale': 6.0,
-                'description_suffix': '，声音强烈、突出、有力'
+                'guidance_scale': 9.0,
+                'description_suffix': '，声音强烈、突出、有力，高音量环境音'
             }
         }
         
@@ -161,21 +161,25 @@ class TangoFluxEnvironmentGenerator:
             prompt = english_prompt.strip()
             logger.info(f"[TANGOFLUX_GEN] 使用预生成提示词: {prompt}")
         else:
-            # 使用原有的模板逻辑
+            # 使用更详细的模板逻辑
             base_templates = {
-                '雨声': f"Heavy rain falling on leaves and ground, natural rainfall sounds, {keyword}",
-                '雷声': f"Thunder rumbling in the distance, natural thunder sounds, {keyword}",
-                '风声': f"Wind blowing through trees and leaves, natural wind sounds, {keyword}",
-                '鸟鸣': f"Birds singing in a peaceful forest, natural bird sounds, {keyword}",
-                '海浪声': f"Ocean waves gently crashing on shore, natural wave sounds, {keyword}",
-                '流水声': f"Water flowing in a peaceful stream, natural water sounds, {keyword}",
-                '虫鸣': f"Insects chirping in a quiet night, natural insect sounds, {keyword}",
-                '脚步声': f"Footsteps walking on different surfaces, human footstep sounds, {keyword}",
-                '火焰声': f"Fire crackling in a fireplace, natural fire sounds, {keyword}"
+                '雨声': f"Heavy rain falling on leaves and ground, natural rainfall sounds, environmental ambience, {keyword}",
+                '雷声': f"Thunder rumbling in the distance, natural thunder sounds, storm atmosphere, {keyword}",
+                '风声': f"Wind blowing through trees and leaves, natural wind sounds, outdoor ambience, {keyword}",
+                '鸟鸣': f"Birds singing in a peaceful forest, natural bird sounds, wildlife ambience, {keyword}",
+                '海浪声': f"Ocean waves gently crashing on shore, natural wave sounds, beach ambience, {keyword}",
+                '流水声': f"Water flowing in a peaceful stream, natural water sounds, river ambience, {keyword}",
+                '虫鸣': f"Insects chirping in a quiet night, natural insect sounds, night ambience, {keyword}",
+                '脚步声': f"Footsteps walking on different surfaces, human footstep sounds, indoor ambience, {keyword}",
+                '火焰声': f"Fire crackling in a fireplace, natural fire sounds, warm ambience, {keyword}",
+                '嗡鸣': f"Gentle humming sound, mechanical background noise, quiet ambience, {keyword}",
+                '叮': f"Light bell sound, gentle chime, peaceful ambience, {keyword}",
+                '开门声': f"Door opening and closing, wooden door creak, indoor ambience, {keyword}",
+                '娇喝声': f"Shout or call sound, human voice, outdoor ambience, {keyword}"
             }
             
             # 获取基础提示词或使用通用模板
-            base_prompt = base_templates.get(keyword, f"Natural ambient sound of {keyword}, environmental audio")
+            base_prompt = base_templates.get(keyword, f"Natural ambient sound of {keyword}, environmental audio, peaceful atmosphere")
             
             # 添加场景描述
             if description and description.strip():
@@ -310,7 +314,11 @@ class TangoFluxEnvironmentGenerator:
                             
                             # 保存文件
                             timestamp = int(time.time())
-                            filename = f"{task.keyword}_{timestamp}.wav"
+                            # 修复文件名编码问题：清理关键词中的特殊字符
+                            safe_keyword = "".join(c for c in task.keyword if c.isalnum() or c in (' ', '-', '_')).strip()
+                            if not safe_keyword:
+                                safe_keyword = "environment_sound"
+                            filename = f"{safe_keyword}_{timestamp}.wav"
                             output_path = self.output_dir / filename
                             
                             # 确保输出目录存在
