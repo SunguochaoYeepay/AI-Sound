@@ -200,9 +200,25 @@ class NarrationEnvironmentAnalyzer:
             if i >= len(llm_result.analyzed_scenes):
                 continue
                 
-                scene = llm_result.analyzed_scenes[i]
+            scene = llm_result.analyzed_scenes[i]
             keywords = self._clean_keywords(scene.keywords)
+            
+            # 为所有段落生成轨道，即使没有环境音
             if not keywords:
+                # 没有环境音的段落，生成空轨道用于前端显示
+                tracks.append({
+                    'segment_id': segment['segment_id'],
+                    'start_time': segment['start_time'],
+                    'duration': segment['duration'],
+                    'narration_text': segment['text'],
+                    'environment_keywords': [],
+                    'english_prompt': '',
+                    'chinese_description': '',
+                    'duration_type': 'none',
+                    'confidence': scene.confidence,
+                    'analysis_timestamp': datetime.now().isoformat(),
+                    'has_environment': False
+                })
                 continue
                 
             # 获取提示词信息
@@ -231,7 +247,7 @@ class NarrationEnvironmentAnalyzer:
                 # 如果没有找到英文提示词或中文描述，说明LLM分析有问题
                 if not english_prompt or not chinese_description:
                     logger.error(f"[ENV_ANALYZER] LLM分析结果不完整: keyword={plan['keyword']}, english_prompt={english_prompt}, chinese_description={chinese_description}")
-                        continue
+                    continue
                         
                 tracks.append({
                     'segment_id': segment['segment_id'],
@@ -243,7 +259,8 @@ class NarrationEnvironmentAnalyzer:
                     'chinese_description': chinese_description,
                     'duration_type': duration_type,
                     'confidence': scene.confidence,
-                    'analysis_timestamp': datetime.now().isoformat()
+                    'analysis_timestamp': datetime.now().isoformat(),
+                    'has_environment': True
                 })
 
         return tracks
@@ -267,7 +284,7 @@ class NarrationEnvironmentAnalyzer:
             kw = kw.strip()
             
             # 检查是否为声音词汇
-            if self._is_sound_keyword(kw) and 2 <= len(kw) <= 8:
+            if self._is_sound_keyword(kw) and 1 <= len(kw) <= 8:
                 cleaned.append(kw)
         
         return list(set(cleaned))[:3]  # 去重，最多3个
@@ -275,7 +292,16 @@ class NarrationEnvironmentAnalyzer:
     def _is_sound_keyword(self, keyword: str) -> bool:
         """判断是否为声音关键词"""
         sound_indicators = ['声', '音', '响', '鸣', '叫', '吼', '啸', '嗡', '叮', '咚', '啪', '砰']
-        return any(indicator in keyword for indicator in sound_indicators)
+        # 特殊处理一些常见的声音词汇
+        special_sounds = ['叮', '震动', '玉佩发烫', '马蹄', '蜂鸣', '白光']
+        
+        # 检查是否包含声音指示符
+        has_sound_indicator = any(indicator in keyword for indicator in sound_indicators)
+        
+        # 检查是否是特殊声音词汇
+        is_special_sound = any(sound in keyword for sound in special_sounds)
+        
+        return has_sound_indicator or is_special_sound
 
     def _classify_sound(self, keyword: str) -> str:
         """将声音分类为瞬时或持续（尽量通用，少依赖硬编码）。"""
@@ -436,25 +462,27 @@ class NarrationEnvironmentAnalyzer:
                     # 清理关键词
                     clean_keywords = [kw.strip() for kw in keywords if kw.strip()]
                     
+                    # 为每个段落都创建场景，即使关键词为空
+                    from app.services.llm_scene_analyzer import SceneAnalysis
+                    scenes.append(SceneAnalysis(
+                        location="detected_environment",
+                        keywords=clean_keywords[:3],  # 最多3个
+                        confidence=0.9 if clean_keywords else 0.8,
+                        # 添加自定义字段存储提示词信息
+                        metadata={
+                            'prompts': prompts,
+                            'segment_num': segment_num
+                        }
+                    ))
+                    
                     if clean_keywords:
-                        from app.services.llm_scene_analyzer import SceneAnalysis
-                        scenes.append(SceneAnalysis(
-                            location="detected_environment",
-                            keywords=clean_keywords[:3],  # 最多3个
-                            confidence=0.9 if clean_keywords else 0.8,
-                            # 添加自定义字段存储提示词信息
-                            metadata={
-                                'prompts': prompts,
-                                'segment_num': segment_num
-                            }
-                        ))
                         logger.info(f"[ENV_ANALYZER] 段落{segment_num}: {clean_keywords}")
                         logger.info(f"[ENV_ANALYZER] 段落{segment_num}提示词: {prompts}")
-                        segment_num += 1
                     else:
                         logger.info(f"[ENV_ANALYZER] 段落{segment_num}: 无声音关键词")
-                        segment_num += 1
-            else:
+                    
+                    segment_num += 1
+                else:
                     logger.warning(f"[ENV_ANALYZER] JSON格式错误: {json_str}")
                     
             except json.JSONDecodeError as e:

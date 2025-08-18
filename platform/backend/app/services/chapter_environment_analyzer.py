@@ -610,12 +610,16 @@ class ChapterEnvironmentAnalyzer(NarrationEnvironmentAnalyzer):
             
             # 返回正确的结构
             if result.get('success'):
-                # 如果成功，返回analysis_result部分
+                # 如果成功，返回完整结构
                 analysis_result = result.get('analysis_result', {})
                 analysis_result['chapter_info'] = chapter_info
                 analysis_result['total_chapters'] = len(chapters)
                 logger.info(f"[CHAPTER_ANALYZER] 返回成功结果，包含{len(analysis_result.get('environment_tracks', []))}个轨道")
-                return analysis_result
+                return {
+                    'success': True,
+                    'analysis_result': analysis_result,
+                    'analysis_stats': result.get('analysis_stats', {})
+                }
             else:
                 # 如果失败，返回错误信息
                 logger.error(f"[CHAPTER_ANALYZER] 分析失败: {result.get('error', '未知错误')}")

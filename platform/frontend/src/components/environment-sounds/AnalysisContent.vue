@@ -18,6 +18,17 @@
     
     <!-- 已分析状态 - 环境音轨道 -->
     <div v-else class="chapter-content">
+      <!-- 筛选控制栏 -->
+      <div class="filter-controls">
+        <a-space>
+          <span class="filter-label">显示模式：</span>
+          <a-radio-group v-model:value="displayMode" size="small">
+            <a-radio-button value="all">全部段落 ({{ totalParagraphs }})</a-radio-button>
+            <a-radio-button value="environment">仅环境音 ({{ environmentParagraphs }})</a-radio-button>
+          </a-radio-group>
+        </a-space>
+      </div>
+      
       <!-- 环境音轨道分析结果 - 按段落分组 -->
       <div v-if="environmentTracks.length > 0" class="environment-tracks">
         
@@ -25,9 +36,10 @@
         <!-- 按段落分组显示 -->
         <div class="paragraphs-container">
           <div 
-            v-for="(paragraph, paragraphIndex) in groupedTracks" 
+            v-for="(paragraph, paragraphIndex) in filteredGroupedTracks" 
             :key="paragraphIndex"
             class="paragraph-section"
+            :class="{ 'no-environment': !paragraph.hasEnvironment }"
           >
             <div class="paragraph-header">
               <div class="paragraph-info">
@@ -37,7 +49,8 @@
                 </span>
               </div>
               <div class="paragraph-stats">
-                <a-tag color="blue" size="small">{{ paragraph.tracks.length }} 个环境音</a-tag>
+                <a-tag v-if="paragraph.hasEnvironment" color="blue" size="small">{{ paragraph.tracks.length }} 个环境音</a-tag>
+                <a-tag v-else color="default" size="small">无环境音</a-tag>
               </div>
             </div>
             
@@ -80,8 +93,18 @@
                   </span>
                 </div>
                 
+                <!-- 声音类型标签 -->
+                <div class="track-type" v-if="track.duration_type">
+                  <a-tag 
+                    :color="track.duration_type === 'instant' ? 'orange' : 'green'"
+                    size="small"
+                  >
+                    {{ track.duration_type === 'instant' ? '瞬时音' : '持续音' }}
+                  </a-tag>
+                </div>
+                
                 <div class="track-description">
-                  {{ track.description || track.scene_description || '暂无描述' }}
+                  {{ track.chinese_description || track.description || track.scene_description || (track.english_prompt ? `英文提示词: ${track.english_prompt}` : '暂无描述') }}
                 </div>
                 
                 <div class="track-confidence">
@@ -158,7 +181,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { BulbOutlined, SoundOutlined } from '@ant-design/icons-vue'
 
 // Props
@@ -188,6 +211,9 @@ const props = defineProps({
     default: false
   }
 })
+
+// 显示模式
+const displayMode = ref('all')
 
 // Emits
 const emit = defineEmits([
@@ -250,10 +276,30 @@ const groupedTracks = computed(() => {
   // 转换为数组并按段落索引排序
   const result = Object.values(paragraphs).sort((a, b) => a.paragraphIndex - b.paragraphIndex)
   
-
+  // 为每个段落添加环境音标识
+  result.forEach(paragraph => {
+    paragraph.hasEnvironment = paragraph.tracks.some(track => 
+      track.environment_keywords && track.environment_keywords.length > 0
+    )
+  })
   
   return result
 })
+
+// 筛选后的段落
+const filteredGroupedTracks = computed(() => {
+  if (displayMode.value === 'all') {
+    return groupedTracks.value
+  } else {
+    return groupedTracks.value.filter(paragraph => paragraph.hasEnvironment)
+  }
+})
+
+// 统计信息
+const totalParagraphs = computed(() => groupedTracks.value.length)
+const environmentParagraphs = computed(() => 
+  groupedTracks.value.filter(paragraph => paragraph.hasEnvironment).length
+)
 
 // 工具函数：格式化时间
 const formatTime = (seconds) => {
@@ -278,6 +324,19 @@ const formatTime = (seconds) => {
   justify-content: center;
   align-items: center;
   min-height: 300px;
+}
+
+.filter-controls {
+  margin-bottom: 16px;
+  padding: 12px;
+  background: #fafafa;
+  border-radius: 6px;
+  border: 1px solid #f0f0f0;
+}
+
+.filter-label {
+  font-weight: 500;
+  color: #666;
 }
 
 .tracks-header {
@@ -488,6 +547,11 @@ const formatTime = (seconds) => {
   background: var(--ant-color-bg-container);
 }
 
+[data-theme='dark'] .paragraph-section.no-environment {
+  background: var(--ant-color-bg-layout);
+  border-color: var(--ant-border-color-split);
+}
+
 [data-theme='dark'] .paragraph-header {
   background: var(--ant-color-bg-layout);
   border-bottom-color: var(--ant-border-color-split);
@@ -543,3 +607,4 @@ const formatTime = (seconds) => {
   color: var(--ant-color-text-secondary);
 }
 </style>
+
