@@ -66,7 +66,20 @@ async def analyze_chapters_environment(
         
         # 分析章节环境音
         analyzer = ChapterEnvironmentAnalyzer(db_session=db)
-        analysis_result = await analyzer.analyze_chapters(chapters, analysis_options)
+        raw_result = await analyzer.analyze_chapters(chapters, analysis_options)
+        # 🚨 修复：正确扁平化结构，直接提取environment_tracks到顶层
+        if isinstance(raw_result, dict) and 'analysis_result' in raw_result:
+            inner_result = raw_result['analysis_result']
+            # 构建扁平结构：environment_tracks直接在analysis_result下
+            analysis_result = {
+                'environment_tracks': inner_result.get('environment_tracks', []),
+                'video_timeline': inner_result.get('video_timeline', {}),
+                'analysis_metadata': inner_result.get('analysis_metadata', {}),
+                'chapter_info': inner_result.get('chapter_info', []),
+                'total_chapters': inner_result.get('total_chapters', 0)
+            }
+        else:
+            analysis_result = raw_result if isinstance(raw_result, dict) else {}
         
         # 检查分析结果是否有错误
         if 'analysis_metadata' in analysis_result and analysis_result['analysis_metadata'].get('error'):
@@ -85,7 +98,7 @@ async def analyze_chapters_environment(
                 "message": f"环境音分析失败: {error_msg}"
             }
         
-        # 构建分析统计
+        # 构建分析统计（基于扁平结构）
         analysis_stats = {
             'total_chapters': len(chapters),
             'total_tracks': len(analysis_result.get('environment_tracks', [])),
@@ -110,12 +123,13 @@ async def analyze_chapters_environment(
             
             # 直接更新现有项目
             env_service = EnvironmentProjectService(db)
-            env_service.create_or_update(
+            updated_project = env_service.create_or_update(
                 book_id=book.id,
                 analysis_result=analysis_result,
                 analysis_stats=analysis_stats,
                 analysis_options=analysis_options
             )
+            project_id = updated_project.id  # 确保返回正确的项目ID
             logger.info(f"[ENV_GEN_API] 更新现有项目: {project_id}")
         elif create_project:
             # 创建新项目
@@ -165,7 +179,7 @@ async def analyze_chapters_environment(
         return {
             "success": True,
             "project_id": project_id,
-            "analysis_result": analysis_result,
+            "analysis_result": analysis_result,  # 扁平结构
             "analysis_stats": analysis_stats,
             "message": f"成功分析 {len(chapters)} 个章节，发现 {len(analysis_result.get('environment_tracks', []))} 个环境音轨道"
         }

@@ -207,16 +207,16 @@ class NarrationEnvironmentAnalyzer:
             if not keywords:
                 # 没有环境音的段落，生成空轨道用于前端显示
                 tracks.append({
-                    'segment_id': segment['segment_id'],
-                    'start_time': segment['start_time'],
-                    'duration': segment['duration'],
-                    'narration_text': segment['text'],
+                        'segment_id': segment['segment_id'],
+                        'start_time': segment['start_time'],
+                        'duration': segment['duration'],
+                        'narration_text': segment['text'],
                     'environment_keywords': [],
                     'english_prompt': '',
                     'chinese_description': '',
                     'duration_type': 'none',
-                    'confidence': scene.confidence,
-                    'analysis_timestamp': datetime.now().isoformat(),
+                        'confidence': scene.confidence,
+                        'analysis_timestamp': datetime.now().isoformat(),
                     'has_environment': False
                 })
                 continue
@@ -259,7 +259,7 @@ class NarrationEnvironmentAnalyzer:
                     'chinese_description': chinese_description,
                     'duration_type': duration_type,
                     'confidence': scene.confidence,
-                    'analysis_timestamp': datetime.now().isoformat(),
+                        'analysis_timestamp': datetime.now().isoformat(),
                     'has_environment': True
                 })
 
