@@ -149,9 +149,9 @@ const hasAnalysis = computed(() => {
   const chapterId = selectedChapter.value.id
   const chapterAnalysis = analysisResults.value[chapterId]
   
-  const result = chapterAnalysis && Object.keys(chapterAnalysis).length > 0 && environmentTracks.value.length > 0
-  
-
+  // 修复：只要章节有分析结果就认为已分析，不管是否有环境音轨道
+  // 因为有些章节分析后确实没有环境音需求，这是正常情况
+  const result = chapterAnalysis && Object.keys(chapterAnalysis).length > 0
   
   return result
 })
