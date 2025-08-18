@@ -44,6 +44,17 @@
           生成当前章节环境音
         </a-button>
         
+        <!-- 重新生成环境音 -->
+        <a-button 
+          v-if="hasAnalysis && hasTracks && hasGeneratedTracks"
+          type="default" 
+          @click="$emit('generate-all-sounds')"
+          :loading="generationLoading"
+        >
+          <SoundOutlined />
+          重新生成环境音
+        </a-button>
+        
         <!-- 混音操作 -->
         <a-button 
           v-if="hasAnalysis && hasTracks && hasGeneratedTracks"

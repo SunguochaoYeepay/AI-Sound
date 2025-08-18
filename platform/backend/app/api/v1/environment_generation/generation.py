@@ -77,12 +77,20 @@ async def generate_environment_sounds(
             # 生成指定轨道
             for index in track_indices:
                 if 0 <= index < len(environment_tracks):
-                    tracks_to_generate.append((index, environment_tracks[index]))
+                    track = environment_tracks[index]
+                    keywords = track.get('environment_keywords') or []
+                    if keywords:
+                        tracks_to_generate.append((index, track))
+                    else:
+                        logger.warning(f"轨道 {index} 无环境关键词，跳过生成")
                 else:
                     logger.warning(f"轨道索引 {index} 超出范围，跳过")
         else:
-            # 生成所有轨道
-            tracks_to_generate = [(i, track) for i, track in enumerate(environment_tracks)]
+            # 仅生成有关键词的轨道（跳过无环境音占位段）
+            for i, track in enumerate(environment_tracks):
+                keywords = track.get('environment_keywords') or []
+                if keywords:
+                    tracks_to_generate.append((i, track))
         
         if not tracks_to_generate:
             raise HTTPException(status_code=400, detail="没有有效的轨道需要生成")
@@ -199,7 +207,6 @@ async def download_environment_sound(
     """
     try:
         logger.info(f"[ENV_GEN_API] 下载环境音，项目ID: {project_id}，轨道索引: {track_index}")
-        logger.info(f"[ENV_GEN_API] 文件路径长度: {len(file_path) if file_path else 0}")
         
         # 获取环境音项目
         env_service = EnvironmentProjectService(db)
@@ -236,17 +243,20 @@ async def download_environment_sound(
             raise HTTPException(status_code=404, detail="环境音文件尚未生成")
         
         file_path = track['generated_file_path']
+        logger.info(f"[ENV_GEN_API] 文件路径: {file_path}")
+        logger.info(f"[ENV_GEN_API] 文件路径长度: {len(file_path) if file_path else 0}")
         if not os.path.exists(file_path):
             raise HTTPException(status_code=404, detail="环境音文件不存在")
         
         # 生成文件名 - 使用英文文件名避免编码问题
-        keywords = track.get('environment_keywords', ['environment'])
+        keywords = track.get('environment_keywords', [])
+        keyword_name = keywords[0] if keywords and len(keywords) > 0 else 'environment'
         # 将中文关键词转换为英文或使用默认名称
-        if keywords[0] == '娇喝声':
+        if keyword_name == '娇喝声':
             safe_filename = f"shout_{project_id}_{track_index}.wav"
-        elif keywords[0] == '脚步声':
+        elif keyword_name == '脚步声':
             safe_filename = f"footsteps_{project_id}_{track_index}.wav"
-        elif keywords[0] == '开门声':
+        elif keyword_name == '开门声':
             safe_filename = f"door_open_{project_id}_{track_index}.wav"
         else:
             # 对于其他中文关键词，使用拼音或英文
@@ -367,7 +377,9 @@ async def mix_environment_sounds(
         else:
             # 混音所有已生成的轨道
             for i, track in enumerate(environment_tracks):
-                logger.info(f"[ENV_GEN_API] 检查轨道 {i}: {track.get('environment_keywords', ['未命名'])[0]}")
+                keywords = track.get('environment_keywords', [])
+                keyword_name = keywords[0] if keywords and len(keywords) > 0 else "无环境音"
+                logger.info(f"[ENV_GEN_API] 检查轨道 {i}: {keyword_name}")
                 logger.info(f"[ENV_GEN_API] 轨道 {i} 生成路径: {track.get('generated_file_path')}")
                 if track.get('generated_file_path'):
                     logger.info(f"[ENV_GEN_API] 轨道 {i} 文件是否存在: {os.path.exists(track['generated_file_path'])}")
@@ -678,7 +690,8 @@ async def batch_generate_environment_sounds(
         generation_requests = []
         for track in request.tracks:
             # 从environment_keywords中获取主要关键词
-            keyword = track.get('environment_keywords', [''])[0] if track.get('environment_keywords') else ''
+            keywords = track.get('environment_keywords', [])
+            keyword = keywords[0] if keywords and len(keywords) > 0 else ''
             if not keyword and track.get('scene_description'):
                 keyword = track.get('scene_description')
             
@@ -746,7 +759,9 @@ async def mix_environment_sounds_task(
         logger.info(f"[ENV_MIX_TASK] 项目ID: {project_id}")
         logger.info(f"[ENV_MIX_TASK] 要混音的轨道数量: {len(tracks_to_mix)}")
         for i, (track_index, track) in enumerate(tracks_to_mix):
-            logger.info(f"[ENV_MIX_TASK] 轨道{i}: 索引={track_index}, 关键词={track.get('environment_keywords', ['未命名'])}")
+            keywords = track.get('environment_keywords', [])
+            keyword_name = keywords[0] if keywords and len(keywords) > 0 else "无环境音"
+            logger.info(f"[ENV_MIX_TASK] 轨道{i}: 索引={track_index}, 关键词={keyword_name}")
             logger.info(f"[ENV_MIX_TASK] 轨道{i}: 文件路径={track.get('generated_file_path')}")
             logger.info(f"[ENV_MIX_TASK] 轨道{i}: 开始时间={track.get('start_time', 0)}, 时长={track.get('duration', 30)}")
         

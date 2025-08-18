@@ -51,9 +51,12 @@ class EnvironmentConfigValidator:
                     logger.info(f"[CONFIG_VALIDATOR] 轨道{i}继承环境: {current_environment.get('primary_keyword', '未知')}")
                 else:
                     # 有环境描述时更新当前环境
-                    if environment_keywords:
+                    if environment_keywords and len(environment_keywords) > 0:
                         # 环境音优先级 (最新出现的优先级最高)
-                        primary_keyword = environment_keywords[-1] if self.LATEST_ENVIRONMENT_PRIORITY else environment_keywords[0]
+                        if self.LATEST_ENVIRONMENT_PRIORITY:
+                            primary_keyword = environment_keywords[-1] if environment_keywords else "未知环境"
+                        else:
+                            primary_keyword = environment_keywords[0] if environment_keywords else "未知环境"
                         current_environment = {
                             'primary_keyword': primary_keyword,
                             'all_keywords': environment_keywords,

@@ -901,28 +901,17 @@ const handleGenerateAllSounds = async () => {
     }
     
     const currentTracks = currentChapterAnalysis.environment_tracks
-    totalTracks.value = currentTracks.length
     
-    // 初始化轨道进度数据
-    tracksProgress.value = currentTracks.map((track, index) => ({
-      index,
-      originalIndex: index, // 保存原始索引用于映射
-      keyword: track.environment_keywords?.[0] || track.scene_description || '未命名',
-      description: track.scene_description || '',
-      status: 'pending',
-      progress: 0
-    }))
+    // 仅生成有环境关键词的轨道
+    const keywordTrackLocalIndices = []
+    for (let i = 0; i < currentTracks.length; i++) {
+      const kws = currentTracks[i]?.environment_keywords || []
+      if (Array.isArray(kws) && kws.length > 0) keywordTrackLocalIndices.push(i)
+    }
     
-    console.log('🎵 初始化进度数据:', {
-      chapterId: currentChapterId,
-      totalTracks: totalTracks.value,
-      tracksProgress: tracksProgress.value.length
-    })
-    
-    // 计算当前章节轨道在全局轨道中的起始索引
+    // 计算当前章节轨道在全局轨道中的起始索引（用于全局索引映射）
     let globalStartIndex = 0
     const sortedChapterIds = Object.keys(analysisResults.value).sort((a, b) => parseInt(a) - parseInt(b))
-    
     for (const chapterId of sortedChapterIds) {
       if (parseInt(chapterId) < currentChapterId) {
         const chapterAnalysis = analysisResults.value[chapterId]
@@ -934,11 +923,30 @@ const handleGenerateAllSounds = async () => {
       }
     }
     
-    // 构建轨道索引数组（基于全局轨道索引）
-    const trackIndices = []
-    for (let i = 0; i < currentTracks.length; i++) {
-      trackIndices.push(globalStartIndex + i)
-    }
+    // 设置总数为需生成的数量（仅关键词轨道）
+    totalTracks.value = keywordTrackLocalIndices.length
+    
+    // 初始化轨道进度数据（仅关键词轨道，记录全局索引用于WS映射）
+    tracksProgress.value = keywordTrackLocalIndices.map((localIndex) => {
+      const t = currentTracks[localIndex]
+      return {
+        index: localIndex,
+        originalIndex: globalStartIndex + localIndex, // 使用全局索引
+        keyword: t.environment_keywords?.[0] || t.scene_description || '未命名',
+        description: t.scene_description || '',
+        status: 'pending',
+        progress: 0
+      }
+    })
+    
+    console.log('🎵 初始化进度数据:', {
+      chapterId: currentChapterId,
+      totalTracks: totalTracks.value,
+      tracksProgress: tracksProgress.value.length
+    })
+    
+    // 构建轨道索引数组（基于全局轨道索引，仅关键词轨道）
+    const trackIndices = keywordTrackLocalIndices.map(i => globalStartIndex + i)
     
     console.log('🎯 轨道索引计算:', {
       currentChapterId,
