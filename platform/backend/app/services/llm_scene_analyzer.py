@@ -108,7 +108,7 @@ class OllamaLLMSceneAnalyzer:
                 "options": {
                     "temperature": 0.1,
                     "top_p": 0.9,
-                    "num_predict": 1000 if is_batch_analysis else 500,
+                    "num_predict": 2000 if is_batch_analysis else 500,  # 增加批量分析的token限制
                 }
             }
             
@@ -171,6 +171,72 @@ class OllamaLLMSceneAnalyzer:
                 processing_time=0.0,
                 raw_response=f"分析失败: {str(e)}"
             )
+
+    async def validate_and_normalize_keywords(self, paragraph_text: str, candidates: List[str]) -> List[str]:
+        """使用LLM对候选关键词进行校验与归一化，输出真实声音词（<=3）。
+
+        - 只保留文本中明确发生的声音
+        - 去除动作/视觉/情绪类词
+        - 归一化为简洁标准词（如"手机震动打声"→"震动声"）
+        - 返回严格JSON数组
+        """
+        try:
+            if not candidates:
+                return []
+
+            prompt = (
+                "请基于以下段落，仅保留真实发生的声音，并将候选关键词归一化为简洁标准词；"
+                "禁止输出动作/视觉/情绪词；最多返回3个；严格以JSON数组返回。\n\n"
+                "段落：\n" + paragraph_text.strip() + "\n\n"
+                "候选关键词（可能包含错误项）：\n" + json.dumps(candidates, ensure_ascii=False) + "\n\n"
+                "要求：\n"
+                "- 只保留声音：如 叮声/响/蜂鸣声/脚步声/说话声/马蹄声/空调声/雨声 等\n"
+                "- 移除动作/视觉/情绪：如 抓住/瞥见/身影/表情/愤怒 等\n"
+                "- 归一化示例：'手机震动打声'→'震动声'，'耳畔响起尖鸣'→'蜂鸣声'，'快步'→'脚步声'\n"
+                "- 返回格式：['关键词1','关键词2'] 或 []（严格JSON，无解释）"
+            )
+
+            payload = {
+                "model": self.model_name,
+                "messages": [{"role": "user", "content": prompt}],
+                "stream": False,
+                "options": {"temperature": 0.1, "num_predict": 300}
+            }
+
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{self.ollama_base_url}/api/chat",
+                    json=payload,
+                    timeout=aiohttp.ClientTimeout(total=30)
+                ) as response:
+                    if response.status != 200:
+                        return []
+                    data = await response.json()
+                    content = data.get("message", {}).get("content", "").strip()
+
+            # 解析严格JSON数组
+            try:
+                # 尝试直接解析整段为JSON数组
+                parsed = json.loads(content)
+                if isinstance(parsed, list):
+                    return [kw.strip() for kw in parsed if isinstance(kw, str) and kw.strip()][:3]
+            except Exception:
+                pass
+
+            # 回退：提取第一个[]数组
+            array_match = re.search(r"\[(.*?)\]", content, re.S)
+            if array_match:
+                arr_text = "[" + array_match.group(1) + "]"
+                try:
+                    parsed = json.loads(arr_text)
+                    if isinstance(parsed, list):
+                        return [kw.strip() for kw in parsed if isinstance(kw, str) and kw.strip()][:3]
+                except Exception:
+                    return []
+
+            return []
+        except Exception:
+            return []
     
     def _is_batch_analysis_text(self, text: str) -> bool:
         """检测是否为批量分析文本"""
@@ -198,53 +264,85 @@ class OllamaLLMSceneAnalyzer:
         else:
             # 使用优化后的提示词
             logger.info("[LLM_ANALYZER] 使用优化后的批量分析提示词")
-            return f"""请严格按照以下规则分析小说章节的旁白内容，评估每个段落是否有声音：
+            return f"""请分析以下文本中的环境音，严格按照以下要求：
 
-🎯 核心任务：只识别文本中明确描述的声音，不要进行任何联想！
-
-🔍 判断标准：
-- 如果文本中明确提到声音词汇（如"嗡鸣"、"震动"、"传来"等），则识别该声音
-- 如果文本中只有场景描述、动作描述、状态描述，则返回空数组[]
-- 不要基于场景进行任何联想
-
-❌ 绝对禁止：
-- 不要因为看到"御书房"就联想"翻书声"
-- 不要因为看到"把玩钢笔"就联想"写字声"
-- 不要因为看到"汗水浸湿"就联想"水声"
-- 不要因为看到"裙摆扫过"就联想任何声音
+🎯 核心要求：
+1. 只识别文本中明确提到的声音
+2. 关键词要简洁，2-4个字符
+3. 不要包含时间、强度等描述性信息
+4. 不要包含分析过程或格式标记
+5. 不要进行任何联想
+6. 瞬间声音用简洁词汇：叮、砰、响、震动等
+7. 持续声音用标准词汇：脚步声、说话声、马蹄声等
 
 ✅ 正确示例：
-- "空调发出轻微嗡鸣" → 有声音，返回["空调声"]
-- "手机震动" → 有声音，返回["手机震动声"]
-- "远处传来马蹄声" → 有声音，返回["马蹄声"]
+- "空调发出轻微嗡鸣" → ["空调声"]
+- "手机震动" → ["震动声"]
+- "远处传来马蹄声" → ["马蹄声"]
+- "叮 ——" → ["叮声"]
+- "娇喝声带着怒意" → ["娇喝声"]
+- "急促脚步声" → ["脚步声"]
+- "耳畔响起尖锐的蜂鸣" → ["蜂鸣声"]
+- "前方传来女子的惊呼" → ["惊呼声"]
+- "发间珍珠步摇随着挣扎摇晃" → ["步摇声"]
 
 ❌ 错误示例：
-- "御书房内" → 无声音，返回[]
-- "把玩钢笔" → 无声音，返回[]
-- "汗水浸湿" → 无声音，返回[]
-- "裙摆扫过" → 无声音，返回[]
+- 不要联想：看到"御书房"就联想"翻书声"
+- 不要描述：不要包含"中强度"、"1.5秒"等描述
+- 不要格式：不要包含"**段落**"、"声音事件"等标记
+- 不要复杂：不要"手机震动打声"，应该是"震动声"
+- 不要重复：不要"耳畔响"，应该是"响"或"蜂鸣声"
+- 不要动作：不要"抓住手腕"、"余光瞥见"等动作描述
+- 不要视觉：不要"闪过的身影"、"凌乱的发髻"等视觉描述
 
-🔍 时序分析要求：
-1. 分析声音的持续时间：瞬间声音（如'叮'、'砰'）通常1-2秒，持续声音（如'雨声'、'空调声'）持续整个段落
-2. 分析声音的强度变化：高强度（如'雷声'、'爆炸声'）、中强度（如'脚步声'、'说话声'）、低强度（如'呼吸声'、'时钟声'）
-3. 分析声音的时序关系：哪些声音同时发生，哪些声音先后发生
-4. 识别无声段落：纯对话、心理描述、无声动作等
-5. 考虑声音的因果关系：如'手机震动'→'叮'声，'看消息'→无声
+📚 标准化与归一化（必须遵守）：
+- 输出的每个关键词必须是简洁、标准的声音词，优先从下述集合选择或将同义表述归一化：
+  - 瞬间类：叮声、响、砰声、啪声、咚声、蜂鸣声、铃声、敲门声、破碎声、爆炸声、惊呼声
+  - 持续类：脚步声、说话声、人群声、马蹄声、雨声、风声、雷声、水流声、空调声、音乐声、步摇声
+- 归一化示例：
+  - "手机震动打声" → "震动声"
+  - "耳畔响"/"耳边响起" → "响"（如语义明确为蜂鸣则 → "蜂鸣声"）
+  - "快步声"/"发间珍珠步声" → "脚步声"
+  - "手机震动"/"震动" → "震动声"
+  - 任何包含"步"且指走路产生的声音 → "脚步声"
+  - 任何包含"蜂鸣" → "蜂鸣声"
+  - 任何包含"马蹄" → "马蹄声"
+  - 任何包含"空调"/"嗡鸣"（空调背景） → "空调声"
+  - 任何包含"惊呼" → "惊呼声"
+  - 任何包含"步摇" → "步摇声"
+  - 不要创造新词或复合词（如"手机震动打声"、"耳畔尖鸣响"），必须用标准词表中的一个词
 
-⚠️ 重要提醒：只关注文本中明确的声音描述，不要联想！
+🚫 严格禁止：
+- 禁止输出动作描述：如"抓住"、"瞥见"、"闪过"、"凌乱"等
+- 禁止输出视觉描述：如"身影"、"发髻"、"表情"等
+- 禁止输出情感描述：如"警惕"、"不安"、"愤怒"等
+- 只输出声音相关的词汇
 
 {text}
 
-请按段落顺序返回结果，每个段落一行，格式：
-段落1: ["关键词1", "关键词2"]  # 如果有声音
-段落2: []  # 如果无声音
+⚠️ 重要：必须为每个段落都返回结果，格式如下：
+段落1: ["关键词1", "关键词2"]
+段落2: []
+段落3: ["关键词1"]
+段落4: ["关键词1"]
+段落5: []
+段落6: ["关键词1"]
+段落7: ["关键词1"]
+段落8: []
+段落9: ["关键词1"]
+段落10: []
+段落11: []
+段落12: []
 
 要求：
-- 严格按文本内容判断，不要联想
-- 不要提取人物名称或对话内容
 - 每个段落最多3个关键词
-- 如果段落没有明确的声音描述，必须返回空数组[]
-- 不要解释，直接返回结果"""
+- 关键词简洁准确
+- 无声音的段落必须返回[]
+- 不要解释，直接返回结果
+- 瞬间声音优先：叮、响、震动等
+- 持续声音标准：脚步声、说话声、马蹄声等
+- 必须按段落顺序返回，不能跳过任何段落
+- 必须分析完所有段落，不能提前结束"""
 
     def _create_single_analysis_prompt(self, text: str) -> str:
         """创建单段落分析的提示词"""
@@ -291,37 +389,65 @@ class OllamaLLMSceneAnalyzer:
         logger.info("[TIMELINE_PARSER] 开始解析LLM时序分析响应")
         logger.info(f"[TIMELINE_PARSER] 原始响应: {response_text[:200]}...")
         
+        # 预处理：移除Markdown格式
+        cleaned_text = response_text.replace('**', '').replace('*', '')
+        logger.info(f"[TIMELINE_PARSER] 清理后文本: {cleaned_text[:200]}...")
+        
         # 解析声音事件（精确匹配）
-        sound_event_pattern = r'声音事件\\d+：([^0-9]+)\\s+([0-9.]+)s\\s+([0-9.]+)s\\s+([^0-9]+)\\s+(.+)'
-        matches = re.findall(sound_event_pattern, response_text)
+        sound_event_pattern = r'-\\s*声音事件\\d+：([^0-9]+)\\s+([0-9.]+)s\\s+([0-9.]+)s\\s+([^0-9]+)\\s+(.+)'
+        matches = re.findall(sound_event_pattern, cleaned_text)
         
         # 如果上面的模式没匹配到，尝试更宽松的模式
         if not matches:
             # 尝试匹配LLM实际返回的格式 - 修复正则表达式
             sound_event_pattern = r'声音事件\\d+：([^\\n]+)'
-            matches = re.findall(sound_event_pattern, response_text)
+            matches = re.findall(sound_event_pattern, cleaned_text)
             logger.info(f"[TIMELINE_PARSER] 使用宽松模式匹配到 {len(matches)} 个声音事件")
             
             # 如果还是没有匹配到，尝试直接解析LLM输出
             if not matches:
-                logger.info("[TIMELINE_PARSER] 尝试直接解析LLM输出")
-                # 直接查找所有包含声音事件的行，不依赖硬编码关键词
-                lines = response_text.split('\n')
-                for line in lines:
-                    if '声音事件' in line and '：' in line:
-                        # 提取声音类型
-                        parts = line.split('：')
-                        if len(parts) >= 2:
-                            sound_part = parts[1].strip()
-                            # 智能提取声音关键词，不依赖硬编码列表
-                            # 移除时间、强度等描述性信息，保留核心声音词汇
-                            sound_keyword = self._extract_sound_keyword_from_text(sound_part)
-                            if sound_keyword:
-                                matches.append(sound_keyword)
-                                logger.info(f"[TIMELINE_PARSER] 直接解析到声音: {sound_keyword}")
+                logger.info("[TIMELINE_PARSER] 尝试直接解析LLM输出(段落块解析)")
+                # 逐段落解析：识别“段落X”开头，记录当前段落，提取每段的声音事件
+                lines = cleaned_text.split('\n')
+                current_segment = None
+                segment_to_keywords = {}
+                for raw_line in lines:
+                    line = raw_line.strip()
+                    if not line:
+                        continue
+                    # 段落标题：段落X： 或 段落X
+                    m = re.match(r'^段落(\d+)[:：]?\s*$', line)
+                    if m:
+                        current_segment = int(m.group(1))
+                        segment_to_keywords.setdefault(current_segment, [])
+                        continue
+                    # 声音事件行：- 声音事件1：空调声 0.0s 2.6s 低强度 描述
+                    if '声音事件' in line and '：' in line and current_segment is not None:
+                        parts = line.split('：', 1)
+                        sound_part = parts[1].strip()
+                        # 声音类型为第一个空格前的词
+                        sound_type = sound_part.split()[0] if sound_part else ''
+                        sound_type = sound_type.strip('，。；、!！?？')
+                        if sound_type:
+                            segment_to_keywords[current_segment].append(sound_type)
+                            logger.info(f"[TIMELINE_PARSER] 段落{current_segment} 声音: {sound_type}")
+                    # 无声段行：- 无声段：...
+                    elif line.startswith('- 无声段') and current_segment is not None:
+                        segment_to_keywords.setdefault(current_segment, [])
+                        logger.info(f"[TIMELINE_PARSER] 段落{current_segment} 无声段")
                 
-                if not matches:
-                    logger.info("[TIMELINE_PARSER] 时序解析失败，回退到段落格式解析")
+                # 将段落关键词转为场景，保证按段落顺序输出
+                if segment_to_keywords:
+                    for seg_idx in sorted(segment_to_keywords.keys()):
+                        kws = [kw.strip() for kw in segment_to_keywords[seg_idx] if kw.strip()]
+                        scenes.append(SceneAnalysis(
+                            location=f"detected_environment_segment_{seg_idx}",
+                            keywords=kws[:3],
+                            confidence=0.9 if kws else 0.8
+                        ))
+                    logger.info(f"[TIMELINE_PARSER] 段落块解析完成: {len(scenes)}个场景")
+                else:
+                    logger.info("[TIMELINE_PARSER] 段落块解析未提取到任何场景，回退到段落格式解析")
                     return self._parse_legacy_batch_response(response_text)
         
         for match in matches:
@@ -344,8 +470,8 @@ class OllamaLLMSceneAnalyzer:
             logger.info(f"[TIMELINE_PARSER] 声音事件: {sound_type} {start_time}s-{float(start_time)+float(duration):.1f}s {intensity}")
         
         # 如果没有找到声音事件，尝试解析无声段
-        silent_pattern = r'无声段：([0-9.]+)s\\s+([0-9.]+)s\\s+(.+)'
-        silent_matches = re.findall(silent_pattern, response_text)
+        silent_pattern = r'-\\s*无声段：([0-9.]+)s\\s+([0-9.]+)s\\s+(.+)'
+        silent_matches = re.findall(silent_pattern, cleaned_text)
         
         for match in silent_matches:
             start_time, duration, description = match
@@ -385,19 +511,16 @@ class OllamaLLMSceneAnalyzer:
                 try:
                     # 解析JSON数组
                     keywords = json.loads(keywords_str)
-                    if isinstance(keywords, list) and keywords:
+                    if isinstance(keywords, list):
                         # 清理关键词
                         clean_keywords = [kw.strip() for kw in keywords if kw.strip()]
-                        if clean_keywords:
-                            scenes.append(SceneAnalysis(
-                                location="detected_environment",
-                                keywords=clean_keywords[:3],  # 最多3个
-                                confidence=0.9
-                            ))
-                            logger.info(f"[BATCH_PARSER] 段落{segment_num}: {clean_keywords}")
-                except json.JSONDecodeError:
-                    logger.warning(f"[BATCH_PARSER] 段落{segment_num}解析失败: {keywords_str}")
-                    continue
+                        # 为每个段落都创建场景，即使关键词为空
+                        scenes.append(SceneAnalysis(
+                            location="detected_environment",
+                            keywords=clean_keywords[:3],  # 最多3个
+                            confidence=0.9 if clean_keywords else 0.8  # 空关键词的置信度稍低
+                        ))
+                        logger.info(f"[BATCH_PARSER] 段落{segment_num}: {clean_keywords}")
                 except json.JSONDecodeError:
                     logger.warning(f"[BATCH_PARSER] 段落{segment_num}解析失败: {keywords_str}")
                     continue

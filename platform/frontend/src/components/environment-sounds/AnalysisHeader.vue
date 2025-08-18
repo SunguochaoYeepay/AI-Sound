@@ -22,6 +22,17 @@
           分析环境音
         </a-button>
         
+        <!-- 重新分析环境音 -->
+        <a-button 
+          v-if="hasAnalysis"
+          type="default" 
+          @click="$emit('reanalyze')"
+          :loading="analysisLoading"
+        >
+          <ReloadOutlined />
+          重新分析
+        </a-button>
+        
         <!-- 生成当前章节环境音 -->
         <a-button 
           v-if="hasAnalysis && hasTracks && !hasGeneratedTracks"
@@ -68,7 +79,7 @@
 </template>
 
 <script setup>
-import { BulbOutlined, SoundOutlined } from '@ant-design/icons-vue'
+import { BulbOutlined, SoundOutlined, ReloadOutlined } from '@ant-design/icons-vue'
 
 defineProps({
   selectedChapter: {
@@ -105,7 +116,14 @@ defineProps({
   }
 })
 
-defineEmits(['start-analysis', 'generate-all-sounds', 'mix-sounds', 'play-mixing', 'download-mixing'])
+defineEmits([
+  'start-analysis',
+  'reanalyze',
+  'generate-all-sounds',
+  'mix-sounds',
+  'play-mixing',
+  'download-mixing'
+])
 </script>
 
 <style scoped>

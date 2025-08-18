@@ -1,8 +1,8 @@
 {
   "project": {
-    "id": "project_1755260332_f20cb09e",
-    "title": "22222",
-    "description": "222",
+    "id": "project_1755447401_b157cffd",
+    "title": "日日日日日日日日日日日日日日日日日日",
+    "description": "日日日日日日日日日日日日日日",
     "author": "AI-Sound",
     "bookId": 58,
     "chapterId": 836,
@@ -11,7 +11,7 @@
     "channels": 2,
     "bitDepth": 16,
     "exportFormat": "wav",
-    "createdAt": "2025-08-15T12:18:52.497Z",
+    "createdAt": "2025-08-17T16:16:41.843Z",
     "version": "1.0"
   },
   "tracks": [
@@ -26,11 +26,11 @@
       "order": 1,
       "clips": [
         {
-          "id": "clip_1755264291195_x8wpzvxn1",
+          "id": "clip_1755447433972_9mqfq137k",
           "fileId": "",
           "filename": "🎵 古玉2 - 完整音频",
-          "startTime": 0.2421026611328125,
-          "duration": 79.138,
+          "startTime": 0.0,
+          "duration": 65.979,
           "volume": 1.0,
           "offset": 0.0,
           "fadeIn": 0.1,
@@ -49,9 +49,9 @@
       "order": 2,
       "clips": [
         {
-          "id": "clip_1755264157951_eczj2o1od",
+          "id": "clip_1755447437850_mjbrowxrh",
           "fileId": "",
-          "filename": "🎵 背景音 - mixed_environment_72_20250815_205301",
+          "filename": "🎵 背景音 - mixed_environment_75_20250818_001245",
           "startTime": 0.0,
           "duration": 300.0,
           "volume": 1.0,
@@ -88,40 +88,23 @@
       "created_at": "2025-07-08T19:14:19.434283"
     },
     {
-      "id": "env_mixed_environment_72_20250815_205301",
-      "filename": "🎵 背景音 - mixed_environment_72_20250815_205301.wav",
-      "original_name": "🎵 背景音 - mixed_environment_72_20250815_205301.wav",
-      "category": "environment",
-      "duration": 300,
-      "file_size": 0,
-      "format": "wav",
-      "sample_rate": 44100,
-      "channels": 2,
-      "url": "/api/v1/sound-editor/audio-files/download/env_mixed_environment_72_20250815_205301",
-      "created_at": "2025-08-15T13:32:50.495Z",
-      "metadata": {
-        "audioType": "mixed_environment",
-        "filePath": "D:\\AI-Sound\\platform\\backend\\data\\environment_sounds\\mixed\\mixed_environment_72_20250815_205301.wav"
-      }
-    },
-    {
-      "id": "audio_9497",
+      "id": "audio_9511",
       "filename": "🎵 古玉2 - 完整音频",
       "original_name": "🎵 古玉2 - 完整音频",
       "category": "dialogue",
-      "duration": 79.138,
+      "duration": 65.979,
       "file_size": 0,
       "format": "wav",
       "sample_rate": 44100,
       "channels": 2,
-      "url": "/api/v1/sound-editor/audio-files/download/audio_9497",
-      "created_at": "2025-08-15T13:32:59.078Z",
+      "url": "/api/v1/sound-editor/audio-files/download/audio_9511",
+      "created_at": "2025-08-17T16:16:54.016Z",
       "metadata": {
         "character": null,
         "content": null,
         "voiceId": null,
         "audioType": "final",
-        "filePath": "outputs/projects/130/final_audio_130_1755241192.wav"
+        "filePath": "outputs/projects/130/final_audio_130_1755348486.wav"
       }
     },
     {
@@ -135,34 +118,14 @@
       "sample_rate": 44100,
       "channels": 2,
       "url": "/api/v1/sound-editor/audio-files/download/env_mixed_environment_75_20250818_001245",
-      "created_at": "2025-08-17T16:16:16.656Z",
+      "created_at": "2025-08-17T16:16:57.546Z",
       "metadata": {
         "audioType": "mixed_environment",
         "filePath": "D:\\AI-Sound\\platform\\backend\\data\\environment_sounds\\mixed\\mixed_environment_75_20250818_001245.wav"
-      }
-    },
-    {
-      "id": "audio_9511",
-      "filename": "🎵 古玉2 - 完整音频",
-      "original_name": "🎵 古玉2 - 完整音频",
-      "category": "dialogue",
-      "duration": 65.979,
-      "file_size": 0,
-      "format": "wav",
-      "sample_rate": 44100,
-      "channels": 2,
-      "url": "/api/v1/sound-editor/audio-files/download/audio_9511",
-      "created_at": "2025-08-17T16:16:22.014Z",
-      "metadata": {
-        "character": null,
-        "content": null,
-        "voiceId": null,
-        "audioType": "final",
-        "filePath": "outputs/projects/130/final_audio_130_1755348486.wav"
       }
     }
   ],
   "selectedChapterId": 836,
   "searchKeyword": "",
-  "activeAudioTab": "dialogue"
+  "activeAudioTab": "environment"
 }

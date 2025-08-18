@@ -1190,9 +1190,9 @@ export const environmentGenerationAPI = {
   analyzeChapters: (request) =>
     apiClient.post('/environment-generation/chapters/analyze', request),
 
-  // 书籍环境音分析（新增）
-  analyzeBook: (request) =>
-    apiClient.post('/environment-generation/books/analyze', request),
+  // 删除整本书环境音分析功能 - 因为整本书分析不现实
+  // analyzeBook: (request) =>
+  //   apiClient.post('/environment-generation/books/analyze', request),
 
   // 混音环境音
   mixEnvironmentSounds: (projectId, data = {}) =>

@@ -40,6 +40,7 @@
           :mixing-loading="mixingLoading"
           :has-mixing-file="hasMixingFile"
           @start-analysis="startAnalysis"
+          @reanalyze="handleReanalyze"
           @generate-all-sounds="handleGenerateAllSounds"
           @mix-sounds="handleMixSounds"
           @play-mixing="handlePlayMixing"
@@ -494,7 +495,7 @@ const loadProjectInfo = async () => {
 
               
               // 检查是否有生成路径的轨道
-              const tracksWithPath = newTracks.filter(track => track.generated_file_path)
+              // const tracksWithPath = newTracks.filter(track => track.generated_file_path)
 
             }
             
@@ -791,6 +792,81 @@ const startAnalysis = async () => {
   } catch (error) {
     console.error('分析失败:', error)
     message.error('分析失败: ' + (error.response?.data?.detail || error.message))
+  } finally {
+    analysisLoading.value = false
+  }
+}
+
+// 重新分析
+const handleReanalyze = async () => {
+  if (!selectedChapter.value) {
+    message.warning('请先选择要分析的章节')
+    return
+  }
+
+  try {
+    analysisLoading.value = true
+    message.info('正在重新分析章节内容...')
+    
+    // 清空当前章节的分析结果
+    delete analysisResults.value[selectedChapter.value.id]
+    environmentTracks.value = []
+    
+    // 重新分析当前章节
+    const response = await environmentGenerationAPI.analyzeChapters({
+      chapter_ids: [selectedChapter.value.id],
+      analysis_options: {
+        mode: 'auto',
+        environment_types: ['nature', 'urban', 'indoor', 'action'],
+        precision: 'medium',
+        existing_project_id: projectInfo.value.id,
+        force_reanalyze: true  // 强制重新分析
+      }
+    })
+    
+    if (response.data.success) {
+      // 将分析结果保存到当前章节
+      analysisResults.value[selectedChapter.value.id] = response.data.analysis_result
+      environmentTracks.value = response.data.analysis_result?.environment_tracks || []
+      
+      console.log('✅ 章节重新分析完成，设置环境轨道:', {
+        chapterId: selectedChapter.value.id,
+        tracksCount: environmentTracks.value.length
+      })
+      
+      // 保存分析结果到项目
+      if (projectInfo.value) {
+        try {
+          // 构建完整的分析结果（保持多章节格式）
+          const fullAnalysisResult = { ...analysisResults.value }
+          
+          // 直接更新项目分析结果
+          console.log('💾 更新项目分析结果')
+          
+          const updateResponse = await environmentGenerationAPI.updateProjectAnalysis(projectInfo.value.id, {
+            analysis_result: fullAnalysisResult,
+            status: 'analyzed'
+          })
+          
+          if (updateResponse.data.success) {
+            console.log('✅ 重新分析结果已保存到项目:', projectInfo.value.id)
+            message.success('章节环境音重新分析完成')
+          } else {
+            console.error('保存重新分析结果失败:', updateResponse.data)
+            message.warning('重新分析完成，但保存结果失败')
+          }
+        } catch (saveError) {
+          console.error('保存重新分析结果失败:', saveError)
+          message.warning('重新分析完成，但保存结果失败')
+        }
+      } else {
+        console.warn('⚠️ 没有项目信息，无法保存重新分析结果')
+        message.success('章节环境音重新分析完成')
+      }
+    }
+  } catch (error) {
+    console.error('重新分析失败:', error)
+    message.error('重新分析失败: ' + (error.response?.data?.detail || error.message))
   } finally {
     analysisLoading.value = false
   }
