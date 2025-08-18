@@ -139,14 +139,15 @@ async def analyze_chapters_environment(
                     logger.info(f"[ENV_GEN_API] 强制重新分析：清理现有项目 {existing_env_project.id} 的旧数据")
                     analysis_options['force_reanalyze'] = True
                 
-                env_service.create_or_update(
+                # 🚨 修复：强制重新分析后，项目ID保持不变
+                updated_project = env_service.create_or_update(
                     book_id=book.id,
                     analysis_result=analysis_result,
                     analysis_stats=analysis_stats,
                     analysis_options=analysis_options
                 )
-                project_id = existing_env_project.id
-                logger.info(f"[ENV_GEN_API] 更新现有环境音项目: {project_id}")
+                project_id = updated_project.id  # 项目ID保持不变
+                logger.info(f"[ENV_GEN_API] 更新环境音项目: {project_id}")
             else:
                 # 没有现有项目，但不创建新项目
                 logger.info(f"[ENV_GEN_API] 章节环境音分析完成，未创建项目")

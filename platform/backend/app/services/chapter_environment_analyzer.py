@@ -501,25 +501,9 @@ class ChapterEnvironmentAnalyzer(NarrationEnvironmentAnalyzer):
             for chapter in chapters:
                 chapter_id = getattr(chapter, 'id', 0)
                 content = getattr(chapter, 'content', '') or getattr(chapter, 'text', '')
-                synthesis_plan = getattr(chapter, 'synthesis_plan', [])
                 
                 if not content:
                     error_msg = f"章节{chapter_id}的内容为空！请先完成该章节的智能准备。"
-                    logger.error(f"[CHAPTER_ANALYZER] {error_msg}")
-                    return {
-                        'environment_tracks': [],
-                        'analysis_metadata': {
-                            'error': error_msg,
-                            'chapter_id': chapter_id,
-                            'suggestion': '请重新进行智能准备或检查章节数据完整性',
-                            'total_duration': 0,
-                            'track_count': 0,
-                            'analysis_timestamp': datetime.now().isoformat()
-                        }
-                    }
-                
-                if not synthesis_plan:
-                    error_msg = f"章节{chapter_id}的合成计划为空！请先完成该章节的智能准备，确保有完整的合成计划数据。"
                     logger.error(f"[CHAPTER_ANALYZER] {error_msg}")
                     return {
                         'environment_tracks': [],

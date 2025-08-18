@@ -52,8 +52,8 @@ class EnvironmentProjectService:
         env_project = self.get_by_book_id(book_id)
         
         if env_project and force_reanalyze:
-            # 🚨 强制重新分析：删除现有项目及其所有相关数据
-            logger.info(f"强制重新分析：删除现有项目 {env_project.id} 及其相关数据")
+            # 🚨 修复：强制重新分析时，只清理子数据，保留项目本身
+            logger.info(f"强制重新分析：清理项目 {env_project.id} 的子数据，保留项目本身")
             
             # 删除相关的环境音会话
             from app.models.environment_generation import (
@@ -91,13 +91,22 @@ class EnvironmentProjectService:
             for log in logs:
                 self.db.delete(log)
             
-            # 删除项目本身
-            self.db.delete(env_project)
-            self.db.commit()
+            # 🚨 修复：不删除项目本身，只清理子数据
+            # self.db.delete(env_project)  # 删除这行
+            # self.db.commit()  # 删除这行
             
-            # 重新创建项目
-            env_project = None
-            logger.info(f"现有项目已删除，将创建新项目")
+            # 🚨 修复：直接覆盖分析结果，保留项目ID
+            env_project.analysis_result = analysis_result
+            env_project.matching_result = {
+                'analysis_stats': analysis_stats,
+                'session_stage': 'analyzed'
+            }
+            env_project.analysis_options = analysis_options or {}
+            env_project.updated_at = datetime.utcnow()
+            
+            self.db.commit()
+            logger.info(f"项目 {env_project.id} 强制重新分析完成，项目ID保持不变")
+            return env_project
         
         if env_project:
             # 更新现有项目 - 合并分析结果而不是覆盖
@@ -119,6 +128,13 @@ class EnvironmentProjectService:
                 # 单章节格式，合并环境轨道
                 existing_tracks = existing_result.get('environment_tracks', [])
                 new_tracks = analysis_result.get('environment_tracks', [])
+                
+                # 修复：为新的轨道重新分配segment_id，避免与现有轨道冲突
+                if existing_tracks and new_tracks:
+                    max_segment_id = max(track.get('segment_id', 0) for track in existing_tracks)
+                    for track in new_tracks:
+                        track['segment_id'] = max_segment_id + track.get('segment_id', 1)
+                
                 existing_result['environment_tracks'] = existing_tracks + new_tracks
             
             env_project.analysis_result = existing_result
