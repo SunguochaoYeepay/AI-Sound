@@ -1180,9 +1180,9 @@ export const environmentGenerationAPI = {
   // 获取所有生成任务
   getAllGenerationTasks: () => apiClient.get('/environment-generation/generation/tasks'),
 
-  // 获取分析详情
+  // 获取分析详情 - 使用项目详情API
   getAnalysisDetail: (analysisId) =>
-    apiClient.get(`/environment-generation/analysis/${analysisId}`),
+    apiClient.get(`/environment-generation/projects/${analysisId}`),
 
   // === 分析API ===
 

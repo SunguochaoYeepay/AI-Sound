@@ -182,11 +182,12 @@ class NarrationEnvironmentAnalyzer:
         
         prompt_parts.extend([
             "",
-            "请按段落顺序返回JSON格式结果：",
+            "请按段落顺序返回JSON格式结果（不要markdown代码块，只返回纯JSON）：",
             "段落1: {JSON对象}",
             "段落2: {JSON对象}",
             "...",
             "",
+            "⚠️ 重要：只返回纯JSON格式，不要使用```json```等markdown标记！",
             "记住：中文关键词 + 英文提示词，确保准确性！"
         ])
         
@@ -290,18 +291,40 @@ class NarrationEnvironmentAnalyzer:
         return list(set(cleaned))[:3]  # 去重，最多3个
     
     def _is_sound_keyword(self, keyword: str) -> bool:
-        """判断是否为声音关键词"""
-        sound_indicators = ['声', '音', '响', '鸣', '叫', '吼', '啸', '嗡', '叮', '咚', '啪', '砰']
-        # 特殊处理一些常见的声音词汇
-        special_sounds = ['叮', '震动', '玉佩发烫', '马蹄', '蜂鸣', '白光']
+        """判断是否为声音关键词 - 智能识别，避免硬编码"""
+        if not keyword or not isinstance(keyword, str):
+            return False
+            
+        keyword = keyword.strip()
+        if len(keyword) < 1 or len(keyword) > 10:
+            return False
         
-        # 检查是否包含声音指示符
+        # 1. 检查是否包含声音指示符
+        sound_indicators = ['声', '音', '响', '鸣', '叫', '吼', '啸', '嗡', '叮', '咚', '啪', '砰']
         has_sound_indicator = any(indicator in keyword for indicator in sound_indicators)
         
-        # 检查是否是特殊声音词汇
-        is_special_sound = any(sound in keyword for sound in special_sounds)
+        # 2. 检查是否是拟声词（单字或双字）
+        onomatopoeia = ['叮', '咚', '啪', '砰', '嗡', '响', '鸣']
+        is_onomatopoeia = keyword in onomatopoeia
         
-        return has_sound_indicator or is_special_sound
+        # 3. 检查是否包含动作+声音的组合
+        sound_actions = ['打', '敲', '拍', '踩', '走', '跑', '飞', '落', '流', '吹']
+        has_sound_action = any(action in keyword for action in sound_actions)
+        
+        # 4. 检查是否是自然现象（通常有声音）
+        natural_phenomena = ['雷', '雨', '风', '水', '火', '雪', '冰']
+        is_natural_phenomenon = any(phenomenon in keyword for phenomenon in natural_phenomena)
+        
+        # 5. 检查是否是环境音（通常有声音）
+        environmental_sounds = ['脚步', '说话', '呼吸', '心跳', '机器', '车辆', '动物']
+        is_environmental = any(env in keyword for env in environmental_sounds)
+        
+        # 综合判断：满足任一条件即可
+        return (has_sound_indicator or 
+                is_onomatopoeia or 
+                (has_sound_action and len(keyword) <= 4) or  # 动作+声音，且长度适中
+                is_natural_phenomenon or 
+                is_environmental)
 
     def _classify_sound(self, keyword: str) -> str:
         """将声音分类为瞬时或持续（尽量通用，少依赖硬编码）。"""

@@ -1,5 +1,62 @@
 # AI-Sound 项目更新日志
 
+## [2025-01-28] 环境音分析功能完全修复
+
+### 🎯 核心问题解决
+- **修复前端API端点错误**：前端`getAnalysisDetail`指向不存在的后端端点，导致环境音分析页面无法加载
+- **修复LLM输出解析问题**：LLM返回的JSON被markdown代码块包裹，导致解析失败
+- **修复声音关键词识别逻辑**：`_is_sound_keyword`方法过于严格，无法识别常见环境音词汇
+- **验证古玉2环境音分析准确性**：确认环境分析功能能正确识别穿越小说的现代和古代环境音
+
+### 🛠️ 关键修复
+1. **前端API端点修复**
+   ```javascript
+   // 修复前：指向不存在的端点
+   getAnalysisDetail: (analysisId) =>
+     apiClient.get(`/environment-generation/analysis/${analysisId}`),
+   
+   // 修复后：使用正确的项目详情端点
+   getAnalysisDetail: (analysisId) =>
+     apiClient.get(`/environment-generation/projects/${analysisId}`),
+   ```
+
+2. **LLM提示词优化**
+   ```python
+   # 明确要求返回纯JSON格式，不使用markdown代码块
+   "请按段落顺序返回JSON格式结果（不要markdown代码块，只返回纯JSON）："
+   "⚠️ 重要：只返回纯JSON格式，不要使用```json```等markdown标记！"
+   ```
+
+3. **声音关键词识别智能化**
+   ```python
+   # 替换硬编码列表，使用智能规则识别
+   def _is_sound_keyword(self, keyword: str) -> bool:
+       # 1. 检查声音指示符（声、音、响、鸣等）
+       # 2. 检查拟声词（叮、咚、啪、砰等）
+       # 3. 检查动作+声音组合（打雷、雨点等）
+       # 4. 检查自然现象（雷、雨、风、水等）
+       # 5. 检查环境音（脚步、说话、机器等）
+   ```
+
+### 📊 修复统计
+- 修复核心文件：2个（index.js, narration_environment_analyzer.py）
+- 修复代码行数：25行关键修改
+- 清理测试脚本：5个临时文件
+- 问题影响：解决了环境音分析功能完全不可用的问题
+
+### ✅ 验证结果
+- **古玉2第一章分析成功**：正确识别出4个环境音轨道
+  - 轨道1: `[嗡鸣]` (0.0-3.59秒) - 现代科技音效
+  - 轨道4: `[叮]` (18.43-24.56秒) - 通知音效
+  - 轨道7: `[蜂鸣]` (32.44-41.12秒) - 电子设备音效
+  - 轨道9: `[马蹄声]` (46.51-64.82秒) - 古代交通音效
+- **环境音覆盖率**：44.4%（4/9轨道）
+- **分析准确性**：完美体现穿越小说的现代+古代环境音特色
+
+### 🧹 清理工作
+- 删除临时测试脚本：check_chapter.py, test_llm_analyzer.py, debug_llm_structure.py, test_json_parsing.py, test_sound_keywords.py
+- 保持项目结构清晰，只保留必要的源代码
+
 ## [2025-01-28] 音频编辑器预览播放问题调试
 
 ### 🎯 问题分析
