@@ -78,9 +78,9 @@ class OllamaCharacterDetector:
                 selected_model = strategy["long_model"]
                 self.logger.info(f"📄 长文本({text_length}字符) → 使用高速模型: {selected_model}")
             else:
-                # 中等文本：使用14B模型但调整参数
-                selected_model = strategy["short_model"]
-                self.logger.info(f"📝 中等文本({text_length}字符) → 使用平衡模型: {selected_model}")
+                # 中等文本：使用7B高速模型，避免超时
+                selected_model = strategy["long_model"]
+                self.logger.info(f"📝 中等文本({text_length}字符) → 使用高速模型: {selected_model}")
         
         # 保存选择的模型名称到实例变量
         self.model_name = selected_model
@@ -97,12 +97,12 @@ class OllamaCharacterDetector:
                 "num_ctx": 8192        # 足够的上下文长度
             }
         else:
-            # 7B模型：平衡速度和完整性
+            # 7B模型：优化速度，减少输出长度
             return {
                 "temperature": 0.3,    # 适中温度
                 "top_p": 0.9,          # 快速采样
-                "max_tokens": 6000,    # 充足的输出长度
-                "num_ctx": 6144        # 充足的上下文
+                "max_tokens": 4000,    # 减少输出长度以加快速度
+                "num_ctx": 4096        # 减少上下文长度以加快速度
             }
 
     def _smart_chunk_text(self, text: str, max_chunk_size: int = 3000) -> List[Dict]:
@@ -334,9 +334,13 @@ class OllamaCharacterDetector:
                     chunk_progress = 30 + int(i * progress_step)
                     await send_analysis_progress(session_id, chunk_progress, f"分析第{i+1}/{len(chunks)}块...")
                     
-                    chunk_result = await self._analyze_single_chunk(chunk["text"], chunk["chunk_id"])
+                    chunk_result = await self._analyze_single_chunk(chunk["text"], chunk["chunk_id"], session_id)
                     chunk_result["chunk_id"] = chunk["chunk_id"]
                     chunk_results.append(chunk_result)
+                    
+                    # 🚀 发送分块分析的部分结果
+                    if session_id and chunk_result.get('characters'):
+                        await self._send_partial_results(session_id, chunk_result)
                 
                 await send_analysis_progress(session_id, 80, "正在合并分块分析结果...")
                 
@@ -352,8 +356,8 @@ class OllamaCharacterDetector:
                 logger.info(f"文本长度{text_length}字符，使用单次分析")
                 await send_analysis_progress(session_id, 30, "正在调用AI模型进行角色识别...")
                 
-                # 直接单次分析
-                result = await self._analyze_single_text(text)
+                # 直接单次分析，传入session_id以支持实时进度
+                result = await self._analyze_single_text(text, session_id)
                 completeness_valid = self._validate_completeness(text, result['segments'])
                 analysis_method = "ollama_ai_single"
                 chunks = []  # 单次分析时为空列表
@@ -398,7 +402,7 @@ class OllamaCharacterDetector:
             await send_analysis_progress(session_id, 0, f"AI分析失败: {str(e)}")
             raise Exception(f"Ollama角色分析失败: {str(e)}")
     
-    async def _analyze_single_text(self, text: str) -> Dict:
+    async def _analyze_single_text(self, text: str, session_id: str = None) -> Dict:
         """单次分析文本（不分块）"""
         
         # 🔥 修复：在分析前选择最优模型
@@ -410,25 +414,50 @@ class OllamaCharacterDetector:
         for attempt in range(max_retries):
             try:
                 prompt = self._build_comprehensive_analysis_prompt(text)
+                
+                # 🚀 发送分析开始进度
+                if session_id:
+                    await self._send_analysis_progress(session_id, 40, f"正在调用AI模型进行角色识别... (第{attempt + 1}次尝试)")
+                
                 response = self._call_ollama(prompt)
                 
                 if response:
+                    # 🚀 发送AI响应成功进度
+                    if session_id:
+                        await self._send_analysis_progress(session_id, 60, "AI模型响应成功，正在解析结果...")
                     break
                 else:
                     logger.warning(f"第{attempt + 1}次尝试失败，Ollama返回空响应")
+                    if session_id:
+                        await self._send_analysis_progress(session_id, 40, f"第{attempt + 1}次尝试失败，准备重试...")
                     if attempt < max_retries - 1:
                         time.sleep(2)  # 等待2秒后重试
                     
             except Exception as e:
                 logger.error(f"第{attempt + 1}次尝试异常: {str(e)}")
+                if session_id:
+                    await self._send_analysis_progress(session_id, 40, f"第{attempt + 1}次尝试异常: {str(e)}")
                 if attempt < max_retries - 1:
                     time.sleep(2)  # 等待2秒后重试
                 else:
                     raise e
         
         if response:
+            # 🚀 发送解析开始进度
+            if session_id:
+                await self._send_analysis_progress(session_id, 70, "正在解析AI分析结果...")
+            
             # 解析Ollama返回的完整结果
             result = self._parse_comprehensive_response(response)
+            
+            # 🚀 发送解析完成进度，包含初步结果
+            if session_id:
+                segments_count = len(result.get('segments', []))
+                characters_count = len(result.get('characters', []))
+                await self._send_analysis_progress(session_id, 80, f"初步解析完成：{segments_count}个段落，{characters_count}个角色")
+                
+                # 🚀 发送实时结果更新
+                await self._send_partial_results(session_id, result)
             
             # 🔥 修复：增加内容完整性校验和重试
             logger.info(f"🔍 调用完整性校验前 - result keys: {list(result.keys())}")
@@ -442,6 +471,9 @@ class OllamaCharacterDetector:
             if not completeness_valid:
                 logger.warning("内容完整性校验失败，尝试重新分析")
                 
+                if session_id:
+                    await self._send_analysis_progress(session_id, 85, "内容完整性校验失败，正在重新分析...")
+                
                 # 如果完整性校验失败，尝试使用更详细的提示词重新分析
                 detailed_prompt = self._build_detailed_analysis_prompt(text)
                 retry_response = self._call_ollama(detailed_prompt)
@@ -453,12 +485,22 @@ class OllamaCharacterDetector:
                     if retry_completeness:
                         result = retry_result
                         logger.info("重新分析成功，内容完整性校验通过")
+                        
+                        # 🚀 发送重新分析后的结果
+                        if session_id:
+                            await self._send_partial_results(session_id, result)
                     else:
                         logger.warning("重新分析仍未通过完整性校验，使用原结果并记录警告")
             
             # 🚀 根据系统设置决定是否启用二次检查机制
             if self.settings.get("enableSecondaryCheck", False):
+                if session_id:
+                    await self._send_analysis_progress(session_id, 90, "正在执行二次检查机制...")
                 result = await self._secondary_check_analysis(text, result)
+                
+                # 🚀 发送二次检查后的结果
+                if session_id:
+                    await self._send_partial_results(session_id, result)
             else:
                 self.logger.info("快速模式：跳过二次检查机制")
             
@@ -734,7 +776,7 @@ class OllamaCharacterDetector:
         
         return segments
 
-    async def _analyze_single_chunk(self, chunk_text: str, chunk_id: int) -> Dict:
+    async def _analyze_single_chunk(self, chunk_text: str, chunk_id: int, session_id: str = None) -> Dict:
         """分析单个分块"""
         logger.info(f"开始分析第{chunk_id}块，长度{len(chunk_text)}字符")
         
@@ -760,6 +802,54 @@ class OllamaCharacterDetector:
         except Exception as e:
             logger.error(f"第{chunk_id}块分析异常: {str(e)}")
             return {"segments": [], "characters": []}
+    
+    async def _send_analysis_progress(self, session_id: str, progress: int, message: str):
+        """发送分析进度更新"""
+        try:
+            from app.websocket.manager import websocket_manager
+            
+            await websocket_manager.publish_to_topic(
+                f"analysis_session_{session_id}",
+                {
+                    "type": "progress_update",
+                    "data": {
+                        "progress": progress,
+                        "message": message,
+                        "session_id": session_id,
+                        "timestamp": time.time()
+                    }
+                }
+            )
+        except Exception as e:
+            logger.warning(f"发送进度更新失败: {str(e)}")
+    
+    async def _send_partial_results(self, session_id: str, result: Dict):
+        """发送部分分析结果"""
+        try:
+            from app.websocket.manager import websocket_manager
+            
+            # 提取关键信息
+            partial_result = {
+                "type": "partial_results",
+                "data": {
+                    "session_id": session_id,
+                    "segments_count": len(result.get('segments', [])),
+                    "characters_count": len(result.get('characters', [])),
+                    "characters": result.get('characters', [])[:5],  # 只发送前5个角色
+                    "segments_preview": result.get('segments', [])[:3],  # 只发送前3个段落
+                    "timestamp": time.time()
+                }
+            }
+            
+            await websocket_manager.publish_to_topic(
+                f"analysis_session_{session_id}",
+                partial_result
+            )
+            
+            logger.info(f"发送部分结果：{len(result.get('segments', []))}段落，{len(result.get('characters', []))}个角色")
+            
+        except Exception as e:
+            logger.warning(f"发送部分结果失败: {str(e)}")
     
     def _validate_completeness(self, original_text: str, segments: List[Dict]) -> bool:
         """🔥 新增：校验分析结果的完整性"""

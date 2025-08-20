@@ -612,6 +612,23 @@
                 const progressMsg = data.data.message || '智能准备进行中'
                 hideLoading = message.loading(`${progressMsg} (${progress}%)`, 0)
               }
+            } else if (data.type === 'partial_results') {
+              console.log('📋 收到部分分析结果:', data.data)
+              // 显示部分结果
+              if (hideLoading) {
+                hideLoading()
+                const partialData = data.data
+                const resultMsg = `已识别 ${partialData.characters_count} 个角色，${partialData.segments_count} 个段落`
+                
+                // 显示角色预览
+                let characterPreview = ''
+                if (partialData.characters && partialData.characters.length > 0) {
+                  const characterNames = partialData.characters.map(char => char.name).join('、')
+                  characterPreview = `\n角色预览：${characterNames}`
+                }
+                
+                hideLoading = message.loading(`${resultMsg}${characterPreview}`, 0)
+              }
             }
           }
         }

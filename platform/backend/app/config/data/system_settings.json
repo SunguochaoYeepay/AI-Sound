@@ -24,7 +24,7 @@
     "defaultLlmModel": "qwen:latest",
     "analysisMode": "balanced",
     "fastModeEnabled": true,
-    "analysisTimeout": 120,
+    "analysisTimeout": 300,
     "enableSecondaryCheck": false
   },
   "storage": {
