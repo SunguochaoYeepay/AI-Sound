@@ -74,7 +74,7 @@
           <div 
             class="group-header" 
             @click="toggleGroup('contentManagement')"
-            :class="{ active: activeGroups.contentManagement }"
+            :class="{ active: activeGroupKey === 'contentManagement' }"
           >
             <div class="group-title">
               <div class="group-title-left">
@@ -119,7 +119,7 @@
           <div 
             class="group-header" 
             @click="toggleGroup('audioProduction')"
-            :class="{ active: activeGroups.audioProduction }"
+            :class="{ active: activeGroupKey === 'audioProduction' }"
           >
             <div class="group-title">
               <div class="group-title-left">
@@ -174,7 +174,7 @@
           <div 
             class="group-header" 
             @click="toggleGroup('resourceLibrary')"
-            :class="{ active: activeGroups.resourceLibrary }"
+            :class="{ active: activeGroupKey === 'resourceLibrary' }"
           >
             <div class="group-title">
               <div class="group-title-left">
@@ -217,7 +217,7 @@
           <div 
             class="group-header" 
             @click="toggleGroup('systemManagement')"
-            :class="{ active: activeGroups.systemManagement }"
+            :class="{ active: activeGroupKey === 'systemManagement' }"
           >
             <div class="group-title">
               <div class="group-title-left">
@@ -373,11 +373,11 @@
           :style="{
             padding:
               appStore.themeSettings.layout === 'compact'
-                ? '16px'
+                ? 'var(--content-padding-sm)'
                 : appStore.themeSettings.layout === 'spacious'
-                  ? '32px'
-                  : '24px',
-            minHeight: 'calc(100vh - 60px)'
+                  ? 'var(--content-padding-lg)'
+                  : 'var(--content-padding)',
+            minHeight: 'var(--content-min-height)'
           }"
         >
           <router-view />
@@ -428,12 +428,44 @@
     systemManagement: false
   })
 
+  // 根据当前选中的菜单项计算哪个一级菜单应该高亮
+  const activeGroupKey = computed(() => {
+    const currentKey = selectedKeys.value[0]
+    
+    // 定义每个二级菜单项属于哪个一级菜单组
+    const menuGroupMapping = {
+      // 内容管理组
+      'books': 'contentManagement',
+      'voice-library': 'contentManagement',
+      
+      // 音频制作组
+      'novel-projects': 'audioProduction',
+      'environment-sounds': 'audioProduction',
+      'music-library': 'audioProduction',
+      'audio-mixing': 'audioProduction',
+      'audio-library': 'audioProduction',
+      
+      // 视觉资源组
+      'image-generation': 'resourceLibrary',
+      'image-library': 'resourceLibrary',
+      
+      // 系统管理组
+      'voice-clone': 'systemManagement',
+      'users': 'systemManagement',
+      'roles': 'systemManagement',
+      'logs': 'systemManagement',
+      'backup': 'systemManagement',
+      'settings': 'systemManagement'
+    }
+    
+    return menuGroupMapping[currentKey] || null
+  })
 
 
 
 
-  // 检查是否为开发环境
-  const isDev = computed(() => import.meta.env.DEV)
+
+
 
   // 计算属性
   const notificationCount = computed(() => appStore.notificationCount)
@@ -476,6 +508,12 @@
     }
 
     selectedKeys.value = [key]
+    
+    // 自动展开对应的菜单组
+    const groupToExpand = activeGroupKey.value
+    if (groupToExpand && !activeGroups.value[groupToExpand]) {
+      activeGroups.value[groupToExpand] = true
+    }
   }
 
   // 监听路由变化
@@ -660,8 +698,7 @@
   }
 
   .logo-container {
-    padding: 17px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+    padding: 15px;
   }
 
   .logo-content {
@@ -769,11 +806,12 @@
   }
 
   .group-header:hover {
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.06);
   }
 
   .group-header.active {
-    background: rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.08);
+    border-left: 3px solid rgba(255, 255, 255, 0.3);
   }
 
   .group-title {
@@ -784,6 +822,12 @@
     color: rgba(255, 255, 255, 0.85);
     font-size: 14px;
     font-weight: 600;
+    transition: all 0.3s;
+  }
+
+  .group-header.active .group-title {
+    color: rgba(255, 255, 255, 0.95);
+    font-weight: 700;
   }
 
   .group-title-left {
@@ -847,11 +891,14 @@
   .ant-menu-dark .ant-menu-item-selected {
     background: linear-gradient(
       135deg,
-      rgba(255, 255, 255, 0.2),
-      rgba(255, 255, 255, 0.15)
+      rgba(255, 255, 255, 0.25),
+      rgba(255, 255, 255, 0.2)
     ) !important;
-    font-weight: 600 !important;
+    font-weight: 700 !important;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+    border-left: 3px solid rgba(255, 255, 255, 0.6);
+    transform: translateX(4px);
+    color: rgba(255, 255, 255, 0.95) !important;
   }
 
   .ant-menu-dark .ant-menu-item .ant-menu-item-icon {
@@ -927,11 +974,12 @@
 
   /* 暗黑模式下新的菜单分组样式 */
   [data-theme='dark'] .group-header:hover {
-    background: rgba(255, 255, 255, 0.15) !important;
+    background: rgba(255, 255, 255, 0.08) !important;
   }
 
   [data-theme='dark'] .group-header.active {
-    background: rgba(255, 255, 255, 0.2) !important;
+    background: rgba(255, 255, 255, 0.1) !important;
+    border-left: 3px solid rgba(255, 255, 255, 0.4) !important;
   }
 
   [data-theme='dark'] .group-title {
@@ -2409,18 +2457,17 @@
   /* 顶部工具条样式 */
   .app-header {
     background: linear-gradient(135deg, #ffffff 0%, #fdf9f4 100%) !important;
-    border-bottom: 1px solid rgba(255, 123, 84, 0.1) !important;
     height: 28px;
     display: flex;
     align-items: center;
     justify-content: space-between;
     padding: 0 24px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    padding-inline: 24px !important; 
   }
 
   [data-theme='dark'] .app-header {
     background: #1f1f1f !important;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   }
 

@@ -308,7 +308,6 @@ const handlePageChange = (page, pageSize) => {
 
 [data-theme='dark'] .pagination-section {
   background: #1f1f1f !important;
-  border: 1px solid #434343 !important;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
 }
 

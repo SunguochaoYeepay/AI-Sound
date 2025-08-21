@@ -419,7 +419,7 @@
 
   /* 全局样式调整 */
   .main-content .ant-row {
-    height: calc(100vh - 200px);
+    height: calc(100vh - var(--spacing-xxxl) - var(--spacing-xxxl));
   }
 
   .main-content .ant-col {

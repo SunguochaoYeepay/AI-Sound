@@ -5,6 +5,26 @@
   --secondary-color: #0891b2;
   --ant-component-background: #ffffff;
   
+  /* 间距系统 */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 12px;
+  --spacing-lg: 16px;
+  --spacing-xl: 24px;
+  --spacing-xxl: 32px;
+  --spacing-xxxl: 48px;
+  
+  /* 内容区域间距 */
+  --content-padding: var(--spacing-xl);
+  --content-padding-sm: var(--spacing-lg);
+  --content-padding-lg: var(--spacing-xxl);
+  
+  /* 布局高度计算 */
+  --header-height: 64px;
+  --sidebar-width: 180px;
+  --sidebar-width-collapsed: 80px;
+  --content-min-height: calc(100vh - var(--header-height));
+  
   /* Ant Design 兼容变量 */
   --ant-border-color-split: #f0f0f0;
   --ant-heading-color: rgba(0, 0, 0, 0.85);
@@ -20,6 +40,26 @@
   --secondary-color: #0891b2;
   --ant-component-background: #141414;
   --ant-color-bg-container: #141414;
+  
+  /* 间距系统（暗黑模式下保持一致） */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 12px;
+  --spacing-lg: 16px;
+  --spacing-xl: 24px;
+  --spacing-xxl: 32px;
+  --spacing-xxxl: 48px;
+  
+  /* 内容区域间距（暗黑模式下保持一致） */
+  --content-padding: var(--spacing-xl);
+  --content-padding-sm: var(--spacing-lg);
+  --content-padding-lg: var(--spacing-xxl);
+  
+  /* 布局高度计算（暗黑模式下保持一致） */
+  --header-height: 64px;
+  --sidebar-width: 180px;
+  --sidebar-width-collapsed: 80px;
+  --content-min-height: calc(100vh - var(--header-height));
   
   /* Ant Design 暗黑模式兼容变量 */
   --ant-border-color-split: #303030;
@@ -96,6 +136,39 @@
   background: var(--ant-color-bg-container);
   border-color: var(--ant-color-border);
   color: var(--ant-color-text);
+}
+
+/* 通用布局类 */
+.content-container {
+  padding: var(--content-padding);
+  min-height: var(--content-min-height);
+}
+
+.content-container-sm {
+  padding: var(--content-padding-sm);
+  min-height: var(--content-min-height);
+}
+
+.content-container-lg {
+  padding: var(--content-padding-lg);
+  min-height: var(--content-min-height);
+}
+
+/* 响应式内容容器 */
+@media (max-width: 768px) {
+  .content-container,
+  .content-container-sm,
+  .content-container-lg {
+    padding: var(--spacing-lg);
+  }
+}
+
+@media (max-width: 480px) {
+  .content-container,
+  .content-container-sm,
+  .content-container-lg {
+    padding: var(--spacing-md);
+  }
 }
 
 [data-theme='dark'] .ant-input::placeholder,

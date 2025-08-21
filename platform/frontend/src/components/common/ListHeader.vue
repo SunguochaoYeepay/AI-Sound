@@ -86,9 +86,7 @@ const handleAction = (action) => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
   padding: 16px 0;
-  border-bottom: 1px solid #e5e7eb;
 }
 
 .list-title-section {

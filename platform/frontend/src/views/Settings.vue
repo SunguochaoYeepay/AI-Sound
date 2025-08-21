@@ -954,7 +954,7 @@
   }
 
   .main-content {
-    min-height: calc(100vh - 200px);
+    min-height: calc(100vh - var(--spacing-xxxl) - var(--spacing-xxxl));
   }
 
   .settings-section {

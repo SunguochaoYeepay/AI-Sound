@@ -65,8 +65,8 @@ const getIconStyle = (stat) => {
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
+  padding: 16px 0;
   gap: 24px;
-  margin-bottom: 32px;
 }
 
 .stat-card {

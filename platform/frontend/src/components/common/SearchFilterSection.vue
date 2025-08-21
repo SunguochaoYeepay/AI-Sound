@@ -139,7 +139,6 @@ const handleRefresh = () => {
 
 <style scoped>
 .search-filter-section {
-  margin-bottom: 24px;
   padding: 20px 32px;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   border-radius: 12px;

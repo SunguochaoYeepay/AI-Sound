@@ -37,7 +37,7 @@
 
         <div
           class="batch-create-body"
-          style="padding-bottom: 80px; max-height: calc(100vh - 120px); overflow-y: auto"
+          style="padding-bottom: var(--spacing-xxxl); max-height: calc(100vh - var(--spacing-xxxl) - var(--spacing-xxxl)); overflow-y: auto"
         >
           <div class="batch-description">
             <a-alert
