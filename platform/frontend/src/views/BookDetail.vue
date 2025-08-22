@@ -205,11 +205,6 @@
     await loadChapters(pageInfo.page)
   }
 
-  // 更新总章节数
-  const updateTotalChapters = (total) => {
-    console.log('总章节数更新为:', total)
-  }
-
   // 加载单个章节的智能准备状态（按需加载）
   const loadChapterPreparationStatus = async (chapterId) => {
     if (!chapterId) return
@@ -228,27 +223,6 @@
         ...chapterPreparationStatus.value,
         [chapterId]: { preparation_complete: false, preparation_started: false }
       }
-    }
-  }
-
-  // 批量加载指定章节的智能准备状态（可选优化）
-  const loadSelectedChaptersPreparationStatus = async (chapterIds) => {
-    if (!chapterIds?.length) return
-
-    try {
-      const response = await booksAPI.getChaptersPreparationStatus(book.value?.id, {
-        chapter_ids: chapterIds
-      })
-      
-      if (response.data?.success) {
-        const statusMap = response.data.data || {}
-        chapterPreparationStatus.value = {
-          ...chapterPreparationStatus.value,
-          ...statusMap
-        }
-      }
-    } catch (error) {
-      console.error('批量加载章节状态失败:', error)
     }
   }
 
@@ -335,11 +309,6 @@
     chapterListCollapsed.value = !chapterListCollapsed.value
   }
 
-  // 处理章节列表收起/展开
-  const handleChapterListToggle = (collapsed) => {
-    chapterListCollapsed.value = collapsed
-  }
-
   // 页面操作
   const goBack = () => {
     router.push('/books')
@@ -361,18 +330,9 @@
     })
   }
 
-  const openCharacterConfig = (chapter) => {
-    console.log('配置章节角色:', chapter)
-    // 这里可以实现章节角色配置功能
-  }
-
   const handleContentChanged = (content) => {
     console.log('章节内容已修改:', selectedChapter.value, content)
     // 这里可以实现章节内容保存功能
-  }
-
-  const refreshAnalysis = (chapter) => {
-    // Removed as per edit hint
   }
 
   const saveAnalysis = async (data) => {

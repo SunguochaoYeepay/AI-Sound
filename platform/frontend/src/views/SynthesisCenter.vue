@@ -109,7 +109,6 @@
   import { useRoute, useRouter } from 'vue-router'
   import { message } from 'ant-design-vue'
   import { getWebSocketUrl } from '@/config/services'
-  import { SoundOutlined } from '@ant-design/icons-vue'
   import api, { readerAPI, booksAPI } from '@/api'
 import apiClient from '@/api/config.js'
   import { playSegmentAudio, playChapterAudio } from '@/utils/audioService'
@@ -159,7 +158,6 @@ import apiClient from '@/api/config.js'
   // 失败详情相关状态
   const failureDetailsVisible = ref(false)
   const failedSegmentsList = ref([])
-  const retryLoading = ref(false)
 
   // 环境混音相关状态已迁移至单独的环境混合页面
 
@@ -371,119 +369,7 @@ import apiClient from '@/api/config.js'
     }
   }
 
-  // 🔥 已移除 loadSynthesisProgress 函数 - 不再需要项目级别的进度数据
-  const loadSynthesisProgress_REMOVED = async () => {
-    try {
-      const projectId = route.params.projectId
-      // 使用正确的API获取项目的合成进度
-      const response = await readerAPI.getProgress(projectId)
-      if (response.data.success && response.data.data) {
-        const progressInfo = response.data.data
 
-        // 🔧 修复：正确解析API返回的数据格式
-        const segments = progressInfo.segments || {}
-        progressData.value = {
-          progress: progressInfo.progress_percentage || 0,
-          status: progressInfo.status || 'pending', // 🔥 不再依赖项目状态
-          completed_segments: segments.completed || 0,
-          total_segments: segments.total || 0,
-          failed_segments: segments.failed || 0,
-          current_processing: '正在生成语音...',
-          synthesis_type: progressData.value?.synthesis_type // 保持合成类型标识
-        }
-
-        // 🔥 移除项目状态强制同步逻辑 - 我们不再依赖项目状态
-        const apiStatus = progressInfo.status
-
-        if (apiStatus === 'processing') {
-          synthesisRunning.value = true
-          // 🔧 自动显示进度抽屉
-          if (!progressDrawerVisible.value) {
-            progressDrawerVisible.value = true
-            console.log('📊 项目正在合成中，自动显示进度抽屉')
-          }
-        } else if (
-          apiStatus === 'paused' ||
-          apiStatus === 'cancelled' ||
-          apiStatus === 'completed' ||
-          apiStatus === 'partial_completed' ||
-          apiStatus === 'failed'
-        ) {
-          synthesisRunning.value = false
-          console.log('📊 项目非运行状态，重置前端状态', apiStatus)
-
-          // 🔥 确保进度抽屉关闭（页面初始化时不应该显示）
-          progressDrawerVisible.value = false
-
-          // 🔧 合成完成时停止轮询
-          if (
-            (apiStatus === 'completed' || apiStatus === 'partial_completed') &&
-            progressRefreshInterval
-          ) {
-            console.log('✅ 合成完成，停止进度轮询')
-            clearInterval(progressRefreshInterval)
-            progressRefreshInterval = null
-          }
-        }
-
-        console.log('📊 加载进度信息 (API格式):', progressData.value)
-      } else {
-        // 如果API返回空数据，从项目统计信息中推导
-        if (project.value?.statistics) {
-          const stats = project.value.statistics
-          progressData.value = {
-            progress: stats.progress || 0,
-            status: 'pending', // 🔥 不依赖项目状态，始终使用pending
-            completed_segments: stats.completedSegments || 0,
-            total_segments: stats.totalSegments || 0,
-            failed_segments: stats.failedSegments || 0,
-            current_processing: '正在生成语音...',
-            synthesis_type: progressData.value?.synthesis_type // 保持合成类型标识
-          }
-          console.log('📊 从项目统计推导进度:', progressData.value)
-        } else {
-          // 🔥 如果项目没有统计信息，设置默认值（不依赖项目状态）
-          progressData.value = {
-            progress: 0,
-            status: 'pending',
-            completed_segments: 0,
-            total_segments: 0,
-            failed_segments: 0,
-            current_processing: '正在生成语音...',
-            synthesis_type: progressData.value?.synthesis_type // 保持合成类型标识
-          }
-          console.log('📊 设置默认进度数据:', progressData.value)
-        }
-      }
-    } catch (error) {
-      console.error('Failed to load synthesis progress:', error)
-      // 如果获取进度失败，从项目信息中推导基本进度
-      if (project.value?.statistics) {
-        const stats = project.value.statistics
-        progressData.value = {
-          progress: stats.progress || 0,
-          status: 'pending', // 🔥 不再依赖项目状态
-          completed_segments: stats.completedSegments || 0,
-          total_segments: stats.totalSegments || 0,
-          failed_segments: stats.failedSegments || 0,
-          current_processing: '正在生成语音...',
-          synthesis_type: progressData.value?.synthesis_type // 保持合成类型标识
-        }
-      } else {
-        // 🔥 设置安全的默认值（不依赖项目状态）
-        progressData.value = {
-          progress: 0,
-          status: 'pending',
-          completed_segments: 0,
-          total_segments: 0,
-          failed_segments: 0,
-          current_processing: '正在生成语音...',
-          synthesis_type: progressData.value?.synthesis_type // 保持合成类型标识
-        }
-      }
-      console.log('📊 异常情况设置进度数据:', progressData.value)
-    }
-  }
 
   // 章节列表收起展开切换
   const toggleChapterList = () => {
@@ -853,8 +739,6 @@ import apiClient from '@/api/config.js'
               }
             }
           }
-        } else if (message.type === 'topic_message') {
-  
         }
       }
 
@@ -883,34 +767,7 @@ import apiClient from '@/api/config.js'
     }
   }
 
-  // 🔧 WebSocket诊断函数
-  const testWebSocketConnection = () => {
-    console.log('🧪 开始WebSocket连接诊断')
-    console.log('📊 当前状态:', {
-      websocketStatus: websocketStatus.value,
-      websocketExists: !!websocket,
-      websocketReadyState: websocket?.readyState,
-      projectId: route.params.projectId
-    })
 
-    if (websocket) {
-
-
-      // 尝试发送测试消息
-      if (websocket.readyState === WebSocket.OPEN) {
-        const testMsg = {
-          type: 'ping',
-          timestamp: Date.now()
-        }
-        console.log('📡 发送测试ping消息:', testMsg)
-        websocket.send(JSON.stringify(testMsg))
-      } else {
-        console.warn('⚠️ WebSocket未处于OPEN状态，无法发送消息')
-      }
-    } else {
-      console.error('❌ WebSocket对象不存在')
-    }
-  }
 
   // 处理函数
   const handleBack = () => {
@@ -1136,22 +993,7 @@ import apiClient from '@/api/config.js'
     }
   }
 
-  // 🔥 删除项目状态重置功能 - 不再需要，因为我们不依赖项目状态
-  // 如果需要重置，可以直接重置本地状态：
-  const handleResetLocalSynthesisState = () => {
-    console.log('🔧 重置本地合成状态')
-    synthesisRunning.value = false
-    progressDrawerVisible.value = false
-    hasShownCompletionMessage.value = false
 
-    // 停止定期刷新
-    if (progressRefreshInterval) {
-      clearInterval(progressRefreshInterval)
-      progressRefreshInterval = null
-    }
-
-    message.success('✅ 本地状态已重置')
-  }
 
   const handlePlayAudio = async () => {
     try {
@@ -1290,47 +1132,11 @@ import apiClient from '@/api/config.js'
     }
   }
 
-  const handleCloseFailureDetails = () => {
-    failureDetailsVisible.value = false
-  }
 
-  const handleRetryFailedSegments = async () => {
-    try {
-      retryLoading.value = true
-      const response = await api.retryAllFailedSegments(project.value.id)
-      if (response.data.success) {
-        message.success('已开始重试失败段落')
-        synthesisRunning.value = true
-        progressDrawerVisible.value = true
-        failureDetailsVisible.value = false
 
-        // 重新启动定期刷新
-        if (progressRefreshInterval) {
-          clearInterval(progressRefreshInterval)
-        }
-        progressRefreshInterval = setInterval(() => {
-          if (synthesisRunning.value) {
-            loadCurrentChapterProgress()
-          }
-        }, 3000)
-      }
-    } catch (error) {
-      console.error('Failed to retry failed segments:', error)
-      message.error('重试失败段落失败')
-    } finally {
-      retryLoading.value = false
-    }
-  }
 
-  const handleGoToPreparation = () => {
-    // 跳转到智能准备页面或显示准备界面
-    message.info('跳转到智能准备页面进行修改')
-    failureDetailsVisible.value = false
 
-    // 这里可以根据您的路由设计跳转到相应页面
-    // 例如：router.push(`/preparation/${project.value.id}/${selectedChapter.value}`)
-    // 或者触发智能准备模式
-  }
+
 
   // 创建模拟失败段落数据（用于没有详细API时的展示）
   const createMockFailedSegments = () => {
