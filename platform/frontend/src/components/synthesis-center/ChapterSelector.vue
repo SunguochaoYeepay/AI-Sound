@@ -19,7 +19,7 @@
       <!-- 有章节数据时显示章节列表 -->
       <div v-else-if="chapters.length > 0" class="chapters-container">
         <div
-          v-for="chapter in chapters"
+          v-for="chapter in displayedChapters"
           :key="chapter.id"
           :class="['chapter-menu-item', { active: selectedChapter === chapter.id }]"
           @click="$emit('select', chapter.id)"
@@ -32,6 +32,32 @@
                 {{ getChapterStatusText(chapter) }}
               </span>
             </div>
+          </div>
+        </div>
+
+        <!-- 翻页控制 -->
+        <div v-if="chapters.length > pageSize" class="pagination-controls">
+          <div class="pagination-info">
+            显示 {{ (currentPage - 1) * pageSize + 1 }}-{{ Math.min(currentPage * pageSize, chapters.length) }} / {{ chapters.length }} 章
+          </div>
+          <div class="pagination-buttons">
+            <a-button
+              size="small"
+              :disabled="currentPage === 1"
+              @click="prevPage"
+              class="page-btn"
+            >
+              <template #icon><LeftOutlined /></template>
+            </a-button>
+            <span class="page-info">{{ currentPage }} / {{ totalPages }}</span>
+            <a-button
+              size="small"
+              :disabled="currentPage === totalPages"
+              @click="nextPage"
+              class="page-btn"
+            >
+              <template #icon><RightOutlined /></template>
+            </a-button>
           </div>
         </div>
       </div>
@@ -49,10 +75,11 @@
 </template>
 
 <script setup>
-  import { ReloadOutlined } from '@ant-design/icons-vue'
+  import { ref, computed } from 'vue'
+  import { ReloadOutlined, LeftOutlined, RightOutlined } from '@ant-design/icons-vue'
   import { Empty } from 'ant-design-vue'
 
-  defineProps({
+  const props = defineProps({
     chapters: {
       type: Array,
       default: () => []
@@ -68,6 +95,33 @@
   })
 
   defineEmits(['select', 'loadChapters'])
+
+  // 🔥 翻页功能
+  const pageSize = 10 // 每页显示10个章节
+  const currentPage = ref(1)
+
+  // 计算总页数
+  const totalPages = computed(() => Math.ceil(props.chapters.length / pageSize))
+
+  // 计算当前页显示的章节
+  const displayedChapters = computed(() => {
+    const start = (currentPage.value - 1) * pageSize
+    const end = start + pageSize
+    return props.chapters.slice(start, end)
+  })
+
+  // 翻页方法
+  const prevPage = () => {
+    if (currentPage.value > 1) {
+      currentPage.value--
+    }
+  }
+
+  const nextPage = () => {
+    if (currentPage.value < totalPages.value) {
+      currentPage.value++
+    }
+  }
 
   const formatNumber = (num) => {
     if (num >= 10000) {
@@ -142,14 +196,21 @@
   }
 
   .chapter-menu-item.active {
-    background: #e6f4ff;
+    background: linear-gradient(135deg, rgba(24, 144, 255, 0.15), rgba(24, 144, 255, 0.1));
     border-color: #1890ff;
-    box-shadow: 0 2px 8px rgba(24, 144, 255, 0.1);
+    box-shadow: 0 4px 12px rgba(24, 144, 255, 0.2);
+    transform: translateX(4px);
+    border-left: 3px solid #1890ff;
   }
 
   .chapter-menu-item.active .chapter-title {
     color: #1890ff;
     font-weight: 600;
+  }
+
+  .chapter-menu-item.active .word-count {
+    color: rgba(24, 144, 255, 0.8);
+    font-weight: 500;
   }
 
   .chapter-info {
@@ -237,12 +298,20 @@
   }
 
   [data-theme='dark'] .chapter-menu-item.active {
-    background: rgba(var(--primary-color-rgb), 0.1) !important;
+    background: linear-gradient(135deg, rgba(24, 144, 255, 0.2), rgba(24, 144, 255, 0.15)) !important;
     border-color: var(--primary-color) !important;
+    box-shadow: 0 4px 12px rgba(24, 144, 255, 0.3) !important;
+    transform: translateX(4px) !important;
+    border-left: 3px solid var(--primary-color) !important;
   }
 
   [data-theme='dark'] .chapter-menu-item.active .chapter-title {
     color: var(--primary-color) !important;
+  }
+
+  [data-theme='dark'] .chapter-menu-item.active .word-count {
+    color: rgba(24, 144, 255, 0.9) !important;
+    font-weight: 500 !important;
   }
 
   [data-theme='dark'] .chapter-title {
@@ -371,5 +440,51 @@
       background: #2d2d2d !important;
       border-right-color: #434343 !important;
     }
+  }
+
+  /* 🔥 翻页控制样式 */
+  .pagination-controls {
+    padding: 12px 16px;
+    border-top: 1px solid #f0f0f0;
+    background: #fafafa;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+    margin-top: 8px;
+  }
+
+  .pagination-info {
+    color: #666;
+  }
+
+  .pagination-buttons {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .page-btn {
+    min-width: 32px;
+    height: 24px;
+    padding: 0 8px;
+  }
+
+  .page-info {
+    font-size: 12px;
+    color: #666;
+    min-width: 40px;
+    text-align: center;
+  }
+
+  /* 暗黑模式翻页控制 */
+  [data-theme='dark'] .pagination-controls {
+    background: var(--ant-color-bg-container);
+    border-top-color: var(--ant-color-border);
+  }
+
+  [data-theme='dark'] .pagination-info,
+  [data-theme='dark'] .page-info {
+    color: var(--ant-color-text-secondary);
   }
 </style>

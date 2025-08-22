@@ -31,7 +31,7 @@
 <script setup>
 import { UserOutlined, PlusOutlined, SettingOutlined } from '@ant-design/icons-vue'
 
-defineProps({
+const props = defineProps({
   selectedCount: {
     type: Number,
     default: 0

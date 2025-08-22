@@ -72,7 +72,7 @@
 </template>
 
 <script setup>
-defineProps({
+const props = defineProps({
   totalCount: {
     type: Number,
     default: 0

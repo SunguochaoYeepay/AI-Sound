@@ -462,12 +462,29 @@ const formatNumber = (num) => {
 .book-item:hover,
 .chapter-item:hover {
   background-color: var(--ant-item-active-bg);
+  transform: translateX(2px);
+  transition: all 0.2s ease;
 }
 
 .book-item.active,
 .chapter-item.active {
-  background-color: var(--ant-primary-1);
+  background: linear-gradient(135deg, rgba(24, 144, 255, 0.15), rgba(24, 144, 255, 0.1));
   border: 1px solid var(--ant-primary-color);
+  box-shadow: 0 4px 12px rgba(24, 144, 255, 0.2);
+  transform: translateX(4px);
+  border-left: 3px solid var(--ant-primary-color);
+}
+
+.book-item.active .book-title,
+.chapter-item.active .chapter-title {
+  color: var(--ant-primary-color);
+  font-weight: 600;
+}
+
+.book-item.active .book-meta,
+.chapter-item.active .chapter-meta {
+  color: rgba(24, 144, 255, 0.8);
+  font-weight: 500;
 }
 
 .book-info,

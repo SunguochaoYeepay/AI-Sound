@@ -86,7 +86,18 @@ async def analyze_chapters_environment(
             error_info = analysis_result['analysis_metadata']
             error_msg = error_info['error']
             suggestion = error_info.get('suggestion', '请检查数据完整性')
-            chapter_id = error_info.get('chapter_id', '未知')
+            
+            # 🔥 修复：正确处理章节ID信息
+            chapter_id = '未知'
+            if 'chapter_id' in error_info:
+                chapter_id = error_info['chapter_id']
+            elif 'chapter_ids' in error_info:
+                # 如果有多个章节ID，取第一个
+                chapter_ids = error_info['chapter_ids']
+                if isinstance(chapter_ids, list) and chapter_ids:
+                    chapter_id = str(chapter_ids[0])
+                else:
+                    chapter_id = str(chapter_ids)
             
             logger.error(f"[ENV_GEN_API] 环境音分析失败: {error_msg}")
             
@@ -95,7 +106,7 @@ async def analyze_chapters_environment(
                 "error": error_msg,
                 "suggestion": suggestion,
                 "chapter_id": chapter_id,
-                "message": f"环境音分析失败: {error_msg}"
+                "message": error_msg  # 🔥 优化：避免重复前缀
             }
         
         # 构建分析统计（基于扁平结构）

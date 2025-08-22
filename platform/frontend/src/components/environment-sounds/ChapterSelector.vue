@@ -27,7 +27,7 @@
       @select="handleMenuSelect"
     >
       <a-menu-item
-        v-for="chapter in chapters"
+        v-for="chapter in displayedChapters"
         :key="String(chapter.id)"
         class="chapter-menu-item"
       >
@@ -42,12 +42,38 @@
         </div>
       </a-menu-item>
     </a-menu>
+
+    <!-- 翻页控制 -->
+    <div v-if="!collapsed && chapters.length > pageSize" class="pagination-controls">
+      <div class="pagination-info">
+        显示 {{ (currentPage - 1) * pageSize + 1 }}-{{ Math.min(currentPage * pageSize, chapters.length) }} / {{ chapters.length }} 章
+      </div>
+      <div class="pagination-buttons">
+        <a-button
+          size="small"
+          :disabled="currentPage === 1"
+          @click="prevPage"
+          class="page-btn"
+        >
+          <template #icon><LeftOutlined /></template>
+        </a-button>
+        <span class="page-info">{{ currentPage }} / {{ totalPages }}</span>
+        <a-button
+          size="small"
+          :disabled="currentPage === totalPages"
+          @click="nextPage"
+          class="page-btn"
+        >
+          <template #icon><RightOutlined /></template>
+        </a-button>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
-import { MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons-vue'
+import { ref, watch, computed } from 'vue'
+import { MenuFoldOutlined, MenuUnfoldOutlined, LeftOutlined, RightOutlined } from '@ant-design/icons-vue'
 
 const props = defineProps({
   chapters: {
@@ -68,6 +94,33 @@ const emit = defineEmits(['select-chapter', 'toggle-collapse'])
 
 // 使用ref而不是computed来避免readonly警告
 const selectedKeys = ref([])
+
+// 🔥 翻页功能
+const pageSize = 10 // 每页显示10个章节
+const currentPage = ref(1)
+
+// 计算总页数
+const totalPages = computed(() => Math.ceil(props.chapters.length / pageSize))
+
+// 计算当前页显示的章节
+const displayedChapters = computed(() => {
+  const start = (currentPage.value - 1) * pageSize
+  const end = start + pageSize
+  return props.chapters.slice(start, end)
+})
+
+// 翻页方法
+const prevPage = () => {
+  if (currentPage.value > 1) {
+    currentPage.value--
+  }
+}
+
+const nextPage = () => {
+  if (currentPage.value < totalPages.value) {
+    currentPage.value++
+  }
+}
 
 // 监听selectedChapterId变化，更新selectedKeys
 watch(() => props.selectedChapterId, (newId) => {
@@ -138,6 +191,37 @@ const toggleCollapse = () => {
   margin-bottom: 4px;
 }
 
+/* 🔥 增强选中状态样式 */
+.chapter-menu .ant-menu-item-selected {
+  background: linear-gradient(135deg, rgba(24, 144, 255, 0.15), rgba(24, 144, 255, 0.1)) !important;
+  border-left: 3px solid #1890ff !important;
+  border-radius: 6px !important;
+  transform: translateX(4px) !important;
+  box-shadow: 0 2px 8px rgba(24, 144, 255, 0.2) !important;
+}
+
+.chapter-menu .ant-menu-item-selected .chapter-number {
+  color: #1890ff !important;
+  font-weight: 600 !important;
+}
+
+.chapter-menu .ant-menu-item-selected .chapter-title {
+  color: #1890ff !important;
+  font-weight: 500 !important;
+}
+
+.chapter-menu .ant-menu-item-selected .chapter-meta {
+  color: rgba(24, 144, 255, 0.8) !important;
+}
+
+/* 悬停效果 */
+.chapter-menu .ant-menu-item:hover {
+  background: rgba(24, 144, 255, 0.05) !important;
+  border-radius: 6px !important;
+  transform: translateX(2px) !important;
+  transition: all 0.2s ease !important;
+}
+
 .chapter-item-content {
   display: flex;
   flex-direction: column;
@@ -198,11 +282,82 @@ const toggleCollapse = () => {
   color: var(--ant-color-text);
 }
 
+/* 🔥 暗黑模式下的选中状态样式 */
+[data-theme='dark'] .chapter-menu .ant-menu-item-selected {
+  background: linear-gradient(135deg, rgba(24, 144, 255, 0.2), rgba(24, 144, 255, 0.15)) !important;
+  border-left: 3px solid #1890ff !important;
+  box-shadow: 0 2px 8px rgba(24, 144, 255, 0.3) !important;
+}
+
+[data-theme='dark'] .chapter-menu .ant-menu-item-selected .chapter-number {
+  color: #1890ff !important;
+  font-weight: 600 !important;
+}
+
+[data-theme='dark'] .chapter-menu .ant-menu-item-selected .chapter-title {
+  color: #1890ff !important;
+  font-weight: 500 !important;
+}
+
+[data-theme='dark'] .chapter-menu .ant-menu-item-selected .chapter-meta {
+  color: rgba(24, 144, 255, 0.9) !important;
+}
+
+/* 暗黑模式下的悬停效果 */
+[data-theme='dark'] .chapter-menu .ant-menu-item:hover {
+  background: rgba(24, 144, 255, 0.1) !important;
+}
+
 [data-theme='dark'] .chapter-title {
   color: var(--ant-color-text-secondary);
 }
 
 [data-theme='dark'] .chapter-meta {
   color: var(--ant-color-text-tertiary);
+}
+
+/* 🔥 翻页控制样式 */
+.pagination-controls {
+  padding: 12px 16px;
+  border-top: 1px solid #f0f0f0;
+  background: #fafafa;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+}
+
+.pagination-info {
+  color: #666;
+}
+
+.pagination-buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.page-btn {
+  min-width: 32px;
+  height: 24px;
+  padding: 0 8px;
+}
+
+.page-info {
+  font-size: 12px;
+  color: #666;
+  min-width: 40px;
+  text-align: center;
+}
+
+/* 暗黑模式翻页控制 */
+[data-theme='dark'] .pagination-controls {
+  background: var(--ant-color-bg-container);
+  border-top-color: var(--ant-color-border);
+}
+
+[data-theme='dark'] .pagination-info,
+[data-theme='dark'] .page-info {
+  color: var(--ant-color-text-secondary);
 }
 </style>

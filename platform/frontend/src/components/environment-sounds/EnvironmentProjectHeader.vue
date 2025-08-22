@@ -164,9 +164,8 @@ const formatDate = (dateString) => {
 .environment-project-header {
   background: #ffffff;
   border: 1px solid #f0f0f0;
-  padding: 20px;
+  padding: 16px;
   border-radius: 8px;
-  margin-bottom: 20px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 }
 
@@ -174,7 +173,6 @@ const formatDate = (dateString) => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 16px;
 }
 
 .back-section {
@@ -192,14 +190,13 @@ const formatDate = (dateString) => {
 
 .project-info {
   flex: 1;
-  margin: 0 20px;
 }
 
 .project-title {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 8px;
+  padding:8px 0
 }
 
 .project-title h2 {

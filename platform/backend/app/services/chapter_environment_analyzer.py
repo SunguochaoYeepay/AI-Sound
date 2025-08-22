@@ -503,14 +503,14 @@ class ChapterEnvironmentAnalyzer(NarrationEnvironmentAnalyzer):
                 content = getattr(chapter, 'content', '') or getattr(chapter, 'text', '')
                 
                 if not content:
-                    error_msg = f"章节{chapter_id}的内容为空！请先完成该章节的智能准备。"
+                    error_msg = f"章节{chapter_id}需要先完成智能准备"
                     logger.error(f"[CHAPTER_ANALYZER] {error_msg}")
                     return {
                         'environment_tracks': [],
                         'analysis_metadata': {
                             'error': error_msg,
                             'chapter_id': chapter_id,
-                            'suggestion': '请重新进行智能准备或检查章节数据完整性',
+                            'suggestion': '请先进行智能准备',
                             'total_duration': 0,
                             'track_count': 0,
                             'analysis_timestamp': datetime.now().isoformat()
@@ -566,14 +566,16 @@ class ChapterEnvironmentAnalyzer(NarrationEnvironmentAnalyzer):
                     logger.warning(f"[CHAPTER_ANALYZER] 章节{chapter_id}没有找到AnalysisResult或合成计划为空")
             
             if chapters_without_synthesis:
-                error_msg = f"章节{chapters_without_synthesis}的合成计划为空！请先完成这些章节的智能准备，确保有完整的合成计划数据。"
+                # 🔥 优化：简化错误信息，避免冗余
+                chapter_list = ', '.join(map(str, chapters_without_synthesis))
+                error_msg = f"章节[{chapter_list}]需要先完成智能准备"
                 logger.error(f"[CHAPTER_ANALYZER] {error_msg}")
                 return {
                     'environment_tracks': [],
                     'analysis_metadata': {
                         'error': error_msg,
                         'chapter_ids': chapters_without_synthesis,
-                        'suggestion': '请重新进行智能准备或检查章节数据完整性',
+                        'suggestion': '请先进行智能准备',
                         'total_duration': 0,
                         'track_count': 0,
                         'analysis_timestamp': datetime.now().isoformat()

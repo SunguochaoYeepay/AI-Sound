@@ -26,7 +26,7 @@ class NarrationEnvironmentAnalyzer:
         
         # 检查合成计划是否为空
         if not synthesis_plan:
-            error_msg = "合成计划为空！请先完成书籍的智能准备，确保章节有完整的合成计划数据。"
+            error_msg = "需要先完成智能准备"
             logger.error(f"[ENV_ANALYZER] {error_msg}")
             return {
                 'environment_tracks': [],
@@ -42,7 +42,7 @@ class NarrationEnvironmentAnalyzer:
         # 1. 提取旁白段落
         narration_segments = self._extract_narration_segments(synthesis_plan)
         if not narration_segments:
-            error_msg = "未找到旁白段落！请检查合成计划中是否包含旁白内容，或重新进行智能准备。"
+            error_msg = "未找到旁白内容"
             logger.warning(f"[ENV_ANALYZER] {error_msg}")
             return {
                 'environment_tracks': [],

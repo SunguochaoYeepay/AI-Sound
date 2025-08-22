@@ -1,9 +1,20 @@
 <template>
   <div class="analysis-header">
     <div class="header-left">
-      <h3 class="content-title">章节分析</h3>
+      <h3 class="content-title">
+        章节分析
+        <a-tag
+          v-if="selectedChapter"
+          :color="getAnalysisStatusColor(selectedChapter)"
+          size="small"
+          style="margin-left: 8px;"
+        >
+          {{ getAnalysisStatusText(selectedChapter) }}
+        </a-tag>
+      </h3>
       <p class="content-subtitle" v-if="selectedChapter">
-        {{ selectedChapter.chapter_title }}
+        第{{ selectedChapter.chapter_number }}章 {{ selectedChapter.chapter_title }}
+        <span class="word-count">{{ formatNumber(selectedChapter.word_count || 0) }} 字</span>
       </p>
     </div>
     
@@ -135,6 +146,38 @@ defineEmits([
   'play-mixing',
   'download-mixing'
 ])
+
+// 状态显示函数
+const getAnalysisStatusText = (chapter) => {
+  const status = chapter.analysis_status || 'pending'
+  const statusMap = {
+    pending: '待分析',
+    processing: '分析中',
+    completed: '已完成',
+    failed: '分析失败',
+    ready: '准备就绪'
+  }
+  return statusMap[status] || '未知'
+}
+
+const getAnalysisStatusColor = (chapter) => {
+  const status = chapter.analysis_status || 'pending'
+  const colorMap = {
+    pending: 'orange',
+    processing: 'blue',
+    completed: 'green',
+    failed: 'red',
+    ready: 'purple'
+  }
+  return colorMap[status] || 'default'
+}
+
+const formatNumber = (num) => {
+  if (num >= 10000) {
+    return (num / 10000).toFixed(1) + '万'
+  }
+  return num.toLocaleString()
+}
 </script>
 
 <style scoped>
@@ -166,6 +209,12 @@ defineEmits([
   margin: 0;
   font-size: 13px;
   color: #8c8c8c;
+}
+
+.word-count {
+  font-size: 12px;
+  color: #666;
+  margin-left: 8px;
 }
 
 .header-actions {

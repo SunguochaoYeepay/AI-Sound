@@ -8,6 +8,14 @@
           </a-button>
           <h1 class="page-title">
             {{ project?.book?.title || project?.name || '加载中...' }}
+            <a-tag
+              v-if="project"
+              :color="getStatusColor(project.status)"
+              size="small"
+              style="margin-left: 12px; background: rgba(255, 255, 255, 0.15); border: 1px solid rgba(255, 255, 255, 0.2); color: white;"
+            >
+              {{ getStatusText(project.status) }}
+            </a-tag>
           </h1>
         </div>
       </div>
