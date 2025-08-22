@@ -18,10 +18,24 @@
           <div class="left-panel">
             <ChapterSelector
               :chapters="chapters"
-              :selected-chapter-id="selectedChapter?.id"
-              :collapsed="chapterListCollapsed"
-              @select-chapter="handleChapterSelect"
+              :selected-chapter="selectedChapter?.id"
+              :loading="chaptersLoading"
+              :show-collapse="true"
+              :show-search="true"
+              :show-status="true"
+              :show-refresh="true"
+              :show-reset="false"
+              :show-chapter-count="true"
+              :pagination-type="'page'"
+              :page-size="50"
+              :current-page="currentPage"
+              :total-pages="totalPages"
+              :total-chapters="totalChapters"
+              title="选择章节"
+              @select="handleChapterSelect"
               @toggle-collapse="toggleChapterList"
+              @refresh="loadChapters"
+              @page-change="handlePageChange"
             />
           </div>
         </a-col>
@@ -88,7 +102,7 @@ import { ref, onMounted, watch, computed, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { message, Modal } from 'ant-design-vue'
 // 移除未使用的图标导入
-import ChapterSelector from '@/components/environment-sounds/ChapterSelector.vue'
+import ChapterSelector from '@/components/common/ChapterSelector.vue'
 import AnalysisHeader from '@/components/environment-sounds/AnalysisHeader.vue'
 import AnalysisContent from '@/components/environment-sounds/AnalysisContent.vue'
 import EnvironmentProjectHeader from '@/components/environment-sounds/EnvironmentProjectHeader.vue'
@@ -112,6 +126,11 @@ const chapters = ref([])
 const selectedChapter = ref(null)
 const chaptersLoading = ref(false)
 const chapterListCollapsed = ref(false)
+
+  // 翻页相关
+  const currentPage = ref(1)
+  const totalPages = ref(1)
+  const totalChapters = ref(0)
 
 // 分析相关
 const analysisResults = ref({})
@@ -521,35 +540,56 @@ const loadProjectInfo = async () => {
   }
 }
 
+// 统一的章节加载函数
+const loadChapters = async () => {
+  if (projectInfo.value.chapter_ids?.length > 0) {
+    await loadChaptersByIds(projectInfo.value.chapter_ids)
+  } else if (projectInfo.value.book_name && projectInfo.value.book_name !== '未知书籍') {
+    await loadChaptersByBookName(projectInfo.value.book_name)
+  } else if (projectInfo.value.book_id) {
+    await loadChaptersByBookId(projectInfo.value.book_id)
+  }
+}
+
 // 通过章节ID列表加载章节
 const loadChaptersByIds = async (chapterIds) => {
   try {
     chaptersLoading.value = true
-    const response = await chaptersAPI.getChapters({ chapter_ids: chapterIds })
-    if (response.data.success) {
-      chapters.value = response.data.data || []
-      if (chapterIds.length > 0) {
-        selectedChapter.value = chapters.value.find(ch => ch.id === chapterIds[0])
-        // 设置当前选中章节的环境轨道
-        if (selectedChapter.value) {
-          const chapterAnalysis = analysisResults.value[selectedChapter.value.id]
-          if (chapterAnalysis && Object.keys(chapterAnalysis).length > 0) {
-            const newTracks = chapterAnalysis.environment_tracks || []
-            
-            // 保留已更新的轨道状态，避免覆盖WebSocket更新的generated_file_path
-            if (environmentTracks.value.length > 0 && newTracks.length === environmentTracks.value.length) {
-              newTracks.forEach((newTrack, index) => {
-                const existingTrack = environmentTracks.value[index]
-                if (existingTrack && existingTrack.generated_file_path && !newTrack.generated_file_path) {
-                  newTrack.generated_file_path = existingTrack.generated_file_path
-                }
-              })
-            } else if (newTracks.length > 0) {
-              // 如果前端没有轨道状态，检查数据库中是否已有生成的文件路径
-            }
-            
-            environmentTracks.value = newTracks
+    // 🔥 修复：通过章节ID列表获取章节，使用批量查询
+    const chapterPromises = chapterIds.map(id => chaptersAPI.getChapter(id))
+    const chapterResponses = await Promise.all(chapterPromises)
+    const validChapters = chapterResponses
+      .filter(response => response.data.success)
+      .map(response => response.data.data)
+    
+    chapters.value = validChapters.sort((a, b) => a.chapter_number - b.chapter_number)
+    console.log('📚 通过章节ID加载章节完成:', {
+      requestedIds: chapterIds.length,
+      loadedChapters: chapters.value.length,
+      chapters: chapters.value.map(ch => ({ id: ch.id, number: ch.chapter_number, title: ch.chapter_title }))
+    })
+    
+    if (chapterIds.length > 0) {
+      selectedChapter.value = chapters.value.find(ch => ch.id === chapterIds[0])
+      // 设置当前选中章节的环境轨道
+      if (selectedChapter.value) {
+        const chapterAnalysis = analysisResults.value[selectedChapter.value.id]
+        if (chapterAnalysis && Object.keys(chapterAnalysis).length > 0) {
+          const newTracks = chapterAnalysis.environment_tracks || []
+          
+          // 保留已更新的轨道状态，避免覆盖WebSocket更新的generated_file_path
+          if (environmentTracks.value.length > 0 && newTracks.length === environmentTracks.value.length) {
+            newTracks.forEach((newTrack, index) => {
+              const existingTrack = environmentTracks.value[index]
+              if (existingTrack && existingTrack.generated_file_path && !newTrack.generated_file_path) {
+                newTrack.generated_file_path = existingTrack.generated_file_path
+              }
+            })
+          } else if (newTracks.length > 0) {
+            // 如果前端没有轨道状态，检查数据库中是否已有生成的文件路径
           }
+          
+          environmentTracks.value = newTracks
         }
       }
     }
@@ -572,9 +612,27 @@ const loadChaptersByBookName = async (bookName) => {
       const book = booksResponse.data.data[0]
 
       
-      const response = await chaptersAPI.getChapters({ book_id: book.id })
+      const response = await booksAPI.getBookChapters(book.id, { 
+        page: currentPage.value,
+        page_size: 50, // 使用后端翻页，每页50条
+        sort_by: 'chapter_number',
+        sort_order: 'asc',
+        exclude_content: true
+      })
       if (response.data.success) {
         chapters.value = response.data.data || []
+        
+        // 更新分页信息
+        if (response.data.pagination) {
+          currentPage.value = response.data.pagination.page || currentPage.value
+          totalPages.value = response.data.pagination.total_pages || 1
+          totalChapters.value = response.data.pagination.total || 0
+        }
+        console.log('📚 通过书籍名称加载章节完成:', {
+          bookName: bookName,
+          loadedChapters: chapters.value.length,
+          chapters: chapters.value.map(ch => ({ id: ch.id, number: ch.chapter_number, title: ch.chapter_title }))
+        })
 
         
         if (chapters.value.length > 0) {
@@ -632,9 +690,27 @@ const loadChaptersByBookId = async (bookId) => {
     chaptersLoading.value = true
 
     
-    const response = await chaptersAPI.getChapters({ book_id: bookId })
+    const response = await booksAPI.getBookChapters(bookId, { 
+      page: currentPage.value,
+      page_size: 50, // 使用后端翻页，每页50条
+      sort_by: 'chapter_number',
+      sort_order: 'asc',
+      exclude_content: true
+    })
     if (response.data.success) {
       chapters.value = response.data.data || []
+      
+              // 更新分页信息
+        if (response.data.pagination) {
+          currentPage.value = response.data.pagination.page || currentPage.value
+          totalPages.value = response.data.pagination.total_pages || 1
+          totalChapters.value = response.data.pagination.total || 0
+        }
+      console.log('📚 通过书籍ID加载章节完成:', {
+        bookId: bookId,
+        loadedChapters: chapters.value.length,
+        chapters: chapters.value.map(ch => ({ id: ch.id, number: ch.chapter_number, title: ch.chapter_title }))
+      })
       
       
               if (chapters.value.length > 0) {
@@ -689,6 +765,12 @@ const loadChaptersByBookId = async (bookId) => {
   }
 }
 
+// 处理翻页
+const handlePageChange = async (pageInfo) => {
+  currentPage.value = pageInfo.page
+  await loadChapters()
+}
+
 // 选择章节
 const handleChapterSelect = (chapterId) => {
   selectedChapter.value = chapters.value.find(ch => ch.id === chapterId)
@@ -732,7 +814,6 @@ const startAnalysis = async () => {
 
   try {
     analysisLoading.value = true
-    message.info('开始分析章节内容...')
     
 
 
@@ -788,6 +869,25 @@ const startAnalysis = async () => {
         console.warn('⚠️ 没有项目信息，无法保存分析结果')
         message.success('章节环境音分析完成')
       }
+    } else {
+      // 🔥 优化：简化错误提示，避免重复信息
+      const errorData = response.data
+      console.error('❌ 环境音分析失败:', errorData)
+      
+      // 构建简洁的错误信息
+      let errorMessage = errorData.error || errorData.message || '分析失败'
+      
+      // 如果有章节ID信息，添加到错误信息中
+      if (errorData.chapter_id && errorData.chapter_id !== '未知') {
+        errorMessage = `章节[${errorData.chapter_id}]: ${errorMessage}`
+      }
+      
+      // 只显示错误消息，不重复显示建议
+      message.error(errorMessage)
+      
+      // 清空当前章节的分析结果
+      delete analysisResults.value[selectedChapter.value.id]
+      environmentTracks.value = []
     }
   } catch (error) {
     console.error('分析失败:', error)
@@ -806,7 +906,6 @@ const handleReanalyze = async () => {
 
   try {
     analysisLoading.value = true
-    message.info('正在重新分析章节内容...')
     
     // 清空当前章节的分析结果
     delete analysisResults.value[selectedChapter.value.id]
@@ -863,6 +962,25 @@ const handleReanalyze = async () => {
         console.warn('⚠️ 没有项目信息，无法保存重新分析结果')
         message.success('章节环境音重新分析完成')
       }
+    } else {
+      // 🔥 优化：简化重新分析错误提示，避免重复信息
+      const errorData = response.data
+      console.error('❌ 环境音重新分析失败:', errorData)
+      
+      // 构建简洁的错误信息
+      let errorMessage = errorData.error || errorData.message || '重新分析失败'
+      
+      // 如果有章节ID信息，添加到错误信息中
+      if (errorData.chapter_id && errorData.chapter_id !== '未知') {
+        errorMessage = `章节[${errorData.chapter_id}]: ${errorMessage}`
+      }
+      
+      // 只显示错误消息，不重复显示建议
+      message.error(errorMessage)
+      
+      // 清空当前章节的分析结果
+      delete analysisResults.value[selectedChapter.value.id]
+      environmentTracks.value = []
     }
   } catch (error) {
     console.error('重新分析失败:', error)

@@ -631,8 +631,19 @@ export const booksAPI = {
   // 获取书籍章节列表
   getBookChapters: (bookId, params = {}) => {
     const queryParams = new URLSearchParams()
-    if (params.skip !== undefined) queryParams.append('skip', params.skip)
-    if (params.limit !== undefined) queryParams.append('limit', params.limit)
+    
+    // 将 page/page_size 转换为 skip/limit
+    let skip = params.skip
+    let limit = params.limit
+    
+    if (params.page !== undefined && params.page_size !== undefined) {
+      skip = (params.page - 1) * params.page_size
+      limit = params.page_size
+    }
+    
+    if (skip !== undefined) queryParams.append('skip', skip)
+    if (limit !== undefined) queryParams.append('limit', limit)
+    
     if (params.status_filter) queryParams.append('status_filter', params.status_filter)
     if (params.fields) queryParams.append('fields', params.fields)
     if (params.exclude_content !== undefined) queryParams.append('exclude_content', params.exclude_content)

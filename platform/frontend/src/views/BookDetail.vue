@@ -26,17 +26,28 @@
           <!-- 左侧：章节列表 -->
           <a-col :span="chapterListCollapsed ? 1 : 4" class="chapter-list-col">
             <div class="chapter-list-container">
-              <ChapterList
-                :book-id="book.id"
-                :selected-chapter-id="selectedChapterId"
-                :chapter-preparation-status="chapterPreparationStatus"
-                :preparing-chapters="preparingChapters"
+              <ChapterSelector
+                :chapters="chapters"
+                :selected-chapter="selectedChapterId"
+                :loading="chaptersLoading"
                 :detecting-chapters="detectingChapters"
-                @select-chapter="selectChapter"
-                @prepare-chapter="prepareChapterForSynthesis"
-                @detect-chapters="detectChapters"
-                @update:total-chapters="updateTotalChapters"
-                @toggle-collapse="handleChapterListToggle"
+                :show-collapse="true"
+                :show-search="true"
+                :show-status="true"
+                :show-refresh="true"
+                :show-reset="true"
+                :show-chapter-count="true"
+                :pagination-type="'page'"
+                :page-size="50"
+                :current-page="currentPage"
+                :total-pages="totalPages"
+                :total-chapters="totalChapters"
+                title="章节列表"
+                @select="selectChapter"
+                @reset="detectChapters"
+                @refresh="loadChapters"
+                @page-change="handlePageChange"
+                @toggle-collapse="toggleChapterList"
               />
             </div>
           </a-col>
@@ -75,7 +86,7 @@
   import { message, Modal } from 'ant-design-vue'
   import { booksAPI } from '@/api'
   import BookHeaderCard from '@/components/BookHeaderCard.vue'
-  import ChapterList from '@/components/ChapterListSimple.vue'
+  import ChapterSelector from '@/components/common/ChapterSelector.vue'
   import ChapterDetail from '@/components/ChapterDetail.vue'
   // 移除CharacterManagement组件引用，改为直接跳转到角色配音页面
 
@@ -133,16 +144,26 @@
     }
   }
 
+  // 响应式数据 - 翻页相关
+  const currentPage = ref(1)
+  const totalPages = ref(1)
+  const totalChapters = ref(0)
+  const chaptersLoading = ref(false)
+
   // 加载章节列表
-  const loadChapters = async () => {
+  const loadChapters = async (page = 1) => {
     if (!book.value?.id) return
 
     try {
+      chaptersLoading.value = true
       const response = await booksAPI.getBookChapters(book.value.id, {
+        page: page,
+        page_size: 50, // 每页50条
         sort_by: 'chapter_number',
         sort_order: 'asc',
-        exclude_content: false  // 🔥 关键修复：确保获取章节内容
+        exclude_content: false
       })
+      
       if (response.data && response.data.success) {
         const chaptersData = response.data.data || []
         chapters.value = chaptersData.map((chapter) => ({
@@ -151,27 +172,37 @@
           title: chapter.chapter_title || `第${chapter.chapter_number}章`,
           wordCount: chapter.word_count || 0,
           status: chapter.analysis_status,
-          content: chapter.content,  // 🔥 确保包含章节内容
-          // 修复：添加book_id字段，用于批量创建角色
+          content: chapter.content,
           book_id: book.value.id,
-          // 添加完整的章节信息
           chapter_number: chapter.chapter_number,
           chapter_title: chapter.chapter_title || `第${chapter.chapter_number}章`
         }))
 
-        // 🔥 修复：如果没有选中章节且有章节数据，选中第一个章节
-        if (!selectedChapterId.value && chapters.value.length > 0) {
+        // 更新分页信息
+        if (response.data.pagination) {
+          currentPage.value = response.data.pagination.page || page
+          totalPages.value = response.data.pagination.total_pages || 1
+          totalChapters.value = response.data.pagination.total || 0
+        }
+
+        // 如果是第一页且有章节数据，选中第一个章节
+        if (page === 1 && !selectedChapterId.value && chapters.value.length > 0) {
           selectedChapterId.value = chapters.value[0].id
           await loadChapterPreparationStatus(selectedChapterId.value)
         }
 
-        // 优化：不再一次性加载所有章节的准备状态
-        // 改为按需加载，在章节选择时加载对应状态
-        console.log('📊 章节加载完成，准备状态将按需加载')
+        console.log('📊 章节加载完成，当前页:', currentPage.value, '总页数:', totalPages.value)
       }
     } catch (error) {
       console.error('加载章节失败:', error)
+    } finally {
+      chaptersLoading.value = false
     }
+  }
+
+  // 处理翻页
+  const handlePageChange = async (pageInfo) => {
+    await loadChapters(pageInfo.page)
   }
 
   // 更新总章节数
@@ -222,12 +253,12 @@
   }
 
   // 选择章节 - 按需加载准备状态
-  const selectChapter = async (chapter) => {
-    selectedChapterId.value = chapter.id
+  const selectChapter = async (chapterId) => {
+    selectedChapterId.value = chapterId
     
     // 🔥 优化：选择章节时加载该章节的准备状态
-    if (chapter.id) {
-      await loadChapterPreparationStatus(chapter.id)
+    if (chapterId) {
+      await loadChapterPreparationStatus(chapterId)
     }
   }
 
@@ -295,6 +326,13 @@
     if (selectedChapter.value) {
       prepareChapterForSynthesis(selectedChapter.value)
     }
+  }
+
+
+
+  // 章节列表收起展开切换
+  const toggleChapterList = () => {
+    chapterListCollapsed.value = !chapterListCollapsed.value
   }
 
   // 处理章节列表收起/展开

@@ -26,13 +26,29 @@
     <!-- 主要内容区域 -->
     <div class="main-content">
       <!-- 章节选择器 -->
-      <ChapterSelector
-        :chapters="chapters"
-        :selected-chapter="selectedChapter"
-        :loading="chaptersLoading"
-        @loadChapters="loadChapters"
-        @select="handleChapterSelect"
-      />
+      <div class="chapter-selector-wrapper" :class="{ collapsed: chapterListCollapsed }">
+        <ChapterSelector
+          :chapters="chapters"
+          :selected-chapter="selectedChapter"
+          :loading="chaptersLoading"
+          :show-collapse="true"
+          :show-search="true"
+          :show-status="true"
+          :show-refresh="true"
+          :show-reset="false"
+          :show-chapter-count="true"
+          :pagination-type="'page'"
+          :page-size="50"
+          :current-page="currentPage"
+          :total-pages="totalPages"
+          :total-chapters="totalChapters"
+          title="选择章节"
+          @select="handleChapterSelect"
+          @refresh="loadChapters"
+          @page-change="handlePageChange"
+          @toggle-collapse="toggleChapterList"
+        />
+      </div>
 
       <!-- 内容预览区域 -->
       <ContentPreview
@@ -66,8 +82,6 @@
         @resume-synthesis="handleResumeSynthesis"
         @reset-project-status="handleResetProjectStatus"
       />
-
-      <!-- 环境混音功能已迁移至单独的环境混合页面 -->
     </div>
 
     <!-- 进度监控抽屉 -->
@@ -96,11 +110,11 @@
   import { message } from 'ant-design-vue'
   import { getWebSocketUrl } from '@/config/services'
   import { SoundOutlined } from '@ant-design/icons-vue'
-  import api, { readerAPI } from '@/api'
+  import api, { readerAPI, booksAPI } from '@/api'
 import apiClient from '@/api/config.js'
   import { playSegmentAudio, playChapterAudio } from '@/utils/audioService'
   import ProjectHeader from '@/components/synthesis-center/ProjectHeader.vue'
-  import ChapterSelector from '@/components/synthesis-center/ChapterSelector.vue'
+  import ChapterSelector from '@/components/common/ChapterSelector.vue'
   import ContentPreview from '@/components/synthesis-center/ContentPreview.vue'
   import ProgressDrawer from '@/components/synthesis-center/ProgressDrawer.vue'
 
@@ -118,6 +132,12 @@ import apiClient from '@/api/config.js'
   const chapterContent = ref(null)
   const segments = ref([])
   const preparationResults = ref(null)
+  const chapterListCollapsed = ref(false) // 章节列表收起状态
+
+  // 翻页相关
+  const currentPage = ref(1)
+  const totalPages = ref(1)
+  const totalChapters = ref(0)
 
   // 加载状态
   const loading = ref(true)
@@ -465,6 +485,11 @@ import apiClient from '@/api/config.js'
     }
   }
 
+  // 章节列表收起展开切换
+  const toggleChapterList = () => {
+    chapterListCollapsed.value = !chapterListCollapsed.value
+  }
+
   // 加载章节列表
   const loadChapters = async (allowChapterReset = true) => {
     try {
@@ -477,16 +502,24 @@ import apiClient from '@/api/config.js'
       )
 
       if (project.value?.book_id) {
-        // 直接使用apiClient调用正确的API路径
-        const response = await apiClient.get(`/books/${project.value.book_id}/chapters`, {
-          params: {
-            sort_by: 'chapter_number',
-            sort_order: 'asc'
-          }
+        // 使用booksAPI.getBookChapters，它会自动处理page/page_size到skip/limit的转换
+        const response = await booksAPI.getBookChapters(project.value.book_id, {
+          page: currentPage.value,
+          page_size: 50, // 使用后端翻页，每页50条
+          sort_by: 'chapter_number',
+          sort_order: 'asc',
+          exclude_content: true
         })
         console.log('Chapters API response:', response.data)
 
         if (response.data.success && response.data.data) {
+          // 更新分页信息
+          if (response.data.pagination) {
+            currentPage.value = response.data.pagination.page || currentPage.value
+            totalPages.value = response.data.pagination.total_pages || 1
+            totalChapters.value = response.data.pagination.total || 0
+          }
+          
           // 🔧 调试：查看原始章节数据结构
           console.log(
             '📋 原始章节数据结构示例:',
@@ -513,6 +546,11 @@ import apiClient from '@/api/config.js'
             return aNum - bNum
           })
           console.log('Found chapters (sorted):', chapters.value)
+          console.log('📚 合成中心章节加载完成:', {
+            bookId: project.value.book_id,
+            loadedChapters: chapters.value.length,
+            chapters: chapters.value.map(ch => ({ id: ch.id, number: ch.chapter_number, title: ch.chapter_title }))
+          })
 
           if (chapters.value.length > 0) {
             // 🔧 根据allowChapterReset参数决定是否允许重置章节选择
@@ -565,6 +603,12 @@ import apiClient from '@/api/config.js'
     },
     { immediate: false }
   )
+
+  // 处理翻页
+  const handlePageChange = async (pageInfo) => {
+    currentPage.value = pageInfo.page
+    await loadChapters()
+  }
 
   // 选择章节
   const handleChapterSelect = async (chapterId) => {
@@ -1815,6 +1859,23 @@ import apiClient from '@/api/config.js'
     gap: 1px;
   }
 
+  /* 章节选择器包装器 - 固定较小宽度，可滚动 */
+  .chapter-selector-wrapper {
+    flex: 0 0 280px;
+    min-width: 280px;
+    max-width: 280px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    transition: all 0.3s ease;
+  }
+
+  /* 收起状态 */
+  .chapter-selector-wrapper.collapsed {
+    flex: 0 0 60px;
+    min-width: 60px;
+    max-width: 60px;
+  }
+
   /* 章节选择器 - 固定较小宽度，可滚动 */
   .main-content > :first-child {
     flex: 0 0 280px;
@@ -1959,7 +2020,25 @@ import apiClient from '@/api/config.js'
       gap: 0;
     }
 
-    /* 移动端章节选择器 - 改为横向滚动 */
+    /* 移动端章节选择器包装器 - 改为横向滚动 */
+    .chapter-selector-wrapper {
+      flex: 0 0 auto;
+      min-width: 100%;
+      max-width: 100%;
+      max-height: 120px;
+      overflow-x: auto;
+      overflow-y: hidden;
+    }
+
+    /* 移动端收起状态 */
+    .chapter-selector-wrapper.collapsed {
+      flex: 0 0 auto;
+      min-width: 100%;
+      max-width: 100%;
+      max-height: 120px;
+    }
+
+    /* 兼容原来的选择器 */
     .main-content > :first-child {
       flex: 0 0 auto;
       min-width: 100%;
@@ -1969,7 +2048,6 @@ import apiClient from '@/api/config.js'
       overflow-y: hidden;
     }
 
-    /* 移动端内容预览区域 - 占用剩余空间 */
     .main-content > :last-child {
       flex: 1;
       min-height: 0;
