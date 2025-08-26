@@ -51,6 +51,7 @@ from app.websocket.manager import websocket_manager
 from app.utils.logger import log_system_event, LogModule
 from app.middleware.logging_middleware import LoggingMiddleware
 from app.config.log_config import log_config
+from app.utils.init_permissions import init_auth_system
 from app.exceptions import (
     AIServiceException,
     TTSServiceException,
@@ -182,6 +183,11 @@ async def lifespan(app: FastAPI):
         logger.info("📊 初始化数据库...")
         init_database()
         logger.info("✅ 数据库初始化完成")
+        
+        # 初始化权限系统和默认用户
+        logger.info("👤 初始化权限系统和默认用户...")
+        init_auth_system()
+        logger.info("✅ 权限系统初始化完成")
         
         # 检查TangoFlux核心引擎
         logger.info("🎼 检查TangoFlux环境音核心引擎...")

@@ -6,6 +6,7 @@
 
 import sys
 import os
+import logging
 from sqlalchemy.orm import Session
 
 # 添加项目根目录到路径
@@ -17,9 +18,12 @@ from app.database import SessionLocal
 from app.models.auth import User, Role, Permission, UserStatus, user_roles
 from app.core.auth import auth_manager
 
+# 获取日志记录器
+logger = logging.getLogger(__name__)
+
 def init_auth_system():
     """初始化完整的权限系统"""
-    print("🚀 开始初始化权限系统...")
+    logger.info("🚀 开始初始化权限系统...")
     
     db = SessionLocal()
     try:
@@ -38,7 +42,7 @@ def init_auth_system():
             if not permission:
                 permission = Permission(**perm_data)
                 db.add(permission)
-                print(f"  ✅ 创建权限: {perm_data['code']}")
+                logger.info(f"  ✅ 创建权限: {perm_data['code']}")
         
         db.commit()
         
@@ -53,7 +57,7 @@ def init_auth_system():
             if not role:
                 role = Role(**role_data)
                 db.add(role)
-                print(f"  ✅ 创建角色: {role_data['name']}")
+                logger.info(f"  ✅ 创建角色: {role_data['name']}")
         
         db.commit()
         
@@ -83,13 +87,13 @@ def init_auth_system():
                 admin_user.roles.append(admin_role)
             
             db.commit()
-            print(f"  ✅ 创建管理员: admin / {admin_password}")
+            logger.info(f"  ✅ 创建管理员: admin / {admin_password}")
         
-        print("\n🎉 权限系统初始化完成！")
+        logger.info("🎉 权限系统初始化完成！")
         
     except Exception as e:
         db.rollback()
-        print(f"❌ 初始化失败: {e}")
+        logger.error(f"❌ 初始化失败: {e}")
         raise
     finally:
         db.close()

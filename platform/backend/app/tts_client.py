@@ -348,7 +348,7 @@ class MegaTTS3Client:
                     connector_owner=True
                 ) as session:
                     async with session.post(
-                        f"{self.base_url}/api/v1/tts/synthesize_file",
+                        f"{self.base_url}/api/v1/tts/synthesize",
                         data=form_data
                     ) as response:
                         
@@ -400,7 +400,7 @@ class MegaTTS3Client:
                             logger.error(f"=== TTS合成失败详情 ===")
                             logger.error(f"HTTP状态码: {response.status}")
                             logger.error(f"错误响应: {error_text}")
-                            logger.error(f"请求URL: {self.base_url}/api/v1/tts/synthesize_file")
+                            logger.error(f"请求URL: {self.base_url}/api/v1/tts/synthesize")
                             logger.error(f"发送的参数:")
                             logger.error(f"  - text: '{clean_text[:50]}...' (长度: {len(clean_text)})")
                             logger.error(f"  - time_step: {request.time_step}")

@@ -1,3 +1,60 @@
+# AI-Sound 更新日志
+
+## [2025-08-26] - TangoFlux 环境音生成服务部署完成
+
+### 🎉 重大更新
+- **TangoFlux 环境音生成服务完全部署成功**
+- 解决了网络连接问题，实现本地化部署
+- 集成了完整的 T5 文本编码器模型
+
+### ✅ 新增功能
+- **TangoFlux API 服务器** (`MegaTTS/TangoFlux/tangoflux_api_server.py`)
+  - 完整的 Flask API 服务，端口 7930
+  - 健康检查接口 `/health`
+  - 音频生成接口 `/api/v1/generate` 和 `/api/v1/generate_base64`
+  - 服务信息接口 `/api/v1/info`
+  - 支持真实的环境音生成功能
+
+### 🔧 技术改进
+- **本地模型部署**：
+  - TangoFlux 核心模型：`tangoflux.safetensors` (3.44GB)
+  - VAE 编码器：`vae.safetensors` (624MB)
+  - T5 文本编码器：`google/flan-t5-large` (3.1GB)
+- **网络依赖解决**：手工下载并配置 T5 模型，避免网络连接问题
+- **模型路径配置**：自动检测本地模型缓存路径
+
+### 🎯 集成状态
+- **AI-Sound 后端**：成功连接 TangoFlux 服务
+- **环境音生成**：完全可用，支持真实音频生成
+- **服务健康检查**：所有接口测试通过
+- **性能表现**：生成 5 秒音频约需 3-5 秒
+
+### 📁 文件结构
+```
+MegaTTS/TangoFlux/
+├── tangoflux_api_server.py    # API 服务器
+├── models/TangoFlux/          # 本地模型文件
+│   ├── config.json
+│   ├── tangoflux.safetensors
+│   └── vae.safetensors
+└── requirements.txt           # 依赖配置
+```
+
+### 🚀 使用方式
+```bash
+# 启动 TangoFlux 服务
+cd MegaTTS/TangoFlux
+python tangoflux_api_server.py --host 0.0.0.0 --port 7930
+
+# 测试接口
+curl http://localhost:7930/health
+curl -X POST http://localhost:7930/api/v1/generate_base64 \
+  -H "Content-Type: application/json" \
+  -d '{"text":"雨声","steps":25,"duration":5}'
+```
+
+---
+
 # AI-Sound 项目更新日志
 
 ## [2025-01-28] 环境音分析功能完全修复

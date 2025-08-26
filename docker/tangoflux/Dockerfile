@@ -26,9 +26,8 @@ RUN echo "deb http://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm main contrib 
 # 复制TangoFlux源码
 COPY MegaTTS/TangoFlux/ ./
 
-# 创建模型目录并复制本地模型
+# 创建模型目录（模型会通过HuggingFace自动下载）
 RUN mkdir -p /app/models/tangoflux /app/models/text_encoders
-COPY MegaTTS/TangoFlux/models/tangoflux/ /app/models/tangoflux/
 
 # 安装TangoFlux依赖
 RUN pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/ && \
