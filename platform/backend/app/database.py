@@ -12,8 +12,7 @@ import logging
 
 from app.models.base import Base
 
-# 配置日志
-logging.basicConfig(level=logging.INFO)
+# 获取日志记录器（不重复配置）
 logger = logging.getLogger(__name__)
 
 # 数据库配置

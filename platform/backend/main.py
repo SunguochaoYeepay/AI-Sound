@@ -10,6 +10,22 @@ from typing import Dict, Any
 import aiohttp
 import os
 
+# 修复FFmpeg路径配置
+ffmpeg_path = os.path.expanduser("~/AppData/Local/Microsoft/WinGet/Packages/Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe/ffmpeg-7.1.1-full_build/bin")
+os.environ["PATH"] = ffmpeg_path + os.pathsep + os.environ.get("PATH", "")
+
+# 设置pydub的FFmpeg路径
+try:
+    from pydub import AudioSegment
+    AudioSegment.converter = os.path.join(ffmpeg_path, "ffmpeg.exe")
+    AudioSegment.ffmpeg = os.path.join(ffmpeg_path, "ffmpeg.exe")
+    AudioSegment.ffprobe = os.path.join(ffmpeg_path, "ffprobe.exe")
+    print(f"✅ AI-Sound后端FFmpeg路径已设置: {ffmpeg_path}")
+except ImportError:
+    print("⚠️ pydub未安装，跳过FFmpeg配置")
+except Exception as e:
+    print(f"⚠️ FFmpeg配置失败: {e}")
+
 # 加载环境变量
 try:
     from dotenv import load_dotenv
