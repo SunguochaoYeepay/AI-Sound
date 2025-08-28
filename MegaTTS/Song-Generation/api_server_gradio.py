@@ -76,7 +76,7 @@ class LeVoInference(torch.nn.Module):
             del audio_tokenizer
             del seperate_tokenizer
             del separator
-        elif genre is not None and auto_prompt_path is not None:
+        elif genre is not None and auto_prompt_path is not None and os.path.exists(auto_prompt_path):
             auto_prompt = torch.load(auto_prompt_path)
             merge_prompt = [item for sublist in auto_prompt.values() for item in sublist]
             if genre == "Auto": 
@@ -267,7 +267,13 @@ def initialize_model(ckpt_path: str):
         STRUCTS = yaml.safe_load(file)
     
     # 加载自动提示
-    AUTO_PROMPT = torch.load('ckpt/ckpt/prompt.pt')
+    prompt_path = os.path.join(ckpt_path, 'prompt.pt')
+    if os.path.exists(prompt_path):
+        AUTO_PROMPT = torch.load(prompt_path)
+        print(f"✅ 自动提示加载成功: {prompt_path}")
+    else:
+        print(f"⚠️  自动提示文件不存在: {prompt_path}")
+        AUTO_PROMPT = None
     
     print("✅ 模型初始化完成!")
 
@@ -410,7 +416,7 @@ async def generate_song(request: SongRequest, background_tasks: BackgroundTasks)
             description=request.description,
             prompt_audio_path=None,
             genre=request.genre,
-            auto_prompt_path='ckpt/ckpt/prompt.pt',
+            auto_prompt_path=os.path.join("ckpt/songgeneration_base", 'prompt.pt'),
             params=params
         )
         

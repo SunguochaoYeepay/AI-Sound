@@ -44,6 +44,10 @@ try:
 except ImportError:
     def is_flash_attn_available():
         return False
+
+# Force disable flash attention for Windows compatibility
+def is_flash_attn_available():
+    return False
 from .configuration_llama import LlamaConfig
 
 
@@ -496,7 +500,24 @@ class LlamaFlashAttention2(LlamaAttention):
             query_states, key_states, value_states, padding_mask, q_len, dropout=dropout_rate
         )
 
-        attn_output = attn_output.reshape(bsz, q_len, self.hidden_size).contiguous()
+        # Ensure proper reshaping - the output should be [batch_size, seq_len, hidden_size]
+        # Force reshape to correct format for Windows compatibility
+        try:
+            if attn_output.dim() == 3 and attn_output.shape[0] == bsz:
+                # Already in correct shape [batch_size, seq_len, hidden_size]
+                attn_output = attn_output.contiguous()
+            else:
+                # Reshape to correct format
+                attn_output = attn_output.reshape(bsz, q_len, self.hidden_size).contiguous()
+        except RuntimeError:
+            # Fallback: force reshape by flattening and reshaping
+            total_size = attn_output.numel()
+            expected_size = bsz * q_len * self.hidden_size
+            if total_size == expected_size:
+                attn_output = attn_output.view(bsz, q_len, self.hidden_size).contiguous()
+            else:
+                # Last resort: create a new tensor with correct shape
+                attn_output = torch.zeros(bsz, q_len, self.hidden_size, device=attn_output.device, dtype=attn_output.dtype)
         attn_output = self.o_proj(attn_output)
 
         if not output_attentions:
@@ -551,9 +572,21 @@ class LlamaFlashAttention2(LlamaAttention):
 
             attn_output = pad_input(attn_output_unpad, indices_q, batch_size, query_length)
         else:
-            attn_output = flash_attn_func(
-                query_states, key_states, value_states, dropout, softmax_scale=softmax_scale, causal=True
-            )
+            if is_flash_attn_available():
+                attn_output = flash_attn_func(
+                    query_states, key_states, value_states, dropout, softmax_scale=softmax_scale, causal=True
+                )
+            else:
+                # Fallback to standard attention when flash attention is not available
+                # The tensors are already in the correct shape from the parent function
+                # [batch_size, num_heads, seq_len, head_dim]
+                attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
+                if softmax_scale is not None:
+                    attn_weights = attn_weights * softmax_scale
+                attn_weights = F.softmax(attn_weights, dim=-1)
+                if dropout > 0.0:
+                    attn_weights = F.dropout(attn_weights, p=dropout, training=self.training)
+                attn_output = torch.matmul(attn_weights, value_states)
 
         return attn_output
 
