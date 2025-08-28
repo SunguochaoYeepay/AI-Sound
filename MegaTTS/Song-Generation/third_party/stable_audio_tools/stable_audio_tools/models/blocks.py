@@ -8,7 +8,20 @@ from torch.nn import functional as F
 from torch.backends.cuda import sdp_kernel
 from packaging import version
 
-from dac.nn.layers import Snake1d
+# 兼容性处理：如果dac.nn不存在，则使用替代实现
+try:
+    from dac.nn.layers import Snake1d
+except ImportError:
+    # 替代实现
+    class Snake1d(nn.Module):
+        def __init__(self, channels):
+            super().__init__()
+            self.channels = channels
+            self.alpha = nn.Parameter(torch.ones(channels))
+            self.beta = nn.Parameter(torch.zeros(channels))
+        
+        def forward(self, x):
+            return x + (1.0 / self.alpha) * torch.sin(self.alpha * x + self.beta)
 
 class ResidualBlock(nn.Module):
     def __init__(self, main, skip=None):

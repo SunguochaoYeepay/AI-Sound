@@ -106,7 +106,7 @@ def generate_song(lyric, description=None, prompt_audio=None, genre=None, cfg_co
     progress(0.0, "Start Generation")
     start = time.time()
     
-    audio_data = MODEL(lyric_norm, description, prompt_audio, genre, op.join(APP_DIR, "ckpt/ckpt/prompt.pt"), params).cpu().permute(1, 0).float().numpy()
+    audio_data = MODEL(lyric_norm, description, prompt_audio, genre, op.join(APP_DIR, "ckpt/songgeneration_base/prompt.pt"), params).cpu().permute(1, 0).float().numpy()
 
     end = time.time()
     
@@ -256,10 +256,7 @@ if __name__ == "__main__":
             server_port=args.server_port,
             share=False,
             quiet=False,
-            enable_queue=True,
-            show_error=True,
-            server_count=1,
-            max_threads=10
+            show_error=True
         )
     except Exception as e:
         print(f"启动失败: {e}")

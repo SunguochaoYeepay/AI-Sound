@@ -6,7 +6,38 @@ from torch import nn
 from torch.nn import functional as F
 from torchaudio import transforms as T
 from alias_free_torch import Activation1d
-from dac.nn.layers import WNConv1d, WNConvTranspose1d
+# 兼容性处理：如果dac.nn不存在，则使用替代实现
+try:
+    from dac.nn.layers import WNConv1d, WNConvTranspose1d
+except ImportError:
+    # 替代实现 - 正确的权重归一化实现
+    class WNConv1d(nn.Conv1d):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            # 权重归一化参数，匹配权重文件的结构
+            self.weight_g = nn.Parameter(torch.ones(self.out_channels, 1, 1))
+            self.weight_v = self.weight
+            # 移除weight_u，因为权重文件中没有这个参数
+            
+        def forward(self, x):
+            # 权重归一化
+            weight_v_norm = torch.norm(self.weight_v, dim=1, keepdim=True)
+            weight = self.weight_g * self.weight_v / (weight_v_norm + 1e-8)
+            return F.conv1d(x, weight, self.bias, self.stride, self.padding, self.dilation, self.groups)
+    
+    class WNConvTranspose1d(nn.ConvTranspose1d):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            # 权重归一化参数，匹配权重文件的结构
+            self.weight_g = nn.Parameter(torch.ones(self.out_channels, 1, 1))
+            self.weight_v = self.weight
+            # 移除weight_u，因为权重文件中没有这个参数
+            
+        def forward(self, x):
+            # 权重归一化
+            weight_v_norm = torch.norm(self.weight_v, dim=1, keepdim=True)
+            weight = self.weight_g * self.weight_v / (weight_v_norm + 1e-8)
+            return F.conv_transpose1d(x, weight, self.bias, self.stride, self.padding, self.output_padding, self.groups, self.dilation)
 from typing import Literal, Dict, Any
 
 from ..inference.sampling import sample

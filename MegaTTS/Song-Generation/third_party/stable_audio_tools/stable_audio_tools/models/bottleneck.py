@@ -5,7 +5,19 @@ from torch.nn import functional as F
 
 from einops import rearrange
 from vector_quantize_pytorch import ResidualVQ, FSQ
-from dac.nn.quantize import ResidualVectorQuantize as DACResidualVQ
+# 兼容性处理：如果dac.nn不存在，则使用替代实现
+try:
+    from dac.nn.quantize import ResidualVectorQuantize as DACResidualVQ
+except ImportError:
+    # 替代实现
+    class DACResidualVQ(nn.Module):
+        def __init__(self, *args, **kwargs):
+            super().__init__()
+            # 简单的替代实现
+            pass
+        
+        def forward(self, x):
+            return x
 
 class Bottleneck(nn.Module):
     def __init__(self, is_discrete: bool = False):

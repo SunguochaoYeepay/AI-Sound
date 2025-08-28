@@ -37,18 +37,40 @@ from transformers.modeling_outputs import (
     SequenceClassifierOutputWithPast,
     TokenClassifierOutput,
 )
-from transformers.modeling_utils import PreTrainedModel, SequenceSummary
+from transformers.modeling_utils import PreTrainedModel
+# 兼容性处理：SequenceSummary在新版本transformers中已被移除
+try:
+    from transformers.modeling_utils import SequenceSummary
+except ImportError:
+    # 如果SequenceSummary不存在，创建一个简单的替代类
+    class SequenceSummary:
+        def __init__(self, config):
+            self.summary_type = getattr(config, 'summary_type', 'last')
+            self.summary_use_proj = getattr(config, 'summary_use_proj', True)
+            if self.summary_use_proj:
+                self.summary_projection = None  # 这里可以根据需要实现
+            self.summary_activation = getattr(config, 'summary_activation', None)
+            self.summary_first_dropout = getattr(config, 'summary_first_dropout', 0.1)
+            self.summary_last_dropout = getattr(config, 'summary_last_dropout', 0.1)
 from transformers.pytorch_utils import Conv1D, find_pruneable_heads_and_indices, prune_conv1d_layer
 from transformers.utils import (
     ModelOutput,
     add_code_sample_docstrings,
     add_start_docstrings,
     add_start_docstrings_to_model_forward,
-    is_flash_attn_2_available,
-    is_flash_attn_greater_or_equal_2_10,
     logging,
     replace_return_docstrings,
 )
+
+# 兼容性处理：如果函数不存在，则返回False
+try:
+    from transformers.utils import is_flash_attn_2_available, is_flash_attn_greater_or_equal_2_10
+except ImportError:
+    def is_flash_attn_2_available():
+        return False
+    
+    def is_flash_attn_greater_or_equal_2_10():
+        return False
 from transformers.utils.model_parallel_utils import assert_device_map, get_device_map
 from .gpt2_config import GPT2Config
 
@@ -742,7 +764,11 @@ class GPT2Block(nn.Module):
         super().__init__()
         hidden_size = config.hidden_size
         inner_dim = config.n_inner if config.n_inner is not None else 4 * hidden_size
-        attention_class = GPT2_ATTENTION_CLASSES[config._attn_implementation]
+        # 兼容性处理：如果_attn_implementation不存在，使用默认值
+        if hasattr(config, '_attn_implementation'):
+            attention_class = GPT2_ATTENTION_CLASSES[config._attn_implementation]
+        else:
+            attention_class = GPT2_ATTENTION_CLASSES['eager']
 
         self.ln_1 = nn.LayerNorm(hidden_size, eps=config.layer_norm_epsilon)
         self.attn = attention_class(config=config, layer_idx=layer_idx)
@@ -1075,7 +1101,11 @@ class GPT2Model(GPT2PreTrainedModel):
         self.model_parallel = False
         self.device_map = None
         self.gradient_checkpointing = False
-        self._attn_implementation = config._attn_implementation
+        # 兼容性处理：如果_attn_implementation不存在，使用默认值
+        if hasattr(config, '_attn_implementation'):
+            self._attn_implementation = config._attn_implementation
+        else:
+            self._attn_implementation = 'eager'
 
         # Initialize weights and apply final processing
         self.post_init()
