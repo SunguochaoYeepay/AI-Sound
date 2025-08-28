@@ -1,4 +1,4 @@
-# MegaTTS3服务启动脚本
+# MegaTTS3语音合成服务启动脚本
 # 设置UTF-8编码
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -18,13 +18,14 @@ if (-not (Test-Path $envPath)) {
 Write-Host "📍 激活MegaTTS3虚拟环境..." -ForegroundColor Yellow
 & "MegaTTS\espnet\espnet_env\Scripts\Activate.ps1"
 
-# 进入espnet目录
+# 进入MegaTTS3目录
 Set-Location "MegaTTS\espnet"
 
-# 检查依赖是否安装
-if (-not (Test-Path "espnet_env\Lib\site-packages\flask")) {
+# 检查PyTorch是否安装
+if (-not (Test-Path "espnet_env\Lib\site-packages\torch")) {
     Write-Host "📦 安装MegaTTS3依赖..." -ForegroundColor Yellow
-    Write-Host "⚠️  注意：某些依赖可能需要编译，如果安装失败请手动处理" -ForegroundColor Red
+    Write-Host "⚠️  注意：PyTorch需要GPU支持，请确保已安装CUDA" -ForegroundColor Red
+    pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
     pip install -r requirements.txt
 }
 
@@ -35,4 +36,4 @@ Write-Host "📚 API文档: http://localhost:7929/docs" -ForegroundColor Blue
 Write-Host ""
 Write-Host "按 Ctrl+C 停止服务" -ForegroundColor Yellow
 
-python megatts3_api_server.py
+python start_megatts3.py

@@ -14,7 +14,7 @@ Write-Host "🔧 激活虚拟环境..." -ForegroundColor Green
 
 # 设置环境变量
 Write-Host "🔧 设置环境变量..." -ForegroundColor Green
-$env:DATABASE_URL = "sqlite:///./data/ai_sound.db"
+# $env:DATABASE_URL = "mysql+pymysql://ai_sound_user:ai_sound_password@localhost:3306/ai_sound" # MySQL配置
 $env:DEBUG = "true"
 $env:LOCAL_DEV = "true"
 $env:ECHO_SQL = "false"
