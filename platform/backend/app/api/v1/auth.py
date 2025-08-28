@@ -163,20 +163,20 @@ async def get_current_user_info(
                 detail="用户不存在"
             )
         
-        user_id, username, email, status, is_superuser, created_at, last_login = result
+        user_id, username, email, user_status, is_superuser, created_at, last_login = result
         
         return {
             "id": user_id,
             "username": username,
             "email": email,
             "full_name": username,  # 临时使用username作为full_name
-            "status": status,
+            "status": user_status,
             "is_verified": True,  # 临时设为True
             "is_superuser": is_superuser,
             "roles": [{"name": "admin", "display_name": "管理员"}] if is_superuser else [],
             "permissions": [],
-            "created_at": created_at.isoformat() if created_at else None,
-            "last_login": last_login.isoformat() if last_login else None
+            "created_at": created_at if created_at else None,
+            "last_login": last_login if last_login else None
         }
         
     except HTTPException:
