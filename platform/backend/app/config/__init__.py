@@ -15,7 +15,7 @@ class Settings:
     @property
     def database_url(self):
         db_config = self.env_config.get_database_config()
-        return f"postgresql://{db_config['username']}:{db_config['password']}@{db_config['host']}:{db_config['port']}/{db_config['database']}"
+        return f"mysql+pymysql://{db_config['username']}:{db_config['password']}@{db_config['host']}:{db_config['port']}/{db_config['database']}?charset=utf8mb4"
     
     @property
     def tts_service_url(self):

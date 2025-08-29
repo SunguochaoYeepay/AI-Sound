@@ -31,7 +31,7 @@ class EnvironmentConfig:
         else:
             return {
                 "host": "localhost",
-                "port": 5432,
+                "port": 3306,
                 "database": "ai_sound",
                 "username": "ai_sound_user",
                 "password": "ai_sound_password",
