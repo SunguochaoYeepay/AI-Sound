@@ -1747,7 +1747,7 @@ def add_chapter_info_to_synthesis_data(synthesis_data: List[Dict], analysis_resu
             chapter_info_map[chapter_id] = {
                 'chapter_id': chapter_id,
                 'chapter_number': result.chapter.chapter_number,
-                'chapter_title': result.chapter.chapter_title or result.chapter.title,
+                'chapter_title': result.chapter.chapter_title,
                 'book_id': result.chapter.book_id
             }
     
@@ -1793,7 +1793,7 @@ async def merge_chapter_audio_files(
             logger.error(f"[MERGE_CHAPTER] 章节 {chapter_id} 不存在")
             return None
         
-        chapter_title = chapter.chapter_title or chapter.title or f"Chapter_{chapter_id}"
+        chapter_title = chapter.chapter_title or f"Chapter_{chapter_id}"
         chapter_number = chapter.chapter_number or chapter_id
         
         logger.info(f"[MERGE_CHAPTER] 开始合并章节 {chapter_id} ({chapter_title}) 的 {len(audio_files)} 个音频文件")

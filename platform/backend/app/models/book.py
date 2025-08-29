@@ -40,6 +40,7 @@ class Book(BaseModel):
     # 关系
     chapters = relationship("BookChapter", back_populates="book", cascade="all, delete-orphan")
     projects = relationship("NovelProject", back_populates="book", cascade="all, delete-orphan")
+    storyboard_sessions = relationship("StoryboardAnalysisSession", back_populates="book", cascade="all, delete-orphan")
     
     def get_tags(self):
         """获取标签列表"""

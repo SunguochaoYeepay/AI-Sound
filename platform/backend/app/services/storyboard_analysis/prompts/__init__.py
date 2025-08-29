@@ -1,0 +1,14 @@
+#!/usr/bin/env python3
+"""
+提示词模板模块
+"""
+
+from .scene_prompts import SCENE_ANALYSIS_PROMPT, SCENE_ANALYSIS_PROMPT_SIMPLE
+from .event_prompts import EVENT_ANALYSIS_PROMPT, EVENT_ANALYSIS_PROMPT_SIMPLE
+
+__all__ = [
+    'SCENE_ANALYSIS_PROMPT',
+    'SCENE_ANALYSIS_PROMPT_SIMPLE',
+    'EVENT_ANALYSIS_PROMPT',
+    'EVENT_ANALYSIS_PROMPT_SIMPLE'
+]

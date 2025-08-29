@@ -543,13 +543,13 @@ async def merge_chapters(
         if merge_direction == "after":
             # 将目标章节内容合并到当前章节后面
             merged_content = chapter.content + "\n\n" + target_chapter.content
-            merged_title = chapter.title
+            merged_title = chapter.chapter_title
             keep_chapter = chapter
             delete_chapter = target_chapter
         else:
             # 将当前章节内容合并到目标章节前面
             merged_content = chapter.content + "\n\n" + target_chapter.content
-            merged_title = target_chapter.title
+            merged_title = target_chapter.chapter_title
             keep_chapter = target_chapter
             delete_chapter = chapter
         
@@ -576,7 +576,7 @@ async def merge_chapters(
         await log_system_event(
             db=db,
             level="info",
-            message=f"章节合并: {chapter.title} + {target_chapter.title}",
+            message=f"章节合并: {chapter.chapter_title} + {target_chapter.chapter_title}",
             module="chapters",
             details={
                 "chapter_id": chapter_id,
@@ -618,7 +618,7 @@ async def get_chapter_statistics(
             "success": True,
             "data": {
                 "chapter_id": chapter_id,
-                "title": chapter.title,
+                "title": chapter.chapter_title,
                 "word_count": chapter.word_count,
                 "total_segments": total_segments,
                 "segment_status_counts": status_counts,

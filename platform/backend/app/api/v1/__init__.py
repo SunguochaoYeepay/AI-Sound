@@ -12,6 +12,7 @@ from .auth import router as auth_router
 from .books import router as books_router
 from .chapters import router as chapters_router
 from .analysis import router as analysis_router
+from .storyboard import router as storyboard_router
 from .synthesis import router as synthesis_router
 from .presets import router as presets_router
 from .projects import router as projects_router
@@ -113,6 +114,7 @@ api.include_router(auth_router)
 api.include_router(books_router, tags=["Books"])
 api.include_router(chapters_router, tags=["Chapters"])
 api.include_router(analysis_router, tags=["Analysis"])
+api.include_router(storyboard_router, tags=["Storyboard Analysis"])
 api.include_router(synthesis_router, tags=["Synthesis"])
 api.include_router(presets_router, tags=["Presets"])
 # api.include_router(projects_router, tags=["Projects"])  # 🚀 已迁移到novel_reader，暂时注释避免冲突

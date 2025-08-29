@@ -97,7 +97,7 @@ class AudioEditorBookIntegrationService:
                 chapter_info = {
                     'id': chapter.id,
                     'chapter_number': chapter.chapter_number,
-                    'title': chapter.title,
+                    'title': chapter.chapter_title,
                     'content_preview': chapter.content[:200] + '...' if chapter.content and len(chapter.content) > 200 else chapter.content,
                     'word_count': len(chapter.content) if chapter.content else 0,
                     'status': chapter.status,
@@ -156,7 +156,7 @@ class AudioEditorBookIntegrationService:
                             'project_name': project.name,
                             'chapter_id': chapter.id,
                             'chapter_number': chapter_number,
-                            'chapter_title': chapter.title,
+                            'chapter_title': chapter.chapter_title,
                             'segment_id': audio.segment_id,
                             'type': audio.type,
                             'duration': audio.duration,
@@ -188,7 +188,7 @@ class AudioEditorBookIntegrationService:
                                 'project_name': project.name,
                                 'chapter_id': chapter.id,
                                 'chapter_number': chapter_number,
-                                'chapter_title': chapter.title,
+                                'chapter_title': chapter.chapter_title,
                                 'config_data': session.persistence_data,
                                 'config_summary': session.persistence_summary,
                                 'track_count': track_count,
@@ -233,7 +233,7 @@ class AudioEditorBookIntegrationService:
                 'selected_chapters': [{
                     'id': ch.id,
                     'chapter_number': ch.chapter_number,
-                    'title': ch.title,
+                    'title': ch.chapter_title,
                     'word_count': len(ch.content) if ch.content else 0
                 } for ch in chapters],
                 'dialogue_audio': dialogue_audio,
@@ -290,7 +290,7 @@ class AudioEditorBookIntegrationService:
             timestamp = datetime.now().isoformat()
             
             # 构建章节摘要
-            chapters_summary = [f"第{ch.chapter_number}章 {ch.title}" for ch in chapters]
+            chapters_summary = [f"第{ch.chapter_number}章 {ch.chapter_title}" for ch in chapters]
             chapters_description = "、".join(chapters_summary[:3])
             if len(chapters_summary) > 3:
                 chapters_description += f"等{len(chapters_summary)}个章节"
@@ -374,14 +374,14 @@ class AudioEditorBookIntegrationService:
                         chapter_start_time = current_time
                         chapter_timeline[chapter.chapter_number] = {
                             'start_time': chapter_start_time,
-                            'title': chapter.title
+                            'title': chapter.chapter_title
                         }
                         
                         # 添加章节标记
                         markers.append({
                             "id": f"marker_chapter_{chapter.chapter_number}",
                             "time": chapter_start_time,
-                            "label": f"第{chapter.chapter_number}章: {chapter.title}",
+                            "label": f"第{chapter.chapter_number}章: {chapter.chapter_title}",
                             "description": f"章节开始",
                             "color": "#f39c12"
                         })
@@ -402,7 +402,7 @@ class AudioEditorBookIntegrationService:
                                 "audioFilePath": audio_file.file_path,
                                 "_chapterInfo": {
                                     "chapter_number": chapter.chapter_number,
-                                    "chapter_title": chapter.title
+                                    "chapter_title": chapter.chapter_title
                                 }
                             }
                             dialogue_track["clips"].append(clip)

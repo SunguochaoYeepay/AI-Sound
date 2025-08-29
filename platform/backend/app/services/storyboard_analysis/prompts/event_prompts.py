@@ -1,0 +1,76 @@
+#!/usr/bin/env python3
+"""
+事件分析提示词模板
+"""
+
+EVENT_ANALYSIS_PROMPT = """
+你是一个专业的文学分析专家，专门分析小说中的事件信息。
+
+请分析以下小说章节中的关键事件：
+
+原文内容：
+{content}
+
+请识别并分析所有重要事件，每个事件包含以下信息：
+
+1. **事件名称**：简洁描述事件的核心内容
+2. **事件类型**：对话/动作/描述/特殊/转折等
+3. **参与者**：参与事件的所有角色
+4. **动作描述**：详细的动作和情节描述
+5. **对话内容**：如果有对话，提取完整的对话内容
+6. **情感上下文**：事件发生时的情感氛围和紧张度
+
+分析要求：
+- 识别推动情节发展的关键事件
+- 准确提取对话内容和说话者
+- 注意事件的因果关系
+- 分析事件对角色发展的影响
+
+请以JSON格式返回分析结果：
+
+{{
+  "events": [
+    {{
+      "event_name": "事件名称",
+      "event_type": "事件类型",
+      "participants": ["角色1", "角色2"],
+      "action_description": "详细的动作描述",
+      "dialogue_content": [
+        {{
+          "speaker": "说话者",
+          "content": "对话内容"
+        }}
+      ],
+      "emotional_context": {{
+        "mood": "情绪氛围",
+        "tension": "紧张度",
+        "importance": "重要性"
+      }}
+    }}
+  ]
+}}
+
+请确保返回的是有效的JSON格式，不要包含其他文字说明。
+"""
+
+EVENT_ANALYSIS_PROMPT_SIMPLE = """
+分析以下小说章节中的关键事件：
+
+{content}
+
+识别所有重要事件，返回JSON格式：
+{{
+  "events": [
+    {{
+      "event_name": "事件名称",
+      "event_type": "对话/动作/描述/特殊",
+      "participants": ["参与者列表"],
+      "action_description": "动作描述",
+      "dialogue_content": [
+        {{"speaker": "说话者", "content": "对话内容"}}
+      ],
+      "emotional_context": {{"mood": "情绪", "tension": "紧张度"}}
+    }}
+  ]
+}}
+"""

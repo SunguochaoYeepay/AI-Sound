@@ -1527,7 +1527,7 @@ async def _sync_character_voice_to_synthesis_plans(
                         flag_modified(analysis, 'final_config')
                     
                     updated_count += 1
-                    logger.info(f"✅ [章节同步] 章节 {chapter.id} '{chapter.title}' 同步完成")
+                    logger.info(f"✅ [章节同步] 章节 {chapter.id} '{chapter.chapter_title}' 同步完成")
                 
             except Exception as e:
                 logger.error(f"同步章节 {chapter.id} 失败: {str(e)}")

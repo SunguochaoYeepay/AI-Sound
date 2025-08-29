@@ -9,6 +9,10 @@ from .book_chapter import BookChapter
 from .audio import AudioFile
 from .analysis_result import AnalysisResult
 from .analysis_session import AnalysisSession
+from .storyboard_cards import (
+    StoryboardAnalysisSession, BaseStoryboardCard, StoryCard, CharacterCard,
+    SceneCard, EventCard, EmotionCard, AudioStoryboardCard
+)
 from .novel_project import NovelProject
 from .voice import VoiceProfile
 from .character import Character
@@ -56,6 +60,14 @@ __all__ = [
     'Character',
     'AnalysisSession',
     'AnalysisResult',
+    'StoryboardAnalysisSession',
+    'BaseStoryboardCard',
+    'StoryCard',
+    'CharacterCard',
+    'SceneCard',
+    'EventCard',
+    'EmotionCard',
+    'AudioStoryboardCard',
     'SystemLog',
     'UsageStats',
     'UserPreset',
