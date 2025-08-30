@@ -18,10 +18,19 @@ class StoryboardSessionCreate(BaseModel):
     analysis_params: Optional[Dict[str, Any]] = Field(None, description="分析参数")
 
 
+class BookInfo(BaseModel):
+    """书籍信息"""
+    id: int
+    title: str
+    author: str
+    description: Optional[str]
+
+
 class StoryboardSessionResponse(BaseModel):
     """故事板分析会话响应"""
     id: int
     book_id: int
+    book: Optional[BookInfo]
     session_name: str
     description: Optional[str]
     analysis_type: str

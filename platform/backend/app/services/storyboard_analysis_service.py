@@ -8,7 +8,7 @@ import json
 import logging
 from typing import List, Dict, Any, Optional, AsyncGenerator
 from datetime import datetime
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, or_
 
 from ..models import (
@@ -83,11 +83,83 @@ class StoryboardAnalysisService:
         session.mark_started()
         self.db.commit()
         
-        # 异步启动分析任务
-        asyncio.create_task(self._run_analysis(session))
+        # 启动分析任务
+        try:
+            # 直接在当前线程中启动分析（临时方案）
+            import threading
+            thread = threading.Thread(target=self._run_analysis_sync, args=(session.id,))
+            thread.daemon = True
+            thread.start()
+            logger.info(f"分析任务已启动: {session.id}")
+        except Exception as e:
+            logger.error(f"启动分析任务失败: {e}")
+            session.mark_failed(str(e))
+            self.db.commit()
         
         return True
     
+    def _run_analysis_sync(self, session_id: int):
+        """同步执行分析任务"""
+        try:
+            # 重新获取数据库会话
+            from app.database import get_db
+            db = next(get_db())
+            session = db.query(StoryboardAnalysisSession).filter(
+                StoryboardAnalysisSession.id == session_id
+            ).first()
+            
+            if not session:
+                logger.error(f"会话不存在: {session_id}")
+                return
+            
+            # 获取书籍章节
+            chapters = db.query(BookChapter).filter(
+                BookChapter.book_id == session.book_id
+            ).order_by(BookChapter.chapter_number).all()
+            
+            session.current_step = f"开始分析 {len(chapters)} 个章节"
+            db.commit()
+            
+            # 第一阶段：章节级分析
+            for i, chapter in enumerate(chapters):
+                try:
+                    session.current_step = f"分析章节 {i+1}/{len(chapters)}: {chapter.chapter_title}"
+                    db.commit()
+                    
+                    # 分析章节内容
+                    self._analyze_chapter_sync(session, chapter, db)
+                    
+                    session.analyzed_chapters += 1
+                    session.progress = session.get_progress_percentage()
+                    db.commit()
+                    
+                    logger.info(f"章节分析完成: {chapter.chapter_title}")
+                    
+                except Exception as e:
+                    logger.error(f"分析章节失败: {chapter.id}, 错误: {str(e)}")
+                    session.failed_chapters += 1
+                    db.commit()
+            
+            # 第二阶段：书籍级分析
+            session.current_step = "进行书籍级分析"
+            db.commit()
+            
+            self._analyze_book_level_sync(session, db)
+            
+            # 标记完成
+            session.mark_completed()
+            db.commit()
+            
+            logger.info(f"分析会话完成: {session_id}")
+            
+        except Exception as e:
+            logger.error(f"分析会话失败: {session_id}, 错误: {str(e)}")
+            try:
+                session.mark_failed(str(e))
+                db.commit()
+            except:
+                pass
+
     async def _run_analysis(self, session: StoryboardAnalysisSession):
         """执行分析任务"""
         try:
@@ -138,6 +210,32 @@ class StoryboardAnalysisService:
             session.mark_failed(str(e))
             self.db.commit()
     
+    def _analyze_chapter_sync(self, session: StoryboardAnalysisSession, chapter: BookChapter, db: Session):
+        """同步分析单个章节"""
+        # 这里调用AI服务进行实际分析
+        # 为了演示，我们创建示例卡片数据
+        
+        # 1. 分析场景
+        scene_cards = self._analyze_scenes_sync(session, chapter)
+        
+        # 2. 分析事件
+        event_cards = self._analyze_events_sync(session, chapter)
+        
+        # 3. 分析情绪
+        emotion_cards = self._analyze_emotions_sync(session, chapter)
+        
+        # 4. 生成音频分镜卡
+        storyboard_cards = self._generate_audio_storyboard_sync(
+            session, chapter, scene_cards, event_cards, emotion_cards
+        )
+        
+        # 保存所有卡片
+        all_cards = scene_cards + event_cards + emotion_cards + storyboard_cards
+        for card in all_cards:
+            db.add(card)
+        
+        db.commit()
+
     async def _analyze_chapter(self, session: StoryboardAnalysisSession, chapter: BookChapter):
         """分析单个章节"""
         # 这里调用AI服务进行实际分析
@@ -422,7 +520,7 @@ class StoryboardAnalysisService:
     
     def get_session(self, session_id: int) -> Optional[StoryboardAnalysisSession]:
         """获取分析会话"""
-        return self.db.query(StoryboardAnalysisSession).filter(
+        return self.db.query(StoryboardAnalysisSession).options(joinedload(StoryboardAnalysisSession.book)).filter(
             StoryboardAnalysisSession.id == session_id
         ).first()
     
@@ -434,7 +532,7 @@ class StoryboardAnalysisService:
         limit: int = 20
     ) -> List[StoryboardAnalysisSession]:
         """获取分析会话列表"""
-        query = self.db.query(StoryboardAnalysisSession)
+        query = self.db.query(StoryboardAnalysisSession).options(joinedload(StoryboardAnalysisSession.book))
         
         if book_id:
             query = query.filter(StoryboardAnalysisSession.book_id == book_id)
@@ -522,13 +620,247 @@ class StoryboardAnalysisService:
         self.db.commit()
         return session
     
+    def reanalyze_session(self, session_id: int) -> bool:
+        """重新分析会话"""
+        session = self.get_session(session_id)
+        if not session:
+            raise ServiceException("分析会话不存在")
+        
+        try:
+            # 删除现有的卡片
+            cards = self.db.query(BaseStoryboardCard).filter(
+                BaseStoryboardCard.session_id == session_id
+            ).all()
+            
+            for card in cards:
+                self.db.delete(card)
+            
+            # 重置会话状态
+            session.status = 'pending'
+            session.progress = 0
+            session.current_step = None
+            session.analyzed_chapters = 0
+            session.failed_chapters = 0
+            session.book_confirmed = False
+            session.storyboard_confirmed = False
+            session.error_message = None
+            session.started_at = None
+            session.completed_at = None
+            session.updated_at = datetime.utcnow()
+            
+            self.db.commit()
+            
+            logger.info(f"会话 {session_id} 已重置，准备重新分析")
+            return True
+            
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"重新分析会话失败: {str(e)}")
+            raise ServiceException(f"重新分析会话失败: {str(e)}")
+    
     def delete_session(self, session_id: int) -> bool:
         """删除分析会话"""
         session = self.get_session(session_id)
         if not session:
             raise ServiceException("分析会话不存在")
         
-        self.db.delete(session)
-        self.db.commit()
+        try:
+            # 使用原生SQL删除，避免ORM的外键约束问题
+            from sqlalchemy import text
+            
+            # 删除继承表的记录
+            self.db.execute(text("""
+                DELETE sc FROM scene_cards sc 
+                INNER JOIN storyboard_cards bc ON sc.id = bc.id 
+                WHERE bc.session_id = :session_id
+            """), {"session_id": session_id})
+            
+            self.db.execute(text("""
+                DELETE cc FROM character_cards cc 
+                INNER JOIN storyboard_cards bc ON cc.id = bc.id 
+                WHERE bc.session_id = :session_id
+            """), {"session_id": session_id})
+            
+            self.db.execute(text("""
+                DELETE ec FROM event_cards ec 
+                INNER JOIN storyboard_cards bc ON ec.id = bc.id 
+                WHERE bc.session_id = :session_id
+            """), {"session_id": session_id})
+            
+            self.db.execute(text("""
+                DELETE emc FROM emotion_cards emc 
+                INNER JOIN storyboard_cards bc ON emc.id = bc.id 
+                WHERE bc.session_id = :session_id
+            """), {"session_id": session_id})
+            
+            self.db.execute(text("""
+                DELETE asc FROM audio_storyboard_cards asc 
+                INNER JOIN storyboard_cards bc ON asc.id = bc.id 
+                WHERE bc.session_id = :session_id
+            """), {"session_id": session_id})
+            
+            self.db.execute(text("""
+                DELETE stc FROM story_cards stc 
+                INNER JOIN storyboard_cards bc ON stc.id = bc.id 
+                WHERE bc.session_id = :session_id
+            """), {"session_id": session_id})
+            
+            # 删除基础卡片
+            self.db.execute(text("""
+                DELETE FROM storyboard_cards WHERE session_id = :session_id
+            """), {"session_id": session_id})
+            
+            # 删除会话
+            self.db.delete(session)
+            self.db.commit()
+            
+            logger.info(f"成功删除会话 {session_id}")
+            return True
+            
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"删除会话失败: {str(e)}")
+            raise ServiceException(f"删除会话失败: {str(e)}")
+
+    # 同步版本的分析方法
+    def _analyze_scenes_sync(self, session: StoryboardAnalysisSession, chapter: BookChapter) -> List[SceneCard]:
+        """同步分析章节中的场景"""
+        # 这里应该调用AI服务分析场景
+        # 示例数据
+        scenes = [
+            {
+                'scene_name': f"{chapter.chapter_title} - 场景1",
+                'scene_type': '室内',
+                'location': {'type': '客栈', 'description': '热闹的客栈内部'},
+                'atmosphere': {'mood': '热闹', 'lighting': '温暖'},
+                'time_period': '夜晚',
+                'environmental_sounds': ['人声嘈杂', '酒杯碰撞声']
+            }
+        ]
         
-        return True
+        scene_cards = []
+        for i, scene_data in enumerate(scenes):
+            card = SceneCard(
+                session_id=session.id,
+                chapter_id=chapter.id,
+                scene_id=i + 1,
+                content=scene_data,
+                confidence_score=0.85,
+                card_type='scene'
+            )
+            scene_cards.append(card)
+        
+        return scene_cards
+
+    def _analyze_events_sync(self, session: StoryboardAnalysisSession, chapter: BookChapter) -> List[EventCard]:
+        """同步分析章节中的事件"""
+        # 这里应该调用AI服务分析事件
+        # 示例数据
+        events = [
+            {
+                'event_name': '萧炎点酒',
+                'event_type': '对话',
+                'participants': ['萧炎', '店小二'],
+                'action_description': '萧炎走进客栈，向店小二点酒',
+                'dialogue_content': [
+                    {'speaker': '萧炎', 'content': '来一壶好酒'},
+                    {'speaker': '店小二', 'content': '好嘞，客官稍等'}
+                ],
+                'emotional_context': {'mood': '平静', 'tension': '低'}
+            }
+        ]
+        
+        event_cards = []
+        for i, event_data in enumerate(events):
+            card = EventCard(
+                session_id=session.id,
+                chapter_id=chapter.id,
+                content=event_data,
+                confidence_score=0.90,
+                card_type='event'
+            )
+            event_cards.append(card)
+        
+        return event_cards
+
+    def _analyze_emotions_sync(self, session: StoryboardAnalysisSession, chapter: BookChapter) -> List[EmotionCard]:
+        """同步分析章节中的情绪"""
+        # 这里应该调用AI服务分析情绪
+        # 示例数据
+        emotions = [
+            {
+                'emotion_type': '平静',
+                'intensity': 0.7,
+                'duration': {'start': 0, 'end': 30},
+                'triggers': ['进入熟悉环境'],
+                'expression': ['面部放松', '步伐从容'],
+                'voice_impact': {'tone': '温和', 'pace': '中等'}
+            }
+        ]
+        
+        emotion_cards = []
+        for i, emotion_data in enumerate(emotions):
+            card = EmotionCard(
+                session_id=session.id,
+                chapter_id=chapter.id,
+                content=emotion_data,
+                confidence_score=0.80,
+                card_type='emotion'
+            )
+            emotion_cards.append(card)
+        
+        return emotion_cards
+
+    def _generate_audio_storyboard_sync(
+        self, 
+        session: StoryboardAnalysisSession, 
+        chapter: BookChapter,
+        scene_cards: List[SceneCard],
+        event_cards: List[EventCard],
+        emotion_cards: List[EmotionCard]
+    ) -> List[AudioStoryboardCard]:
+        """同步生成音频分镜卡"""
+        # 这里应该基于场景、事件、情绪卡片生成音频分镜
+        # 示例数据
+        storyboard_data = {
+            'timeline': [
+                {
+                    'start_time': 0,
+                    'end_time': 15,
+                    'scene_description': '主人公进入客栈',
+                    'audio_elements': {
+                        'background_music': '轻柔的民乐',
+                        'ambient_sounds': ['脚步声', '门铃声'],
+                        'voice_effects': '自然呼吸声'
+                    }
+                },
+                {
+                    'start_time': 15,
+                    'end_time': 30,
+                    'scene_description': '与店小二对话',
+                    'audio_elements': {
+                        'background_music': '渐强的配乐',
+                        'ambient_sounds': ['酒杯碰撞声'],
+                        'voice_effects': '对话录音'
+                    }
+                }
+            ],
+            'audio_quality': 'high',
+            'duration': 30
+        }
+        
+        card = AudioStoryboardCard(
+            session_id=session.id,
+            chapter_id=chapter.id,
+            content=storyboard_data,
+            confidence_score=0.85,
+            card_type='audio_storyboard'
+        )
+        
+        return [card]
+
+    def _analyze_book_level_sync(self, session: StoryboardAnalysisSession, db: Session):
+        """同步进行书籍级分析"""
+        # 这里应该进行书籍级别的分析
+        # 例如：角色关系、故事结构、主题分析等
+        logger.info(f"书籍级分析完成: {session.id}")

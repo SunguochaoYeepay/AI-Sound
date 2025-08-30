@@ -67,9 +67,19 @@ class StoryboardAnalysisSession(Base):
     
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典格式"""
+        book_info = None
+        if self.book:
+                    book_info = {
+            'id': self.book.id,
+            'title': self.book.title,
+            'author': self.book.author,
+            'description': self.book.description
+        }
+        
         return {
             'id': self.id,
             'book_id': self.book_id,
+            'book': book_info,
             'session_name': self.session_name,
             'description': self.description,
             'analysis_type': self.analysis_type,

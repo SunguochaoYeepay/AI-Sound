@@ -108,6 +108,10 @@
               <a-menu-item key="voice-library" @click="navigateTo('voice-library')">
                 <span>角色管理</span>
               </a-menu-item>
+
+              <a-menu-item key="book-analysis" @click="navigateTo('book-analysis')">
+                <span>书籍分析</span>
+              </a-menu-item>
             </a-menu>
           </div>
         </div>
@@ -545,6 +549,7 @@
       books: '/books',
       'voice-clone': '/basic-tts',
       'voice-library': '/characters',
+      'book-analysis': '/content-management/book-analysis',
       'environment-sounds': '/environment-sounds',
       'audio-library': '/audio-library',
       'music-library': '/music-library',
@@ -583,6 +588,7 @@
       '/books': '书籍管理',
       '/basic-tts': '声音克隆',
       '/characters': '角色管理',
+      '/content-management/book-analysis': '书籍分析',
       '/environment-sounds': '环境音合成',
       '/audio-library': '音频库',
       '/music-library': '背景音效',

@@ -241,6 +241,28 @@ def confirm_session(
         raise HTTPException(status_code=500, detail=f"确认会话失败: {str(e)}")
 
 
+@router.post("/sessions/{session_id}/reanalyze")
+def reanalyze_session(session_id: int, db: Session = Depends(get_db)):
+    """
+    重新分析会话
+    """
+    service = StoryboardAnalysisService(db)
+    
+    try:
+        success = service.reanalyze_session(session_id)
+        if not success:
+            raise HTTPException(status_code=400, detail="重新分析会话失败")
+        
+        return {"message": "会话重新分析已开始", "session_id": session_id}
+        
+    except ServiceException as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"重新分析会话失败: {str(e)}")
+
+# 这些API端点已移除，因为功能已在StoryboardAnalysisService中实现
+
+
 @router.delete("/sessions/{session_id}")
 def delete_session(session_id: int, db: Session = Depends(get_db)):
     """

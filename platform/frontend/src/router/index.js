@@ -27,6 +27,8 @@ import RoleManagement from '../views/RoleManagement.vue'
 import LoginView from '../views/auth/LoginView.vue'
 import NavigationTest from '../views/NavigationTest.vue'
 import AudioEditorLayoutTest from '../views/AudioEditorLayoutTest.vue'
+import BookAnalysisList from '../views/content-management/BookAnalysisList.vue'
+import BookAnalysisDetail from '../views/content-management/BookAnalysisDetail.vue'
 
 const routes = [
   // 认证路由
@@ -291,6 +293,28 @@ const routes = [
     meta: {
       title: '音频编辑器布局测试',
       requiresAuth: true
+    }
+  },
+
+  // 故事板分析路由
+  {
+    path: '/content-management/book-analysis',
+    name: 'BookAnalysisList',
+    component: BookAnalysisList,
+    meta: {
+      title: '书籍分析',
+      requiresAuth: true,
+      permission: PERMISSIONS.BOOK_VIEW
+    }
+  },
+  {
+    path: '/content-management/book-analysis/:sessionId',
+    name: 'BookAnalysisDetail',
+    component: BookAnalysisDetail,
+    meta: {
+      title: '分析详情',
+      requiresAuth: true,
+      permission: PERMISSIONS.BOOK_VIEW
     }
   },
 
