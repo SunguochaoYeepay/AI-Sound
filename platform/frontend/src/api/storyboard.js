@@ -69,13 +69,22 @@ export const storyboardAPI = {
   },
 
   /**
+   * 获取章节详情
+   * @param {number} chapterId - 章节ID
+   * @returns {Promise} 章节详情
+   */
+  getChapterDetail: (chapterId) => {
+    return apiClient.get(`/chapters/${chapterId}`)
+  },
+
+  /**
    * 获取审核数据
    * @param {number} sessionId - 会话ID
    * @param {number} chapterId - 章节ID
    * @returns {Promise} 审核数据
    */
   getReviewData: (sessionId, chapterId) => {
-    return apiClient.get(`/storyboard/review/${sessionId}/${chapterId}`)
+    return apiClient.get(`/storyboard/sessions/${sessionId}/chapters/${chapterId}/cards`)
   },
 
   /**
@@ -86,6 +95,16 @@ export const storyboardAPI = {
    */
   confirmChapter: (sessionId, chapterId) => {
     return apiClient.post(`/storyboard/review/${sessionId}/${chapterId}/confirm`)
+  },
+
+  /**
+   * 分析单个章节
+   * @param {number} sessionId - 会话ID
+   * @param {number} chapterId - 章节ID
+   * @returns {Promise} 分析结果
+   */
+  analyzeChapter: (sessionId, chapterId) => {
+    return apiClient.post(`/storyboard/sessions/${sessionId}/chapters/${chapterId}/analyze`)
   },
 
   /**
@@ -198,9 +217,9 @@ export const storyboardAPI = {
   createWebSocket: (sessionId) => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const host = import.meta.env.VITE_API_BASE_URL || 'localhost:8001'
-    // 修复URL格式，移除可能的http://前缀
-    const cleanHost = host.replace(/^https?:\/\//, '')
-    const wsUrl = `${protocol}//${cleanHost}/storyboard/ws/${sessionId}`
+    // 修复URL格式，移除可能的http://前缀，确保使用8001端口
+    const cleanHost = host.replace(/^https?:\/\//, '').replace(/:\d+$/, '')
+    const wsUrl = `${protocol}//${cleanHost}:8001/storyboard/ws/${sessionId}`
     console.log('WebSocket URL:', wsUrl)
     return new WebSocket(wsUrl)
   }

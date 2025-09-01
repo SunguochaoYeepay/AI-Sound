@@ -22,48 +22,48 @@ class SceneAnalyzer(BaseAnalyzer):
             return []
         
         try:
-            # 检查AI服务是否可用
-            if not self.llm_client.health_check():
-                logger.warning("AI服务不可用，使用规则分析")
-                return self._rule_based_analysis(content)
+            logger.info("开始场景分析...")
             
-            # 分块处理长内容
+            # 强制使用AI分析，不进行健康检查
             chunks = self._chunk_content(content)
+            logger.info(f"内容分块数量: {len(chunks)}")
             all_scenes = []
             
             for i, chunk in enumerate(chunks):
                 logger.info(f"分析场景块 {i+1}/{len(chunks)}")
+                logger.info(f"块内容长度: {len(chunk)}")
                 
                 # 构建提示词
                 prompt = self._build_prompt(chunk, chunk_index=i, total_chunks=len(chunks))
                 
-                # 调用AI分析
+                # 强制调用AI分析
+                logger.info("调用AI分析...")
                 result = await self._call_llm_json(prompt, temperature=0.3)
                 
                 if result and "scenes" in result:
                     scenes = result["scenes"]
+                    logger.info(f"AI识别到 {len(scenes)} 个场景")
                     # 为每个场景添加块索引信息
                     for scene in scenes:
                         scene["chunk_index"] = i
                         scene["chunk_total"] = len(chunks)
                     all_scenes.extend(scenes)
                 else:
-                    logger.warning(f"场景块 {i+1} 分析失败，使用规则分析")
-                    rule_scenes = self._rule_based_analysis(chunk)
-                    for scene in rule_scenes:
-                        scene["chunk_index"] = i
-                        scene["chunk_total"] = len(chunks)
-                    all_scenes.extend(rule_scenes)
+                    logger.error(f"AI分析失败，返回结果: {result}")
+                    raise Exception(f"AI分析失败，无法获取场景数据")
             
             # 合并和去重场景
             merged_scenes = self._merge_scenes(all_scenes)
             
             logger.info(f"场景分析完成，识别到 {len(merged_scenes)} 个场景")
+            for i, scene in enumerate(merged_scenes):
+                logger.info(f"场景 {i+1}: {scene.get('scene_name', 'Unknown')}")
+            
             return merged_scenes
             
         except Exception as e:
             logger.error(f"场景分析失败: {str(e)}")
-            return self._rule_based_analysis(content)
+            raise Exception(f"场景分析失败: {str(e)}")
     
     def _build_prompt(self, content: str, **kwargs) -> str:
         """构建提示词"""
@@ -84,42 +84,7 @@ class SceneAnalyzer(BaseAnalyzer):
             # 单块处理
             return SCENE_ANALYSIS_PROMPT.format(content=content)
     
-    def _rule_based_analysis(self, content: str) -> List[Dict[str, Any]]:
-        """规则分析（AI不可用时的备选方案）"""
-        scenes = []
-        
-        # 简单的关键词匹配
-        if "实验室" in content or "穿越" in content:
-            scenes.append({
-                "scene_name": "实验室穿越场景",
-                "scene_type": "特殊",
-                "location": {"type": "实验室", "description": "现代实验室环境"},
-                "atmosphere": {"mood": "紧张", "lighting": "明亮"},
-                "time_period": "现代",
-                "environmental_sounds": ["玻璃破碎声", "电流声"]
-            })
-        
-        if "长安" in content or "古代" in content:
-            scenes.append({
-                "scene_name": "古代街道场景",
-                "scene_type": "室外",
-                "location": {"type": "街道", "description": "古代城市街道"},
-                "atmosphere": {"mood": "热闹", "lighting": "自然光"},
-                "time_period": "古代",
-                "environmental_sounds": ["叫卖声", "马蹄声", "人声"]
-            })
-        
-        if "救助" in content or "骨折" in content:
-            scenes.append({
-                "scene_name": "救助场景",
-                "scene_type": "室外",
-                "location": {"type": "街道", "description": "救助现场"},
-                "atmosphere": {"mood": "紧张", "lighting": "自然光"},
-                "time_period": "古代",
-                "environmental_sounds": ["马蹄声", "人声", "布料摩擦声"]
-            })
-        
-        return scenes
+
     
     def _merge_scenes(self, scenes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """合并和去重场景"""

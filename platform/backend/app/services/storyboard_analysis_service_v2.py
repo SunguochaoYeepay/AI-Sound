@@ -12,9 +12,10 @@ from datetime import datetime
 
 from app.models.storyboard_cards import (
     StoryboardAnalysisSession, BaseStoryboardCard, StoryCard, CharacterCard,
-    SceneCard, EventCard, EmotionCard, AudioStoryboardCard
+    SceneCard, EventCard, EmotionCard, AudioStoryboardCard, AudioScriptCard
 )
 from app.models import Book, BookChapter
+from app.utils.exceptions import ServiceException
 
 # 导入AI分析器
 from .storyboard_analysis.llm_client import LLMClient
@@ -22,6 +23,7 @@ from .storyboard_analysis.scene_analyzer import SceneAnalyzer
 from .storyboard_analysis.event_analyzer import EventAnalyzer
 from .storyboard_analysis.emotion_analyzer import EmotionAnalyzer
 from .storyboard_analysis.audio_storyboard_generator import AudioStoryboardGenerator
+from .storyboard_analysis.audio_script_generator import AudioScriptGenerator
 from .storyboard_analysis.story_analyzer import StoryAnalyzer
 from .storyboard_analysis.character_analyzer import CharacterAnalyzer
 
@@ -40,6 +42,7 @@ class StoryboardAnalysisServiceV2:
         self.event_analyzer = EventAnalyzer(self.llm_client)
         self.emotion_analyzer = EmotionAnalyzer(self.llm_client)
         self.storyboard_generator = AudioStoryboardGenerator(self.llm_client)
+        self.script_generator = AudioScriptGenerator(self.llm_client)
         self.story_analyzer = StoryAnalyzer(self.llm_client)
         self.character_analyzer = CharacterAnalyzer(self.llm_client)
     
@@ -49,7 +52,7 @@ class StoryboardAnalysisServiceV2:
             StoryboardAnalysisSession.id == session_id
         ).first()
     
-    def get_session_cards(self, session_id: int, chapter_id: Optional[int] = None) -> List[BaseStoryboardCard]:
+    def get_session_cards(self, session_id: int, chapter_id: Optional[int] = None, card_type: Optional[str] = None) -> List[BaseStoryboardCard]:
         """获取会话的卡片"""
         query = self.db.query(BaseStoryboardCard).filter(
             BaseStoryboardCard.session_id == session_id
@@ -57,6 +60,9 @@ class StoryboardAnalysisServiceV2:
         
         if chapter_id:
             query = query.filter(BaseStoryboardCard.chapter_id == chapter_id)
+        
+        if card_type:
+            query = query.filter(BaseStoryboardCard.card_type == card_type)
         
         return query.all()
     
@@ -136,32 +142,52 @@ class StoryboardAnalysisServiceV2:
         try:
             logger.info(f"开始分析章节: {chapter.chapter_title}")
             
-            # 1. 分析场景
+            # 1. 将章节内容按段落分割
+            paragraphs = chapter.content.split('\n')
+            paragraphs = [p.strip() for p in paragraphs if p.strip()]
+            
+            # 2. 分析场景
             logger.info("1. 分析场景...")
             scene_data = await self.scene_analyzer.analyze(chapter.content)
             scene_cards = self._create_scene_cards(session, chapter, scene_data)
             
-            # 2. 分析事件
+            # 3. 分析事件
             logger.info("2. 分析事件...")
             event_data = await self.event_analyzer.analyze(chapter.content)
             event_cards = self._create_event_cards(session, chapter, event_data)
             
-            # 3. 分析情绪
+            # 4. 分析情绪
             logger.info("3. 分析情绪...")
             emotion_data = await self.emotion_analyzer.analyze(chapter.content)
             emotion_cards = self._create_emotion_cards(session, chapter, emotion_data)
             
-            # 4. 生成音频分镜卡
-            logger.info("4. 生成音频分镜卡...")
-            storyboard_data = await self.storyboard_generator.generate(scene_data, event_data, emotion_data)
-            storyboard_cards = self._create_storyboard_cards(session, chapter, storyboard_data)
+            # 5. 生成音频剧本卡
+            logger.info("4. 生成音频剧本卡...")
+            script_data = await self.script_generator.generate_script(
+                scene_data, event_data, emotion_data, 
+                original_content=chapter.content
+            )
+            script_cards = self._create_script_cards(session, chapter, script_data, paragraphs)
             
-            # 保存所有卡片
-            all_cards = scene_cards + event_cards + emotion_cards + storyboard_cards
+            # 6. 生成音频分镜卡
+            logger.info("5. 生成音频分镜卡...")
+            storyboard_data = await self.storyboard_generator.generate(scene_data, event_data, emotion_data)
+            storyboard_cards = self._create_storyboard_cards_with_mapping(session, chapter, storyboard_data, paragraphs, scene_cards, event_cards, emotion_cards)
+            
+            # 7. 为其他卡片添加对应关系
+            self._add_text_mapping_to_cards(scene_cards, event_cards, emotion_cards, storyboard_cards, paragraphs)
+            
+            # 8. 先保存所有卡片
+            all_cards = scene_cards + event_cards + emotion_cards + script_cards + storyboard_cards
             for card in all_cards:
                 self.db.add(card)
             
             self.db.commit()
+            
+            # 9. 更新音频分镜卡的关联关系（使用真实的卡片ID）
+            self._update_storyboard_card_relationships(storyboard_cards, scene_cards, event_cards, emotion_cards, script_cards)
+            self.db.commit()
+            
             logger.info(f"章节 {chapter.id} 分析完成，生成 {len(all_cards)} 个卡片")
             
         except Exception as e:
@@ -211,19 +237,145 @@ class StoryboardAnalysisServiceV2:
             emotion_cards.append(card)
         return emotion_cards
     
-    def _create_storyboard_cards(self, session: StoryboardAnalysisSession, chapter: BookChapter, storyboard_data: List[Dict[str, Any]]) -> List[AudioStoryboardCard]:
-        """创建音频分镜卡片"""
+    def _create_script_cards(self, session: StoryboardAnalysisSession, chapter: BookChapter, script_data: Dict[str, Any], paragraphs: List[str]) -> List[AudioScriptCard]:
+        """创建音频剧本卡片"""
+        script_cards = []
+        
+        # 检查剧本数据是否包含段落信息
+        script_segments = script_data.get('script_segments', [])
+        
+        # 如果剧本segment数量少于段落数量，需要补充
+        if len(script_segments) < len(paragraphs):
+            logger.warning(f"剧本segment数量({len(script_segments)})少于段落数量({len(paragraphs)})，需要补充")
+            
+            # 为缺失的段落创建默认的剧本segment
+            for i in range(len(script_segments), len(paragraphs)):
+                default_segment = {
+                    "segment_id": f"seg_{i+1:03d}",
+                    "start_time": i * 30,
+                    "end_time": (i + 1) * 30,
+                    "original_text": paragraphs[i],
+                    "dialogue": {
+                        "speaker": "旁白",
+                        "content": [{"content": paragraphs[i], "speaker": "旁白"}],
+                        "emotion": "neutral",
+                        "tone": "normal",
+                        "voice_id": "narrator_001"
+                    },
+                    "sound_effects": {
+                        "volume_levels": {"music": 20, "ambient": 40, "dialogue": 80},
+                        "ambient_sounds": [],
+                        "background_music": "default_music"
+                    },
+                    "production_notes": {
+                        "sound_mixing": "音效渐入，音乐淡出",
+                        "detailed_notes": f"段落 {i+1}: {paragraphs[i][:50]}...",
+                        "voice_direction": "语速中等，语调自然",
+                        "emotion_guidance": "通过语气表达自然的情感"
+                    },
+                    "text_mapping": {
+                        "word_count": len(paragraphs[i]),
+                        "accuracy_score": 0.95,
+                        "paragraph_range": [i, i + 1]
+                    }
+                }
+                script_segments.append(default_segment)
+        
+        # 确保每个segment都有正确的段落范围
+        for i, segment in enumerate(script_segments):
+            if 'text_mapping' not in segment:
+                segment['text_mapping'] = {}
+            if 'paragraph_range' not in segment['text_mapping']:
+                segment['text_mapping']['paragraph_range'] = [i, i + 1]
+        
+        # 更新剧本数据
+        script_data['script_segments'] = script_segments
+        
+        # 创建音频剧本卡
+        card = AudioScriptCard(
+            session_id=session.id,
+            chapter_id=chapter.id,
+            content=script_data,
+            confidence_score=script_data.get('quality_score', 0.85),
+            card_type='audio_script'
+        )
+        script_cards.append(card)
+        
+        return script_cards
+    
+    def _create_storyboard_cards_with_mapping(self, session: StoryboardAnalysisSession, chapter: BookChapter, storyboard_data: List[Dict[str, Any]], paragraphs: List[str], scene_cards: List[SceneCard], event_cards: List[EventCard], emotion_cards: List[EmotionCard]) -> List[AudioStoryboardCard]:
+        """创建音频分镜卡片并建立对应关系"""
         storyboard_cards = []
         for i, storyboard_info in enumerate(storyboard_data):
+            # 计算对应的时间范围
+            total_paragraphs = len(paragraphs)
+            start_paragraph = i * (total_paragraphs // len(storyboard_data))
+            end_paragraph = min((i + 1) * (total_paragraphs // len(storyboard_data)), total_paragraphs)
+            
+            # 添加对应关系到内容中（暂时不包含卡片ID，等保存后再更新）
+            storyboard_info['text_mapping'] = {
+                'paragraph_range': [start_paragraph, end_paragraph],
+                'scene_index': i,
+                'time_range': [i * 30, (i + 1) * 30],  # 每个分镜卡30秒
+                'related_cards': {
+                    'scene': [i if i < len(scene_cards) else None],
+                    'event': [i if i < len(event_cards) else None],
+                    'emotion': [i if i < len(emotion_cards) else None]
+                }
+            }
+            
             card = AudioStoryboardCard(
                 session_id=session.id,
                 chapter_id=chapter.id,
                 content=storyboard_info,
                 confidence_score=0.88,
-                card_type='storyboard'
+                card_type='audio_storyboard'
             )
             storyboard_cards.append(card)
         return storyboard_cards
+    
+    def _add_text_mapping_to_cards(self, scene_cards: List[SceneCard], event_cards: List[EventCard], emotion_cards: List[EmotionCard], storyboard_cards: List[AudioStoryboardCard], paragraphs: List[str]):
+        """为其他卡片添加文本映射关系"""
+        total_paragraphs = len(paragraphs)
+        
+        # 为场景卡添加对应关系
+        for i, card in enumerate(scene_cards):
+            start_paragraph = i * (total_paragraphs // len(scene_cards))
+            end_paragraph = min((i + 1) * (total_paragraphs // len(scene_cards)), total_paragraphs)
+            
+            if 'text_mapping' not in card.content:
+                card.content['text_mapping'] = {}
+            card.content['text_mapping']['paragraph_range'] = [start_paragraph, end_paragraph]
+        
+        # 为事件卡添加对应关系
+        for i, card in enumerate(event_cards):
+            start_paragraph = i * (total_paragraphs // len(event_cards))
+            end_paragraph = min((i + 1) * (total_paragraphs // len(event_cards)), total_paragraphs)
+            
+            if 'text_mapping' not in card.content:
+                card.content['text_mapping'] = {}
+            card.content['text_mapping']['paragraph_range'] = [start_paragraph, end_paragraph]
+        
+        # 为情绪卡添加对应关系
+        for i, card in enumerate(emotion_cards):
+            start_paragraph = i * (total_paragraphs // len(emotion_cards))
+            end_paragraph = min((i + 1) * (total_paragraphs // len(emotion_cards)), total_paragraphs)
+            
+            if 'text_mapping' not in card.content:
+                card.content['text_mapping'] = {}
+            card.content['text_mapping']['paragraph_range'] = [start_paragraph, end_paragraph]
+    
+    def _update_storyboard_card_relationships(self, storyboard_cards: List[AudioStoryboardCard], scene_cards: List[SceneCard], event_cards: List[EventCard], emotion_cards: List[EmotionCard], script_cards: List[AudioScriptCard]):
+        """更新音频分镜卡的关联关系（使用真实的卡片ID）"""
+        for i, storyboard_card in enumerate(storyboard_cards):
+            if 'text_mapping' in storyboard_card.content and 'related_cards' in storyboard_card.content['text_mapping']:
+                # 更新关联的卡片ID
+                storyboard_card.content['text_mapping']['related_cards'] = {
+                    'scene': [scene_cards[i].id if i < len(scene_cards) else None],
+                    'event': [event_cards[i].id if i < len(event_cards) else None],
+                    'emotion': [emotion_cards[i].id if i < len(emotion_cards) else None],
+                    'audio_script': [script_cards[0].id if script_cards else None]  # 音频剧本卡只有一个
+                }
     
     async def _analyze_book_level(self, session: StoryboardAnalysisSession):
         """进行书籍级分析"""
@@ -285,3 +437,144 @@ class StoryboardAnalysisServiceV2:
             )
             character_cards.append(card)
         return character_cards
+    
+    # ==================== API方法补充 ====================
+    
+    def get_sessions(self, book_id: Optional[int] = None, status: Optional[str] = None, 
+                    skip: int = 0, limit: int = 20) -> List[StoryboardAnalysisSession]:
+        """获取会话列表"""
+        query = self.db.query(StoryboardAnalysisSession)
+        
+        if book_id:
+            query = query.filter(StoryboardAnalysisSession.book_id == book_id)
+        if status:
+            query = query.filter(StoryboardAnalysisSession.status == status)
+        
+        return query.offset(skip).limit(limit).all()
+    
+    async def create_analysis_session(self, book_id: int, session_name: str, 
+                                    description: str = None, analysis_type: str = 'standard',
+                                    llm_config: Dict[str, Any] = None, 
+                                    analysis_params: Dict[str, Any] = None) -> StoryboardAnalysisSession:
+        """创建分析会话"""
+        session = StoryboardAnalysisSession(
+            book_id=book_id,
+            session_name=session_name,
+            description=description,
+            analysis_type=analysis_type,
+            status='pending',
+            progress=0,
+            total_chapters=0,
+            analyzed_chapters=0,
+            failed_chapters=0,
+            book_confirmed=False,
+            storyboard_confirmed=False
+        )
+        
+        self.db.add(session)
+        self.db.commit()
+        self.db.refresh(session)
+        
+        return session
+    
+    def update_card(self, card_id: int, content: Dict[str, Any]) -> BaseStoryboardCard:
+        """更新卡片内容"""
+        card = self.db.query(BaseStoryboardCard).filter(BaseStoryboardCard.id == card_id).first()
+        if not card:
+            raise ServiceException("卡片不存在")
+        
+        card.content = content
+        card.updated_at = datetime.now()
+        self.db.commit()
+        self.db.refresh(card)
+        
+        return card
+    
+    def confirm_card(self, card_id: int, confirmed_by: str = None) -> BaseStoryboardCard:
+        """确认卡片"""
+        card = self.db.query(BaseStoryboardCard).filter(BaseStoryboardCard.id == card_id).first()
+        if not card:
+            raise ServiceException("卡片不存在")
+        
+        card.confirmation_status = 'confirmed'
+        card.confirmed_by = confirmed_by
+        card.confirmed_at = datetime.now()
+        self.db.commit()
+        self.db.refresh(card)
+        
+        return card
+    
+    def request_card_reanalysis(self, card_id: int, requested_by: str = None) -> BaseStoryboardCard:
+        """请求重新分析卡片"""
+        card = self.db.query(BaseStoryboardCard).filter(BaseStoryboardCard.id == card_id).first()
+        if not card:
+            raise ServiceException("卡片不存在")
+        
+        card.confirmation_status = 'reanalysis_requested'
+        card.confirmed_by = requested_by
+        card.updated_at = datetime.now()
+        self.db.commit()
+        self.db.refresh(card)
+        
+        return card
+    
+    def confirm_session(self, session_id: int, confirmation_type: str = 'storyboard') -> StoryboardAnalysisSession:
+        """确认分析会话"""
+        session = self.get_session(session_id)
+        if not session:
+            raise ServiceException("会话不存在")
+        
+        if confirmation_type == 'storyboard':
+            session.storyboard_confirmed = True
+        elif confirmation_type == 'book':
+            session.book_confirmed = True
+        
+        session.updated_at = datetime.now()
+        self.db.commit()
+        self.db.refresh(session)
+        
+        return session
+    
+    def reanalyze_session(self, session_id: int) -> bool:
+        """重新分析会话"""
+        session = self.get_session(session_id)
+        if not session:
+            raise ServiceException("会话不存在")
+        
+        # 重置会话状态
+        session.status = 'pending'
+        session.progress = 0
+        session.analyzed_chapters = 0
+        session.failed_chapters = 0
+        session.started_at = None
+        session.completed_at = None
+        session.updated_at = datetime.now()
+        
+        # 删除现有卡片
+        cards = self.get_session_cards(session_id)
+        for card in cards:
+            self.db.delete(card)
+        
+        self.db.commit()
+        
+        # 启动重新分析
+        asyncio.create_task(self.start_analysis(session_id))
+        
+        return True
+    
+    def delete_session(self, session_id: int) -> bool:
+        """删除分析会话"""
+        session = self.get_session(session_id)
+        if not session:
+            raise ServiceException("会话不存在")
+        
+        # 删除所有相关卡片
+        cards = self.get_session_cards(session_id)
+        for card in cards:
+            self.db.delete(card)
+        
+        # 删除会话
+        self.db.delete(session)
+        self.db.commit()
+        
+        return True

@@ -1062,7 +1062,43 @@ class OllamaCharacterDetector:
             return 'unknown'
 
     def _build_type_aware_analysis_prompt(self, text: str, novel_type: str) -> str:
-        """🆕 基于小说类型构建专门的分析提示词 - 简化版适配14B模型"""
+        """🆕 基于小说类型构建专门的分析提示词 - 优化版适配14B模型"""
+        
+        # 增强医疗题材和穿越题材的识别能力
+        medical_keywords = ["医生", "医疗", "急救", "医院", "手术", "治疗", "白大褂", "消毒", "绷带", "骨折", "伤口"]
+        time_travel_keywords = ["穿越", "古代", "现代", "时空", "未来", "过去", "实验室", "科技"]
+        
+        # 检测文本类型
+        is_medical = any(keyword in text for keyword in medical_keywords)
+        is_time_travel = any(keyword in text for keyword in time_travel_keywords)
+        
+        # 构建专门的提示词
+        specialized_instructions = ""
+        if is_medical and is_time_travel:
+            specialized_instructions = """
+🔥 特殊题材识别要求（医疗+穿越）：
+- 重点关注现代医生穿越到古代的情节
+- 识别医疗专业术语和古代环境的对比
+- 注意角色身份的双重性（现代身份+古代身份）
+- 医疗救助情节是核心，不是简单的对话
+- 角色名称要精确识别，不要混淆（如：萧景琰≠萧炎）
+"""
+        elif is_medical:
+            specialized_instructions = """
+🔥 医疗题材识别要求：
+- 重点关注医疗相关角色和情节
+- 识别医生、护士、患者等专业角色
+- 注意医疗术语和医疗场景描述
+- 医疗救助是核心情节，不是普通对话
+"""
+        elif is_time_travel:
+            specialized_instructions = """
+🔥 穿越题材识别要求：
+- 重点关注穿越者和原住民的区别
+- 识别现代与古代的文化差异
+- 注意角色身份的特殊性
+- 穿越情节是核心，不是普通场景
+"""
         
         prompt = f"""你是中文小说文本分析专家，使用qwen2.5:14b模型。请分析以下小说文本。
 
@@ -1073,11 +1109,17 @@ class OllamaCharacterDetector:
 2. 区分对话、旁白、心理独白
 3. 保持角色名称一致性
 4. 🔥 新增：分析角色外貌特征
+5. 🔥 新增：精确识别特殊题材角色
+
+{specialized_instructions}
 
 关键原则：
 - 引号内容 = 角色对话
 - 描述动作 = 旁白
 - "角色说：'话语'" = 分为两段：动作(旁白) + 话语(角色)
+- 🔥 角色名称必须精确识别，不要混淆相似名称
+- 🔥 医疗救助情节要识别为医疗事件，不是普通对话
+- 🔥 穿越情节要识别为特殊事件，不是普通场景
 
 角色外貌分析要求：
 - 年龄特征：child(幼儿)/young(年轻)/middle(中年)/elder(老年)

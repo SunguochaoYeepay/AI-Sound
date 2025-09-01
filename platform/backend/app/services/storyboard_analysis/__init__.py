@@ -9,16 +9,18 @@ from .scene_analyzer import SceneAnalyzer
 from .event_analyzer import EventAnalyzer
 from .emotion_analyzer import EmotionAnalyzer
 from .audio_storyboard_generator import AudioStoryboardGenerator
+from .audio_script_generator import AudioScriptGenerator
 from .story_analyzer import StoryAnalyzer
 from .character_analyzer import CharacterAnalyzer
 
 __all__ = [
     'LLMClient',
-    'BaseAnalyzer', 
+    'BaseAnalyzer',
     'SceneAnalyzer',
     'EventAnalyzer',
     'EmotionAnalyzer',
     'AudioStoryboardGenerator',
+    'AudioScriptGenerator',
     'StoryAnalyzer',
     'CharacterAnalyzer'
 ]

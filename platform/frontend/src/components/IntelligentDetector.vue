@@ -780,7 +780,6 @@ defineExpose({
   line-height: 1.4;
   max-height: 100px;
   overflow-y: auto;
-  border-left: 3px solid var(--ant-primary-color);
 }
 
 .suggestion {

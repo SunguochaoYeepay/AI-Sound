@@ -53,20 +53,33 @@ SCENE_ANALYSIS_PROMPT = """
 """
 
 SCENE_ANALYSIS_PROMPT_SIMPLE = """
-分析以下小说章节中的场景：
+分析以下小说章节中的场景信息：
 
 {content}
 
-识别所有场景，返回JSON格式：
+🔥 特殊场景识别要求：
+- **古代场景**：识别古代城市、古代建筑、古代环境等
+- **街道场景**：识别古代街道、现代街道、市场、广场等户外场景
+- **医疗场景**：识别医院、诊所、急救现场、医疗检查等专业场所
+- **时间识别**：准确识别白天、夜晚、黄昏等时间信息
+
+识别所有重要场景，返回JSON格式：
 {{
   "scenes": [
     {{
       "scene_name": "场景名称",
-      "scene_type": "室内/室外/特殊",
-      "location": {{"type": "地点类型", "description": "地点描述"}},
-      "atmosphere": {{"mood": "情绪", "lighting": "光线"}},
-      "time_period": "时间背景",
-      "environmental_sounds": ["音效列表"]
+      "scene_type": "室内/室外/街道/医疗场所/古代/现代",
+      "location": {{
+        "type": "位置类型",
+        "description": "详细位置描述"
+      }},
+      "time_period": "白天/夜晚/黄昏/黎明",
+      "atmosphere": {{
+        "mood": "情感氛围",
+        "lighting": "照明情况",
+        "weather": "天气状况"
+      }},
+      "environmental_sounds": ["声音元素1", "声音元素2"]
     }}
   ]
 }}

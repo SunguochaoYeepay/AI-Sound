@@ -9,7 +9,7 @@ from typing import List, Optional, Dict, Any
 import json
 
 from app.database import get_db
-from app.services.storyboard_analysis_service import StoryboardAnalysisService
+from app.services.storyboard_analysis_service_v2 import StoryboardAnalysisServiceV2
 from app.models import StoryboardAnalysisSession, BaseStoryboardCard, Book, BookChapter
 from app.schemas.storyboard import (
     StoryboardSessionCreate, StoryboardSessionResponse, StoryboardSessionList,
@@ -29,7 +29,7 @@ async def create_storyboard_session(
     """
     创建新的故事板分析会话
     """
-    service = StoryboardAnalysisService(db)
+    service = StoryboardAnalysisServiceV2(db)
     
     try:
         session = await service.create_analysis_session(
@@ -60,7 +60,7 @@ def get_storyboard_sessions(
     """
     获取故事板分析会话列表
     """
-    service = StoryboardAnalysisService(db)
+    service = StoryboardAnalysisServiceV2(db)
     
     try:
         sessions = service.get_sessions(
@@ -94,7 +94,7 @@ def get_storyboard_session(session_id: int, db: Session = Depends(get_db)):
     """
     获取故事板分析会话详情
     """
-    service = StoryboardAnalysisService(db)
+    service = StoryboardAnalysisServiceV2(db)
     
     try:
         session = service.get_session(session_id)
@@ -114,7 +114,7 @@ async def start_storyboard_analysis(session_id: int, db: Session = Depends(get_d
     """
     开始故事板分析
     """
-    service = StoryboardAnalysisService(db)
+    service = StoryboardAnalysisServiceV2(db)
     
     try:
         success = await service.start_analysis(session_id)
@@ -129,6 +129,80 @@ async def start_storyboard_analysis(session_id: int, db: Session = Depends(get_d
         raise HTTPException(status_code=500, detail=f"启动分析失败: {str(e)}")
 
 
+@router.post("/sessions/{session_id}/chapters/{chapter_id}/analyze")
+async def analyze_single_chapter(
+    session_id: int, 
+    chapter_id: int, 
+    db: Session = Depends(get_db)
+):
+    """
+    分析单个章节
+    """
+    service = StoryboardAnalysisServiceV2(db)
+    
+    try:
+        # 获取会话
+        session = service.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="会话不存在")
+        
+        # 获取章节
+        chapter = db.query(BookChapter).filter(BookChapter.id == chapter_id).first()
+        if not chapter:
+            raise HTTPException(status_code=404, detail="章节不存在")
+        
+        # 检查章节是否属于该会话的书籍
+        if chapter.book_id != session.book_id:
+            raise HTTPException(status_code=400, detail="章节不属于该会话的书籍")
+        
+        # 分析单个章节
+        await service._analyze_chapter(session, chapter)
+        
+        return {
+            "message": "章节分析完成", 
+            "session_id": session_id, 
+            "chapter_id": chapter_id,
+            "chapter_title": chapter.chapter_title
+        }
+        
+    except ServiceException as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"章节分析失败: {str(e)}")
+
+
+@router.get("/sessions/{session_id}/chapters/{chapter_id}/cards")
+async def get_chapter_cards(
+    session_id: int, 
+    chapter_id: int, 
+    db: Session = Depends(get_db)
+):
+    """
+    获取章节的分析卡片
+    """
+    service = StoryboardAnalysisServiceV2(db)
+    
+    try:
+        cards = service.get_session_cards(session_id, chapter_id)
+        
+        # 按卡片类型分组
+        cards_by_type = {}
+        for card in cards:
+            if card.card_type not in cards_by_type:
+                cards_by_type[card.card_type] = []
+            cards_by_type[card.card_type].append(card.to_dict())
+        
+        return {
+            "session_id": session_id,
+            "chapter_id": chapter_id,
+            "cards": cards_by_type,
+            "total_cards": len(cards)
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取章节卡片失败: {str(e)}")
+
+
 @router.get("/sessions/{session_id}/cards", response_model=List[StoryboardCardResponse])
 def get_session_cards(
     session_id: int,
@@ -139,7 +213,7 @@ def get_session_cards(
     """
     获取会话的卡片列表
     """
-    service = StoryboardAnalysisService(db)
+    service = StoryboardAnalysisServiceV2(db)
     
     try:
         cards = service.get_session_cards(
@@ -163,7 +237,7 @@ def update_card(
     """
     更新卡片内容
     """
-    service = StoryboardAnalysisService(db)
+    service = StoryboardAnalysisServiceV2(db)
     
     try:
         card = service.update_card(card_id, card_data.content)
@@ -184,7 +258,7 @@ def confirm_card(
     """
     确认卡片
     """
-    service = StoryboardAnalysisService(db)
+    service = StoryboardAnalysisServiceV2(db)
     
     try:
         card = service.confirm_card(card_id, confirmation.confirmed_by)
@@ -205,7 +279,7 @@ def request_card_reanalysis(
     """
     请求重新分析卡片
     """
-    service = StoryboardAnalysisService(db)
+    service = StoryboardAnalysisServiceV2(db)
     
     try:
         card = service.request_card_reanalysis(card_id, reanalysis.confirmed_by)
@@ -226,7 +300,7 @@ def confirm_session(
     """
     确认分析会话
     """
-    service = StoryboardAnalysisService(db)
+    service = StoryboardAnalysisServiceV2(db)
     
     try:
         session = service.confirm_session(
@@ -246,7 +320,7 @@ def reanalyze_session(session_id: int, db: Session = Depends(get_db)):
     """
     重新分析会话
     """
-    service = StoryboardAnalysisService(db)
+    service = StoryboardAnalysisServiceV2(db)
     
     try:
         success = service.reanalyze_session(session_id)
@@ -268,7 +342,7 @@ def delete_session(session_id: int, db: Session = Depends(get_db)):
     """
     删除分析会话
     """
-    service = StoryboardAnalysisService(db)
+    service = StoryboardAnalysisServiceV2(db)
     
     try:
         success = service.delete_session(session_id)
@@ -288,7 +362,7 @@ def get_session_chapters(session_id: int, db: Session = Depends(get_db)):
     """
     获取会话的章节列表
     """
-    service = StoryboardAnalysisService(db)
+    service = StoryboardAnalysisServiceV2(db)
     
     try:
         session = service.get_session(session_id)
@@ -346,7 +420,7 @@ def get_storyboard_review_data(session_id: int, chapter_id: int, db: Session = D
     """
     获取分镜确认页面的数据
     """
-    service = StoryboardAnalysisService(db)
+    service = StoryboardAnalysisServiceV2(db)
     
     try:
         # 获取会话
@@ -407,7 +481,7 @@ def confirm_storyboard(session_id: int, chapter_id: int, db: Session = Depends(g
     """
     确认分镜
     """
-    service = StoryboardAnalysisService(db)
+    service = StoryboardAnalysisServiceV2(db)
     
     try:
         # 确认该章节的所有卡片
@@ -451,3 +525,49 @@ async def websocket_endpoint(websocket: WebSocket, session_id: int):
         logger = logging.getLogger(__name__)
         logger.error(f"WebSocket错误: {str(e)}")
         await websocket.close()
+
+# WebSocket端点
+@router.websocket("/ws/{session_id}")
+async def storyboard_websocket(websocket: WebSocket, session_id: int):
+    """
+    故事板分析WebSocket端点
+    用于实时接收分析进度更新
+    """
+    connection_id = f"storyboard_{session_id}"
+    
+    try:
+        await websocket_manager.connect(websocket, connection_id, {
+            "session_id": session_id,
+            "type": "storyboard_analysis"
+        })
+        
+        # 发送初始状态
+        await websocket.send_text(json.dumps({
+            "type": "connected",
+            "session_id": session_id,
+            "message": "WebSocket连接已建立"
+        }))
+        
+        # 保持连接直到客户端断开
+        while True:
+            try:
+                # 等待客户端消息
+                data = await websocket.receive_text()
+                message = json.loads(data)
+                
+                # 处理客户端消息
+                if message.get("type") == "ping":
+                    await websocket.send_text(json.dumps({
+                        "type": "pong",
+                        "timestamp": message.get("timestamp")
+                    }))
+                    
+            except WebSocketDisconnect:
+                break
+                
+    except WebSocketDisconnect:
+        logger.info(f"WebSocket连接断开: {connection_id}")
+    except Exception as e:
+        logger.error(f"WebSocket错误: {connection_id}, 错误: {e}")
+    finally:
+        await websocket_manager.disconnect(connection_id)

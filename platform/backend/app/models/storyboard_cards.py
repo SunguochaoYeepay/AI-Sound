@@ -200,13 +200,13 @@ class BaseStoryboardCard(Base):
             'scene_id': self.scene_id,
             'content': self.content,
             'relationships': self.relationships,
-            'confirmation_status': self.confirmation_status,
+            'confirmation_status': self.confirmation_status or 'pending',
             'confirmed_at': self.confirmed_at.isoformat() if self.confirmed_at else None,
             'confirmed_by': self.confirmed_by,
-            'reanalysis_count': self.reanalysis_count,
+            'reanalysis_count': self.reanalysis_count or 0,
             'last_reanalysis_at': self.last_reanalysis_at.isoformat() if self.last_reanalysis_at else None,
             'reanalysis_reason': self.reanalysis_reason,
-            'confidence_score': self.confidence_score,
+            'confidence_score': self.confidence_score or 0.0,
             'quality_metrics': self.quality_metrics,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
@@ -326,6 +326,22 @@ class EmotionCard(BaseStoryboardCard):
     
     __mapper_args__ = {
         'polymorphic_identity': 'emotion',
+    }
+
+
+class AudioScriptCard(BaseStoryboardCard):
+    """音频剧本卡模型"""
+    __tablename__ = 'audio_script_cards'
+    
+    id = Column(Integer, ForeignKey('storyboard_cards.id'), primary_key=True)
+    
+    # 音频剧本卡特有字段
+    script_segments = Column(JSON)  # 脚本段落
+    script_metadata = Column(JSON)  # 剧本元数据
+    quality_score = Column(Float, default=0.0)  # 质量评分
+    
+    __mapper_args__ = {
+        'polymorphic_identity': 'audio_script',
     }
 
 
