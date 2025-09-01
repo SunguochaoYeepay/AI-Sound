@@ -3,203 +3,37 @@
     <!-- 进度监控 -->
     <ProgressMonitor :session-id="sessionId" @progress-update="handleProgressUpdate" />
 
-    <!-- 章节选择器和分析控制 -->
-    <div class="chapter-selector-container">
-      <div class="chapter-controls">
-        <a-select 
-          v-model:value="selectedChapter" 
-          placeholder="选择章节" 
-          style="width: 300px;"
-          :loading="chaptersLoading"
-        >
-          <a-select-option v-for="chapter in chapters" :key="chapter.chapter_id" :value="chapter.chapter_id.toString()">
-            {{ chapter.chapter_title }}
-          </a-select-option>
-        </a-select>
-        
-        <!-- 章节分析状态和按钮 -->
-        <div class="chapter-analysis-controls" v-if="selectedChapter">
-          <div class="analysis-status">
-            <a-tag :color="getChapterAnalysisStatusColor()">
-              {{ getChapterAnalysisStatusText() }}
-            </a-tag>
-          </div>
-          
-          <!-- 分析按钮 -->
-          <a-button 
-            v-if="canAnalyzeChapter()"
-            type="primary" 
-            :loading="analyzingChapter"
-            @click="analyzeCurrentChapter"
-            size="small"
-          >
-            <template #icon>
-              <PlayCircleOutlined />
-            </template>
-            分析此章节
-          </a-button>
-          
-          <!-- 重新分析按钮 -->
-          <a-button 
-            v-if="canReanalyzeChapter()"
-            type="default" 
-            :loading="analyzingChapter"
-            @click="analyzeCurrentChapter"
-            size="small"
-          >
-            <template #icon>
-              <ReloadOutlined />
-            </template>
-            重新分析
-          </a-button>
-        </div>
-      </div>
-    </div>
+    <!-- 章节选择器 -->
+    <ChapterSelector 
+      :chapters="chapters"
+      :chapters-loading="chaptersLoading"
+      :selected-chapter="selectedChapter"
+      :current-chapter-status="currentChapterStatus"
+      :analyzing-chapter="analyzingChapter"
+      @chapter-change="handleChapterChange"
+      @analyze-chapter="analyzeCurrentChapter"
+    />
 
     <!-- 主要内容区域 -->
     <div class="content-review-layout">
       <!-- 左侧：原始文本 -->
-      <div class="original-text-panel">
-        <div class="panel-header">
-          <h3>📖 原始文本</h3>
-        </div>
-        
-        <div v-if="loading" class="loading-container">
-          <a-spin size="large" />
-          <p>加载中...</p>
-        </div>
-        <div v-else-if="chapterContent" class="text-content">
-          <div 
-            v-for="(segment, index) in textSegments" 
-            :key="index"
-            class="text-segment"
-            :class="{ 'highlighted': segment.highlighted }"
-            :data-time="getSegmentTimeRange(index)"
-            @click="highlightSegment(index)"
-          >
-            <div class="segment-header">
-              <span class="segment-index">段落 {{ index + 1 }}</span>
-              <span class="segment-time">{{ getSegmentTimeRange(index) }}</span>
-            </div>
-            <div class="segment-text">{{ segment.text }}</div>
-            <div v-if="segment.issues && segment.issues.length > 0" class="segment-issues">
-              <a-tag v-for="issue in segment.issues" :key="issue.type" :color="getIssueColor(issue.type)">
-                {{ issue.message }}
-              </a-tag>
-            </div>
-          </div>
-        </div>
-        <div v-else class="empty-content">
-          <p>暂无内容</p>
-        </div>
-      </div>
+      <OriginalTextPanel 
+        :loading="loading"
+        :chapter-content="chapterContent"
+        :text-segments="textSegments"
+        :timeline-details="timelineDetails"
+        @segment-click="handleTextSegmentClick"
+      />
 
       <!-- 右侧：剧本详情 -->
-      <div class="script-panel">
-        <div class="panel-header">
-          <h3>📝 剧本详情</h3>
-          <div class="panel-actions">
-            <a-button 
-              size="small" 
-              @click="showIssuesDrawer = true"
-              :disabled="detectedIssues.length === 0"
-            >
-              <template #icon>
-                <ExclamationCircleOutlined />
-              </template>
-              问题 ({{ detectedIssues.length }})
-            </a-button>
-          </div>
-        </div>
-
-        <div class="script-content">
-          <!-- 剧本详情 -->
-          <div class="script-details">
-            <div v-if="loading" class="loading-container">
-              <a-spin size="large" />
-              <p>加载中...</p>
-            </div>
-            <div v-else-if="scriptSegments.length > 0" class="script-segment-list">
-              <div class="script-segment" v-for="(script, index) in scriptSegments" :key="index" :class="{ 'highlighted': script.highlighted }" @click="highlightSegment(index)">
-                <div class="script-header">
-                  <div class="script-time">{{ script.startTime }}-{{ script.endTime }}s</div>
-                  <div class="script-type">
-                    <a-tag :color="script.type === 'dialogue' ? 'blue' : 'green'">
-                      {{ script.type === 'dialogue' ? '对话' : '旁白' }}
-                    </a-tag>
-                  </div>
-                </div>
-                
-                <div class="script-content-main">
-                  <!-- 说话者信息 -->
-                  <div v-if="script.speaker && script.type === 'dialogue'" class="speaker-info">
-                    <span class="speaker-label">🎭 {{ script.speaker }}</span>
-                    <span v-if="script.character_id" class="character-id">(ID: {{ script.character_id }})</span>
-                  </div>
-                  
-                  <!-- 剧本内容 -->
-                  <div class="script-text">
-                    <div class="text-content">{{ script.text }}</div>
-                  </div>
-                  
-                  <!-- 关联卡片 -->
-                  <div class="related-cards" v-if="getRelatedCards(script).length > 0">
-                    <div class="cards-header">
-                      <span class="cards-title">📋 关联卡片</span>
-                      <span class="cards-count">({{ getRelatedCards(script).length }})</span>
-                    </div>
-                    <div class="cards-list">
-                      <div 
-                        v-for="card in (getRelatedCards(script) || [])" 
-                        :key="card.type"
-                        class="card-mini"
-                        :class="`${card.type}-card`"
-                        @click.stop="openCardDrawer(card.type, script)"
-                      >
-                        {{ card.icon }} {{ card.name }}
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <!-- 音频配置 -->
-                  <div class="audio-config" v-if="showStoryboardView">
-                    <div class="config-item">
-                      <span class="config-label">🎤 语音:</span>
-                      <span class="config-value">{{ script.voice_name || '未分配' }}</span>
-                    </div>
-                    <div class="config-item" v-if="script.audioElements?.ambient_sounds">
-                      <span class="config-label">🔊 音效:</span>
-                      <div class="config-tags">
-                        <a-tag v-for="sound in script.audioElements.ambient_sounds" :key="sound" size="small" color="blue">
-                          {{ sound }}
-                        </a-tag>
-                      </div>
-                    </div>
-                    <div class="config-item" v-if="script.audioElements?.background_music">
-                      <span class="config-label">🎵 音乐:</span>
-                      <span class="config-value">{{ script.audioElements.background_music }}</span>
-                    </div>
-                  </div>
-                  
-                  <!-- 问题标记 -->
-                  <div v-if="script.issues && script.issues.length > 0" class="script-issues">
-                    <a-tag v-for="issue in script.issues" :key="issue.type" :color="getIssueColor(issue.type)" size="small">
-                      {{ issue.message }}
-                    </a-tag>
-                  </div>
-                </div>
-                
-
-              </div>
-            </div>
-            <div v-else class="empty-content">
-              <p>暂无剧本数据</p>
-            </div>
-          </div>
-
-
-        </div>
-      </div>
+      <ScriptDetailPanel 
+        :loading="loading"
+        :script-segments="scriptSegments"
+        :detected-issues="detectedIssues"
+        :review-data="reviewData"
+        @segment-click="handleScriptSegmentClick"
+        @card-click="openCardDrawer"
+      />
     </div>
 
     <!-- 卡片详情抽屉 -->
@@ -209,49 +43,18 @@
       @update:visible="cardDrawerVisible = $event"
       @update="handleCardUpdate"
     />
-
-    <!-- 问题抽屉 -->
-    <a-drawer
-      :open="showIssuesDrawer"
-      title="🔍 检测到的问题"
-      placement="right"
-      width="400"
-      :closable="true"
-      @close="showIssuesDrawer = false"
-    >
-      <div class="issues-drawer-content">
-        <div v-if="loading" class="loading-container">
-          <a-spin size="large" />
-          <p>加载中...</p>
-        </div>
-        <div v-else-if="detectedIssues.length > 0" class="issue-list">
-          <div v-for="(issue, index) in detectedIssues" :key="index" class="issue-item">
-            <div class="issue-header">
-              <a-tag :color="getIssueColor(issue.type)">{{ issue.type }}</a-tag>
-              <span class="issue-time">{{ issue.time }}</span>
-            </div>
-            <div class="issue-description">{{ issue.description }}</div>
-          </div>
-        </div>
-        <div v-else class="empty-content">
-          <p>暂无问题</p>
-        </div>
-      </div>
-    </a-drawer>
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, onMounted, watch } from 'vue'
 import { message } from 'ant-design-vue'
-import { 
-  LoadingOutlined,
-  PlayCircleOutlined,
-  ReloadOutlined,
-  ExclamationCircleOutlined
-} from '@ant-design/icons-vue'
+import { LoadingOutlined } from '@ant-design/icons-vue'
 import CardDetailDrawer from './CardDetailDrawer.vue'
 import ProgressMonitor from './ProgressMonitor.vue'
+import ChapterSelector from './ChapterSelector.vue'
+import OriginalTextPanel from './OriginalTextPanel.vue'
+import ScriptDetailPanel from './ScriptDetailPanel.vue'
 import { storyboardAPI } from '@/api/storyboard'
 
 // Props
@@ -299,14 +102,10 @@ const hasEmotionCard = ref(false)
 
 // 剧本详情
 const scriptSegments = ref([])
-const showStoryboardView = ref(false) // 控制分镜视图和剧本视图
 
 // 章节分析状态
 const analyzingChapter = ref(false)
 const currentChapterStatus = ref('pending')
-
-// 问题抽屉
-const showIssuesDrawer = ref(false)
 
 // 加载章节数据
 const loadChapterData = async (chapterId) => {
@@ -546,14 +345,7 @@ const loadChapters = async () => {
   }
 }
 
-// 监听章节选择变化
-watch(selectedChapter, (newChapterId) => {
-  if (newChapterId) {
-    loadChapterData(parseInt(newChapterId))
-    // 更新章节状态
-    updateChapterStatus()
-  }
-})
+
 
 // 监听sessionId变化，强制刷新数据
 watch(() => props.sessionId, (newSessionId) => {
@@ -573,21 +365,14 @@ onMounted(() => {
   }
 })
 
-const getSegmentTimeRange = (index) => {
-  if (!timelineDetails.value.length) return `${index * 15}-${(index + 1) * 15}`
-  
-  // 直接使用AI分析时建立的对应关系
-  const audioCard = timelineDetails.value[index]
-  if (audioCard && audioCard.text_mapping) {
-    const paragraphRange = audioCard.text_mapping.paragraph_range
-    return `${paragraphRange[0]}-${paragraphRange[1]}`
-  }
-  
-  // 如果没有对应关系，使用默认的时间范围
-  return `${index * 15}-${(index + 1) * 15}`
+// 处理文本段落点击
+const handleTextSegmentClick = (index) => {
+  // 这里可以添加文本段落点击的处理逻辑
+  console.log('点击文本段落:', index)
 }
 
-const highlightSegment = (index) => {
+// 处理剧本段落点击
+const handleScriptSegmentClick = (index) => {
   console.log('点击剧本段落:', index)
   
   // 清除所有高亮
@@ -649,6 +434,15 @@ const highlightSegment = (index) => {
   }
 }
 
+// 处理章节选择变化
+const handleChapterChange = (chapterId) => {
+  selectedChapter.value = chapterId
+  if (chapterId) {
+    loadChapterData(parseInt(chapterId))
+    updateChapterStatus()
+  }
+}
+
 
 
 const getCardTypeName = (cardType) => {
@@ -669,20 +463,6 @@ const handleCardUpdate = (updatedCard) => {
   // TODO: 重新加载数据
 }
 
-const getIssueColor = (type) => {
-  const colors = {
-    missing_speaker: 'red',
-    missing_voice: 'orange',
-    empty_content: 'purple',
-    invalid_time: 'blue',
-    timing: 'orange',
-    emotion: 'red',
-    background: 'blue',
-    quality: 'purple'
-  }
-  return colors[type] || 'default'
-}
-
 
 
 // 进度更新处理
@@ -690,34 +470,7 @@ const handleProgressUpdate = (progress, step) => {
   console.log('进度更新:', progress, step)
 }
 
-// 章节分析相关方法
-const getChapterAnalysisStatusColor = () => {
-  const statusColors = {
-    'pending': 'orange',
-    'analyzing': 'blue',
-    'completed': 'green',
-    'failed': 'red'
-  }
-  return statusColors[currentChapterStatus.value] || 'default'
-}
 
-const getChapterAnalysisStatusText = () => {
-  const statusTexts = {
-    'pending': '待分析',
-    'analyzing': '分析中',
-    'completed': '已完成',
-    'failed': '分析失败'
-  }
-  return statusTexts[currentChapterStatus.value] || '未知状态'
-}
-
-const canAnalyzeChapter = () => {
-  return currentChapterStatus.value === 'pending' || currentChapterStatus.value === 'failed'
-}
-
-const canReanalyzeChapter = () => {
-  return currentChapterStatus.value === 'completed'
-}
 
 const analyzeCurrentChapter = async () => {
   if (!selectedChapter.value || analyzingChapter.value) return
@@ -764,59 +517,7 @@ const updateChapterStatus = async () => {
   }
 }
 
-// 获取关联卡片
-const getRelatedCards = (script) => {
-  const cards = []
-  
-  // 检查是否有对应的卡片数据
-  if (!reviewData.value?.cards) return cards
-  
-  // 根据剧本内容类型和内容智能关联卡片
-  if (script.type === 'dialogue' && script.speaker) {
-    // 对话类型：关联角色卡、事件卡、情绪卡
-    if (reviewData.value.cards.character?.length > 0) {
-      cards.push({ type: 'character', name: '角色卡', icon: '🎭' })
-    }
-    if (reviewData.value.cards.event?.length > 0) {
-      cards.push({ type: 'event', name: '事件卡', icon: '📝' })
-    }
-    if (reviewData.value.cards.emotion?.length > 0) {
-      cards.push({ type: 'emotion', name: '情绪卡', icon: '💝' })
-    }
-  }
-  
-  if (script.type === 'narration') {
-    // 旁白类型：关联场景卡、故事卡
-    if (reviewData.value.cards.scene?.length > 0) {
-      cards.push({ type: 'scene', name: '场景卡', icon: '🎬' })
-    }
-    if (reviewData.value.cards.story?.length > 0) {
-      cards.push({ type: 'story', name: '故事卡', icon: '📖' })
-    }
-  }
-  
-  // 如果内容较长，可能包含更多信息，添加更多关联
-  if (script.text && script.text.length > 30) {
-    if (reviewData.value.cards.story?.length > 0 && !cards.find(c => c.type === 'story')) {
-      cards.push({ type: 'story', name: '故事卡', icon: '📖' })
-    }
-    if (reviewData.value.cards.event?.length > 0 && !cards.find(c => c.type === 'event')) {
-      cards.push({ type: 'event', name: '事件卡', icon: '📝' })
-    }
-  }
-  
-  // 音频相关卡片：根据时间范围关联
-  if (script.startTime && script.endTime) {
-    if (reviewData.value.cards.audio_storyboard?.length > 0) {
-      cards.push({ type: 'audio_storyboard', name: '音频分镜卡', icon: '🎵' })
-    }
-    if (reviewData.value.cards.audio_script?.length > 0) {
-      cards.push({ type: 'audio_script', name: '音频剧本卡', icon: '📝' })
-    }
-  }
-  
-  return cards
-}
+
 
 // 打开卡片抽屉
 const openCardDrawer = (cardType, script) => {
@@ -851,486 +552,11 @@ const openCardDrawer = (cardType, script) => {
   color: var(--text-color, #333);
 }
 
-.chapter-selector-container {
-  margin-bottom: 16px;
-  padding: 20px;
-  background: var(--card-bg, #262626);
-  border-radius: 12px;
-  box-shadow: 0 4px 16px var(--shadow-color, rgba(0,0,0,0.1));
-  border: 1px solid var(--border-color, #262626);
-}
-
-.chapter-controls {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.chapter-analysis-controls {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.analysis-status {
-  display: flex;
-  align-items: center;
-}
-
-/* 章节选择器样式（保留原有样式） */
-.selector-row {
-  display: flex;
-  gap: 16px;
-  align-items: center;
-  margin-bottom: 12px;
-}
-
-.interaction-tips {
-  padding: 8px 12px;
-  background: var(--highlight-bg, #1a1a1a);
-  border-radius: 6px;
-  font-size: 13px;
-  color: var(--text-color, #ffffff);
-  border: 1px solid var(--border-color, #404040);
-  margin-bottom: 16px;
-}
-
 .content-review-layout {
   display: flex;
   gap: 12px;
   height: calc(100vh - 200px);
 }
-
-.original-text-panel,
-.script-panel {
-  flex: 1;
-  border-radius: 12px;
-  box-shadow: 0 4px 16px var(--shadow-color, rgba(0, 0, 0, 0.1));
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.panel-header {
-  padding: 20px 24px;
-  border-bottom: 1px solid var(--border-color, #797979);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: var(--header-bg, #6b6b6b);
-  border-radius: 12px 12px 0 0;
-}
-
-.panel-header h3 {
-  margin: 0;
-  color: var(--text-color, #333);
-  font-size: 18px;
-  font-weight: 600;
-}
-
-.panel-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.text-content,
-.script-content {
-  flex: 1;
-  padding: 24px;
-  overflow-y: auto;
-  background: var(--content-bg, #262626);
-}
-
-.text-segment {
-  margin-bottom: 16px;
-  padding: 16px;
-  border: 1px solid var(--border-color, #e8e8e8);
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.3s;
-  background: var(--segment-bg, transparent);
-  color: var(--text-color, #333);
-}
-
-.text-segment:hover {
-  border-color: var(--primary-color, #1890ff);
-  background: var(--hover-bg, #f6ffed);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px var(--shadow-color, rgba(0,0,0,0.1));
-}
-
-.text-segment.highlighted {
-  border-color: var(--primary-color, #4a9eff);
-  background: var(--highlight-bg, #e6f7ff);
-  box-shadow: 0 2px 8px var(--shadow-color, rgba(0,0,0,0.1));
-  border-left: 3px solid var(--primary-color, #4a9eff);
-}
-
-.segment-header {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 8px;
-  font-size: 12px;
-  color: var(--text-secondary, #666);
-}
-
-.segment-header .segment-index {
-  font-weight: 500;
-  color: var(--primary-color, #1890ff);
-}
-
-.segment-header .segment-time {
-  font-weight: 500;
-  color: var(--primary-color, #1890ff);
-}
-
-.segment-text {
-  line-height: 1.6;
-  color: var(--text-color, #333);
-}
-
-.segment-issues {
-  margin-top: 8px;
-}
-
-.script-segment {
-  margin-bottom: 16px;
-  padding: 16px;
-  border: 1px solid var(--border-color, #e8e8e8);
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.3s;
-  background: var(--segment-bg, transparent);
-  color: var(--text-color, #333);
-}
-
-.script-segment:hover {
-  border-color: var(--primary-color, #1890ff);
-  background: var(--hover-bg, #f6ffed);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px var(--shadow-color, rgba(0,0,0,0.1));
-}
-
-.script-segment.highlighted {
-  border-color: var(--primary-color, #4a9eff) !important;
-  background: var(--highlight-bg, #e6f7ff) !important;
-  box-shadow: 0 2px 8px var(--shadow-color, rgba(0,0,0,0.1)) !important;
-  border-left: 3px solid var(--primary-color, #4a9eff) !important;
-}
-
-.script-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
-  font-size: 12px;
-  color: var(--text-secondary, #666);
-}
-
-.script-header .script-time {
-  font-weight: 500;
-  color: var(--primary-color, #1890ff);
-}
-
-.script-header .script-type {
-  font-weight: 500;
-  color: var(--primary-color, #1890ff);
-}
-
-.script-content-main {
-  margin-top: 8px;
-}
-
-.speaker-info {
-  display: flex;
-  align-items: center;
-  margin-bottom: 8px;
-  font-size: 14px;
-  color: var(--text-color, #333);
-}
-
-.speaker-label {
-  font-weight: 500;
-  color: var(--primary-color, #1890ff);
-  margin-right: 8px;
-}
-
-.speaker-name {
-  font-weight: 600;
-  color: var(--text-color, #333);
-}
-
-.character-id {
-  font-size: 12px;
-  color: var(--text-secondary, #666);
-  margin-left: 8px;
-}
-
-.script-text {
-  margin-top: 12px;
-}
-
-.text-content {
-  color: var(--text-color, #333);
-  line-height: 1.6;
-  font-size: 14px;
-  padding: 12px 16px;
-  background: var(--segment-bg, #f8f9fa);
-  border-radius: 6px;
-}
-
-
-
-.audio-config {
-  margin-top: 12px;
-  padding: 12px;
-  background: var(--primary-bg, #f0f8ff);
-  border: 1px solid var(--primary-border, rgba(24, 144, 255, 0.2));
-  border-radius: 6px;
-}
-
-.config-item {
-  display: flex;
-  align-items: center;
-  margin-bottom: 8px;
-  line-height: 1.5;
-}
-
-.config-item:last-child {
-  margin-bottom: 0;
-}
-
-.config-label {
-  font-weight: 500;
-  color: var(--primary-color, #1890ff);
-  min-width: 80px;
-  margin-right: 8px;
-}
-
-.config-value {
-  color: var(--text-color, #333);
-  flex: 1;
-}
-
-.config-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  flex: 1;
-}
-
-.config-tags .ant-tag {
-  margin: 0;
-  font-size: 12px;
-}
-
-.script-issues {
-  margin-top: 12px;
-}
-
-
-
-.timeline-details,
-.detected-issues {
-  margin-bottom: 24px;
-}
-
-.timeline-details h4,
-.detected-issues h4 {
-  margin: 0 0 16px 0;
-  color: var(--text-color, #333);
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.timeline-detail-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.detail-item {
-  display: flex;
-  gap: 12px;
-  padding: 12px;
-  background: var(--card-bg, white);
-  border-radius: 6px;
-  border-left: 4px solid var(--primary-color, #1890ff);
-  transition: all 0.3s ease;
-  cursor: pointer;
-  color: var(--text-color, #333);
-}
-
-.detail-item:hover {
-  background: var(--hover-bg, #f0f0f0);
-  transform: translateX(2px);
-}
-
-.time-range {
-  font-weight: 600;
-  color: var(--primary-color, #1890ff);
-  min-width: 60px;
-  text-align: center;
-}
-
-.detail-content {
-  flex: 1;
-}
-
-.detail-type {
-  font-weight: 500;
-  color: var(--text-secondary, #666);
-  font-size: 14px;
-  margin-bottom: 4px;
-}
-
-.detail-text {
-  color: var(--text-color, #262626);
-  font-size: 14px;
-  margin-bottom: 8px;
-}
-
-.related-cards {
-  margin-top: 12px;
-  padding: 12px;
-  background: var(--card-bg, #f8f9fa);
-  border: 1px solid var(--border-color, #e8e8e8);
-  border-radius: 6px;
-}
-
-.cards-header {
-  display: flex;
-  align-items: center;
-  margin-bottom: 8px;
-  font-size: 12px;
-  color: var(--text-secondary, #666);
-}
-
-.cards-title {
-  font-weight: 500;
-  margin-right: 4px;
-}
-
-.cards-count {
-  color: var(--primary-color, #1890ff);
-  font-weight: 500;
-}
-
-.cards-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.card-mini {
-  padding: 4px 8px;
-  border-radius: 12px;
-  font-size: 12px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  border: 1px solid var(--border-color, #e8e8e8);
-  background: var(--card-bg, white);
-  color: var(--text-color, #333);
-}
-
-.card-mini:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 2px 8px var(--shadow-color, rgba(0,0,0,0.1));
-}
-
-.card-mini.story-card {
-  background: #fff2e8;
-  color: #fa8c16;
-  border-color: #fa8c16;
-}
-
-.card-mini.character-card {
-  background: #e6f7ff;
-  color: #1890ff;
-  border-color: #1890ff;
-}
-
-.card-mini.scene-card {
-  background: #f6ffed;
-  color: #52c41a;
-  border-color: #52c41a;
-}
-
-.card-mini.event-card {
-  background: #f9f0ff;
-  color: #722ed1;
-  border-color: #722ed1;
-}
-
-.card-mini.emotion-card {
-  background: #fff0f6;
-  color: #eb2f96;
-  border-color: #eb2f96;
-}
-
-.timeline-item {
-  margin-bottom: 12px;
-  padding: 12px;
-  border: 1px solid var(--border-color, #f0f0f0);
-  border-radius: 6px;
-  background: var(--item-bg, transparent);
-  color: var(--text-color, #333);
-}
-
-.timeline-time {
-  font-size: 12px;
-  color: var(--text-secondary, #666);
-  margin-bottom: 8px;
-}
-
-.timeline-content {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.timeline-text {
-  flex: 1;
-  margin-right: 12px;
-  line-height: 1.5;
-  color: var(--text-color, #333);
-}
-
-.timeline-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.issue-item {
-  margin-bottom: 12px;
-  padding: 12px;
-  border: 1px solid var(--warning-border, #ffccc7);
-  border-radius: 6px;
-  background: var(--warning-bg, #fff2f0);
-  color: var(--text-color, #333);
-}
-
-.issue-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
-}
-
-.issue-time {
-  font-size: 12px;
-  color: var(--text-secondary, #666);
-}
-
-.issue-description {
-  margin-bottom: 8px;
-  line-height: 1.5;
-  color: var(--text-color, #333);
-}
-
-
 
 /* 深色主题变量 */
 :root {
@@ -1373,297 +599,5 @@ const openCardDrawer = (cardType, script) => {
   --highlight-bg: rgba(74, 158, 255, 0.15);
   --warning-bg: rgba(255, 77, 79, 0.08);
   --warning-border: rgba(255, 77, 79, 0.2);
-}
-
-/* 深色主题下的特殊样式覆盖 */
-[data-theme="dark"] .text-content {
-  background: var(--segment-bg, #262626) !important;
-  color: var(--text-color, #e0e0e0) !important;
-  border-left-color: var(--primary-color, #4a9eff) !important;
-}
-
-[data-theme="dark"] .script-segment {
-  background: var(--item-bg, #1a1a1a) !important;
-  border-color: var(--border-color, #333333) !important;
-  color: var(--text-color, #e0e0e0) !important;
-}
-
-[data-theme="dark"] .text-segment {
-  background: var(--item-bg, #1a1a1a) !important;
-  border-color: var(--border-color, #333333) !important;
-  color: var(--text-color, #e0e0e0) !important;
-}
-
-[data-theme="dark"] .card-mini {
-  background: var(--item-bg, #1a1a1a) !important;
-  border-color: var(--border-color, #333333) !important;
-  color: var(--text-color, #e0e0e0) !important;
-}
-
-[data-theme="dark"] .panel-header {
-  background: var(--header-bg, #262626) !important;
-  border-color: var(--border-color, #333333) !important;
-}
-
-[data-theme="dark"] .panel-content {
-  background: var(--content-bg, #1a1a1a) !important;
-}
-
-/* 滚动条样式 */
-.text-content::-webkit-scrollbar,
-.script-content::-webkit-scrollbar {
-  width: 6px;
-}
-
-.text-content::-webkit-scrollbar-track,
-.script-content::-webkit-scrollbar-track {
-  background: var(--border-color, #f1f1f1);
-  border-radius: 3px;
-}
-
-.text-content::-webkit-scrollbar-thumb,
-.script-content::-webkit-scrollbar-thumb {
-  background: var(--text-secondary, #c1c1c1);
-  border-radius: 3px;
-}
-
-.text-content::-webkit-scrollbar-thumb:hover,
-.script-content::-webkit-scrollbar-thumb:hover {
-  background: var(--text-color, #a8a8a8);
-}
-
-.loading-container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 40px;
-  color: var(--text-color, #666);
-}
-
-.empty-content {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 40px;
-  color: var(--text-color, #999);
-  font-style: italic;
-}
-
-/* 音频元素样式 */
-.audio-elements {
-  margin: 12px 0;
-  padding: 12px;
-  background: var(--primary-bg, #f0f8ff);
-  border: 1px solid var(--primary-border, rgba(24, 144, 255, 0.2));
-  border-radius: 6px;
-}
-
-.audio-element-item {
-  display: flex;
-  align-items: flex-start;
-  margin-bottom: 8px;
-  line-height: 1.5;
-}
-
-.audio-element-item:last-child {
-  margin-bottom: 0;
-}
-
-.element-label {
-  font-weight: 500;
-  color: var(--primary-color, #1890ff);
-  min-width: 80px;
-  margin-right: 8px;
-}
-
-.element-value {
-  color: var(--text-color, #333);
-  flex: 1;
-}
-
-.element-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  flex: 1;
-}
-
-.element-tags .ant-tag {
-  margin: 0;
-  font-size: 12px;
-}
-
-/* 关联卡片样式 */
-.related-cards {
-  display: flex;
-  gap: 8px;
-  margin-top: 12px;
-  flex-wrap: wrap;
-}
-
-.card-mini {
-  padding: 4px 8px;
-  border-radius: 12px;
-  font-size: 12px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  border: 1px solid var(--border-color, #e8e8e8);
-  background: var(--card-bg, white);
-  color: var(--text-color, #333);
-}
-
-.card-mini:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 2px 8px var(--shadow-color, rgba(0,0,0,0.1));
-}
-
-.card-mini.story-card {
-  background: #fff2e8;
-  color: #fa8c16;
-  border-color: #fa8c16;
-}
-
-.card-mini.character-card {
-  background: #e6f7ff;
-  color: #1890ff;
-  border-color: #1890ff;
-}
-
-.card-mini.scene-card {
-  background: #f6ffed;
-  color: #52c41a;
-  border-color: #52c41a;
-}
-
-.card-mini.event-card {
-  background: #f9f0ff;
-  color: #722ed1;
-  border-color: #722ed1;
-}
-
-.card-mini.emotion-card {
-  background: #fff0f6;
-  color: #eb2f96;
-  border-color: #eb2f96;
-}
-
-.card-mini.audio_storyboard-card {
-  background: #e6fffb;
-  color: #13c2c2;
-  border-color: #13c2c2;
-}
-
-.card-mini.audio_script-card {
-  background: #fffbe6;
-  color: #faad14;
-  border-color: #faad14;
-}
-
-/* 深色主题下的卡片颜色 */
-[data-theme="dark"] .card-mini.story-card {
-  background: rgba(250, 140, 22, 0.15);
-  color: #ffa940;
-  border-color: #ffa940;
-}
-
-[data-theme="dark"] .card-mini.character-card {
-  background: rgba(24, 144, 255, 0.15);
-  color: #69c0ff;
-  border-color: #69c0ff;
-}
-
-[data-theme="dark"] .card-mini.scene-card {
-  background: rgba(82, 196, 26, 0.15);
-  color: #95de64;
-  border-color: #95de64;
-}
-
-[data-theme="dark"] .card-mini.event-card {
-  background: rgba(114, 46, 209, 0.15);
-  color: #b37feb;
-  border-color: #b37feb;
-}
-
-[data-theme="dark"] .card-mini.emotion-card {
-  background: rgba(235, 47, 150, 0.15);
-  color: #ff85c0;
-  border-color: #ff85c0;
-}
-
-[data-theme="dark"] .card-mini.audio_storyboard-card {
-  background: rgba(19, 194, 194, 0.15);
-  color: #5cdbd3;
-  border-color: #5cdbd3;
-}
-
-[data-theme="dark"] .card-mini.audio_script-card {
-  background: rgba(250, 173, 20, 0.15);
-  color: #ffd666;
-  border-color: #ffd666;
-}
-
-/* 深色主题下的高亮样式 */
-[data-theme="dark"] .text-segment.highlighted {
-  border-color: var(--primary-color, #4a9eff) !important;
-  background: rgba(74, 158, 255, 0.1) !important;
-  box-shadow: 0 2px 8px rgba(74, 158, 255, 0.2) !important;
-  border-left: 3px solid var(--primary-color, #4a9eff) !important;
-}
-
-[data-theme="dark"] .script-segment.highlighted {
-  border-color: var(--primary-color, #4a9eff) !important;
-  background: rgba(74, 158, 255, 0.1) !important;
-  box-shadow: 0 2px 8px rgba(74, 158, 255, 0.2) !important;
-  border-left: 3px solid var(--primary-color, #4a9eff) !important;
-}
-
-/* 深色主题下的关联卡片样式 */
-[data-theme="dark"] .related-cards {
-  background: var(--card-bg, #1a1a1a) !important;
-  border-color: var(--border-color, #333333) !important;
-}
-
-[data-theme="dark"] .cards-header {
-  color: var(--text-secondary, #999999) !important;
-}
-
-[data-theme="dark"] .cards-count {
-  color: var(--primary-color, #4a9eff) !important;
-}
-
-/* 问题抽屉样式 */
-.issues-drawer-content {
-  padding: 16px 0;
-}
-
-.issues-drawer-content .issue-list {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.issues-drawer-content .issue-item {
-  padding: 12px;
-  border: 1px solid var(--border-color, #e8e8e8);
-  border-radius: 6px;
-  background: var(--card-bg, #fff);
-}
-
-.issues-drawer-content .issue-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
-}
-
-.issues-drawer-content .issue-time {
-  font-size: 12px;
-  color: var(--text-secondary, #666);
-}
-
-.issues-drawer-content .issue-description {
-  color: var(--text-color, #333);
-  line-height: 1.5;
 }
 </style>
