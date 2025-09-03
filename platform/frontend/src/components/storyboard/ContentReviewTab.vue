@@ -75,7 +75,7 @@ const emit = defineEmits(['start-analysis', 'confirm-session', 'reanalyze-sessio
 // 响应式数据
 const cardDrawerVisible = ref(false)
 const selectedCard = ref(null)
-const selectedChapter = ref('1')
+const selectedChapter = ref('')  // 不设置初始值，让loadChapters来设置
 
 // 添加章节列表数据
 const chapters = ref([])
@@ -331,9 +331,16 @@ const loadChapters = async () => {
     
     // 如果有章节数据，默认选择第一个章节
     if (chapters.value.length > 0) {
-      // 确保选择第一个实际存在的章节，而不是硬编码的"1"
-      selectedChapter.value = chapters.value[0].chapter_id.toString()
-      console.log('默认选择章节:', selectedChapter.value, chapters.value[0].chapter_title)
+      // 使用正确的字段：id 而不是 chapter_id
+      const firstChapter = chapters.value[0]
+      selectedChapter.value = (firstChapter.id || firstChapter.chapter_id || '').toString()
+      console.log('默认选择章节:', selectedChapter.value, firstChapter.chapter_title)
+      console.log('章节数据结构:', firstChapter)
+      
+      // 立即加载选中的章节数据
+      if (selectedChapter.value) {
+        await loadChapterData(parseInt(selectedChapter.value))
+      }
     } else {
       selectedChapter.value = ''
     }
@@ -350,19 +357,13 @@ const loadChapters = async () => {
 // 监听sessionId变化，强制刷新数据
 watch(() => props.sessionId, (newSessionId) => {
   if (newSessionId) {
-    loadChapters()
-    if (selectedChapter.value) {
-      loadChapterData(parseInt(selectedChapter.value))
-    }
+    loadChapters()  // loadChapters内部会处理章节数据加载
   }
 }, { immediate: true })
 
 // 组件挂载时加载数据
 onMounted(() => {
-  loadChapters()
-  if (selectedChapter.value) {
-    loadChapterData(parseInt(selectedChapter.value))
-  }
+  loadChapters()  // loadChapters内部会处理章节数据加载
 })
 
 // 处理文本段落点击

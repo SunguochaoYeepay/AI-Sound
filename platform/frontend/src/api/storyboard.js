@@ -188,7 +188,7 @@ export const storyboardAPI = {
    * @returns {Promise} 分析结果
    */
   analyzeChapter: (sessionId, chapterId) => {
-    return apiClient.post(`/storyboard/sessions/${sessionId}/analyze-chapter/${chapterId}`)
+    return apiClient.post(`/storyboard/sessions/${sessionId}/chapters/${chapterId}/analyze`)
   },
 
   /**
@@ -215,11 +215,9 @@ export const storyboardAPI = {
    * @returns {WebSocket} WebSocket实例
    */
   createWebSocket: (sessionId) => {
+    // 使用通用的WebSocket端点，让Vite代理处理连接
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const host = import.meta.env.VITE_API_BASE_URL || 'localhost:8001'
-    // 修复URL格式，移除可能的http://前缀，确保使用8001端口
-    const cleanHost = host.replace(/^https?:\/\//, '').replace(/:\d+$/, '')
-    const wsUrl = `${protocol}//${cleanHost}:8001/storyboard/ws/${sessionId}`
+    const wsUrl = `${protocol}//${window.location.host}/ws`
     console.log('WebSocket URL:', wsUrl)
     return new WebSocket(wsUrl)
   }

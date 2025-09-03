@@ -57,22 +57,31 @@ class PresetTemplates:
             "type": "analysis_params",
             "version": "1.0",
             "llm_config": {
-                "provider": "dify",
-                "model": "gpt-4",
-                "temperature": 0.7,
-                "max_tokens": 4000
+                "provider": "ollama",  # 使用本地Ollama服务
+                "model": "qwen3",  # 使用qwen3模型
+                "temperature": 0.3,  # 降低随机性，提高一致性
+                "top_p": 0.9,  # 控制输出质量
+                "max_tokens": 4000,  # 增加输出长度
+                "frequency_penalty": 0.1,  # 减少重复内容
+                "presence_penalty": 0.1,  # 鼓励多样性
+                "stop": None,  # 不设置停止词
+                "timeout": 120  # 增加超时时间
             },
             "analysis_options": {
                 "enable_character_detection": True,
                 "enable_emotion_analysis": True,
                 "enable_voice_recommendation": True,
                 "enable_dialogue_detection": True,
-                "batch_size": 5
+                "batch_size": 5,
+                "confidence_threshold": 0.9,  # 提高置信度阈值
+                "enable_cross_reference": True,  # 启用跨段落引用检查
+                "enable_consistency_check": True  # 启用一致性检查
             },
             "character_detection": {
                 "min_character_mentions": 3,
                 "dialogue_markers": ["\"", """, """, "『", "』"],
-                "narrator_keywords": ["旁白", "叙述", "描述"]
+                "narrator_keywords": ["旁白", "叙述", "描述"],
+                "confidence_threshold": 0.92  # 角色分析要求更高置信度
             }
         }
     
@@ -82,17 +91,27 @@ class PresetTemplates:
         return {
             "type": "analysis_complete",
             "version": "1.0",
-            "name": "标准分析配置",
-            "description": "包含所有分析和合成参数的完整配置",
+            "name": "优化分析配置",
+            "description": "使用qwen3模型的高精度分析配置，包含所有分析和合成参数",
             "llm_config": PresetTemplates.get_default_analysis_params()["llm_config"],
             "analysis_params": PresetTemplates.get_default_analysis_params()["analysis_options"],
             "synthesis_params": PresetTemplates.get_default_synthesis_params()["parameters"],
             "voice_mapping": PresetTemplates.get_default_voice_mapping()["mappings"],
             "processing_options": {
                 "max_retries": 3,
-                "timeout_seconds": 60,
+                "timeout_seconds": 120,  # 增加超时时间
                 "concurrent_limit": 3,
-                "enable_caching": True
+                "enable_caching": True,
+                "enable_validation": True,  # 启用结果验证
+                "enable_consistency_check": True,  # 启用一致性检查
+                "confidence_thresholds": {  # 各类型分析的置信度阈值
+                    "story": 0.95,
+                    "character": 0.92,
+                    "scene": 0.90,
+                    "event": 0.93,
+                    "emotion": 0.88,
+                    "audio_storyboard": 0.90
+                }
             }
         }
 

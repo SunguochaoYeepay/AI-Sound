@@ -2,13 +2,13 @@
   <div class="chapter-selector-container">
     <div class="chapter-controls">
       <a-select 
-        v-model:value="selectedChapter" 
+        :value="selectedChapter" 
         placeholder="选择章节" 
         style="width: 300px;"
         :loading="chaptersLoading"
         @change="handleChapterChange"
       >
-        <a-select-option v-for="chapter in chapters" :key="chapter.chapter_id" :value="chapter.chapter_id.toString()">
+        <a-select-option v-for="chapter in chapters" :key="chapter.id || chapter.chapter_id" :value="(chapter.id || chapter.chapter_id).toString()">
           {{ chapter.chapter_title }}
         </a-select-option>
       </a-select>
