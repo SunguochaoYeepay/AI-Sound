@@ -63,7 +63,7 @@
                 <template #icon>
                   <AppstoreOutlined />
                 </template>
-                6卡分析
+                段落分析
               </a-button>
             </div>
             <div class="paragraph-text">{{ paragraph.text }}</div>
@@ -159,7 +159,7 @@
     return []
   })
 
-  // 6卡分析方法
+      // 段落分析方法
   const handleSixCardAnalysis = async (segmentIndex) => {
     if (analyzingSegments.value[segmentIndex]) return
     
@@ -174,12 +174,12 @@
         key: `segment-${segmentIndex}`
       })
       
-      // 调用6卡分析API
+      // 调用段落分析API
       const response = await storyboardAPI.sixCardAnalysis(props.chapter?.id, [segmentIndex])
       
       if (response.data?.success) {
         message.success({
-          content: `✅ 段落 ${segmentIndex + 1} 6卡分析完成！`,
+          content: `✅ 段落 ${segmentIndex + 1} 段落分析完成！`,
           duration: 3,
           key: `segment-${segmentIndex}`
         })
@@ -190,15 +190,15 @@
           results: response.data.data.results
         })
         
-        console.log('6卡分析完成:', response.data)
+        console.log('段落分析完成:', response.data)
       } else {
-        throw new Error(response.data?.message || '6卡分析失败')
+                  throw new Error(response.data?.message || '段落分析失败')
       }
       
     } catch (error) {
-      console.error('6卡分析失败:', error)
+      console.error('段落分析失败:', error)
       message.error({
-        content: `❌ 段落 ${segmentIndex + 1} 6卡分析失败`,
+                  content: `❌ 段落 ${segmentIndex + 1} 段落分析失败`,
         duration: 3,
         key: `segment-${segmentIndex}`
       })

@@ -17,7 +17,7 @@
           <template #icon>
             <AppstoreOutlined />
           </template>
-          6卡分析
+                      段落分析
         </a-button>
       </div>
     </div>
@@ -86,9 +86,9 @@ const analyzeSegment = async () => {
 
   analyzing.value = true
   try {
-    console.log('开始对段落进行6卡分析:', props.script.id || props.script.segment_id)
+          console.log('开始对段落进行段落分析:', props.script.id || props.script.segment_id)
 
-    // 发送6卡分析事件，包含段落信息
+          // 发送段落分析事件，包含段落信息
     emit('six-card-analysis', {
       segment: props.script,
       segmentIndex: props.script.id || props.script.segment_id
@@ -96,12 +96,12 @@ const analyzeSegment = async () => {
 
     // 模拟分析过程
     setTimeout(() => {
-      console.log('单个段落6卡分析完成')
+              console.log('单个段落段落分析完成')
       analyzing.value = false
     }, 2000)
 
   } catch (error) {
-    console.error('6卡分析失败:', error)
+          console.error('段落分析失败:', error)
     analyzing.value = false
   }
 }

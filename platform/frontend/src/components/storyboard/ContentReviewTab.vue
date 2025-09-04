@@ -100,11 +100,11 @@ const scriptSegments = ref([])
 const analyzingChapter = ref(false)
 const currentChapterStatus = ref('pending')
 
-// 6卡分析结果
+// 段落分析结果
 const sixCardResults = ref(null)
 const selectedSegmentIndex = ref(null)
 
-// 处理6卡分析结果
+// 处理段落分析结果
 const handleSixCardAnalysis = (data) => {
   selectedSegmentIndex.value = data.segmentIndex
   
@@ -133,8 +133,8 @@ const handleSixCardAnalysis = (data) => {
   }
   
   // 显示分析结果在右侧面板
-  console.log('收到6卡分析结果:', data)
-  console.log('当前所有6卡分析结果:', sixCardResults.value)
+  console.log('收到段落分析结果:', data)
+  console.log('当前所有段落分析结果:', sixCardResults.value)
 }
 
 // 加载章节数据
@@ -275,7 +275,7 @@ const loadChapterData = async (chapterId) => {
     const hasScriptCards = (response.data.cards?.audio_script || []).length > 0
     currentChapterStatus.value = hasScriptCards ? 'completed' : 'pending'
     
-    // 加载已保存的6卡分析结果
+    // 加载已保存的段落分析结果
     await loadSixCardResults(chapterId)
     
   } catch (error) {
@@ -286,30 +286,30 @@ const loadChapterData = async (chapterId) => {
   }
 }
 
-// 加载已保存的6卡分析结果
+  // 加载已保存的段落分析结果
 const loadSixCardResults = async (chapterId) => {
   if (!chapterId) return
   
   try {
-    console.log('开始加载已保存的6卡分析结果:', chapterId)
+    console.log('开始加载已保存的段落分析结果:', chapterId)
     
     const response = await storyboardAPI.getSixCardResults(chapterId)
     
     if (response.data?.success && response.data.data.has_results) {
       sixCardResults.value = response.data.data.results
-      console.log('已保存的6卡分析结果加载成功:', sixCardResults.value)
+      console.log('已保存的段落分析结果加载成功:', sixCardResults.value)
       
       // 如果有结果，默认选择第一个段落
       if (sixCardResults.value.length > 0) {
         selectedSegmentIndex.value = 0
       }
     } else {
-      console.log('暂无已保存的6卡分析结果，响应数据:', response.data)
+      console.log('暂无已保存的段落分析结果，响应数据:', response.data)
       sixCardResults.value = []
       selectedSegmentIndex.value = null
     }
   } catch (error) {
-    console.error('加载6卡分析结果失败:', error)
+    console.error('加载段落分析结果失败:', error)
     // 不显示错误消息，因为可能只是没有结果
   }
 }

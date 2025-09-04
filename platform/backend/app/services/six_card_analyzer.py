@@ -32,13 +32,26 @@ class SixCardAnalyzer:
 
 任务：分析以下小说段落，生成6类卡片的JSON结构。
 
+【重要要求】
+1. 角色识别必须完整：包括所有提到的角色，无论是否说话，包括群众、路人、背景角色等
+2. 必须识别旁白/叙述内容：如果段落包含旁白叙述，要单独提取出来
+3. 角色分类要准确：区分主角、配角、背景角色、群众等不同层级
+4. 环境描述要详细：包括所有感官元素（视觉、听觉、触觉、嗅觉等）
+
 【6类卡片说明】
 1. 故事卡(story_card): 该段落的核心情节和主题
-2. 角色卡(character_card): 该段落中角色的具体表现和对话
+2. 角色卡(character_card): 该段落中所有角色的表现，包括旁白
 3. 场景卡(scene_card): 该段落的场景描述和环境元素
 4. 事件卡(event_card): 该段落的具体事件和动作
 5. 情绪卡(emotion_card): 该段落的情感变化和氛围
 6. 音频剧本卡(audio_script_card): 该段落的音频制作指导
+
+【角色识别特别说明】
+- 主角：有明确对话和行动的主要角色
+- 配角：有对话或重要行动的支持角色
+- 背景角色：被提及但无对话的角色（如"群众"、"路人"、"商贩"等）
+- 旁白/叙述者：负责描述场景、心理活动、背景信息的叙述声音
+- 集体角色：如"人群"、"士兵们"、"孩子们"等群体
 
 【返回格式】
 请返回严格的JSON格式，包含以下结构：
@@ -54,22 +67,32 @@ class SixCardAnalyzer:
     "characters": [
       {
         "name": "角色名",
-        "actions": "角色行为",
-        "dialogue": "角色对话",
-        "emotions": "角色情感"
+        "role_type": "主角/配角/背景角色/旁白/集体角色",
+        "actions": "角色行为描述",
+        "dialogue": ["具体对话内容"],
+        "emotions": ["情感状态"],
+        "description": "角色特征描述"
       }
-    ]
+    ],
+    "narrator": {
+      "type": "旁白/叙述者",
+      "content": "旁白叙述内容",
+      "tone": "叙述语调"
+    }
   },
   "scene_card": {
-    "location": "地点",
-    "time": "时间",
-    "atmosphere": "氛围",
-    "environment_sounds": ["环境音效1", "环境音效2"]
+    "location": "具体地点",
+    "time": "时间描述",
+    "atmosphere": "整体氛围",
+    "environment_sounds": ["环境音效1", "环境音效2"],
+    "visual_elements": ["视觉元素1", "视觉元素2"],
+    "sensory_details": ["触觉/嗅觉等其他感官细节"]
   },
   "event_card": {
     "main_event": "主要事件",
     "sub_events": ["子事件1", "子事件2"],
-    "significance": "事件重要性"
+    "significance": "事件重要性",
+    "causality": "因果关系"
   },
   "emotion_card": {
     "overall_tone": "整体情感基调",
@@ -79,16 +102,25 @@ class SixCardAnalyzer:
         "to": "结束情感",
         "trigger": "触发因素"
       }
-    ]
+    ],
+    "emotional_intensity": "情感强度"
   },
   "audio_script_card": {
     "voice_direction": "语音指导",
     "pacing": "节奏控制",
     "background_music": "背景音乐建议",
-    "sound_effects": ["音效1", "音效2"]
+    "sound_effects": ["音效1", "音效2"],
+    "voice_characteristics": "声音特征要求"
   }
 }
 ```
+
+【分析注意事项】
+1. 仔细阅读每个句子，不要遗漏任何角色
+2. 区分直接对话和旁白叙述
+3. 注意环境描述的细节
+4. 情感分析要准确反映段落的情感变化
+5. 音频指导要具体且可操作
 
 请分析以下段落："""
 
@@ -157,31 +189,43 @@ class SixCardAnalyzer:
             "character_card": {
                 "characters": [{
                     "name": "未识别角色",
+                    "role_type": "背景角色",
                     "actions": "基本行为",
-                    "dialogue": "",
-                    "emotions": "中性"
-                }]
+                    "dialogue": [],
+                    "emotions": ["中性"],
+                    "description": "角色描述缺失"
+                }],
+                "narrator": {
+                    "type": "旁白",
+                    "content": "段落叙述内容",
+                    "tone": "中性语调"
+                }
             },
             "scene_card": {
                 "location": "未指定",
                 "time": "未知时间",
                 "atmosphere": "中性",
-                "environment_sounds": []
+                "environment_sounds": [],
+                "visual_elements": [],
+                "sensory_details": []
             },
             "event_card": {
                 "main_event": "段落事件",
                 "sub_events": [],
-                "significance": "中等"
+                "significance": "中等",
+                "causality": "因果关系不明"
             },
             "emotion_card": {
                 "overall_tone": "中性",
-                "emotion_changes": []
+                "emotion_changes": [],
+                "emotional_intensity": "中等"
             },
             "audio_script_card": {
                 "voice_direction": "正常语调",
                 "pacing": "标准节奏",
                 "background_music": "轻音乐",
-                "sound_effects": []
+                "sound_effects": [],
+                "voice_characteristics": "标准声音"
             },
             "_metadata": {
                 "segment_index": segment_index,

@@ -12,7 +12,7 @@
           <template #icon>
             <AppstoreOutlined />
           </template>
-          6卡分析 (全部)
+                     段落分析 (全部)
         </a-button>
 
         
@@ -39,9 +39,9 @@
           />
         </div>
         
-        <!-- 6卡分析结果展示 -->
+        <!-- 段落分析结果展示 -->
         <div v-if="sixCardResults && sixCardResults.length > 0" class="six-card-results">
-          <h4>🎯 6卡分析结果</h4>
+          <h4>🎯 段落分析结果</h4>
           <div class="card-results">
             <div 
               v-for="(result, index) in sixCardResults" 
@@ -222,13 +222,13 @@ const analyzeAllSegments = async () => {
                       props.reviewData.segmentation_data.segments.length > 0)
   
   if (!hasSegments) {
-    message.warning('请先进行智能分段，然后再进行6卡分析')
+    message.warning('请先进行智能分段，然后再进行段落分析')
     return
   }
 
   analyzingAll.value = true
   try {
-    console.log('开始对所有段落进行6卡分析...')
+          console.log('开始对所有段落进行段落分析...')
     
     // 获取段落数量（优先使用智能分段数据）
     const segmentCount = props.reviewData?.segmentation_data?.segments?.length || props.scriptSegments.length
@@ -236,29 +236,29 @@ const analyzeAllSegments = async () => {
 
     // 显示长时间操作提示
     message.info({
-      content: `正在对 ${segmentCount} 个段落进行6卡分析，这可能需要几分钟，请耐心等待...`,
+              content: `正在对 ${segmentCount} 个段落进行段落分析，这可能需要几分钟，请耐心等待...`,
       duration: 5,
       key: 'six-card-analysis'
     })
 
-    // 调用6卡分析API
+          // 调用段落分析API
     try {
       const response = await storyboardAPI.sixCardAnalysis(props.chapter?.id)
 
       if (response.data?.success) {
         message.success({
-          content: `🎉 6卡分析完成！共分析 ${response.data.data.analyzed_segments} 个段落`,
+          content: `🎉 段落分析完成！共分析 ${response.data.data.analyzed_segments} 个段落`,
           duration: 5,
           key: 'six-card-analysis'
         })
-        console.log('6卡分析完成:', response.data)
+        console.log('段落分析完成:', response.data)
       } else {
-        throw new Error(response.data?.message || '6卡分析失败')
+        throw new Error(response.data?.message || '段落分析失败')
       }
     } catch (apiError) {
-      console.error('6卡分析API调用失败:', apiError)
+              console.error('段落分析API调用失败:', apiError)
       message.error({
-        content: `❌ 6卡分析失败: ${apiError.message || '未知错误'}`,
+                  content: `❌ 段落分析失败: ${apiError.message || '未知错误'}`,
         duration: 5,
         key: 'six-card-analysis'
       })
@@ -267,9 +267,9 @@ const analyzeAllSegments = async () => {
     analyzingAll.value = false
 
   } catch (error) {
-    console.error('6卡分析失败:', error)
+    console.error('段落分析失败:', error)
     message.error({
-      content: `❌ 6卡分析失败: ${error.message || '未知错误'}`,
+              content: `❌ 段落分析失败: ${error.message || '未知错误'}`,
       duration: 5,
       key: 'six-card-analysis'
     })
@@ -278,7 +278,7 @@ const analyzeAllSegments = async () => {
 }
 
 const handleSegmentAnalysis = async (data) => {
-  console.log('收到单个段落6卡分析请求:', data.segmentIndex)
+      console.log('收到单个段落段落分析请求:', data.segmentIndex)
   try {
     // 显示分析提示
     message.info({
@@ -287,24 +287,24 @@ const handleSegmentAnalysis = async (data) => {
       key: `segment-${data.segmentIndex}`
     })
 
-    // 调用单个段落的6卡分析API
+          // 调用单个段落的段落分析API
     const response = await storyboardAPI.sixCardAnalysis(props.chapter?.id, [data.segmentIndex])
 
     if (response.data?.success) {
       message.success({
-        content: `✅ 段落 ${data.segmentIndex + 1} 6卡分析完成！`,
+        content: `✅ 段落 ${data.segmentIndex + 1} 段落分析完成！`,
         duration: 3,
         key: `segment-${data.segmentIndex}`
       })
-      console.log('单个段落6卡分析完成:', data.segmentIndex, response.data)
+              console.log('单个段落段落分析完成:', data.segmentIndex, response.data)
     } else {
-      throw new Error(response.data?.message || '6卡分析失败')
+              throw new Error(response.data?.message || '段落分析失败')
     }
 
   } catch (error) {
-    console.error('单个段落6卡分析失败:', error)
+    console.error('单个段落段落分析失败:', error)
     message.error({
-      content: `❌ 段落 ${data.segmentIndex + 1} 6卡分析失败`,
+              content: `❌ 段落 ${data.segmentIndex + 1} 段落分析失败`,
       duration: 3,
       key: `segment-${data.segmentIndex}`
     })
@@ -544,7 +544,7 @@ const getIssueColor = (type) => {
     text-align: justify;
   }
 
-  /* 6卡分析结果样式 */
+  /* 段落分析结果样式 */
   .six-card-results {
     margin-bottom: 24px;
     padding: 20px;

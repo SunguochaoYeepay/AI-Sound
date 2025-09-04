@@ -2,6 +2,19 @@
   <div class="original-text-panel">
     <div class="panel-header">
       <h3>📖 原始文本</h3>
+      <div class="panel-actions">
+        <a-button
+          type="primary"
+          size="small"
+          @click="handleAnalyzeAllSegments"
+          :loading="analyzingAll"
+        >
+          <template #icon>
+            <AppstoreOutlined />
+          </template>
+          段落分析（全部）
+        </a-button>
+      </div>
     </div>
     
     <div v-if="loading" class="loading-container">
@@ -31,7 +44,7 @@
             <template #icon>
               <AppstoreOutlined />
             </template>
-            6卡分析
+            段落分析
           </a-button>
         </div>
         <div class="segment-text">{{ segment.text }}</div>
@@ -83,6 +96,7 @@ const emit = defineEmits(['segment-click', 'six-card-analysis'])
 
 // Reactive data
 const analyzingSegments = ref({})
+const analyzingAll = ref(false)
 
 // Methods
 const handleSegmentClick = (index) => {
@@ -103,12 +117,12 @@ const handleSixCardAnalysis = async (segmentIndex) => {
       key: `segment-${segmentIndex}`
     })
     
-    // 调用6卡分析API
+          // 调用段落分析API
     const response = await storyboardAPI.sixCardAnalysis(props.chapter?.id, [segmentIndex])
     
     if (response.data?.success) {
       message.success({
-        content: `✅ 段落 ${segmentIndex + 1} 6卡分析完成！`,
+        content: `✅ 段落 ${segmentIndex + 1} 段落分析完成！`,
         duration: 3,
         key: `segment-${segmentIndex}`
       })
@@ -119,20 +133,67 @@ const handleSixCardAnalysis = async (segmentIndex) => {
         results: response.data.data.results
       })
       
-      console.log('6卡分析完成:', response.data)
+              console.log('段落分析完成:', response.data)
     } else {
-      throw new Error(response.data?.message || '6卡分析失败')
+              throw new Error(response.data?.message || '段落分析失败')
     }
     
   } catch (error) {
-    console.error('6卡分析失败:', error)
+          console.error('段落分析失败:', error)
     message.error({
-      content: `❌ 段落 ${segmentIndex + 1} 6卡分析失败`,
+              content: `❌ 段落 ${segmentIndex + 1} 段落分析失败`,
       duration: 3,
       key: `segment-${segmentIndex}`
     })
   } finally {
     analyzingSegments.value[segmentIndex] = false
+  }
+}
+
+const handleAnalyzeAllSegments = async () => {
+  if (analyzingAll.value) return
+  
+  analyzingAll.value = true
+  try {
+    console.log('开始批量分析所有段落...')
+    
+    // 显示分析提示
+    message.info({
+      content: '正在批量分析所有段落，请稍候...',
+      duration: 3,
+      key: 'all-segments'
+    })
+    
+          // 调用批量段落分析API
+    const response = await storyboardAPI.sixCardAnalysis(props.chapter?.id, Array.from({ length: props.textSegments.length }, (_, i) => i))
+    
+    if (response.data?.success) {
+      message.success({
+        content: `✅ 所有段落批量段落分析完成！`,
+        duration: 3,
+        key: 'all-segments'
+      })
+      
+      // 触发事件，让父组件显示分析结果
+      emit('six-card-analysis', {
+        segmentIndex: -1, // 表示是批量分析
+        results: response.data.data.results
+      })
+      
+              console.log('批量段落分析完成:', response.data)
+    } else {
+              throw new Error(response.data?.message || '批量段落分析失败')
+    }
+    
+  } catch (error) {
+          console.error('批量段落分析失败:', error)
+    message.error({
+              content: `❌ 所有段落批量段落分析失败`,
+      duration: 3,
+      key: 'all-segments'
+    })
+  } finally {
+    analyzingAll.value = false
   }
 }
 
@@ -193,6 +254,11 @@ const getIssueColor = (type) => {
   color: var(--text-color, #333);
   font-size: 18px;
   font-weight: 600;
+}
+
+.panel-actions {
+  display: flex;
+  gap: 8px;
 }
 
 .text-content {
