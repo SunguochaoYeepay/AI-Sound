@@ -25,12 +25,19 @@ class SixCardAnalyzer:
         
         # 6卡分析提示词
         self.analysis_prompt = self._build_analysis_prompt()
+        
+        # 导入段落剧本生成器
+        try:
+            from app.services.paragraph_script_generator import ParagraphScriptGenerator
+            self.script_generator = ParagraphScriptGenerator()
+            logger.info("段落剧本生成器初始化成功")
+        except ImportError as e:
+            logger.warning(f"段落剧本生成器导入失败: {e}")
+            self.script_generator = None
     
     def _build_analysis_prompt(self) -> str:
         """构建6卡分析提示词"""
-        return """你是一个专业的小说分析师，专门负责将小说段落转换为6类结构化卡片。
-
-任务：分析以下小说段落，生成6类卡片的JSON结构。
+        return """任务：分析以下小说段落，生成6类卡片的JSON结构。
 
 【重要要求】
 1. 角色识别必须完整：包括所有提到的角色，无论是否说话，包括群众、路人、背景角色等
@@ -69,14 +76,14 @@ class SixCardAnalyzer:
         "name": "角色名",
         "role_type": "主角/配角/背景角色/旁白/集体角色",
         "actions": "角色行为描述",
-        "dialogue": ["具体对话内容"],
+        "dialogue": ["该角色在段落中说的具体对话内容，必须是原文中的具体文字，不是描述"],
         "emotions": ["情感状态"],
         "description": "角色特征描述"
       }
     ],
     "narrator": {
       "type": "旁白/叙述者",
-      "content": "旁白叙述内容",
+      "content": "该段落中旁白/叙述者要说的具体文本内容（必须是原文中的具体文字，不是描述性总结）",
       "tone": "叙述语调"
     }
   },
@@ -91,7 +98,7 @@ class SixCardAnalyzer:
   "event_card": {
     "main_event": "主要事件",
     "sub_events": ["子事件1", "子事件2"],
-    "significance": "事件重要性",
+    "significance": "关键转折/日常对话/战斗场景",
     "causality": "因果关系"
   },
   "emotion_card": {
@@ -103,7 +110,8 @@ class SixCardAnalyzer:
         "trigger": "触发因素"
       }
     ],
-    "emotional_intensity": "情感强度"
+    "emotional_intensity": 8,
+    "primary_emotion": "紧张"
   },
   "audio_script_card": {
     "voice_direction": "语音指导",
@@ -121,6 +129,10 @@ class SixCardAnalyzer:
 3. 注意环境描述的细节
 4. 情感分析要准确反映段落的情感变化
 5. 音频指导要具体且可操作
+6. 【重要】角色对话必须是原文中的具体文字，不是描述性总结
+7. 【重要】旁白内容必须是原文中的具体叙述文字，不是描述性总结
+8. 如果角色没有直接对话，dialogue字段为空数组[]
+9. 如果段落主要是叙述，将整个段落作为旁白内容
 
 请分析以下段落："""
 
@@ -136,7 +148,7 @@ class SixCardAnalyzer:
             # 验证返回结果
             if not self._validate_six_cards(response):
                 logger.warning(f"段落 {segment_index} 6卡分析结果验证失败")
-                return self._create_fallback_cards(segment_text, segment_index)
+                response = self._create_fallback_cards(segment_text, segment_index)
             
             # 添加元数据
             response["_metadata"] = {
@@ -146,12 +158,36 @@ class SixCardAnalyzer:
                 "model_used": "qwen3:8b"
             }
             
+            # 🔥 新增：生成段落剧本（synthesis_json）
+            if self.script_generator:
+                try:
+                    paragraph_id = f"paragraph_{segment_index}"
+                    paragraph_script = self.script_generator.generate_paragraph_script(
+                        segment_text, response, paragraph_id
+                    )
+                    
+                    # 将synthesis_json添加到6卡分析结果中
+                    response["synthesis_json"] = paragraph_script["synthesis_json"]
+                    response["paragraph_script"] = paragraph_script
+                    
+                    logger.info(f"段落 {segment_index} 剧本生成成功，包含 {len(paragraph_script['synthesis_json']['synthesis_plan'])} 个segment")
+                except Exception as e:
+                    logger.error(f"段落 {segment_index} 剧本生成失败: {str(e)}")
+                    # 创建基础的synthesis_json作为fallback
+                    response["synthesis_json"] = self._create_fallback_synthesis_json(segment_text, segment_index)
+            else:
+                logger.warning("段落剧本生成器未初始化，使用fallback synthesis_json")
+                response["synthesis_json"] = self._create_fallback_synthesis_json(segment_text, segment_index)
+            
             logger.info(f"段落 {segment_index} 6卡分析完成")
             return response
             
         except Exception as e:
             logger.error(f"段落 {segment_index} 6卡分析失败: {str(e)}")
-            return self._create_fallback_cards(segment_text, segment_index)
+            fallback_result = self._create_fallback_cards(segment_text, segment_index)
+            # 为fallback结果也添加synthesis_json
+            fallback_result["synthesis_json"] = self._create_fallback_synthesis_json(segment_text, segment_index)
+            return fallback_result
 
     async def analyze_segments(self, segments: List[str]) -> List[Dict[str, Any]]:
         """分析所有段落，生成6卡数据列表"""
@@ -212,26 +248,62 @@ class SixCardAnalyzer:
             "event_card": {
                 "main_event": "段落事件",
                 "sub_events": [],
-                "significance": "中等",
+                "significance": "日常对话",
                 "causality": "因果关系不明"
             },
             "emotion_card": {
                 "overall_tone": "中性",
                 "emotion_changes": [],
-                "emotional_intensity": "中等"
+                "emotional_intensity": 5,
+                "primary_emotion": "平静"
             },
             "audio_script_card": {
-                "voice_direction": "正常语调",
-                "pacing": "标准节奏",
-                "background_music": "轻音乐",
+                "voice_direction": "标准语音",
+                "pacing": "正常节奏",
+                "background_music": "无",
                 "sound_effects": [],
-                "voice_characteristics": "标准声音"
-            },
-            "_metadata": {
-                "segment_index": segment_index,
-                "segment_text": segment_text,
-                "analysis_time": datetime.utcnow().isoformat(),
-                "model_used": "fallback",
-                "is_fallback": True
+                "voice_characteristics": "标准音色"
             }
+        }
+    
+    def _create_fallback_synthesis_json(self, segment_text: str, segment_index: int) -> Dict[str, Any]:
+        """创建基础的synthesis_json作为fallback"""
+        word_count = len(segment_text.strip())
+        duration_seconds = round(word_count / 200 * 60 / 60, 2)  # 200字/分钟
+        
+        return {
+            "project_info": {
+                "novel_type": "智能检测",
+                "total_segments": 1,
+                "ai_model": "paragraph-6card-analysis-fallback",
+                "paragraph_id": f"paragraph_{segment_index}",
+                "analysis_time": datetime.utcnow().isoformat()
+            },
+            "synthesis_plan": [
+                {
+                    "segment_id": 1,
+                    "text": segment_text.strip(),
+                    "speaker": "旁白",
+                    "character_id": "narrator_001",
+                    "voice_name": "旁白语音",
+                    "parameters": {
+                        "timeStep": 30,
+                        "pWeight": 1.3,
+                        "tWeight": 2.8,
+                        "dur_alpha": 1.0,
+                        "dur_disturb": 0.05
+                    },
+                    "start_time": 0,
+                    "end_time": duration_seconds,
+                    "word_count": word_count,
+                    "duration_seconds": duration_seconds
+                }
+            ],
+            "characters": [
+                {
+                    "name": "旁白",
+                    "character_id": "narrator_001",
+                    "voice_name": "旁白语音"
+                }
+            ]
         }

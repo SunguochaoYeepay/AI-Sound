@@ -117,6 +117,63 @@
                   <p><strong>音效:</strong> {{ Array.isArray(result.audio_script_card?.sound_effects) ? result.audio_script_card.sound_effects.join(', ') : result.audio_script_card?.sound_effects || '无' }}</p>
                 </div>
               </div>
+              
+              <!-- 音频分镜卡 -->
+              <div class="card-section">
+                <h5>🎬 音频分镜卡</h5>
+                <div class="card-content">
+                  <!-- 时间轴信息 -->
+                  <div v-if="result.audio_storyboard_card?.timeline" class="timeline-info">
+                    <p><strong>⏱️ 总时长:</strong> {{ result.audio_storyboard_card.timeline.total_duration }} 秒</p>
+                    <p><strong>📊 分段数:</strong> {{ result.audio_storyboard_card.timeline.segments?.length || 0 }}</p>
+                    <div v-if="result.audio_storyboard_card.timeline.segments" class="timeline-segments">
+                      <p><strong>时间轴详情:</strong></p>
+                      <div v-for="(segment, segIndex) in result.audio_storyboard_card.timeline.segments" :key="segIndex" class="timeline-segment">
+                        <span class="segment-time">{{ segment.start_time }}-{{ segment.end_time }}s</span>
+                        <span class="segment-speaker">{{ segment.speaker }}</span>
+                        <span class="segment-emotion">{{ segment.emotion }}</span>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <!-- 音轨配置 -->
+                  <div v-if="result.audio_storyboard_card?.audio_tracks" class="audio-tracks-info">
+                    <p><strong>🎵 音轨配置:</strong></p>
+                    <div v-for="(track, trackName) in result.audio_storyboard_card.audio_tracks" :key="trackName" class="audio-track">
+                      <span class="track-name">{{ track.name }}</span>
+                      <span class="track-priority">优先级: {{ track.priority }}</span>
+                      <span class="track-volume">音量: {{ track.volume }}%</span>
+                    </div>
+                  </div>
+                  
+                  <!-- 角色语音配置 -->
+                  <div v-if="result.audio_storyboard_card?.voice_assignments?.characters" class="voice-assignments-info">
+                    <p><strong>🎤 角色语音:</strong></p>
+                    <div v-for="(char, charIndex) in result.audio_storyboard_card.voice_assignments.characters" :key="charIndex" class="voice-character">
+                      <span class="char-name">{{ char.name }}</span>
+                      <span class="char-role">{{ char.role_type }}</span>
+                      <span class="char-voice">{{ char.voice_name }}</span>
+                    </div>
+                  </div>
+                  
+                  <!-- 背景音乐 -->
+                  <div v-if="result.audio_storyboard_card?.background_music" class="background-music-info">
+                    <p><strong>🎼 背景音乐:</strong></p>
+                    <p>类型: {{ result.audio_storyboard_card.background_music.type }}</p>
+                    <p>情绪: {{ result.audio_storyboard_card.background_music.mood }}</p>
+                    <p>节奏: {{ result.audio_storyboard_card.background_music.tempo }}</p>
+                    <p>音量: {{ result.audio_storyboard_card.background_music.volume }}%</p>
+                  </div>
+                  
+                  <!-- 混音参数 -->
+                  <div v-if="result.audio_storyboard_card?.mixing_parameters" class="mixing-params-info">
+                    <p><strong>🎚️ 混音参数:</strong></p>
+                    <p>主音量: {{ result.audio_storyboard_card.mixing_parameters.main_volume }}%</p>
+                    <p>背景音量: {{ result.audio_storyboard_card.mixing_parameters.background_volume }}%</p>
+                    <p>环境音量: {{ result.audio_storyboard_card.mixing_parameters.environment_volume }}%</p>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -354,7 +411,7 @@ const getRelatedCards = (script) => {
   // 音频相关卡片：根据时间范围关联
   if (script.startTime && script.endTime) {
     if (props.reviewData.cards.audio_storyboard?.length > 0) {
-      cards.push({ type: 'audio_storyboard', name: '音频分镜卡', icon: '🎵' })
+      cards.push({ type: 'audio_storyboard', name: '音频分镜卡', icon: '🎬' })
     }
     if (props.reviewData.cards.audio_script?.length > 0) {
       cards.push({ type: 'audio_script', name: '音频剧本卡', icon: '📝' })
@@ -610,6 +667,102 @@ const getIssueColor = (type) => {
     color: var(--text-color, #000);
   }
 
+/* 音频分镜卡样式 */
+.timeline-info {
+  margin-bottom: 16px;
+}
+
+.timeline-segments {
+  margin-top: 8px;
+}
+
+.timeline-segment {
+  display: flex;
+  gap: 12px;
+  margin: 4px 0;
+  padding: 4px 8px;
+  background: var(--segment-bg, #f5f5f5);
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.segment-time {
+  color: var(--time-color, #1890ff);
+  font-weight: 500;
+}
+
+.segment-speaker {
+  color: var(--speaker-color, #52c41a);
+  font-weight: 500;
+}
+
+.segment-emotion {
+  color: var(--emotion-color, #eb2f96);
+  font-weight: 500;
+}
+
+.audio-tracks-info {
+  margin-bottom: 16px;
+}
+
+.audio-track {
+  display: flex;
+  gap: 12px;
+  margin: 4px 0;
+  padding: 4px 8px;
+  background: var(--track-bg, #f0f8ff);
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.track-name {
+  color: var(--track-name-color, #1890ff);
+  font-weight: 500;
+}
+
+.track-priority {
+  color: var(--priority-color, #fa8c16);
+}
+
+.track-volume {
+  color: var(--volume-color, #52c41a);
+}
+
+.voice-assignments-info {
+  margin-bottom: 16px;
+}
+
+.voice-character {
+  display: flex;
+  gap: 12px;
+  margin: 4px 0;
+  padding: 4px 8px;
+  background: var(--voice-bg, #fff7e6);
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.char-name {
+  color: var(--char-name-color, #1890ff);
+  font-weight: 500;
+}
+
+.char-role {
+  color: var(--role-color, #722ed1);
+}
+
+.char-voice {
+  color: var(--voice-color, #52c41a);
+}
+
+.background-music-info {
+  margin-bottom: 16px;
+}
+
+.mixing-params-info {
+  margin-bottom: 16px;
+}
+
 /* 深色主题下的特殊样式覆盖 */
 [data-theme="dark"] .panel-header {
   background: var(--header-bg, #262626) !important;
@@ -648,5 +801,18 @@ const getIssueColor = (type) => {
 
 [data-theme="dark"] .card-section h5 {
   color: var(--text-color, #e0e0e0) !important;
+}
+
+/* 暗色主题适配 */
+[data-theme="dark"] .timeline-segment {
+  background: var(--segment-bg, #1f1f1f);
+}
+
+[data-theme="dark"] .audio-track {
+  background: var(--track-bg, #1a1a2e);
+}
+
+[data-theme="dark"] .voice-character {
+  background: var(--voice-bg, #2a1a0a);
 }
 </style>
