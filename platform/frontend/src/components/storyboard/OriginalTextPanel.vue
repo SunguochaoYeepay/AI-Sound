@@ -92,7 +92,7 @@ const props = defineProps({
 })
 
 // Emits
-const emit = defineEmits(['segment-click', 'six-card-analysis'])
+const emit = defineEmits(['segment-click', 'six-card-analysis', 'text-segment-click'])
 
 // Reactive data
 const analyzingSegments = ref({})
@@ -101,6 +101,8 @@ const analyzingAll = ref(false)
 // Methods
 const handleSegmentClick = (index) => {
   emit('segment-click', index)
+  // 触发文本段落点击事件，用于高亮右侧对应的段落剧本
+  emit('text-segment-click', index)
 }
 
 const handleSixCardAnalysis = async (segmentIndex) => {
@@ -265,7 +267,7 @@ const getIssueColor = (type) => {
   flex: 1;
   padding: 24px;
   overflow-y: auto;
-  background: var(--content-bg, #262626);
+  background: var(--content-bg, #1a1a1a);
 }
 
 .text-segment {

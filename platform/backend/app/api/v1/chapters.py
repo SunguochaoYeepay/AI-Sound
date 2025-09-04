@@ -1253,13 +1253,22 @@ async def get_six_card_results(
         
         # 返回已保存的分析结果
         analysis_data = analysis_result.original_analysis
+        six_card_results = analysis_data.get("six_card_results", [])
+        
+        # 按段落序号排序
+        if six_card_results:
+            six_card_results = sorted(
+                six_card_results, 
+                key=lambda x: x.get("_metadata", {}).get("segment_index", 0)
+            )
+        
         return {
             "success": True,
             "message": "获取6卡分析结果成功",
             "data": {
                 "chapter_id": chapter_id,
                 "chapter_title": chapter.chapter_title,
-                "results": analysis_data.get("six_card_results", []),
+                "results": six_card_results,
                 "analysis_count": analysis_data.get("six_card_total_results", 0),
                 "analysis_type": analysis_data.get("six_card_analysis_type", "unknown"),
                 "saved_at": analysis_data.get("six_card_saved_at"),
@@ -1286,17 +1295,20 @@ async def _save_six_card_analysis_results(chapter_id: int, results: List[Dict], 
             # 获取现有的6卡分析结果
             existing_six_card_results = current_analysis.get("six_card_results", [])
             
-            # 如果是单个段落分析，需要检查是否已存在该段落的分析结果
-            if analysis_type == "selected" and len(results) == 1:
-                # 获取新分析的段落索引
-                new_segment_index = results[0].get("_metadata", {}).get("segment_index")
-                
-                # 移除已存在的相同段落分析结果
-                if new_segment_index is not None:
-                    existing_six_card_results = [
-                        result for result in existing_six_card_results
-                        if result.get("_metadata", {}).get("segment_index") != new_segment_index
-                    ]
+            # 检查并移除重复的段落分析结果
+            # 获取新分析结果的段落索引
+            new_segment_indices = set()
+            for result in results:
+                segment_index = result.get("_metadata", {}).get("segment_index")
+                if segment_index is not None:
+                    new_segment_indices.add(segment_index)
+            
+            # 移除已存在的相同段落分析结果
+            if new_segment_indices:
+                existing_six_card_results = [
+                    result for result in existing_six_card_results
+                    if result.get("_metadata", {}).get("segment_index") not in new_segment_indices
+                ]
             
             # 合并数据，追加新的6卡分析结果
             updated_analysis = {

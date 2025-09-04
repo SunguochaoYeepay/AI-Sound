@@ -1,0 +1,484 @@
+/* 故事板组件样式 */
+
+/* 6卡分析抽屉样式 */
+.six-card-drawer-content {
+  padding: 16px 0;
+}
+
+.six-card-tabs {
+  margin-bottom: 16px;
+}
+
+.six-card-tabs .ant-tabs-nav {
+  margin-bottom: 16px;
+}
+
+.six-card-tabs .ant-tabs-tab {
+  padding: 8px 16px;
+  font-size: 13px;
+  border-radius: 6px 6px 0 0;
+}
+
+.six-card-tabs .ant-tabs-tab-active {
+  background: var(--primary-color, #1890ff);
+  color: white;
+  border-color: var(--primary-color, #1890ff);
+}
+
+.tab-content {
+  padding: 16px;
+  background: var(--drawer-card-bg, #fafafa);
+  border-radius: 8px;
+  border: 1px solid var(--border-color, #e8e8e8);
+  min-height: 300px;
+}
+
+.card-content p {
+  margin: 8px 0;
+  color: var(--text-color, #333);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* 角色项样式 */
+.character-item {
+  background: var(--character-bg, #f0f8ff);
+  border-radius: 6px;
+  padding: 12px;
+  margin-bottom: 12px;
+  border-left: 3px solid var(--primary-color, #1890ff);
+}
+
+.character-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.character-name {
+  font-weight: 600;
+  color: var(--text-color, #333);
+  font-size: 14px;
+}
+
+/* 情绪变化样式 */
+.emotion-change {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+  padding: 8px;
+  background: var(--emotion-bg, #fff7e6);
+  border-radius: 6px;
+}
+
+.arrow {
+  color: var(--text-secondary, #666);
+  font-weight: 500;
+}
+
+.trigger {
+  color: var(--text-secondary, #666);
+  font-size: 12px;
+  margin-left: 8px;
+}
+
+/* 信息头部样式 */
+.info-header {
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-color, #f0f0f0);
+}
+
+/* 空数据样式 */
+.empty-data {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--text-secondary, #666);
+}
+
+.empty-data .ant-empty-description {
+  color: var(--text-secondary, #666);
+}
+
+/* 音频分镜卡样式 */
+.timeline-info {
+  margin-bottom: 20px;
+}
+
+.timeline-segments {
+  margin-top: 12px;
+}
+
+.timeline-segment {
+  display: flex;
+  gap: 12px;
+  margin: 6px 0;
+  padding: 6px 10px;
+  background: var(--segment-bg, #f5f5f5);
+  border-radius: 6px;
+  font-size: 12px;
+  align-items: center;
+}
+
+.segment-time {
+  color: var(--time-color, #1890ff);
+  font-weight: 500;
+  min-width: 80px;
+}
+
+.segment-speaker {
+  color: var(--speaker-color, #52c41a);
+  font-weight: 500;
+  min-width: 60px;
+}
+
+.segment-emotion {
+  color: var(--emotion-color, #eb2f96);
+  font-weight: 500;
+  min-width: 60px;
+}
+
+.audio-tracks-info {
+  margin-bottom: 20px;
+}
+
+.audio-track {
+  display: flex;
+  gap: 12px;
+  margin: 6px 0;
+  padding: 6px 10px;
+  background: var(--track-bg, #f0f8ff);
+  border-radius: 6px;
+  font-size: 12px;
+  align-items: center;
+}
+
+.track-name {
+  color: var(--track-name-color, #1890ff);
+  font-weight: 500;
+  min-width: 80px;
+}
+
+.track-priority {
+  color: var(--priority-color, #fa8c16);
+  min-width: 80px;
+}
+
+.track-volume {
+  color: var(--volume-color, #52c41a);
+  min-width: 60px;
+}
+
+.voice-assignments-info {
+  margin-bottom: 20px;
+}
+
+.voice-character {
+  display: flex;
+  gap: 12px;
+  margin: 6px 0;
+  padding: 6px 10px;
+  background: var(--voice-bg, #fff7e6);
+  border-radius: 6px;
+  font-size: 12px;
+  align-items: center;
+}
+
+.char-name {
+  color: var(--char-name-color, #1890ff);
+  font-weight: 500;
+  min-width: 60px;
+}
+
+.char-role {
+  color: var(--role-color, #722ed1);
+  min-width: 80px;
+}
+
+.char-voice {
+  color: var(--voice-color, #52c41a);
+  min-width: 80px;
+}
+
+.background-music-info {
+  margin-bottom: 20px;
+}
+
+.mixing-params-info {
+  margin-bottom: 20px;
+}
+
+/* 段落剧本展示样式 */
+.script-segment-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.paragraph-scripts {
+  margin-top: 16px;
+}
+
+.script-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.script-item {
+  background: var(--script-bg, #ffffff);
+  border: 1px solid var(--border-color, #e8e8e8);
+  border-radius: 8px;
+  padding: 16px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  position: relative;
+}
+
+.script-item:hover {
+  border-color: var(--primary-color, #1890ff);
+  box-shadow: 0 2px 8px rgba(24, 144, 255, 0.15);
+  transform: translateY(-2px);
+}
+
+.script-item.highlighted {
+  border-color: var(--primary-color, #1890ff);
+  background: var(--highlight-bg, #e6f7ff);
+  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
+  transform: scale(1.02);
+}
+
+.script-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-color, #f0f0f0);
+}
+
+.script-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-color, #333);
+}
+
+.script-time {
+  font-size: 12px;
+  color: var(--text-secondary, #666);
+}
+
+.view-analysis-btn {
+  color: var(--primary-color, #1890ff);
+  font-size: 12px;
+  padding: 0;
+  height: auto;
+}
+
+.script-preview {
+  margin-top: 8px;
+}
+
+.synthesis-plan {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.synthesis-segment {
+  background: var(--segment-bg, #f8f9fa);
+  border-radius: 6px;
+  padding: 12px;
+  border-left: 3px solid var(--primary-color, #1890ff);
+}
+
+.segment-info {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+
+.speaker {
+  color: var(--speaker-color, #52c41a);
+  font-weight: 600;
+  background: var(--speaker-bg, #f6ffed);
+  padding: 2px 8px;
+  border-radius: 12px;
+}
+
+.duration {
+  color: var(--time-color, #1890ff);
+  font-weight: 500;
+}
+
+.word-count {
+  color: var(--text-secondary, #666);
+}
+
+.segment-text {
+  color: var(--text-color, #333);
+  font-size: 13px;
+  line-height: 1.6;
+  text-align: justify;
+}
+
+.basic-info {
+  color: var(--text-secondary, #666);
+  font-size: 13px;
+}
+
+.basic-info p {
+  margin: 4px 0;
+}
+
+.empty-content {
+  text-align: center;
+  color: var(--text-secondary, #666);
+  padding: 40px 20px;
+}
+
+/* 问题抽屉样式 */
+.issues-drawer-content {
+  padding: 16px 0;
+}
+
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: var(--text-secondary, #666);
+}
+
+.issue-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.issue-item {
+  background: var(--issue-bg, #fff2f0);
+  border: 1px solid var(--border-color, #ffccc7);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.issue-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.issue-time {
+  font-size: 12px;
+  color: var(--text-secondary, #666);
+}
+
+.issue-description {
+  color: var(--text-color, #333);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* 深色主题适配 */
+[data-theme="dark"] .tab-content {
+  background: var(--card-bg, #2a2a2a);
+  border-color: var(--border-color, #333333);
+}
+
+[data-theme="dark"] .card-content p {
+  color: var(--text-color, #e0e0e0);
+}
+
+[data-theme="dark"] .character-item {
+  background: var(--character-bg, #1a1a2e);
+  border-left-color: var(--primary-color, #4a9eff);
+}
+
+[data-theme="dark"] .character-name {
+  color: var(--text-color, #e0e0e0);
+}
+
+[data-theme="dark"] .emotion-change {
+  background: var(--emotion-bg, #2a1a0a);
+}
+
+[data-theme="dark"] .timeline-segment {
+  background: var(--segment-bg, #1f1f1f);
+}
+
+[data-theme="dark"] .audio-track {
+  background: var(--track-bg, #1a1a2e);
+}
+
+[data-theme="dark"] .voice-character {
+  background: var(--voice-bg, #2a1a0a);
+}
+
+[data-theme="dark"] .empty-data {
+  color: var(--text-secondary, #888888);
+}
+
+[data-theme="dark"] .empty-data .ant-empty-description {
+  color: var(--text-secondary, #888888);
+}
+
+[data-theme="dark"] .script-item {
+  background: var(--card-bg, #1f1f1f);
+  border-color: var(--border-color, #333333);
+}
+
+[data-theme="dark"] .script-item:hover {
+  border-color: var(--primary-color, #4a9eff);
+  box-shadow: 0 2px 8px rgba(74, 158, 255, 0.3);
+}
+
+[data-theme="dark"] .script-item.highlighted {
+  border-color: var(--primary-color, #4a9eff);
+  background: var(--highlight-bg, #1a3a4a);
+  box-shadow: 0 0 0 2px rgba(74, 158, 255, 0.3);
+  transform: scale(1.02);
+}
+
+[data-theme="dark"] .script-title {
+  color: var(--text-color, #e0e0e0);
+}
+
+[data-theme="dark"] .script-time {
+  color: var(--text-secondary, #888888);
+}
+
+[data-theme="dark"] .synthesis-segment {
+  background: var(--segment-bg, #2a2a2a);
+  border-left-color: var(--primary-color, #4a9eff);
+}
+
+[data-theme="dark"] .segment-text {
+  color: var(--text-color, #e0e0e0);
+}
+
+[data-theme="dark"] .basic-info {
+  color: var(--text-secondary, #888888);
+}
+
+[data-theme="dark"] .empty-content {
+  color: var(--text-secondary, #888888);
+}
+
+[data-theme="dark"] .issue-item {
+  background: var(--issue-bg, #2a1a1a);
+  border-color: var(--border-color, #4a1a1a);
+}
+
+[data-theme="dark"] .issue-description {
+  color: var(--text-color, #e0e0e0);
+}
+
+[data-theme="dark"] .loading-container {
+  color: var(--text-secondary, #888888);
+}

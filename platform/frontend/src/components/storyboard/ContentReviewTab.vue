@@ -26,6 +26,7 @@
         :timeline-details="timelineDetails"
         :chapter="reviewData?.chapter"
         @six-card-analysis="handleSixCardAnalysis"
+        @text-segment-click="handleTextSegmentClick"
       />
 
       <!-- 右侧：剧本详情 -->
@@ -36,6 +37,7 @@
         :chapter="reviewData?.chapter"
         :six-card-results="sixCardResults"
         :selected-segment-index="selectedSegmentIndex"
+        :highlighted-segment-index="highlightedSegmentIndex"
         @segment-click="handleScriptSegmentClick"
         @card-click="openCardDrawer"
       />
@@ -103,38 +105,24 @@ const currentChapterStatus = ref('pending')
 // 段落分析结果
 const sixCardResults = ref(null)
 const selectedSegmentIndex = ref(null)
+const highlightedSegmentIndex = ref(null)
 
 // 处理段落分析结果
 const handleSixCardAnalysis = (data) => {
   selectedSegmentIndex.value = data.segmentIndex
   
-  // 如果是单个段落分析，追加到现有结果中
+  // 分析完成后，重新从后端加载最新数据，避免重复
   if (data.results && data.results.length > 0) {
-    if (!sixCardResults.value) {
-      sixCardResults.value = []
-    }
+    console.log('收到段落分析结果:', data)
     
-    // 检查是否已存在相同段落的分析结果
-    const newResults = data.results.filter(newResult => {
-      const newSegmentIndex = newResult._metadata?.segment_index
-      if (newSegmentIndex === undefined) return true
-      
-      // 移除已存在的相同段落分析结果
-      sixCardResults.value = sixCardResults.value.filter(existingResult => {
-        const existingSegmentIndex = existingResult._metadata?.segment_index
-        return existingSegmentIndex !== newSegmentIndex
-      })
-      
-      return true
-    })
-    
-    // 追加新结果
-    sixCardResults.value.push(...newResults)
+    // 延迟一下，确保后端数据已保存
+    setTimeout(async () => {
+      if (selectedChapter.value) {
+        await loadSixCardResults(parseInt(selectedChapter.value))
+        console.log('重新加载后的段落分析结果:', sixCardResults.value)
+      }
+    }, 1000)
   }
-  
-  // 显示分析结果在右侧面板
-  console.log('收到段落分析结果:', data)
-  console.log('当前所有段落分析结果:', sixCardResults.value)
 }
 
 // 加载章节数据
@@ -265,7 +253,7 @@ const loadChapterData = async (chapterId) => {
       text: typeof segment === 'string' ? segment : segment.content || segment.text || '',
       highlighted: false,
       issues: [],
-      segmentIndex: index,
+      segmentIndex: index + 1, // 使用从1开始的段落索引，与后端segment_index对应
       isSmartSegmented: segmentsData.length > 0
     }))
     
@@ -362,6 +350,30 @@ onMounted(() => {
 
 
 
+// 处理文本段落点击（左侧原始文本）
+const handleTextSegmentClick = (index) => {
+  // 清除之前的高亮
+  textSegments.value.forEach((segment, i) => {
+    segment.highlighted = false
+  })
+  
+  // 高亮当前点击的文本段落
+  if (index < textSegments.value.length) {
+    textSegments.value[index].highlighted = true
+  }
+  
+  // 设置右侧高亮的段落索引
+  // 根据智能分段的索引来设置
+  if (textSegments.value[index] && textSegments.value[index].segmentIndex !== undefined) {
+    highlightedSegmentIndex.value = textSegments.value[index].segmentIndex
+  } else {
+    // 如果没有智能分段索引，使用简单的索引对应
+    highlightedSegmentIndex.value = index + 1
+  }
+  
+  console.log(`左侧点击段落 ${index}，设置右侧高亮索引: ${highlightedSegmentIndex.value}`)
+}
+
 // 处理剧本段落点击
 const handleScriptSegmentClick = (index) => {
         // 清除所有高亮
@@ -374,7 +386,16 @@ const handleScriptSegmentClick = (index) => {
   
   // 高亮当前点击的剧本段落
   if (index < scriptSegments.value.length) {
-         scriptSegments.value[index].highlighted = true
+    scriptSegments.value[index].highlighted = true
+  }
+  
+  // 设置右侧高亮的段落索引（用于高亮对应的段落剧本）
+  // 根据智能分段的索引来设置
+  if (textSegments.value[index] && textSegments.value[index].segmentIndex !== undefined) {
+    highlightedSegmentIndex.value = textSegments.value[index].segmentIndex
+  } else {
+    // 如果没有智能分段索引，使用简单的索引对应
+    highlightedSegmentIndex.value = index
   }
   
   // 根据音频分镜卡的对应关系高亮文本段落
@@ -559,6 +580,13 @@ const openCardDrawer = (cardType, script) => {
   display: flex;
   gap: 12px;
   height: calc(100vh - 200px);
+}
+
+/* 左右面板等宽布局 */
+.content-review-layout > * {
+  flex: 1;
+  min-width: 0; /* 防止内容溢出 */
+  max-width: 50%; /* 确保最大宽度不超过50% */
 }
 
 /* 深色主题变量 */
