@@ -7,6 +7,19 @@
           {{ script.type === 'dialogue' ? '对话' : '旁白' }}
         </a-tag>
       </div>
+      <div class="script-actions">
+        <a-button
+          size="small"
+          type="primary"
+          @click.stop="analyzeSegment"
+          :loading="analyzing"
+        >
+          <template #icon>
+            <AppstoreOutlined />
+          </template>
+          6卡分析
+        </a-button>
+      </div>
     </div>
     
     <div class="script-content-main">
@@ -38,7 +51,9 @@
 </template>
 
 <script setup>
+import { ref } from 'vue'
 import RelatedCards from './RelatedCards.vue'
+import { AppstoreOutlined } from '@ant-design/icons-vue'
 
 // Props
 const props = defineProps({
@@ -53,7 +68,9 @@ const props = defineProps({
 })
 
 // Emits
-const emit = defineEmits(['segment-click', 'card-click'])
+const emit = defineEmits(['segment-click', 'card-click', 'six-card-analysis'])
+
+const analyzing = ref(false)
 
 // Methods
 const handleSegmentClick = () => {
@@ -62,6 +79,31 @@ const handleSegmentClick = () => {
 
 const handleCardClick = (card) => {
   emit('card-click', card)
+}
+
+const analyzeSegment = async () => {
+  if (analyzing.value) return
+
+  analyzing.value = true
+  try {
+    console.log('开始对段落进行6卡分析:', props.script.id || props.script.segment_id)
+
+    // 发送6卡分析事件，包含段落信息
+    emit('six-card-analysis', {
+      segment: props.script,
+      segmentIndex: props.script.id || props.script.segment_id
+    })
+
+    // 模拟分析过程
+    setTimeout(() => {
+      console.log('单个段落6卡分析完成')
+      analyzing.value = false
+    }, 2000)
+
+  } catch (error) {
+    console.error('6卡分析失败:', error)
+    analyzing.value = false
+  }
 }
 
 const getIssueColor = (type) => {
@@ -112,6 +154,11 @@ const getIssueColor = (type) => {
   margin-bottom: 8px;
   font-size: 12px;
   color: var(--text-secondary, #666);
+}
+
+.script-actions {
+  display: flex;
+  gap: 8px;
 }
 
 .script-header .script-time {

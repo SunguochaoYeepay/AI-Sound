@@ -3,16 +3,19 @@
     <div class="panel-header">
       <h3>📝 剧本详情</h3>
       <div class="panel-actions">
-        <a-button 
-          size="small" 
-          @click="showIssuesDrawer = true"
-          :disabled="detectedIssues.length === 0"
+        <a-button
+          type="primary"
+          size="small"
+          @click="analyzeAllSegments"
+          :loading="analyzingAll"
         >
           <template #icon>
-            <ExclamationCircleOutlined />
+            <AppstoreOutlined />
           </template>
-          问题 ({{ detectedIssues.length }})
+          6卡分析 (全部)
         </a-button>
+
+        
       </div>
     </div>
 
@@ -23,18 +26,103 @@
           <a-spin size="large" />
           <p>加载中...</p>
         </div>
+        
         <div v-else-if="scriptSegments.length > 0" class="script-segment-list">
-          <ScriptSegment 
-            v-for="(script, index) in scriptSegments" 
+          <ScriptSegment
+            v-for="(script, index) in scriptSegments"
             :key="index"
             :script="script"
             :related-cards="getRelatedCards(script)"
             @segment-click="handleSegmentClick(index)"
             @card-click="handleCardClick"
+            @six-card-analysis="handleSegmentAnalysis"
           />
         </div>
+        
+        <!-- 6卡分析结果展示 -->
+        <div v-if="sixCardResults && sixCardResults.length > 0" class="six-card-results">
+          <h4>🎯 6卡分析结果</h4>
+          <div class="card-results">
+            <div 
+              v-for="(result, index) in sixCardResults" 
+              :key="index"
+              class="card-result-item"
+            >
+              <div class="result-header">
+                <span class="result-title">段落 {{ result._metadata?.segment_index || index + 1 }} 分析结果</span>
+                <span class="result-time">{{ result._metadata?.analysis_time ? new Date(result._metadata.analysis_time).toLocaleString() : '' }}</span>
+              </div>
+              
+              <!-- 故事卡 -->
+              <div class="card-section">
+                <h5>📖 故事卡</h5>
+                <div class="card-content">
+                  <p><strong>主题:</strong> {{ result.story_card?.theme }}</p>
+                  <p><strong>情节要点:</strong> {{ result.story_card?.plot_point }}</p>
+                  <p><strong>叙述目的:</strong> {{ result.story_card?.narrative_purpose }}</p>
+                </div>
+              </div>
+              
+              <!-- 角色卡 -->
+              <div class="card-section">
+                <h5>🎭 角色卡</h5>
+                <div class="card-content">
+                  <div v-for="(character, charIndex) in result.character_card?.characters" :key="charIndex">
+                    <p><strong>角色:</strong> {{ character.name }}</p>
+                    <p><strong>动作:</strong> {{ character.actions }}</p>
+                    <p><strong>情绪:</strong> {{ Array.isArray(character.emotions) ? character.emotions.join(', ') : character.emotions || '无' }}</p>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- 场景卡 -->
+              <div class="card-section">
+                <h5>🎬 场景卡</h5>
+                <div class="card-content">
+                  <p><strong>地点:</strong> {{ result.scene_card?.location }}</p>
+                  <p><strong>时间:</strong> {{ result.scene_card?.time }}</p>
+                  <p><strong>氛围:</strong> {{ result.scene_card?.atmosphere }}</p>
+                  <p><strong>环境音:</strong> {{ Array.isArray(result.scene_card?.environment_sounds) ? result.scene_card.environment_sounds.join(', ') : result.scene_card?.environment_sounds || '无' }}</p>
+                </div>
+              </div>
+              
+              <!-- 事件卡 -->
+              <div class="card-section">
+                <h5>📝 事件卡</h5>
+                <div class="card-content">
+                  <p><strong>主要事件:</strong> {{ result.event_card?.main_event }}</p>
+                  <p><strong>子事件:</strong> {{ Array.isArray(result.event_card?.sub_events) ? result.event_card.sub_events.join(', ') : result.event_card?.sub_events || '无' }}</p>
+                  <p><strong>意义:</strong> {{ result.event_card?.significance }}</p>
+                </div>
+              </div>
+              
+              <!-- 情绪卡 -->
+              <div class="card-section">
+                <h5>💝 情绪卡</h5>
+                <div class="card-content">
+                  <p><strong>整体基调:</strong> {{ result.emotion_card?.overall_tone }}</p>
+                  <div v-for="(change, changeIndex) in result.emotion_card?.emotion_changes" :key="changeIndex">
+                    <p><strong>情绪变化:</strong> {{ change.from }} → {{ change.to }} (触发: {{ change.trigger }})</p>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- 音频剧本卡 -->
+              <div class="card-section">
+                <h5>🎵 音频剧本卡</h5>
+                <div class="card-content">
+                  <p><strong>配音指导:</strong> {{ result.audio_script_card?.voice_direction }}</p>
+                  <p><strong>节奏:</strong> {{ result.audio_script_card?.pacing }}</p>
+                  <p><strong>背景音乐:</strong> {{ result.audio_script_card?.background_music }}</p>
+                  <p><strong>音效:</strong> {{ Array.isArray(result.audio_script_card?.sound_effects) ? result.audio_script_card.sound_effects.join(', ') : result.audio_script_card?.sound_effects || '无' }}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
         <div v-else class="empty-content">
-          <p>暂无剧本数据</p>
+          <p>暂无数据</p>
         </div>
       </div>
     </div>
@@ -72,7 +160,9 @@
 
 <script setup>
 import { ref } from 'vue'
-import { ExclamationCircleOutlined } from '@ant-design/icons-vue'
+import { ExclamationCircleOutlined, AppstoreOutlined } from '@ant-design/icons-vue'
+import { message } from 'ant-design-vue'
+import { storyboardAPI } from '@/api/storyboard'
 import ScriptSegment from './ScriptSegment.vue'
 
 // Props
@@ -92,6 +182,18 @@ const props = defineProps({
   reviewData: {
     type: Object,
     default: () => ({})
+  },
+  chapter: {
+    type: Object,
+    default: () => ({})
+  },
+  sixCardResults: {
+    type: Array,
+    default: () => []
+  },
+  selectedSegmentIndex: {
+    type: Number,
+    default: null
   }
 })
 
@@ -100,6 +202,7 @@ const emit = defineEmits(['segment-click', 'card-click'])
 
 // Reactive data
 const showIssuesDrawer = ref(false)
+const analyzingAll = ref(false)
 
 // Methods
 const handleSegmentClick = (index) => {
@@ -108,6 +211,104 @@ const handleSegmentClick = (index) => {
 
 const handleCardClick = (card) => {
   emit('card-click', card)
+}
+
+const analyzeAllSegments = async () => {
+  if (analyzingAll.value) return
+
+  // 检查是否有智能分段数据
+  const hasSegments = props.scriptSegments.length > 0 || 
+                     (props.reviewData?.segmentation_data?.segments && 
+                      props.reviewData.segmentation_data.segments.length > 0)
+  
+  if (!hasSegments) {
+    message.warning('请先进行智能分段，然后再进行6卡分析')
+    return
+  }
+
+  analyzingAll.value = true
+  try {
+    console.log('开始对所有段落进行6卡分析...')
+    
+    // 获取段落数量（优先使用智能分段数据）
+    const segmentCount = props.reviewData?.segmentation_data?.segments?.length || props.scriptSegments.length
+    console.log('段落数量:', segmentCount)
+
+    // 显示长时间操作提示
+    message.info({
+      content: `正在对 ${segmentCount} 个段落进行6卡分析，这可能需要几分钟，请耐心等待...`,
+      duration: 5,
+      key: 'six-card-analysis'
+    })
+
+    // 调用6卡分析API
+    try {
+      const response = await storyboardAPI.sixCardAnalysis(props.chapter?.id)
+
+      if (response.data?.success) {
+        message.success({
+          content: `🎉 6卡分析完成！共分析 ${response.data.data.analyzed_segments} 个段落`,
+          duration: 5,
+          key: 'six-card-analysis'
+        })
+        console.log('6卡分析完成:', response.data)
+      } else {
+        throw new Error(response.data?.message || '6卡分析失败')
+      }
+    } catch (apiError) {
+      console.error('6卡分析API调用失败:', apiError)
+      message.error({
+        content: `❌ 6卡分析失败: ${apiError.message || '未知错误'}`,
+        duration: 5,
+        key: 'six-card-analysis'
+      })
+    }
+
+    analyzingAll.value = false
+
+  } catch (error) {
+    console.error('6卡分析失败:', error)
+    message.error({
+      content: `❌ 6卡分析失败: ${error.message || '未知错误'}`,
+      duration: 5,
+      key: 'six-card-analysis'
+    })
+    analyzingAll.value = false
+  }
+}
+
+const handleSegmentAnalysis = async (data) => {
+  console.log('收到单个段落6卡分析请求:', data.segmentIndex)
+  try {
+    // 显示分析提示
+    message.info({
+      content: `正在分析段落 ${data.segmentIndex + 1}，请稍候...`,
+      duration: 3,
+      key: `segment-${data.segmentIndex}`
+    })
+
+    // 调用单个段落的6卡分析API
+    const response = await storyboardAPI.sixCardAnalysis(props.chapter?.id, [data.segmentIndex])
+
+    if (response.data?.success) {
+      message.success({
+        content: `✅ 段落 ${data.segmentIndex + 1} 6卡分析完成！`,
+        duration: 3,
+        key: `segment-${data.segmentIndex}`
+      })
+      console.log('单个段落6卡分析完成:', data.segmentIndex, response.data)
+    } else {
+      throw new Error(response.data?.message || '6卡分析失败')
+    }
+
+  } catch (error) {
+    console.error('单个段落6卡分析失败:', error)
+    message.error({
+      content: `❌ 段落 ${data.segmentIndex + 1} 6卡分析失败`,
+      duration: 3,
+      key: `segment-${data.segmentIndex}`
+    })
+  }
 }
 
 const getRelatedCards = (script) => {
@@ -190,11 +391,11 @@ const getIssueColor = (type) => {
 
 .panel-header {
   padding: 20px 24px;
-  border-bottom: 1px solid var(--border-color, #797979);
+  border-bottom: 1px solid var(--border-color, #000000);
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: var(--header-bg, #6b6b6b);
+  background: var(--header-bg, #262626);
   border-radius: 12px 12px 0 0;
 }
 
@@ -289,13 +490,163 @@ const getIssueColor = (type) => {
   background: var(--text-color, #a8a8a8);
 }
 
+/* 智能分段样式 */
+.segmentation-info {
+  margin-bottom: 20px;
+  padding: 16px;
+  background: var(--primary-bg, #f0f8ff);
+  border: 1px solid var(--primary-border, rgba(24, 144, 255, 0.2));
+  border-radius: 8px;
+}
+
+.segmentation-info h4 {
+  margin: 0 0 8px 0;
+  color: var(--primary-color, #1890ff);
+  font-size: 16px;
+}
+
+.segmentation-info p {
+  margin: 0;
+  color: var(--text-secondary, #666);
+  font-size: 14px;
+}
+
+.segmentation-segments {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.segment-item {
+  padding: 16px;
+  border: 1px solid var(--border-color, #e8e8e8);
+  border-radius: 8px;
+  background: var(--card-bg, white);
+}
+
+.segment-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.segment-index {
+  font-weight: 600;
+  color: var(--text-color, #333);
+  font-size: 14px;
+}
+
+  .segment-text {
+    color: var(--text-color, #333);
+    line-height: 1.6;
+    font-size: 14px;
+    text-align: justify;
+  }
+
+  /* 6卡分析结果样式 */
+  .six-card-results {
+    margin-bottom: 24px;
+    padding: 20px;
+    background: var(--success-bg, #f6ffed);
+    border: 1px solid var(--success-border, #b7eb8f);
+    border-radius: 8px;
+  }
+
+  .six-card-results h4 {
+    margin: 0 0 16px 0;
+    color: var(--success-color, #52c41a);
+    font-size: 18px;
+    font-weight: 600;
+  }
+
+  .card-results {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .card-result-item {
+    padding: 16px;
+    background: white;
+    border: 1px solid var(--border-color, #e8e8e8);
+    border-radius: 8px;
+  }
+
+  .result-header {
+    margin-bottom: 16px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--primary-color, #1890ff);
+  }
+
+  .result-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--primary-color, #1890ff);
+  }
+
+  .card-section {
+    margin-bottom: 16px;
+    padding: 12px;
+    background: var(--card-bg, #fafafa);
+    border-radius: 6px;
+  }
+
+  .card-section h5 {
+    margin: 0 0 8px 0;
+    color: var(--text-color, #333);
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .card-content p {
+    margin: 4px 0;
+    color: var(--text-color, #333);
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .card-content strong {
+    color: var(--text-color, #000);
+  }
+
 /* 深色主题下的特殊样式覆盖 */
 [data-theme="dark"] .panel-header {
   background: var(--header-bg, #262626) !important;
   border-color: var(--border-color, #333333) !important;
 }
 
-[data-theme="dark"] .panel-content {
+[data-theme="dark"] .script-content {
   background: var(--content-bg, #1a1a1a) !important;
+}
+
+[data-theme="dark"] .six-card-results {
+  background: var(--success-bg, #1a1a1a) !important;
+  border-color: var(--success-border, #52c41a) !important;
+}
+
+[data-theme="dark"] .card-result-item {
+  background: var(--card-bg, #262626) !important;
+  border-color: var(--border-color, #333333) !important;
+}
+
+[data-theme="dark"] .card-section {
+  background: var(--card-bg, #1a1a1a) !important;
+}
+
+[data-theme="dark"] .card-content p {
+  color: var(--text-color, #e0e0e0) !important;
+}
+
+[data-theme="dark"] .card-content strong {
+  color: var(--text-color, #ffffff) !important;
+}
+
+[data-theme="dark"] .result-title {
+  color: var(--primary-color, #4a9eff) !important;
+}
+
+[data-theme="dark"] .card-section h5 {
+  color: var(--text-color, #e0e0e0) !important;
 }
 </style>

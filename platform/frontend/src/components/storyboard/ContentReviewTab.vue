@@ -1,17 +1,19 @@
 <template>
   <div class="content-review-container">
     <!-- 进度监控 -->
-    <ProgressMonitor :session-id="sessionId" @progress-update="handleProgressUpdate" />
+    <ProgressMonitor :session-id="sessionId" />
 
     <!-- 章节选择器 -->
-    <ChapterSelector 
+    <ChapterSelector
       :chapters="chapters"
       :chapters-loading="chaptersLoading"
       :selected-chapter="selectedChapter"
       :current-chapter-status="currentChapterStatus"
       :analyzing-chapter="analyzingChapter"
+      :segmenting-chapter="segmentingChapter"
       @chapter-change="handleChapterChange"
       @analyze-chapter="analyzeCurrentChapter"
+      @smart-segmentation="handleSmartSegmentation"
     />
 
     <!-- 主要内容区域 -->
@@ -22,15 +24,18 @@
         :chapter-content="chapterContent"
         :text-segments="textSegments"
         :timeline-details="timelineDetails"
-        @segment-click="handleTextSegmentClick"
+        :chapter="reviewData?.chapter"
+        @six-card-analysis="handleSixCardAnalysis"
       />
 
       <!-- 右侧：剧本详情 -->
       <ScriptDetailPanel 
         :loading="loading"
         :script-segments="scriptSegments"
-        :detected-issues="detectedIssues"
         :review-data="reviewData"
+        :chapter="reviewData?.chapter"
+        :six-card-results="sixCardResults"
+        :selected-segment-index="selectedSegmentIndex"
         @segment-click="handleScriptSegmentClick"
         @card-click="openCardDrawer"
       />
@@ -41,15 +46,13 @@
       :open="cardDrawerVisible"
       :card="selectedCard"
       @update:visible="cardDrawerVisible = $event"
-      @update="handleCardUpdate"
     />
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, watch } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { message } from 'ant-design-vue'
-import { LoadingOutlined } from '@ant-design/icons-vue'
 import CardDetailDrawer from './CardDetailDrawer.vue'
 import ProgressMonitor from './ProgressMonitor.vue'
 import ChapterSelector from './ChapterSelector.vue'
@@ -62,15 +65,10 @@ const props = defineProps({
   sessionId: {
     type: [String, Number],
     required: true
-  },
-  session: {
-    type: Object,
-    default: () => ({})
   }
 })
 
-// Emits
-const emit = defineEmits(['start-analysis', 'confirm-session', 'reanalyze-session'])
+
 
 // 响应式数据
 const cardDrawerVisible = ref(false)
@@ -90,15 +88,10 @@ const loading = ref(false)
 // 时间轴详情
 const timelineDetails = ref([])
 
-// 检测到的问题
-const detectedIssues = ref([])
 
-// 卡片存在状态
-const hasStoryCard = ref(false)
-const hasCharacterCard = ref(false)
-const hasSceneCard = ref(false)
-const hasEventCard = ref(false)
-const hasEmotionCard = ref(false)
+
+// 分段状态
+const segmentingChapter = ref(false)
 
 // 剧本详情
 const scriptSegments = ref([])
@@ -107,37 +100,68 @@ const scriptSegments = ref([])
 const analyzingChapter = ref(false)
 const currentChapterStatus = ref('pending')
 
+// 6卡分析结果
+const sixCardResults = ref(null)
+const selectedSegmentIndex = ref(null)
+
+// 处理6卡分析结果
+const handleSixCardAnalysis = (data) => {
+  selectedSegmentIndex.value = data.segmentIndex
+  
+  // 如果是单个段落分析，追加到现有结果中
+  if (data.results && data.results.length > 0) {
+    if (!sixCardResults.value) {
+      sixCardResults.value = []
+    }
+    
+    // 检查是否已存在相同段落的分析结果
+    const newResults = data.results.filter(newResult => {
+      const newSegmentIndex = newResult._metadata?.segment_index
+      if (newSegmentIndex === undefined) return true
+      
+      // 移除已存在的相同段落分析结果
+      sixCardResults.value = sixCardResults.value.filter(existingResult => {
+        const existingSegmentIndex = existingResult._metadata?.segment_index
+        return existingSegmentIndex !== newSegmentIndex
+      })
+      
+      return true
+    })
+    
+    // 追加新结果
+    sixCardResults.value.push(...newResults)
+  }
+  
+  // 显示分析结果在右侧面板
+  console.log('收到6卡分析结果:', data)
+  console.log('当前所有6卡分析结果:', sixCardResults.value)
+}
+
 // 加载章节数据
 const loadChapterData = async (chapterId) => {
   if (!props.sessionId || !chapterId) return
-  
+
   loading.value = true
   try {
-    const response = await storyboardAPI.getReviewData(props.sessionId, chapterId)
-    console.log('API返回数据:', response.data)
+         // 获取分镜确认页面的数据（包含智能分段和卡片数据）
+     const response = await storyboardAPI.getStoryboardReviewData(props.sessionId, chapterId)
+     
+     console.log('🔍 API响应数据:', response.data)
+
+     // 直接使用响应数据，不需要额外的API调用
+     reviewData.value = response.data
     
-    // 设置reviewData
-    reviewData.value = response.data
-    
-    // 获取章节内容
-    try {
-      const chapterResponse = await storyboardAPI.getChapterDetail(chapterId)
-      if (chapterResponse.data.success && chapterResponse.data.data) {
-        const chapter = chapterResponse.data.data
-        chapterContent.value = chapter.content || `第${chapter.chapter_number}章：${chapter.chapter_title}\n\n[章节内容加载中...]`
-      } else {
-        chapterContent.value = `第${chapterId}章\n\n[章节内容加载失败]`
-      }
-    } catch (error) {
-      console.error('获取章节内容失败:', error)
-      chapterContent.value = `第${chapterId}章\n\n[章节内容加载失败]`
+    // 从响应数据中获取章节内容
+    if (response.data.chapter?.content) {
+      chapterContent.value = response.data.chapter.content
+    } else {
+      chapterContent.value = `第${chapterId}章\n\n[章节内容加载中...]`
     }
     
     // 处理音频剧本卡片数据，转换为剧本格式
     const scriptCards = response.data.cards?.audio_script || []
     if (scriptCards.length > 0) {
-      const scriptCard = scriptCards[0]
-      console.log('音频剧本卡内容:', scriptCard.content)
+             const scriptCard = scriptCards[0]
       
       // 确保script_segments是数组格式
       let segmentsData = scriptCard.content?.script_segments || []
@@ -188,11 +212,7 @@ const loadChapterData = async (chapterId) => {
         }
       })
       
-      console.log('处理后的剧本详情:', scriptSegments.value)
-      console.log('scriptSegments.value长度:', scriptSegments.value.length)
-      console.log('第一个剧本内容:', scriptSegments.value[0]?.text)
-      
-      // 同时保留时间轴详情用于分镜视图（从audio_storyboard获取）
+                    // 同时保留时间轴详情用于分镜视图（从audio_storyboard获取）
       const audioCards = response.data.cards?.audio_storyboard || []
       if (audioCards.length > 0) {
         const audioCard = audioCards[0]
@@ -222,40 +242,41 @@ const loadChapterData = async (chapterId) => {
       timelineDetails.value = []
     }
     
-    // 处理文本段落（基于章节内容自然分段）
-    const paragraphs = chapterContent.value.split('\n').filter(p => p.trim())
-    textSegments.value = paragraphs.map((paragraph, index) => ({
-      text: paragraph,
+    // 处理文本段落（优先使用智能分段结果）
+    let segmentsData = []
+    
+    // 添加调试日志
+    console.log('🔍 检查智能分段数据:', {
+      hasSegmentationData: !!response.data.segmentation_data,
+      segmentationData: response.data.segmentation_data,
+      hasSegments: !!(response.data.segmentation_data?.segments),
+      segmentsLength: response.data.segmentation_data?.segments?.length || 0
+    })
+
+    // 检查是否有智能分段数据
+    if (response.data.segmentation_data && response.data.segmentation_data.segments && response.data.segmentation_data.segments.length > 0) {
+      segmentsData = response.data.segmentation_data.segments
+      console.log('✅ 使用智能分段数据:', segmentsData.length, '段')
+    } else {
+      console.log('⚠️ 未找到智能分段数据，左侧将显示空')
+    }
+
+    textSegments.value = segmentsData.map((segment, index) => ({
+      text: typeof segment === 'string' ? segment : segment.content || segment.text || '',
       highlighted: false,
-      issues: []
+      issues: [],
+      segmentIndex: index,
+      isSmartSegmented: segmentsData.length > 0
     }))
     
-    // 设置卡片存在状态（包括书籍级卡片）
-    hasStoryCard.value = !!(response.data.cards?.story && response.data.cards.story.length > 0)
-    hasCharacterCard.value = !!(response.data.cards?.character && response.data.cards.character.length > 0)
-    hasSceneCard.value = !!(response.data.cards?.scene && response.data.cards.scene.length > 0)
-    hasEventCard.value = !!(response.data.cards?.event && response.data.cards.event.length > 0)
-    hasEmotionCard.value = !!(response.data.cards?.emotion && response.data.cards.emotion.length > 0)
-    
-    // 处理检测到的问题（基于卡片数据）
-    detectedIssues.value = []
-    const allCards = Object.values(response.data.cards || {}).flat()
-    allCards.forEach(card => {
-      if (card.confidence_score < 0.8) {
-        detectedIssues.value.push({
-          type: 'quality',
-          time: '00:00:00',
-          description: `${card.card_type}卡片置信度较低: ${card.confidence_score}`
-        })
-      }
-    })
-    
-    // 检测剧本问题
-    detectScriptIssues()
+              // 更新章节分析状态
     
     // 更新章节分析状态
     const hasScriptCards = (response.data.cards?.audio_script || []).length > 0
     currentChapterStatus.value = hasScriptCards ? 'completed' : 'pending'
+    
+    // 加载已保存的6卡分析结果
+    await loadSixCardResults(chapterId)
     
   } catch (error) {
     console.error('加载章节数据失败:', error)
@@ -265,60 +286,35 @@ const loadChapterData = async (chapterId) => {
   }
 }
 
-// 检测剧本问题
-const detectScriptIssues = () => {
-  // 检查剧本问题
-  scriptSegments.value.forEach((script, index) => {
-    const issues = []
+// 加载已保存的6卡分析结果
+const loadSixCardResults = async (chapterId) => {
+  if (!chapterId) return
+  
+  try {
+    console.log('开始加载已保存的6卡分析结果:', chapterId)
     
-    // 检查说话者是否为空
-    if (script.type === 'dialogue' && !script.speaker) {
-      issues.push({
-        type: 'missing_speaker',
-        message: '缺少说话者'
-      })
+    const response = await storyboardAPI.getSixCardResults(chapterId)
+    
+    if (response.data?.success && response.data.data.has_results) {
+      sixCardResults.value = response.data.data.results
+      console.log('已保存的6卡分析结果加载成功:', sixCardResults.value)
+      
+      // 如果有结果，默认选择第一个段落
+      if (sixCardResults.value.length > 0) {
+        selectedSegmentIndex.value = 0
+      }
+    } else {
+      console.log('暂无已保存的6卡分析结果，响应数据:', response.data)
+      sixCardResults.value = []
+      selectedSegmentIndex.value = null
     }
-    
-    // 检查语音是否分配
-    if (!script.voice_name || script.voice_name === '未分配') {
-      issues.push({
-        type: 'missing_voice',
-        message: '未分配语音'
-      })
-    }
-    
-    // 检查内容是否为空
-    if (!script.text || script.text.trim() === '') {
-      issues.push({
-        type: 'empty_content',
-        message: '内容为空'
-      })
-    }
-    
-    // 检查时间范围是否合理
-    const startTime = parseInt(script.startTime)
-    const endTime = parseInt(script.endTime)
-    if (endTime <= startTime) {
-      issues.push({
-        type: 'invalid_time',
-        message: '时间范围无效'
-      })
-    }
-    
-    // 将问题添加到剧本段
-    script.issues = issues
-    
-    // 添加到检测到的问题列表
-    issues.forEach(issue => {
-      detectedIssues.value.push({
-        type: issue.type,
-        time: `${script.startTime}-${script.endTime}s`,
-        description: `段落${index + 1}: ${issue.message}`,
-        scriptIndex: index
-      })
-    })
-  })
+  } catch (error) {
+    console.error('加载6卡分析结果失败:', error)
+    // 不显示错误消息，因为可能只是没有结果
+  }
 }
+
+
 
 // 加载章节列表
 const loadChapters = async () => {
@@ -329,13 +325,11 @@ const loadChapters = async () => {
     const response = await storyboardAPI.getSessionChapters(props.sessionId)
     chapters.value = response.data.chapters || []
     
-    // 如果有章节数据，默认选择第一个章节
-    if (chapters.value.length > 0) {
-      // 使用正确的字段：id 而不是 chapter_id
-      const firstChapter = chapters.value[0]
-      selectedChapter.value = (firstChapter.id || firstChapter.chapter_id || '').toString()
-      console.log('默认选择章节:', selectedChapter.value, firstChapter.chapter_title)
-      console.log('章节数据结构:', firstChapter)
+           // 如果有章节数据，默认选择第一个章节
+       if (chapters.value.length > 0) {
+         // 使用正确的字段：id 而不是 chapter_id
+         const firstChapter = chapters.value[0]
+         selectedChapter.value = (firstChapter.id || firstChapter.chapter_id || '').toString()
       
       // 立即加载选中的章节数据
       if (selectedChapter.value) {
@@ -366,17 +360,11 @@ onMounted(() => {
   loadChapters()  // loadChapters内部会处理章节数据加载
 })
 
-// 处理文本段落点击
-const handleTextSegmentClick = (index) => {
-  // 这里可以添加文本段落点击的处理逻辑
-  console.log('点击文本段落:', index)
-}
+
 
 // 处理剧本段落点击
 const handleScriptSegmentClick = (index) => {
-  console.log('点击剧本段落:', index)
-  
-  // 清除所有高亮
+        // 清除所有高亮
   textSegments.value.forEach((segment, i) => {
     segment.highlighted = false
   })
@@ -386,8 +374,7 @@ const handleScriptSegmentClick = (index) => {
   
   // 高亮当前点击的剧本段落
   if (index < scriptSegments.value.length) {
-    scriptSegments.value[index].highlighted = true
-    console.log('设置剧本段落高亮:', index, scriptSegments.value[index].highlighted)
+         scriptSegments.value[index].highlighted = true
   }
   
   // 根据音频分镜卡的对应关系高亮文本段落
@@ -440,7 +427,7 @@ const handleChapterChange = (chapterId) => {
   selectedChapter.value = chapterId
   if (chapterId) {
     loadChapterData(parseInt(chapterId))
-    updateChapterStatus()
+         // 加载章节数据
   }
 }
 
@@ -458,38 +445,31 @@ const getCardTypeName = (cardType) => {
   return names[cardType] || cardType
 }
 
-const handleCardUpdate = (updatedCard) => {
-  message.success('卡片更新成功')
-  cardDrawerVisible.value = false
-  // TODO: 重新加载数据
-}
 
 
 
-// 进度更新处理
-const handleProgressUpdate = (progress, step) => {
-  console.log('进度更新:', progress, step)
-}
+
+
 
 
 
 const analyzeCurrentChapter = async () => {
   if (!selectedChapter.value || analyzingChapter.value) return
-  
+
   analyzingChapter.value = true
   try {
     const response = await storyboardAPI.analyzeChapter(props.sessionId, selectedChapter.value)
     message.success('章节分析已开始')
-    
+
     // 更新状态
     currentChapterStatus.value = 'analyzing'
-    
+
     // 等待一段时间后刷新数据
     setTimeout(() => {
       loadChapterData(parseInt(selectedChapter.value))
       currentChapterStatus.value = 'completed'
     }, 3000)
-    
+
   } catch (error) {
     console.error('章节分析失败:', error)
     message.error('章节分析失败: ' + (error.response?.data?.detail || error.message))
@@ -499,24 +479,46 @@ const analyzeCurrentChapter = async () => {
   }
 }
 
-// 更新章节状态检查
-const updateChapterStatus = async () => {
-  if (!selectedChapter.value) return
-  
+const handleSmartSegmentation = async () => {
+  if (!selectedChapter.value || segmentingChapter.value) return
+
+  segmentingChapter.value = true
   try {
-    const response = await storyboardAPI.getReviewData(props.sessionId, selectedChapter.value)
-    const hasScriptCards = response.data.cards?.audio_script?.length > 0
-    
-    if (hasScriptCards) {
-      currentChapterStatus.value = 'completed'
+              // 显示长时间操作提示
+    message.info({
+      content: '智能分段正在进行中，这可能需要1-2分钟，请耐心等待...',
+      duration: 5,
+      key: 'segmentation'
+    })
+
+    // 调用智能分段API
+    const response = await storyboardAPI.smartSegmentation(selectedChapter.value)
+
+    if (response.data?.success) {
+      message.success({
+        content: `🎉 智能分段完成！共生成 ${response.data.data.segmentation_data.segment_count} 个段落`,
+        duration: 5,
+        key: 'segmentation'
+      })
+
+             // 刷新章节数据，显示分段结果
+       await loadChapterData(parseInt(selectedChapter.value))
     } else {
-      currentChapterStatus.value = 'pending'
+      throw new Error(response.data?.message || '智能分段失败')
     }
   } catch (error) {
-    console.error('获取章节状态失败:', error)
-    currentChapterStatus.value = 'pending'
+    console.error('[ContentReviewTab] 智能分段失败:', error)
+    message.error({
+      content: `❌ 智能分段失败: ${error.message || '未知错误'}`,
+      duration: 5,
+      key: 'segmentation'
+    })
+  } finally {
+    segmentingChapter.value = false
   }
 }
+
+
 
 
 

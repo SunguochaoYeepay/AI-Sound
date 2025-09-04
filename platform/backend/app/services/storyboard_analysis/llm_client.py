@@ -9,6 +9,7 @@ import json
 import logging
 import requests
 from typing import Dict, Any, Optional
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -59,23 +60,98 @@ class LLMClient:
         try:
             response = await self.call(prompt, **kwargs)
             if response:
-                # 清理响应中的markdown标记
-                cleaned_response = response.strip()
-                if cleaned_response.startswith('```json'):
-                    cleaned_response = cleaned_response[7:]
-                if cleaned_response.endswith('```'):
-                    cleaned_response = cleaned_response[:-3]
-                cleaned_response = cleaned_response.strip()
+                # 清理响应中的markdown标记和思考过程
+                cleaned_response = self._clean_llm_response(response)
                 
                 # 尝试解析JSON
-                return json.loads(cleaned_response)
+                try:
+                    return json.loads(cleaned_response)
+                except json.JSONDecodeError as e:
+                    logger.warning(f"直接JSON解析失败，尝试提取JSON: {str(e)}")
+                    # 尝试从响应中提取JSON部分
+                    extracted_json = self._extract_json_from_response(cleaned_response)
+                    if extracted_json:
+                        return json.loads(extracted_json)
+                    else:
+                        logger.error(f"无法提取有效JSON，原始响应: {response[:200]}...")
+                        return None
             return None
-        except json.JSONDecodeError as e:
-            logger.error(f"JSON解析失败: {str(e)}")
-            logger.error(f"原始响应: {response}")
-            return None
+            
         except Exception as e:
             logger.error(f"JSON调用异常: {str(e)}")
+            return None
+    
+    def _clean_llm_response(self, response: str) -> str:
+        """清理LLM响应，移除markdown标记和思考过程"""
+        try:
+            # 移除思考过程标签
+            response = re.sub(r'<think>.*?</think>', '', response, flags=re.DOTALL)
+            
+            # 移除markdown代码块标记
+            response = re.sub(r'```json\s*', '', response)
+            response = re.sub(r'```\s*$', '', response)
+            
+            # 移除多余的空白字符
+            response = response.strip()
+            
+            # 如果响应以{开头，尝试找到匹配的}结尾
+            if response.startswith('{'):
+                # 找到最后一个完整的JSON对象
+                brace_count = 0
+                end_pos = -1
+                for i, char in enumerate(response):
+                    if char == '{':
+                        brace_count += 1
+                    elif char == '}':
+                        brace_count -= 1
+                        if brace_count == 0:
+                            end_pos = i
+                            break
+                
+                if end_pos > 0:
+                    response = response[:end_pos + 1]
+            
+            return response
+            
+        except Exception as e:
+            logger.error(f"清理响应失败: {str(e)}")
+            return response
+    
+    def _extract_json_from_response(self, response: str) -> Optional[str]:
+        """从响应中提取JSON部分"""
+        try:
+            # 查找JSON对象的开始和结束
+            start_pos = response.find('{')
+            if start_pos == -1:
+                return None
+            
+            # 计算括号匹配
+            brace_count = 0
+            end_pos = -1
+            
+            for i in range(start_pos, len(response)):
+                char = response[i]
+                if char == '{':
+                    brace_count += 1
+                elif char == '}':
+                    brace_count -= 1
+                    if brace_count == 0:
+                        end_pos = i
+                        break
+            
+            if end_pos > start_pos:
+                json_str = response[start_pos:end_pos + 1]
+                # 验证JSON有效性
+                try:
+                    json.loads(json_str)
+                    return json_str
+                except json.JSONDecodeError:
+                    pass
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"提取JSON失败: {str(e)}")
             return None
     
     def health_check(self) -> bool:

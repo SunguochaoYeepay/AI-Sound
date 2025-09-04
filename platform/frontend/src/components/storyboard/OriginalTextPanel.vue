@@ -18,8 +18,21 @@
         @click="handleSegmentClick(index)"
       >
         <div class="segment-header">
-          <span class="segment-index">段落 {{ index + 1 }}</span>
-          <span class="segment-time">{{ getSegmentTimeRange(index) }}</span>
+          <div class="segment-info">
+            <span class="segment-index">段落 {{ index + 1 }}</span>
+            <span class="segment-time">{{ getSegmentTimeRange(index) }}</span>
+          </div>
+          <a-button 
+            size="small" 
+            type="primary"
+            @click="handleSixCardAnalysis(index)"
+            :loading="analyzingSegments[index]"
+          >
+            <template #icon>
+              <AppstoreOutlined />
+            </template>
+            6卡分析
+          </a-button>
         </div>
         <div class="segment-text">{{ segment.text }}</div>
         <div v-if="segment.issues && segment.issues.length > 0" class="segment-issues">
@@ -36,6 +49,11 @@
 </template>
 
 <script setup>
+import { ref } from 'vue'
+import { AppstoreOutlined } from '@ant-design/icons-vue'
+import { message } from 'ant-design-vue'
+import { storyboardAPI } from '@/api/storyboard'
+
 // Props
 const props = defineProps({
   loading: {
@@ -53,29 +71,86 @@ const props = defineProps({
   timelineDetails: {
     type: Array,
     default: () => []
+  },
+  chapter: {
+    type: Object,
+    default: () => ({})
   }
 })
 
 // Emits
-const emit = defineEmits(['segment-click'])
+const emit = defineEmits(['segment-click', 'six-card-analysis'])
+
+// Reactive data
+const analyzingSegments = ref({})
 
 // Methods
 const handleSegmentClick = (index) => {
   emit('segment-click', index)
 }
 
+const handleSixCardAnalysis = async (segmentIndex) => {
+  if (analyzingSegments.value[segmentIndex]) return
+  
+  analyzingSegments.value[segmentIndex] = true
+  try {
+    console.log(`开始分析段落 ${segmentIndex + 1}...`)
+    
+    // 显示分析提示
+    message.info({
+      content: `正在分析段落 ${segmentIndex + 1}，请稍候...`,
+      duration: 3,
+      key: `segment-${segmentIndex}`
+    })
+    
+    // 调用6卡分析API
+    const response = await storyboardAPI.sixCardAnalysis(props.chapter?.id, [segmentIndex])
+    
+    if (response.data?.success) {
+      message.success({
+        content: `✅ 段落 ${segmentIndex + 1} 6卡分析完成！`,
+        duration: 3,
+        key: `segment-${segmentIndex}`
+      })
+      
+      // 触发事件，让父组件显示分析结果
+      emit('six-card-analysis', {
+        segmentIndex,
+        results: response.data.data.results
+      })
+      
+      console.log('6卡分析完成:', response.data)
+    } else {
+      throw new Error(response.data?.message || '6卡分析失败')
+    }
+    
+  } catch (error) {
+    console.error('6卡分析失败:', error)
+    message.error({
+      content: `❌ 段落 ${segmentIndex + 1} 6卡分析失败`,
+      duration: 3,
+      key: `segment-${segmentIndex}`
+    })
+  } finally {
+    analyzingSegments.value[segmentIndex] = false
+  }
+}
+
 const getSegmentTimeRange = (index) => {
-  if (!props.timelineDetails.length) return `${index * 15}-${(index + 1) * 15}`
+  if (!props.timelineDetails.length) return `段落 ${index + 1}`
   
   // 直接使用AI分析时建立的对应关系
   const audioCard = props.timelineDetails[index]
   if (audioCard && audioCard.text_mapping) {
     const paragraphRange = audioCard.text_mapping.paragraph_range
-    return `${paragraphRange[0]}-${paragraphRange[1]}`
+    // 确保段落范围正确显示
+    if (Array.isArray(paragraphRange) && paragraphRange.length === 2) {
+      return `段落 ${paragraphRange[0] + 1}-${paragraphRange[1] + 1}`
+    }
   }
   
-  // 如果没有对应关系，使用默认的时间范围
-  return `${index * 15}-${(index + 1) * 15}`
+  // 如果没有对应关系，使用默认的段落索引
+  return `段落 ${index + 1}`
 }
 
 const getIssueColor = (type) => {
@@ -105,11 +180,11 @@ const getIssueColor = (type) => {
 
 .panel-header {
   padding: 20px 24px;
-  border-bottom: 1px solid var(--border-color, #797979);
+  border-bottom: 1px solid var(--border-color, #262626);
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: var(--header-bg, #6b6b6b);
+  background: var(--header-bg, #262626);
   border-radius: 12px 12px 0 0;
 }
 

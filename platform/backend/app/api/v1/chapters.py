@@ -11,7 +11,7 @@ import logging
 from datetime import datetime
 
 from app.database import get_db
-from app.models import BookChapter, Book
+from app.models import BookChapter, Book, AnalysisResult
 from app.utils import log_system_event
 from app.services.content_preparation_service import ContentPreparationService
 from app.services.chapter_service import (
@@ -1032,3 +1032,315 @@ async def get_chapter_content_stats(
     except Exception as e:
         logger.error(f"章节 {chapter_id} 统计失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"统计失败: {str(e)}")
+
+@router.post("/{chapter_id}/smart-segmentation")
+async def smart_segmentation(
+    chapter_id: int,
+    db: Session = Depends(get_db)
+):
+    """智能分段章节内容"""
+    try:
+        # 获取章节
+        chapter = db.query(BookChapter).filter(BookChapter.id == chapter_id).first()
+        if not chapter:
+            raise HTTPException(status_code=404, detail="章节不存在")
+
+        # 检查章节是否有内容
+        if not chapter.content or len(chapter.content.strip()) == 0:
+            raise HTTPException(status_code=400, detail="章节内容为空，无法进行分段")
+
+        # 导入智能分段服务
+        from app.services.smart_segmentation_service import SmartSegmentationService
+
+        # 创建分段服务实例
+        segmentation_service = SmartSegmentationService()
+
+        # 执行智能分段
+        logger.info(f"开始对章节 {chapter_id} 进行智能分段")
+        segmentation_result = await segmentation_service.segment_and_save(
+            chapter.content,
+            chapter_id,
+            db
+        )
+
+        if segmentation_result["success"]:
+            logger.info(f"章节 {chapter_id} 智能分段成功，共生成 {segmentation_result['segmentation_data']['segment_count']} 个段落")
+            return {
+                "success": True,
+                "message": "智能分段完成",
+                "data": segmentation_result
+            }
+        else:
+            raise HTTPException(status_code=500, detail=segmentation_result.get("error", "分段失败"))
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"章节 {chapter_id} 智能分段失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"智能分段失败: {str(e)}")
+
+@router.get("/{chapter_id}/segmentation-result")
+async def get_segmentation_result(
+    chapter_id: int,
+    db: Session = Depends(get_db)
+):
+    """获取章节的分段结果"""
+    try:
+        # 获取章节
+        chapter = db.query(BookChapter).filter(BookChapter.id == chapter_id).first()
+        if not chapter:
+            raise HTTPException(status_code=404, detail="章节不存在")
+
+        # 导入智能分段服务
+        from app.services.smart_segmentation_service import SmartSegmentationService
+
+        # 创建分段服务实例
+        segmentation_service = SmartSegmentationService()
+
+        # 获取缓存的分段结果
+        segments = await segmentation_service.get_cached_segments(chapter_id, db)
+
+        if segments:
+            return {
+                "success": True,
+                "message": "获取分段结果成功",
+                "data": {
+                    "chapter_id": chapter_id,
+                    "chapter_title": chapter.chapter_title,
+                    "segments": segments,
+                    "segment_count": len(segments)
+                }
+            }
+        else:
+            return {
+                "success": False,
+                "message": "未找到分段结果，请先执行智能分段",
+                "data": None
+            }
+
+    except Exception as e:
+        logger.error(f"获取章节 {chapter_id} 分段结果失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取分段结果失败: {str(e)}")
+
+@router.post("/{chapter_id}/six-card-analysis")
+async def six_card_analysis(
+    chapter_id: int,
+    request_data: Dict[str, Any] = Body(default={}),
+    db: Session = Depends(get_db)
+):
+    # 从请求体中提取段落索引
+    segment_indices = request_data.get("segment_indices")
+    """对章节的指定段落进行6卡分析"""
+    try:
+        # 获取章节
+        chapter = db.query(BookChapter).filter(BookChapter.id == chapter_id).first()
+        if not chapter:
+            raise HTTPException(status_code=404, detail="章节不存在")
+
+        # 导入智能分段服务
+        from app.services.smart_segmentation_service import SmartSegmentationService
+
+        # 创建分段服务实例
+        segmentation_service = SmartSegmentationService()
+
+        # 获取分段结果
+        segments = await segmentation_service.get_cached_segments(chapter_id, db)
+        if not segments:
+            raise HTTPException(status_code=400, detail="未找到分段结果，请先执行智能分段")
+
+        # 确定要分析的段落
+        if segment_indices is None:
+            # 分析所有段落
+            target_segments = [(i, segment) for i, segment in enumerate(segments)]
+            analysis_type = "all"
+        else:
+            # 分析指定段落
+            target_segments = []
+            for idx in segment_indices:
+                if 0 <= idx < len(segments):
+                    target_segments.append((idx, segments[idx]))
+            analysis_type = "selected"
+
+        if not target_segments:
+            raise HTTPException(status_code=400, detail="没有有效的段落索引")
+
+        # 导入6卡分析器
+        from app.services.six_card_analyzer import SixCardAnalyzer
+
+        # 创建6卡分析器实例
+        analyzer = SixCardAnalyzer()
+
+        # 执行6卡分析
+        logger.info(f"开始对章节 {chapter_id} 的 {len(target_segments)} 个段落进行6卡分析")
+
+        analysis_results = []
+        for segment_index, segment_text in target_segments:
+            try:
+                logger.info(f"分析段落 {segment_index + 1}/{len(segments)}")
+                result = await analyzer.analyze_segment(segment_text, segment_index + 1)
+                analysis_results.append(result)
+            except Exception as e:
+                logger.error(f"段落 {segment_index + 1} 6卡分析失败: {str(e)}")
+                # 创建失败时的默认结果
+                fallback_result = analyzer._create_fallback_cards(segment_text, segment_index + 1)
+                analysis_results.append(fallback_result)
+
+        # 保存分析结果到数据库
+        analysis_summary = await _save_six_card_analysis_results(
+            chapter_id, analysis_results, analysis_type, db
+        )
+
+        logger.info(f"章节 {chapter_id} 6卡分析完成，共分析 {len(analysis_results)} 个段落")
+
+        return {
+            "success": True,
+            "message": f"6卡分析完成，共分析 {len(analysis_results)} 个段落",
+            "data": {
+                "chapter_id": chapter_id,
+                "chapter_title": chapter.chapter_title,
+                "analysis_type": analysis_type,
+                "total_segments": len(segments),
+                "analyzed_segments": len(analysis_results),
+                "results": analysis_results,
+                "summary": analysis_summary
+            }
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"章节 {chapter_id} 6卡分析失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"6卡分析失败: {str(e)}")
+
+@router.get("/{chapter_id}/six-card-results")
+async def get_six_card_results(
+    chapter_id: int,
+    db: Session = Depends(get_db)
+):
+    """获取章节的6卡分析结果"""
+    try:
+        # 获取章节
+        chapter = db.query(BookChapter).filter(BookChapter.id == chapter_id).first()
+        if not chapter:
+            raise HTTPException(status_code=404, detail="章节不存在")
+
+        # 从数据库获取6卡分析结果
+        # 查找包含6卡分析数据的记录
+        analysis_result = db.query(AnalysisResult).filter(
+            AnalysisResult.chapter_id == chapter_id
+        ).first()
+        
+        # 检查是否有6卡分析数据
+        has_six_card_data = False
+        if analysis_result and analysis_result.original_analysis:
+            # 检查original_analysis中是否包含6卡分析结果
+            original_data = analysis_result.original_analysis
+            if isinstance(original_data, dict) and 'six_card_results' in original_data:
+                has_six_card_data = True
+        
+        if not has_six_card_data:
+            return {
+                "success": True,
+                "message": "暂无6卡分析结果",
+                "data": {
+                    "chapter_id": chapter_id,
+                    "chapter_title": chapter.chapter_title,
+                    "results": [],
+                    "analysis_count": 0,
+                    "has_results": False
+                }
+            }
+        
+        # 返回已保存的分析结果
+        analysis_data = analysis_result.original_analysis
+        return {
+            "success": True,
+            "message": "获取6卡分析结果成功",
+            "data": {
+                "chapter_id": chapter_id,
+                "chapter_title": chapter.chapter_title,
+                "results": analysis_data.get("six_card_results", []),
+                "analysis_count": analysis_data.get("six_card_total_results", 0),
+                "analysis_type": analysis_data.get("six_card_analysis_type", "unknown"),
+                "saved_at": analysis_data.get("six_card_saved_at"),
+                "has_results": True
+            }
+        }
+
+    except Exception as e:
+        logger.error(f"获取章节 {chapter_id} 6卡分析结果失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取6卡分析结果失败: {str(e)}")
+
+async def _save_six_card_analysis_results(chapter_id: int, results: List[Dict], analysis_type: str, db: Session) -> Dict[str, Any]:
+    """保存6卡分析结果到数据库"""
+    try:
+        # 检查是否已有分析结果记录
+        existing_result = db.query(AnalysisResult).filter(
+            AnalysisResult.chapter_id == chapter_id
+        ).first()
+        
+        if existing_result:
+            # 更新现有记录，保留已有的智能分段数据
+            current_analysis = existing_result.original_analysis or {}
+            
+            # 获取现有的6卡分析结果
+            existing_six_card_results = current_analysis.get("six_card_results", [])
+            
+            # 如果是单个段落分析，需要检查是否已存在该段落的分析结果
+            if analysis_type == "selected" and len(results) == 1:
+                # 获取新分析的段落索引
+                new_segment_index = results[0].get("_metadata", {}).get("segment_index")
+                
+                # 移除已存在的相同段落分析结果
+                if new_segment_index is not None:
+                    existing_six_card_results = [
+                        result for result in existing_six_card_results
+                        if result.get("_metadata", {}).get("segment_index") != new_segment_index
+                    ]
+            
+            # 合并数据，追加新的6卡分析结果
+            updated_analysis = {
+                **current_analysis,  # 保留现有数据（包括智能分段）
+                "six_card_results": existing_six_card_results + results,  # 追加新结果
+                "six_card_analysis_type": analysis_type,
+                "six_card_total_results": len(existing_six_card_results) + len(results),
+                "six_card_saved_at": datetime.utcnow().isoformat()
+            }
+            
+            existing_result.original_analysis = updated_analysis
+            existing_result.updated_at = datetime.utcnow()
+            existing_result.status = 'completed'
+        else:
+            # 创建新记录
+            new_result = AnalysisResult(
+                chapter_id=chapter_id,
+                original_analysis={
+                    "six_card_results": results,
+                    "six_card_analysis_type": analysis_type,
+                    "six_card_total_results": len(results),
+                    "six_card_saved_at": datetime.utcnow().isoformat()
+                },
+                status='completed',
+                processing_time=0,
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow()
+            )
+            db.add(new_result)
+        
+        # 提交到数据库
+        db.commit()
+        
+        return {
+            "total_results": len(existing_six_card_results) + len(results) if existing_result else len(results),
+            "analysis_type": analysis_type,
+            "saved_at": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"保存6卡分析结果失败: {str(e)}")
+        db.rollback()
+        return {
+            "total_results": len(results),
+            "analysis_type": analysis_type,
+            "saved_at": datetime.utcnow().isoformat(),
+            "save_error": str(e)
+        }

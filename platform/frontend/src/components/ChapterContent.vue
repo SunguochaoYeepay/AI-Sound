@@ -52,7 +52,24 @@
       <div v-if="mode === 'preview'" class="preview-mode">
         <div v-if="chapter?.content" class="content-display">
           <div v-for="(paragraph, index) in formattedContent" :key="index" class="paragraph">
-            {{ paragraph }}
+            <div class="paragraph-header">
+              <span class="paragraph-index">段落 {{ index + 1 }}</span>
+              <a-button 
+                size="small" 
+                type="primary"
+                @click="handleSixCardAnalysis(index)"
+                :loading="analyzingSegments[index]"
+              >
+                <template #icon>
+                  <AppstoreOutlined />
+                </template>
+                6卡分析
+              </a-button>
+            </div>
+            <div class="paragraph-text">{{ paragraph.text }}</div>
+            <div v-if="paragraph.isSmartSegmented" class="smart-segment-badge">
+              <a-tag color="blue" size="small">🤖 智能分段</a-tag>
+            </div>
           </div>
         </div>
         <div v-else class="no-content">
@@ -105,6 +122,8 @@
 <script setup>
   import { ref, computed, watch } from 'vue'
   import { message } from 'ant-design-vue'
+  import { AppstoreOutlined } from '@ant-design/icons-vue'
+  import { storyboardAPI } from '@/api/storyboard'
 
   const props = defineProps({
     chapter: {
@@ -113,7 +132,7 @@
     }
   })
 
-  const emit = defineEmits(['contentChanged'])
+  const emit = defineEmits(['contentChanged', 'sixCardAnalysis'])
 
   const mode = ref('preview')
   const showStats = ref(false)
@@ -121,19 +140,82 @@
   const editContent = ref('')
   const originalContent = ref('')
   const hasChanges = ref(false)
+  const analyzingSegments = ref({})
 
-  // 格式化内容为段落
+  // 格式化内容为段落（只使用智能分段结果）
   const formattedContent = computed(() => {
     if (!props.chapter?.content) return []
-    return props.chapter.content.split('\n').filter((line) => line.trim())
+    
+    // 如果有智能分段数据，使用智能分段结果
+    if (props.chapter.segmentation_data?.segments && props.chapter.segmentation_data.segments.length > 0) {
+      return props.chapter.segmentation_data.segments.map((segment, index) => ({
+        text: typeof segment === 'string' ? segment : segment.content || segment.text || '',
+        index: index,
+        isSmartSegmented: true
+      }))
+    }
+    
+    // 没有智能分段数据就返回空数组
+    return []
   })
+
+  // 6卡分析方法
+  const handleSixCardAnalysis = async (segmentIndex) => {
+    if (analyzingSegments.value[segmentIndex]) return
+    
+    analyzingSegments.value[segmentIndex] = true
+    try {
+      console.log(`开始分析段落 ${segmentIndex + 1}...`)
+      
+      // 显示分析提示
+      message.info({
+        content: `正在分析段落 ${segmentIndex + 1}，请稍候...`,
+        duration: 3,
+        key: `segment-${segmentIndex}`
+      })
+      
+      // 调用6卡分析API
+      const response = await storyboardAPI.sixCardAnalysis(props.chapter?.id, [segmentIndex])
+      
+      if (response.data?.success) {
+        message.success({
+          content: `✅ 段落 ${segmentIndex + 1} 6卡分析完成！`,
+          duration: 3,
+          key: `segment-${segmentIndex}`
+        })
+        
+        // 触发事件，让父组件显示分析结果
+        emit('sixCardAnalysis', {
+          segmentIndex,
+          results: response.data.data.results
+        })
+        
+        console.log('6卡分析完成:', response.data)
+      } else {
+        throw new Error(response.data?.message || '6卡分析失败')
+      }
+      
+    } catch (error) {
+      console.error('6卡分析失败:', error)
+      message.error({
+        content: `❌ 段落 ${segmentIndex + 1} 6卡分析失败`,
+        duration: 3,
+        key: `segment-${segmentIndex}`
+      })
+    } finally {
+      analyzingSegments.value[segmentIndex] = false
+    }
+  }
 
   // 内容统计
   const contentStats = computed(() => {
     const content = props.chapter?.content || ''
     const wordCount = content.replace(/\s/g, '').length
     const charCount = content.length
-    const paragraphCount = content.split('\n').filter((line) => line.trim()).length
+    
+    // 只使用智能分段数量，没有就显示0
+    const paragraphCount = props.chapter?.segmentation_data?.segments?.length || 0
+    
     const readTime = Math.ceil(wordCount / 300) // 假设每分钟300字
 
     return {
@@ -274,10 +356,33 @@
   }
 
   .paragraph {
-    margin-bottom: 16px;
+    margin-bottom: 20px;
+    padding: 16px;
+    border: 1px solid var(--border-color, #e8e8e8);
+    border-radius: 8px;
+    background: var(--card-bg, white);
     text-align: justify;
     color: var(--ant-color-text);
     font-size: 15px;
+  }
+
+  .paragraph-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-color, #f0f0f0);
+  }
+
+  .paragraph-index {
+    font-weight: 600;
+    color: var(--text-color, #333);
+    font-size: 14px;
+  }
+
+  .paragraph-text {
+    margin-bottom: 8px;
     text-indent: 2em;
   }
 

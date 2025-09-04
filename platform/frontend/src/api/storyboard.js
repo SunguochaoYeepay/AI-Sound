@@ -1,4 +1,4 @@
-import apiClient from './config.js'
+import apiClient, { llmAnalysisClient } from './config.js'
 
 /**
  * 故事板分析API
@@ -78,10 +78,20 @@ export const storyboardAPI = {
   },
 
   /**
-   * 获取审核数据
+   * 获取分镜确认数据（包含智能分段）
    * @param {number} sessionId - 会话ID
    * @param {number} chapterId - 章节ID
-   * @returns {Promise} 审核数据
+   * @returns {Promise} 确认数据
+   */
+  getStoryboardReviewData: (sessionId, chapterId) => {
+    return apiClient.get(`/storyboard/review/${sessionId}/${chapterId}`)
+  },
+
+  /**
+   * 获取章节卡片数据
+   * @param {number} sessionId - 会话ID
+   * @param {number} chapterId - 章节ID
+   * @returns {Promise} 章节卡片数据
    */
   getReviewData: (sessionId, chapterId) => {
     return apiClient.get(`/storyboard/sessions/${sessionId}/chapters/${chapterId}/cards`)
@@ -105,6 +115,44 @@ export const storyboardAPI = {
    */
   analyzeChapter: (sessionId, chapterId) => {
     return apiClient.post(`/storyboard/sessions/${sessionId}/chapters/${chapterId}/analyze`)
+  },
+
+  /**
+   * 智能分段章节内容
+   * @param {number} chapterId - 章节ID
+   * @returns {Promise} 分段结果
+   */
+  smartSegmentation: (chapterId) => {
+    return llmAnalysisClient.post(`/chapters/${chapterId}/smart-segmentation`)
+  },
+
+  /**
+   * 获取章节分段结果
+   * @param {number} chapterId - 章节ID
+   * @returns {Promise} 分段结果
+   */
+  getSegmentationResult: (chapterId) => {
+    return apiClient.get(`/chapters/${chapterId}/segmentation-result`)
+  },
+
+  /**
+   * 对章节段落进行6卡分析
+   * @param {number} chapterId - 章节ID
+   * @param {Array} segmentIndices - 要分析的段落索引数组，null表示分析所有段落
+   * @returns {Promise} 6卡分析结果
+   */
+  sixCardAnalysis: (chapterId, segmentIndices = null) => {
+    const data = segmentIndices ? { segment_indices: segmentIndices } : {}
+    return llmAnalysisClient.post(`/chapters/${chapterId}/six-card-analysis`, data)
+  },
+
+  /**
+   * 获取章节6卡分析结果
+   * @param {number} chapterId - 章节ID
+   * @returns {Promise} 6卡分析结果
+   */
+  getSixCardResults: (chapterId) => {
+    return apiClient.get(`/chapters/${chapterId}/six-card-results`)
   },
 
   /**

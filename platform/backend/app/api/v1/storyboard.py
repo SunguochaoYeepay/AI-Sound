@@ -7,10 +7,13 @@ from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisco
 from sqlalchemy.orm import Session
 from typing import List, Optional, Dict, Any
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 from app.database import get_db
 from app.services.storyboard_analysis_service_v2 import StoryboardAnalysisServiceV2
-from app.models import StoryboardAnalysisSession, BaseStoryboardCard, Book, BookChapter
+from app.models import StoryboardAnalysisSession, BaseStoryboardCard, Book, BookChapter, AnalysisResult
 from app.schemas.storyboard import (
     StoryboardSessionCreate, StoryboardSessionResponse, StoryboardSessionList,
     StoryboardCardResponse, StoryboardCardUpdate, StoryboardConfirmation
@@ -416,7 +419,7 @@ def get_session_chapters(session_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/review/{session_id}/{chapter_id}")
-def get_storyboard_review_data(session_id: int, chapter_id: int, db: Session = Depends(get_db)):
+async def get_storyboard_review_data(session_id: int, chapter_id: int, db: Session = Depends(get_db)):
     """
     获取分镜确认页面的数据
     """
@@ -451,13 +454,51 @@ def get_storyboard_review_data(session_id: int, chapter_id: int, db: Session = D
             session_id=session_id,
             chapter_id=None  # 书籍级卡片没有章节ID
         )
-        
+
         book_card_groups = {}
         for card in book_cards:
             if card.card_type not in book_card_groups:
                 book_card_groups[card.card_type] = []
             book_card_groups[card.card_type].append(card.to_dict())
-        
+
+        # 获取智能分段数据（如果存在）
+        try:
+            from app.services.smart_segmentation_service import SmartSegmentationService
+            segmentation_service = SmartSegmentationService()
+            
+            # 添加调试日志
+            logger.info(f"🔍 开始获取章节 {chapter_id} 的智能分段数据")
+            
+            # 先检查数据库中是否有AnalysisResult记录
+            analysis_results = db.query(AnalysisResult).filter(
+                AnalysisResult.chapter_id == chapter_id
+            ).all()
+            logger.info(f"🔍 数据库中找到 {len(analysis_results)} 条AnalysisResult记录")
+            
+            for result in analysis_results:
+                logger.info(f"🔍 记录ID: {result.id}, 状态: {result.status}, 有original_analysis: {result.original_analysis is not None}")
+                if result.original_analysis:
+                    logger.info(f"🔍 original_analysis字段内容: {result.original_analysis}")
+            
+            segments = await segmentation_service.get_cached_segments(chapter_id, db)
+            logger.info(f"🔍 get_cached_segments返回结果: {segments}")
+            
+            if segments and len(segments) > 0:
+                segmentation_data = {
+                    "segments": segments,
+                    "segment_count": len(segments),
+                    "is_smart_segmented": True
+                }
+                logger.info(f"章节 {chapter_id} 返回智能分段数据，共 {len(segments)} 段")
+            else:
+                segmentation_data = None
+                logger.info(f"章节 {chapter_id} 未进行智能分段，不返回分段数据")
+        except Exception as e:
+            logger.warning(f"获取智能分段数据失败: {str(e)}")
+            import traceback
+            logger.error(f"完整错误堆栈: {traceback.format_exc()}")
+            segmentation_data = None
+
         return {
             "session": session.to_dict(),
             "chapter": {
@@ -467,7 +508,8 @@ def get_storyboard_review_data(session_id: int, chapter_id: int, db: Session = D
                 "chapter_number": chapter.chapter_number
             },
             "cards": card_groups,
-            "book_cards": book_card_groups
+            "book_cards": book_card_groups,
+            "segmentation_data": segmentation_data
         }
         
     except HTTPException:

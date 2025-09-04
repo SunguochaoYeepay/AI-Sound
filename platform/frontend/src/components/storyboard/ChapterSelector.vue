@@ -21,10 +21,24 @@
           </a-tag>
         </div>
         
+        <!-- 智能分段按钮 -->
+        <a-button
+          v-if="canSegmentChapter()"
+          type="default"
+          :loading="segmentingChapter"
+          @click="handleSmartSegmentation"
+          size="small"
+        >
+          <template #icon>
+            <ScissorOutlined />
+          </template>
+          智能分段
+        </a-button>
+
         <!-- 分析按钮 -->
-        <a-button 
+        <a-button
           v-if="canAnalyzeChapter()"
-          type="primary" 
+          type="primary"
           :loading="analyzingChapter"
           @click="handleAnalyzeChapter"
           size="small"
@@ -34,11 +48,11 @@
           </template>
           分析此章节
         </a-button>
-        
+
         <!-- 重新分析按钮 -->
-        <a-button 
+        <a-button
           v-if="canReanalyzeChapter()"
-          type="default" 
+          type="default"
           :loading="analyzingChapter"
           @click="handleAnalyzeChapter"
           size="small"
@@ -54,7 +68,7 @@
 </template>
 
 <script setup>
-import { PlayCircleOutlined, ReloadOutlined } from '@ant-design/icons-vue'
+import { PlayCircleOutlined, ReloadOutlined, ScissorOutlined } from '@ant-design/icons-vue'
 
 // Props
 const props = defineProps({
@@ -77,11 +91,15 @@ const props = defineProps({
   analyzingChapter: {
     type: Boolean,
     default: false
+  },
+  segmentingChapter: {
+    type: Boolean,
+    default: false
   }
 })
 
 // Emits
-const emit = defineEmits(['chapter-change', 'analyze-chapter'])
+const emit = defineEmits(['chapter-change', 'analyze-chapter', 'smart-segmentation'])
 
 // Methods
 const handleChapterChange = (value) => {
@@ -90,6 +108,10 @@ const handleChapterChange = (value) => {
 
 const handleAnalyzeChapter = () => {
   emit('analyze-chapter')
+}
+
+const handleSmartSegmentation = () => {
+  emit('smart-segmentation')
 }
 
 const getChapterAnalysisStatusColor = () => {
@@ -118,6 +140,11 @@ const canAnalyzeChapter = () => {
 
 const canReanalyzeChapter = () => {
   return props.currentChapterStatus === 'completed'
+}
+
+const canSegmentChapter = () => {
+  // 只要有章节内容就可以分段，不依赖分析状态
+  return props.selectedChapter && props.selectedChapter !== ''
 }
 </script>
 
