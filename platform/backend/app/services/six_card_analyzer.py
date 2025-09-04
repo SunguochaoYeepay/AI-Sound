@@ -34,6 +34,15 @@ class SixCardAnalyzer:
         except ImportError as e:
             logger.warning(f"段落剧本生成器导入失败: {e}")
             self.script_generator = None
+        
+        # 🔥 新增：导入音频分镜生成器
+        try:
+            from app.services.audio_storyboard_generator import AudioStoryboardGenerator
+            self.storyboard_generator = AudioStoryboardGenerator()
+            logger.info("音频分镜生成器初始化成功")
+        except ImportError as e:
+            logger.warning(f"音频分镜生成器导入失败: {e}")
+            self.storyboard_generator = None
     
     def _build_analysis_prompt(self) -> str:
         """构建6卡分析提示词"""
@@ -179,6 +188,34 @@ class SixCardAnalyzer:
                 logger.warning("段落剧本生成器未初始化，使用fallback synthesis_json")
                 response["synthesis_json"] = self._create_fallback_synthesis_json(segment_text, segment_index)
             
+            # 🔥 新增：生成音频制作卡
+            if self.storyboard_generator:
+                try:
+                    # 构建段落剧本数据
+                    paragraph_script_data = {
+                        "synthesis_json": response["synthesis_json"],
+                        "story_card": response.get("story_card", {}),
+                        "character_card": response.get("character_card", {}),
+                        "scene_card": response.get("scene_card", {}),
+                        "event_card": response.get("event_card", {}),
+                        "emotion_card": response.get("emotion_card", {}),
+                        "audio_script_card": response.get("audio_script_card", {})
+                    }
+                    
+                    # 生成音频制作卡
+                    audio_storyboard_card = self.storyboard_generator.generate_paragraph_storyboard(
+                        paragraph_script_data, f"paragraph_{segment_index}"
+                    )
+                    response["audio_storyboard_card"] = audio_storyboard_card
+                    logger.info(f"段落 {segment_index} 音频制作卡生成成功")
+                except Exception as e:
+                    logger.error(f"段落 {segment_index} 音频制作卡生成失败: {str(e)}")
+                    # 创建基础的audio_storyboard_card作为fallback
+                    response["audio_storyboard_card"] = self._create_fallback_audio_storyboard_card(segment_text, segment_index)
+            else:
+                logger.warning("音频分镜生成器未初始化，使用fallback audio_storyboard_card")
+                response["audio_storyboard_card"] = self._create_fallback_audio_storyboard_card(segment_text, segment_index)
+            
             logger.info(f"段落 {segment_index} 6卡分析完成")
             return response
             
@@ -263,6 +300,62 @@ class SixCardAnalyzer:
                 "background_music": "无",
                 "sound_effects": [],
                 "voice_characteristics": "标准音色"
+            },
+            "audio_storyboard_card": {
+                "timeline": {
+                    "total_duration": 5.0,
+                    "segments": [
+                        {
+                            "start_time": 0,
+                            "end_time": 5.0,
+                            "speaker": "旁白",
+                            "emotion": "中性"
+                        }
+                    ]
+                },
+                "audio_tracks": {
+                    "main_track": {"name": "主音轨", "priority": "high", "volume": 100},
+                    "background_music": {"name": "背景音乐", "priority": "low", "volume": 30},
+                    "environment_sound": {"name": "环境音", "priority": "low", "volume": 40}
+                },
+                "voice_assignments": {
+                    "characters": [
+                        {
+                            "name": "旁白",
+                            "role_type": "叙述者",
+                            "voice_name": "旁白语音"
+                        }
+                    ]
+                },
+                "background_music": {
+                    "type": "环境音乐",
+                    "mood": "中性",
+                    "tempo": "中等",
+                    "volume": 30
+                },
+                "mixing_parameters": {
+                    "main_volume": 100,
+                    "background_volume": 30,
+                    "environment_volume": 40
+                },
+                "sound_effects": [
+                    {
+                        "type": "环境音",
+                        "description": "基础环境音效",
+                        "start_time": 0,
+                        "end_time": 5.0,
+                        "volume": 40
+                    }
+                ],
+                "scene_sequence": [
+                    {
+                        "type": "基础场景",
+                        "description": "段落场景描述",
+                        "start_time": 0,
+                        "end_time": 5.0,
+                        "atmosphere": "中性"
+                    }
+                ]
             }
         }
     
@@ -304,6 +397,75 @@ class SixCardAnalyzer:
                     "name": "旁白",
                     "character_id": "narrator_001",
                     "voice_name": "旁白语音"
+                }
+            ]
+        }
+
+    def _create_fallback_audio_script_card(self, segment_text: str, segment_index: int) -> Dict[str, Any]:
+        """创建基础的audio_script_card作为fallback"""
+        return {
+            "voice_direction": "标准语音",
+            "pacing": "正常节奏",
+            "background_music": "无",
+            "sound_effects": [],
+            "voice_characteristics": "标准音色"
+        }
+
+    def _create_fallback_audio_storyboard_card(self, segment_text: str, segment_index: int) -> Dict[str, Any]:
+        """创建基础的audio_storyboard_card作为fallback"""
+        return {
+            "timeline": {
+                "total_duration": 5.0,
+                "segments": [
+                    {
+                        "start_time": 0,
+                        "end_time": 5.0,
+                        "speaker": "旁白",
+                        "emotion": "中性"
+                    }
+                ]
+            },
+            "audio_tracks": {
+                "main_track": {"name": "主音轨", "priority": "high", "volume": 100},
+                "background_music": {"name": "背景音乐", "priority": "low", "volume": 30},
+                "environment_sound": {"name": "环境音", "priority": "low", "volume": 40}
+            },
+            "voice_assignments": {
+                "characters": [
+                    {
+                        "name": "旁白",
+                        "role_type": "叙述者",
+                        "voice_name": "旁白语音"
+                    }
+                ]
+            },
+            "background_music": {
+                "type": "环境音乐",
+                "mood": "中性",
+                "tempo": "中等",
+                "volume": 30
+            },
+            "mixing_parameters": {
+                "main_volume": 100,
+                "background_volume": 30,
+                "environment_volume": 40
+            },
+            "sound_effects": [
+                {
+                    "type": "环境音",
+                    "description": "基础环境音效",
+                    "start_time": 0,
+                    "end_time": 5.0,
+                    "volume": 40
+                }
+            ],
+            "scene_sequence": [
+                {
+                    "type": "基础场景",
+                    "description": "段落场景描述",
+                    "start_time": 0,
+                    "end_time": 5.0,
+                    "atmosphere": "中性"
                 }
             ]
         }

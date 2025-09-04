@@ -8,6 +8,13 @@
     @close="$emit('close')"
   >
     <div v-if="selectedResult" class="six-card-drawer-content">
+      <!-- 调试信息 -->
+      <div class="debug-info" style="margin-bottom: 16px; padding: 12px; background: #f0f0f0; border-radius: 6px; font-size: 12px;">
+        <p><strong>调试信息:</strong></p>
+        <p>音频制作卡字段: {{ Object.keys(selectedResult.audio_storyboard_card || {}).join(', ') || '无' }}</p>
+        <p>完整数据结构: {{ JSON.stringify(selectedResult, null, 2).substring(0, 200) }}...</p>
+      </div>
+
       <!-- 横向tabs导航 -->
       <a-tabs 
         v-model:activeKey="activeTabKey" 
@@ -91,20 +98,10 @@
           </div>
         </a-tab-pane>
         
-        <!-- 音频剧本卡 -->
-        <a-tab-pane key="audio_script" tab="🎵 音频剧本卡">
-          <div class="tab-content">
-            <div class="card-content">
-              <p><strong>配音指导:</strong> {{ selectedResult.audio_script_card?.voice_direction || '暂无数据' }}</p>
-              <p><strong>节奏:</strong> {{ selectedResult.audio_script_card?.pacing || '暂无数据' }}</p>
-              <p><strong>背景音乐:</strong> {{ selectedResult.audio_script_card?.background_music || '暂无数据' }}</p>
-              <p><strong>音效:</strong> {{ Array.isArray(selectedResult.audio_script_card?.sound_effects) ? selectedResult.audio_script_card.sound_effects.join(', ') : selectedResult.audio_script_card?.sound_effects || '无' }}</p>
-            </div>
-          </div>
-        </a-tab-pane>
+
         
-        <!-- 音频分镜卡 -->
-        <a-tab-pane key="audio_storyboard" tab="🎬 音频分镜卡">
+        <!-- 音频制作卡 -->
+        <a-tab-pane key="audio_storyboard" tab="🎬 音频制作卡">
           <div class="tab-content">
             <div class="card-content">
               <!-- 时间轴信息 -->
@@ -167,6 +164,36 @@
                 <p>主音量: {{ selectedResult.audio_storyboard_card.mixing_parameters.main_volume }}%</p>
                 <p>背景音量: {{ selectedResult.audio_storyboard_card.mixing_parameters.background_volume }}%</p>
                 <p>环境音量: {{ selectedResult.audio_storyboard_card.mixing_parameters.environment_volume }}%</p>
+              </div>
+
+              <!-- 音效配置 -->
+              <div v-if="selectedResult.audio_storyboard_card?.sound_effects" class="sound-effects-info">
+                <div class="info-header">
+                  <a-tag color="orange" size="small">🔊 音效配置</a-tag>
+                </div>
+                <div v-for="(effect, index) in selectedResult.audio_storyboard_card.sound_effects" :key="index" class="sound-effect">
+                  <p><strong>类型:</strong> {{ effect.type }}</p>
+                  <p><strong>描述:</strong> {{ effect.description }}</p>
+                  <p><strong>音量:</strong> {{ effect.volume }}%</p>
+                </div>
+              </div>
+
+              <!-- 场景序列 -->
+              <div v-if="selectedResult.audio_storyboard_card?.scene_sequence" class="scene-sequence-info">
+                <div class="info-header">
+                  <a-tag color="geekblue" size="small">🎬 场景序列</a-tag>
+                </div>
+                <div v-for="(scene, index) in selectedResult.audio_storyboard_card.scene_sequence" :key="index" class="scene-item">
+                  <p><strong>{{ scene.type }}:</strong> {{ scene.description }}</p>
+                  <p><strong>时间:</strong> {{ scene.start_time }}-{{ scene.end_time }}s</p>
+                  <p><strong>氛围:</strong> {{ scene.atmosphere }}</p>
+                </div>
+              </div>
+
+              <!-- 空数据提示 -->
+              <div v-if="!selectedResult.audio_storyboard_card || Object.keys(selectedResult.audio_storyboard_card || {}).length === 0" class="empty-data">
+                <a-empty description="暂无音频制作数据" :image="false" />
+                <p class="empty-tip">音频制作数据将在音频分析完成后生成</p>
               </div>
             </div>
           </div>
