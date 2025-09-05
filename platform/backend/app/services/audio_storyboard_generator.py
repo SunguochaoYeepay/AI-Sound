@@ -89,6 +89,24 @@ class AudioStoryboardGenerator:
                 "spatial": "环绕立体声",
                 "reverb": "开阔空间"
             },
+            "古代街道": {
+                "sounds": ["马蹄声", "叫卖声", "脚步声", "市井嘈杂声", "钟声"],
+                "volume": 40,
+                "spatial": "古代市集",
+                "reverb": "街道混响"
+            },
+            "古代室内": {
+                "sounds": ["脚步声", "门开关声", "家具移动声", "烛火声"],
+                "volume": 35,
+                "spatial": "近距离",
+                "reverb": "古代建筑混响"
+            },
+            "古代自然": {
+                "sounds": ["鸟叫声", "风声", "水流声", "树叶声", "虫鸣声"],
+                "volume": 40,
+                "spatial": "自然环绕",
+                "reverb": "自然空间"
+            },
             "室内场景": {
                 "sounds": ["脚步声", "门开关声", "家具移动声"],
                 "volume": 35,
@@ -135,7 +153,7 @@ class AudioStoryboardGenerator:
             timeline = self._generate_timeline(synthesis_json, paragraph_id)
             
             # 3. 生成音轨配置
-            audio_tracks = self._generate_audio_tracks(synthesis_json, scene_card)
+            audio_tracks = self._generate_audio_tracks(synthesis_json, scene_card, paragraph_script)
             
             # 4. 生成角色语音配置
             voice_assignments = self._generate_voice_assignments(synthesis_json)
@@ -207,7 +225,7 @@ class AudioStoryboardGenerator:
         timeline["total_duration"] = current_time
         return timeline
     
-    def _generate_audio_tracks(self, synthesis_json: Dict[str, Any], scene_card: Dict[str, Any]) -> Dict[str, Any]:
+    def _generate_audio_tracks(self, synthesis_json: Dict[str, Any], scene_card: Dict[str, Any], paragraph_script_data: Dict[str, Any] = None) -> Dict[str, Any]:
         """生成音轨配置"""
         
         audio_tracks = {}
@@ -235,9 +253,10 @@ class AudioStoryboardGenerator:
         background_track = self.track_configs["background_music"].copy()
         background_track["segments"] = []
         
-        # 根据场景确定背景音乐
+        # 根据场景确定背景音乐 - 使用统一的音乐配置逻辑
         atmosphere = scene_card.get("atmosphere", "日常对话")
-        music_config = self.scene_music_rules.get(atmosphere, self.scene_music_rules["日常对话"])
+        emotion_card = paragraph_script_data.get("emotion_card", {}) if paragraph_script_data else {}
+        music_config = self._generate_background_music(scene_card, emotion_card)
         
         # 计算总时长
         synthesis_plan = synthesis_json.get("synthesis_plan", [])
@@ -546,20 +565,29 @@ class AudioStoryboardGenerator:
         scene_mapping = {
             "古战场": "古战场",
             "战场": "古战场",
+            "长安": "古代街道",
+            "盛唐": "古代街道",
+            "古代": "古代街道",
+            "市集": "古代街道",
+            "街道": "古代街道",
+            "古代室内": "古代室内",
+            "古代房间": "古代室内",
+            "古代自然": "古代自然",
+            "古代森林": "古代自然",
             "室内": "室内场景",
             "房间": "室内场景",
             "自然": "自然场景",
             "森林": "自然场景",
             "城市": "城市场景",
-            "街道": "城市场景"
+            "现代街道": "城市场景"
         }
         
         for keyword, config_key in scene_mapping.items():
             if keyword in location:
                 return self.environment_sound_rules.get(config_key)
         
-        # 默认返回自然场景配置
-        return self.environment_sound_rules.get("自然场景")
+        # 默认返回古代街道配置（适合穿越小说等古代背景）
+        return self.environment_sound_rules.get("古代街道")
     
     def _create_fallback_storyboard(self, paragraph_id: str) -> Dict[str, Any]:
         """创建基础的音频分镜卡（fallback）"""
