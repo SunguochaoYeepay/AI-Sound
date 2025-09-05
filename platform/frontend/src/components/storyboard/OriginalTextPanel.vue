@@ -265,7 +265,7 @@ const getIssueColor = (type) => {
 
 .text-content {
   flex: 1;
-  padding: 24px;
+  padding: 12px;
   overflow-y: auto;
   background: var(--content-bg, #1a1a1a);
 }

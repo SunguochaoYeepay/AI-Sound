@@ -141,7 +141,7 @@ class AudioStoryboardGenerator:
             voice_assignments = self._generate_voice_assignments(synthesis_json)
             
             # 5. 生成音效配置
-            sound_effects = self._generate_sound_effects(scene_card, event_card)
+            sound_effects = self._generate_sound_effects(scene_card, event_card, timeline["total_duration"])
             
             # 6. 生成背景音乐配置
             background_music = self._generate_background_music(scene_card, emotion_card)
@@ -163,7 +163,7 @@ class AudioStoryboardGenerator:
                 "sound_effects": sound_effects,
                 "background_music": background_music,
                 "mixing_parameters": mixing_parameters,
-                "scene_sequence": self._generate_scene_sequence(scene_card, event_card),
+                "scene_sequence": self._generate_scene_sequence(scene_card, event_card, timeline["total_duration"]),
                 "audio_config": self._generate_audio_config(synthesis_json, scene_card)
             }
             
@@ -239,10 +239,16 @@ class AudioStoryboardGenerator:
         atmosphere = scene_card.get("atmosphere", "日常对话")
         music_config = self.scene_music_rules.get(atmosphere, self.scene_music_rules["日常对话"])
         
+        # 计算总时长
+        synthesis_plan = synthesis_json.get("synthesis_plan", [])
+        total_duration = 0
+        if synthesis_plan:
+            total_duration = synthesis_plan[-1].get("end_time", 0)
+        
         background_track["segments"].append({
             "segment_id": "bg_music_001",
             "start_time": 0,
-            "end_time": synthesis_json.get("total_duration", 0),
+            "end_time": total_duration,  # 修复：使用正确的总时长
             "music_type": music_config["type"],
             "mood": music_config["mood"],
             "volume": music_config["volume"],
@@ -265,7 +271,7 @@ class AudioStoryboardGenerator:
             environment_track["segments"].append({
                 "segment_id": "env_sound_001",
                 "start_time": 0,
-                "end_time": synthesis_json.get("total_duration", 0),
+                "end_time": total_duration,  # 修复：使用正确的总时长
                 "sound_type": "环境音效",
                 "sounds": env_config["sounds"],
                 "volume": env_config["volume"],
@@ -344,7 +350,7 @@ class AudioStoryboardGenerator:
         
         return voice_assignments
     
-    def _generate_sound_effects(self, scene_card: Dict[str, Any], event_card: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def _generate_sound_effects(self, scene_card: Dict[str, Any], event_card: Dict[str, Any], total_duration: float = 0) -> List[Dict[str, Any]]:
         """生成音效配置"""
         
         sound_effects = []
@@ -357,7 +363,7 @@ class AudioStoryboardGenerator:
                 "type": "环境音效",
                 "description": sound,
                 "start_time": 0,
-                "end_time": 0,  # 需要根据实际时长调整
+                "end_time": total_duration if total_duration > 0 else 30,  # 与主音轨同步
                 "volume": 40,
                 "spatial": "环绕",
                 "effects": ["空间化", "混响"]
@@ -372,7 +378,7 @@ class AudioStoryboardGenerator:
                     "type": "动作音效",
                     "description": sound,
                     "start_time": 0,
-                    "end_time": 0,  # 需要根据实际时长调整
+                    "end_time": total_duration if total_duration > 0 else 30,  # 与主音轨同步
                     "volume": 50,
                     "spatial": "立体声",
                     "effects": ["动态音量", "空间化"]
@@ -462,7 +468,7 @@ class AudioStoryboardGenerator:
         # 根据情绪调整混音参数
         emotional_intensity = emotion_card.get("emotional_intensity", 5)
         if emotional_intensity > 7:
-            mixing_params["main_volume"] = 105
+            mixing_params["main_volume"] = 100  # 修复：避免音频失真
             mixing_params["compression"]["threshold"] = -30
         elif emotional_intensity < 3:
             mixing_params["main_volume"] = 95
@@ -470,7 +476,7 @@ class AudioStoryboardGenerator:
         
         return mixing_params
     
-    def _generate_scene_sequence(self, scene_card: Dict[str, Any], event_card: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def _generate_scene_sequence(self, scene_card: Dict[str, Any], event_card: Dict[str, Any], total_duration: float) -> List[Dict[str, Any]]:
         """生成场景序列"""
         
         scene_sequence = []
@@ -494,7 +500,7 @@ class AudioStoryboardGenerator:
                 "sequence_id": "main_event",
                 "type": "主要事件",
                 "start_time": 2.0,
-                "end_time": 0,  # 需要根据实际时长调整
+                "end_time": total_duration - 2.0,  # 修复：使用正确的结束时间
                 "description": main_event,
                 "audio_transition": "保持",
                 "significance": event_card.get("significance", "日常"),
@@ -505,8 +511,8 @@ class AudioStoryboardGenerator:
         scene_sequence.append({
             "sequence_id": "scene_end",
             "type": "场景结束",
-            "start_time": 0,  # 需要根据实际时长调整
-            "end_time": 0,
+            "start_time": total_duration - 2.0,  # 修复：使用正确的开始时间
+            "end_time": total_duration,  # 修复：使用正确的结束时间
             "description": "场景过渡",
             "audio_transition": "淡出",
             "next_scene": "下一场景"

@@ -393,7 +393,7 @@ class SixCardAnalyzer:
     def _create_fallback_synthesis_json(self, segment_text: str, segment_index: int) -> Dict[str, Any]:
         """创建基础的synthesis_json作为fallback"""
         word_count = len(segment_text.strip())
-        duration_seconds = round(word_count / 200 * 60 / 60, 2)  # 200字/分钟
+        duration_seconds = round(word_count / 300 * 60 / 60, 2)  # 300字/分钟，更符合有声读物标准
         
         return {
             "project_info": {

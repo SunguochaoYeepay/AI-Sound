@@ -253,13 +253,22 @@ class ParagraphScriptGenerator:
         for char in characters_involved:
             char_name = char.get("name", "")
             if char_name and char_name not in [c.get("name") for c in characters]:
+                # 从角色分析中获取情感状态，如果没有则从情感卡中推断
+                char_emotions = char.get("emotions", [])
+                if char_emotions:
+                    # 使用角色的第一个情感状态
+                    current_emotion = char_emotions[0]
+                else:
+                    # 从情感卡中推断角色情感
+                    current_emotion = self._infer_character_emotion(char_name, six_card_analysis)
+                
                 characters.append({
                     "name": char_name,
                     "character_id": f"char_{len(characters) + 1}",  # 临时ID，后续需要映射到角色配音库
                     "voice_name": "未分配",  # 需要用户手动分配
                     "role_type": char.get("role_type", "一般配角"),
                     "personality": char.get("personality", ""),
-                    "current_emotion": char.get("current_emotion", "平静")
+                    "current_emotion": current_emotion
                 })
         
         # 确保旁白角色存在
@@ -274,6 +283,24 @@ class ParagraphScriptGenerator:
             })
         
         return characters
+    
+    def _infer_character_emotion(self, character_name: str, six_card_analysis: Dict[str, Any]) -> str:
+        """从情感卡中推断角色的情感状态"""
+        emotion_card = six_card_analysis.get("emotion_card", {})
+        primary_emotion = emotion_card.get("primary_emotion", "平静")
+        
+        # 根据角色类型和主要情感推断
+        if character_name == "旁白":
+            return primary_emotion
+        elif "主角" in character_name or "林薇" in character_name:
+            # 主角通常反映主要情感
+            return primary_emotion
+        else:
+            # 其他角色根据情感变化推断
+            emotion_changes = emotion_card.get("emotion_changes", [])
+            if emotion_changes:
+                return emotion_changes[0].get("to", "平静")
+            return "平静"
     
     def _generate_synthesis_plan(self, 
                                 paragraph_text: str, 
@@ -507,10 +534,10 @@ class ParagraphScriptGenerator:
     def _calculate_duration(self, word_count: int, emotion: str) -> float:
         """基于字数和情绪计算时长"""
         
-        # 基础语速（字/分钟）
-        base_speed = 200  # 旁白
+        # 基础语速（字/分钟）- 优化为有声读物标准
+        base_speed = 300  # 旁白 - 更符合有声读物标准
         if emotion != "平静":
-            base_speed = 180  # 角色对话
+            base_speed = 280  # 角色对话 - 稍慢于旁白
         
         # 情绪调整系数
         emotion_speed_multiplier = {

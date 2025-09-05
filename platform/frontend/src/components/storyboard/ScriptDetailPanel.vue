@@ -244,7 +244,7 @@ const getRelatedCards = (script) => {
 .script-content {
   flex: 1;
   overflow-y: auto;
-  padding: 24px;
+  padding: 12px;
 }
 
 .script-details {
