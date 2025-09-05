@@ -10,7 +10,7 @@
           @click="$emit('show-analysis', result)"
         >
           <div class="script-header">
-            <span class="script-title">段落 {{ result._metadata?.segment_index || index + 1 }} 剧本</span>
+            <span class="script-title">段落 {{ (result._metadata?.segment_index ?? index) + 1 }} 剧本</span>
             <span class="script-time">{{ result._metadata?.analysis_time ? new Date(result._metadata.analysis_time).toLocaleString() : '' }}</span>
             <a-button type="link" size="small" class="view-analysis-btn">
               <template #icon>
