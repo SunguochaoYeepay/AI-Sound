@@ -147,6 +147,16 @@ export const storyboardAPI = {
   },
 
   /**
+   * 分析单个段落（别名方法，调用sixCardAnalysis）
+   * @param {number} chapterId - 章节ID
+   * @param {Array} segmentIndices - 要分析的段落索引数组
+   * @returns {Promise} 6卡分析结果
+   */
+  analyzeSegment: (chapterId, segmentIndices) => {
+    return storyboardAPI.sixCardAnalysis(chapterId, segmentIndices)
+  },
+
+  /**
    * 获取章节6卡分析结果
    * @param {number} chapterId - 章节ID
    * @returns {Promise} 6卡分析结果

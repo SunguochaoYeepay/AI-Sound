@@ -159,6 +159,18 @@ class SixCardAnalyzer:
                 logger.warning(f"段落 {segment_index} 6卡分析结果验证失败")
                 response = self._create_fallback_cards(segment_text, segment_index)
             
+            # 🔥 新增：场景一致性验证
+            if not self._validate_scene_consistency(response, segment_text):
+                logger.warning(f"段落 {segment_index} 场景信息与段落内容不一致，重新分析")
+                # 重新分析，使用更严格的提示词
+                strict_prompt = self._build_strict_analysis_prompt() + "\n\n" + segment_text
+                response = await self.llm.call_json(strict_prompt)
+                
+                # 再次验证
+                if not self._validate_six_cards(response):
+                    logger.error(f"段落 {segment_index} 重新分析后仍然验证失败，使用fallback")
+                    response = self._create_fallback_cards(segment_text, segment_index)
+            
             # 添加元数据
             response["_metadata"] = {
                 "segment_index": segment_index,
