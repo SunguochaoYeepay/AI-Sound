@@ -1177,12 +1177,12 @@ async def six_card_analysis(
         for segment_index, segment_text in target_segments:
             try:
                 logger.info(f"分析段落 {segment_index + 1}/{len(segments)}")
-                result = await analyzer.analyze_segment(segment_text, segment_index + 1, chapter_id)
+                result = await analyzer.analyze_segment(segment_text, segment_index, chapter_id)
                 analysis_results.append(result)
             except Exception as e:
                 logger.error(f"段落 {segment_index + 1} 6卡分析失败: {str(e)}")
                 # 创建失败时的默认结果
-                fallback_result = analyzer._create_fallback_cards(segment_text, segment_index + 1)
+                fallback_result = analyzer._create_fallback_cards(segment_text, segment_index)
                 analysis_results.append(fallback_result)
 
         # 保存分析结果到数据库
