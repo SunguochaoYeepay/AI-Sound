@@ -31,6 +31,7 @@ from .storyboard_analysis.character_analyzer import CharacterAnalyzer
 
 # 导入智能分段服务
 from .smart_segmentation_service import SmartSegmentationService
+from app.utils.llm_config_loader import llm_config_loader
 
 logger = logging.getLogger(__name__)
 
@@ -41,12 +42,24 @@ class StoryboardAnalysisServiceV3:
     def __init__(self, db: Session):
         self.db = db
         
-        # 初始化两个LLM客户端
-        # 首轮分析：qwen3:8b（快速）
-        self.first_round_llm = LLMClient(model="qwen3:8b", base_url="http://localhost:11434")
+        # 从统一配置加载器获取模型配置
+        fast_config = llm_config_loader.get_model_config("fast")
+        advanced_config = llm_config_loader.get_model_config("advanced")
         
-        # 质量验证：qwen3:14b（高精度）
-        self.advanced_llm = LLMClient(model="qwen3:14b", base_url="http://localhost:11434")
+        # 初始化两个LLM客户端
+        # 首轮分析：快速模型
+        self.first_round_llm = LLMClient(
+            model=fast_config["model"], 
+            base_url=fast_config["base_url"]
+        )
+        self.first_round_llm.timeout = fast_config["timeout"]
+        
+        # 质量验证：高级模型
+        self.advanced_llm = LLMClient(
+            model=advanced_config["model"], 
+            base_url=advanced_config["base_url"]
+        )
+        self.advanced_llm.timeout = advanced_config["timeout"]
         
         # 初始化AI分析器（使用首轮LLM）
         self.scene_analyzer = SceneAnalyzer(self.first_round_llm)

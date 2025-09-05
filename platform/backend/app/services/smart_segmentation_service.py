@@ -6,6 +6,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 from app.services.storyboard_analysis.llm_client import LLMClient
 from app.models.analysis_result import AnalysisResult
+from app.utils.llm_config_loader import llm_config_loader
 
 logger = logging.getLogger(__name__)
 
@@ -14,9 +15,13 @@ class SmartSegmentationService:
     """智能分段服务 - 清理版本，专注于正确分段"""
     
     def __init__(self):
-        # 使用qwen3:8b模型，分段效果最好
-        self.llm = LLMClient(model="qwen3:8b", base_url="http://localhost:11434")
-        self.llm.timeout = 300  # 增加超时时间到5分钟
+        # 从统一配置加载器读取LLM模型设置
+        self.llm_config = llm_config_loader.get_config()
+        self.llm = LLMClient(
+            model=self.llm_config["model"], 
+            base_url=self.llm_config["base_url"]
+        )
+        self.llm.timeout = self.llm_config["timeout"]
         
         # 最佳分段提示词（测试验证过）
         self.segmentation_prompt = """你是一个专业的文学编辑，专门负责小说文本的智能分段。

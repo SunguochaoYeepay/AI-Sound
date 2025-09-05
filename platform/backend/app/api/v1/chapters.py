@@ -1177,7 +1177,7 @@ async def six_card_analysis(
         for segment_index, segment_text in target_segments:
             try:
                 logger.info(f"分析段落 {segment_index + 1}/{len(segments)}")
-                result = await analyzer.analyze_segment(segment_text, segment_index + 1)
+                result = await analyzer.analyze_segment(segment_text, segment_index + 1, chapter_id)
                 analysis_results.append(result)
             except Exception as e:
                 logger.error(f"段落 {segment_index + 1} 6卡分析失败: {str(e)}")
@@ -1280,9 +1280,30 @@ async def get_six_card_results(
         logger.error(f"获取章节 {chapter_id} 6卡分析结果失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"获取6卡分析结果失败: {str(e)}")
 
+def _validate_paragraph_uniqueness(results: List[Dict]) -> bool:
+    """验证段落分析结果的唯一性"""
+    unique_keys = set()
+    for result in results:
+        segment_index = result.get("_metadata", {}).get("segment_index")
+        chapter_id = result.get("_metadata", {}).get("chapter_id")
+        if segment_index is not None and chapter_id is not None:
+            # 使用章节ID+段落索引作为唯一标识
+            unique_key = f"{chapter_id}_{segment_index}"
+            if unique_key in unique_keys:
+                logger.error(f"发现重复的段落: 章节 {chapter_id} 段落 {segment_index}")
+                return False
+            unique_keys.add(unique_key)
+        else:
+            logger.warning(f"分析结果缺少segment_index或chapter_id元数据: {result}")
+    return True
+
 async def _save_six_card_analysis_results(chapter_id: int, results: List[Dict], analysis_type: str, db: Session) -> Dict[str, Any]:
     """保存6卡分析结果到数据库"""
     try:
+        # 验证段落分析结果的唯一性
+        if not _validate_paragraph_uniqueness(results):
+            raise ValueError("段落分析结果包含重复的段落索引")
+        
         # 检查是否已有分析结果记录
         existing_result = db.query(AnalysisResult).filter(
             AnalysisResult.chapter_id == chapter_id
@@ -1295,27 +1316,39 @@ async def _save_six_card_analysis_results(chapter_id: int, results: List[Dict], 
             # 获取现有的6卡分析结果
             existing_six_card_results = current_analysis.get("six_card_results", [])
             
-            # 检查并移除重复的段落分析结果
-            # 获取新分析结果的段落索引
-            new_segment_indices = set()
+            # 建立章节+段落索引到分析结果的映射，确保一个段落只有一个分析结果
+            segment_result_map = {}
+            
+            # 先处理已存在的分析结果
+            for result in existing_six_card_results:
+                segment_index = result.get("_metadata", {}).get("segment_index")
+                result_chapter_id = result.get("_metadata", {}).get("chapter_id")
+                if segment_index is not None and result_chapter_id is not None:
+                    # 使用章节ID+段落索引作为唯一标识
+                    unique_key = f"{result_chapter_id}_{segment_index}"
+                    segment_result_map[unique_key] = result
+            
+            # 用新的分析结果覆盖相同段落的旧结果
             for result in results:
                 segment_index = result.get("_metadata", {}).get("segment_index")
-                if segment_index is not None:
-                    new_segment_indices.add(segment_index)
+                result_chapter_id = result.get("_metadata", {}).get("chapter_id")
+                if segment_index is not None and result_chapter_id is not None:
+                    # 使用章节ID+段落索引作为唯一标识
+                    unique_key = f"{result_chapter_id}_{segment_index}"
+                    segment_result_map[unique_key] = result
+                    logger.info(f"更新章节 {result_chapter_id} 段落 {segment_index} 的分析结果")
+                else:
+                    logger.warning(f"分析结果缺少segment_index或chapter_id元数据: {result}")
             
-            # 移除已存在的相同段落分析结果
-            if new_segment_indices:
-                existing_six_card_results = [
-                    result for result in existing_six_card_results
-                    if result.get("_metadata", {}).get("segment_index") not in new_segment_indices
-                ]
+            # 将映射转换回列表
+            final_results = list(segment_result_map.values())
             
-            # 合并数据，追加新的6卡分析结果
+            # 合并数据，使用去重后的结果
             updated_analysis = {
                 **current_analysis,  # 保留现有数据（包括智能分段）
-                "six_card_results": existing_six_card_results + results,  # 追加新结果
+                "six_card_results": final_results,  # 使用去重后的结果
                 "six_card_analysis_type": analysis_type,
-                "six_card_total_results": len(existing_six_card_results) + len(results),
+                "six_card_total_results": len(final_results),
                 "six_card_saved_at": datetime.utcnow().isoformat()
             }
             
@@ -1343,7 +1376,7 @@ async def _save_six_card_analysis_results(chapter_id: int, results: List[Dict], 
         db.commit()
         
         return {
-            "total_results": len(existing_six_card_results) + len(results) if existing_result else len(results),
+            "total_results": len(final_results) if existing_result else len(results),
             "analysis_type": analysis_type,
             "saved_at": datetime.utcnow().isoformat()
         }
