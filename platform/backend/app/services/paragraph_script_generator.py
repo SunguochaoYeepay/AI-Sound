@@ -286,12 +286,23 @@ class ParagraphScriptGenerator:
     
     def _infer_character_emotion(self, character_name: str, six_card_analysis: Dict[str, Any]) -> str:
         """从情感卡中推断角色的情感状态"""
+        # 首先从角色卡中获取角色的具体情感
+        character_card = six_card_analysis.get("character_card", {})
+        characters = character_card.get("characters", [])
+        
+        for char in characters:
+            if char.get("name") == character_name:
+                emotions = char.get("emotions", [])
+                if emotions:
+                    return emotions[0]  # 返回角色的第一个情感状态
+        
+        # 如果角色卡中没有找到，则从情感卡推断
         emotion_card = six_card_analysis.get("emotion_card", {})
         primary_emotion = emotion_card.get("primary_emotion", "平静")
         
         # 根据角色类型和主要情感推断
         if character_name == "旁白":
-            return primary_emotion
+            return "平静"  # 旁白通常保持平静
         elif "主角" in character_name or "林薇" in character_name:
             # 主角通常反映主要情感
             return primary_emotion

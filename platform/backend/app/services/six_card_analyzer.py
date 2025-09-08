@@ -155,6 +155,15 @@ class SixCardAnalyzer:
 4. 【集体角色】：如"人群"、"众人"等，只有当有具体行为时才识别为角色
 5. 【声音角色】：通过"叫卖声"、"呼喊声"等体现的角色，应该识别为背景角色
 
+【场景分析特别要求】
+1. 【时代背景识别】：必须准确识别场景的时代背景（古代/现代/未来/架空等）
+2. 【环境音效匹配】：environment_sounds必须与时代背景完全匹配
+   - 古代场景：使用"马蹄声"、"叫卖声"、"钟声"、"风声"等古代音效
+   - 现代场景：使用"车流声"、"交通声"、"建筑声"等现代音效
+   - 严禁混用：古代场景不能出现现代音效，现代场景不能出现古代音效
+3. 【场景一致性】：location、time、atmosphere、environment_sounds必须保持时代一致性
+4. 【音效具体性】：环境音效要具体明确，避免模糊描述
+
 请分析以下段落："""
 
     async def analyze_segment(self, segment_text: str, segment_index: int, chapter_id: int = None) -> Dict[str, Any]:
