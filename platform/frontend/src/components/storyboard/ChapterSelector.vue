@@ -9,7 +9,7 @@
         @change="handleChapterChange"
       >
         <a-select-option v-for="chapter in chapters" :key="chapter.id || chapter.chapter_id" :value="(chapter.id || chapter.chapter_id).toString()">
-          {{ chapter.chapter_title }}
+          {{ chapter.title || chapter.chapter_title }}
         </a-select-option>
       </a-select>
       
@@ -95,6 +95,10 @@ const props = defineProps({
   segmentingChapter: {
     type: Boolean,
     default: false
+  },
+  hasSmartSegmentation: {
+    type: Boolean,
+    default: false
   }
 })
 
@@ -143,8 +147,13 @@ const canReanalyzeChapter = () => {
 }
 
 const canSegmentChapter = () => {
-  // 只要有章节内容就可以分段，不依赖分析状态
-  return props.selectedChapter && props.selectedChapter !== ''
+  // 检查是否有选中的章节，且没有智能分段数据
+  return props.selectedChapter && props.selectedChapter !== '' && !hasSmartSegmentation()
+}
+
+const hasSmartSegmentation = () => {
+  // 使用从父组件传递的智能分段状态
+  return props.hasSmartSegmentation
 }
 </script>
 

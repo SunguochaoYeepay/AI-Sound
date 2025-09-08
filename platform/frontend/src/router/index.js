@@ -308,7 +308,7 @@ const routes = [
     }
   },
   {
-    path: '/content-management/book-analysis/:sessionId',
+    path: '/content-management/book-analysis/:projectId',
     name: 'BookAnalysisDetail',
     component: BookAnalysisDetail,
     meta: {

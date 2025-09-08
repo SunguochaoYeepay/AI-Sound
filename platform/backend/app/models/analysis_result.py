@@ -18,7 +18,7 @@ class AnalysisResult(Base):
     
     # 基础字段
     id = Column(Integer, primary_key=True, index=True)
-    session_id = Column(Integer, ForeignKey('analysis_sessions.id', ondelete='CASCADE'), nullable=True)
+    project_id = Column(Integer, ForeignKey('novel_projects.id', ondelete='CASCADE'), nullable=True)
     chapter_id = Column(Integer, ForeignKey('book_chapters.id', ondelete='CASCADE'), nullable=False)
     
     # 原始分析数据
@@ -57,22 +57,22 @@ class AnalysisResult(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # 关系
-    session = relationship("AnalysisSession", back_populates="analysis_results")
+    # session = relationship("AnalysisSession", back_populates="analysis_results")  # 🚀 已简化，不再使用会话模型
     chapter = relationship("BookChapter", back_populates="analysis_results")
     synthesis_tasks = relationship("SynthesisTask", back_populates="analysis_result")
     image_generation_tasks = relationship("ImageGenerationTask", back_populates="analysis_result", cascade="all, delete-orphan")
     
     # 索引
     __table_args__ = (
-        Index('idx_analysis_results_session_id', 'session_id'),
+        Index('idx_analysis_results_project_id', 'project_id'),
         Index('idx_analysis_results_chapter_id', 'chapter_id'),
         Index('idx_analysis_results_status', 'status'),
         Index('idx_analysis_results_is_confirmed', 'is_user_confirmed'),
-        Index('idx_analysis_results_session_chapter', 'session_id', 'chapter_id'),
+        Index('idx_analysis_results_project_chapter', 'project_id', 'chapter_id'),
     )
     
     def __repr__(self):
-        return f"<AnalysisResult(id={self.id}, session_id={self.session_id}, chapter_id={self.chapter_id}, status='{self.status}')>"
+        return f"<AnalysisResult(id={self.id}, project_id={self.project_id}, chapter_id={self.chapter_id}, status='{self.status}')>"
     
     def to_dict(self, include_raw: bool = False) -> Dict[str, Any]:
         """转换为字典格式"""

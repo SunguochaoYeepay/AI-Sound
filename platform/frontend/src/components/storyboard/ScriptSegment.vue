@@ -1,26 +1,5 @@
 <template>
   <div class="script-segment" :class="{ 'highlighted': script.highlighted }" @click="handleSegmentClick">
-    <div class="script-header">
-      <div class="script-time">{{ script.startTime }}-{{ script.endTime }}s</div>
-      <div class="script-type">
-        <a-tag :color="script.type === 'dialogue' ? 'blue' : 'green'">
-          {{ script.type === 'dialogue' ? '对话' : '旁白' }}
-        </a-tag>
-      </div>
-      <div class="script-actions">
-        <a-button
-          size="small"
-          type="primary"
-          @click.stop="analyzeSegment"
-          :loading="analyzing"
-        >
-          <template #icon>
-            <AppstoreOutlined />
-          </template>
-                      段落分析
-        </a-button>
-      </div>
-    </div>
     
     <div class="script-content-main">
       <!-- 说话者信息 -->
@@ -30,7 +9,7 @@
       </div>
       
       <!-- 剧本内容 -->
-      <div class="script-text">
+      <div v-if="script.text && script.text.trim()" class="script-text">
         <div class="text-content">{{ script.text }}</div>
       </div>
       

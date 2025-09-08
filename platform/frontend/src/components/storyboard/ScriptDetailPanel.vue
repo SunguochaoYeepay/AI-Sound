@@ -12,18 +12,6 @@
           <p>加载中...</p>
         </div>
         
-        <div v-else-if="scriptSegments.length > 0" class="script-segment-list">
-          <ScriptSegment
-            v-for="(script, index) in scriptSegments"
-            :key="index"
-            :script="script"
-            :related-cards="getRelatedCards(script)"
-            @segment-click="handleSegmentClick(index)"
-            @card-click="handleCardClick"
-            @six-card-analysis="handleSegmentAnalysis"
-          />
-        </div>
-        
         <!-- 段落剧本展示 -->
         <ScriptSegmentList
           v-if="sixCardResults && sixCardResults.length > 0"
@@ -56,10 +44,9 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { message } from 'ant-design-vue'
 import { storyboardAPI } from '@/api/storyboard'
-import ScriptSegment from './ScriptSegment.vue'
 import ScriptSegmentList from './ScriptSegmentList.vue'
 import SixCardAnalysisDrawer from './SixCardAnalysisDrawer.vue'
 import IssuesDrawer from './IssuesDrawer.vue'
@@ -113,6 +100,14 @@ const selectedResult = ref(null)
 const sortedSixCardResults = computed(() => {
   return props.sixCardResults || []
 })
+
+// Watch sixCardResults changes
+watch(() => props.sixCardResults, (newValue, oldValue) => {
+  console.log('🎬 [剧本日志] ScriptDetailPanel sixCardResults变化:')
+  console.log('🎬 [剧本日志] 旧值长度:', oldValue?.length || 0)
+  console.log('🎬 [剧本日志] 新值长度:', newValue?.length || 0)
+  console.log('🎬 [剧本日志] 新值内容:', JSON.stringify(newValue, null, 2))
+}, { deep: true, immediate: true })
 
 // Methods
 const handleSegmentClick = (index) => {

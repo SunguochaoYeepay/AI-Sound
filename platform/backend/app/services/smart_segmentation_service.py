@@ -5,7 +5,7 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime
 from sqlalchemy.orm import Session
 from app.services.storyboard_analysis.llm_client import LLMClient
-from app.models.analysis_result import AnalysisResult
+from app.models.smart_segmentation import SmartSegmentation
 from app.utils.llm_config_loader import llm_config_loader
 
 logger = logging.getLogger(__name__)
@@ -132,10 +132,10 @@ class SmartSegmentationService:
         logger.info(f"分段验证通过，长度差异: {length_diff:.2%}")
         return True
 
-    async def segment_and_save(self, content: str, chapter_id: int, db: Session) -> Dict[str, Any]:
+    async def segment_and_save(self, content: str, project_id: int, chapter_id: int, db: Session) -> Dict[str, Any]:
         """智能分段并持久化保存到数据库"""
         try:
-            logger.info(f"开始智能分段并持久化，章节ID: {chapter_id}")
+            logger.debug(f"开始智能分段并持久化，分析项目ID: {project_id}，章节ID: {chapter_id}")
             
             # 1. 执行智能分段
             segments = await self.segment_content(content)
@@ -147,6 +147,7 @@ class SmartSegmentationService:
             
             # 3. 构建分段数据
             segmentation_data = {
+                "project_id": project_id,
                 "chapter_id": chapter_id,
                 "original_content": content,
                 "segments": segments,
@@ -161,7 +162,7 @@ class SmartSegmentationService:
             # 4. 保存到数据库
             saved_result = await self._save_segmentation_result(segmentation_data, db)
             
-            logger.info(f"分段持久化成功，章节ID: {chapter_id}，共 {len(segments)} 段")
+            logger.debug(f"分段持久化成功，分析项目ID: {project_id}，章节ID: {chapter_id}，共 {len(segments)} 段")
             
             return {
                 "success": True,
@@ -171,7 +172,7 @@ class SmartSegmentationService:
             }
             
         except Exception as e:
-            logger.error(f"分段持久化失败，章节ID: {chapter_id}，错误: {str(e)}")
+            logger.error(f"分段持久化失败，分析项目ID: {project_id}，章节ID: {chapter_id}，错误: {str(e)}")
             return {
                 "success": False,
                 "error": str(e),
@@ -179,121 +180,89 @@ class SmartSegmentationService:
             }
 
     async def _save_segmentation_result(self, segmentation_data: Dict[str, Any], db: Session) -> Dict[str, Any]:
-        """保存分段结果到数据库"""
+        """保存分段结果到独立的智能分段表"""
         try:
-            # 检查是否已有该章节的分段结果
-            existing_result = db.query(AnalysisResult).filter(
-                AnalysisResult.chapter_id == segmentation_data["chapter_id"],
-                AnalysisResult.status == 'completed'
+            # 检查是否已有该分析项目和章节的分段结果
+            existing_result = db.query(SmartSegmentation).filter(
+                SmartSegmentation.project_id == segmentation_data["project_id"],
+                SmartSegmentation.chapter_id == segmentation_data["chapter_id"]
             ).first()
             
             if existing_result:
-                # 更新现有记录，保留已有的6卡分析数据
-                logger.info(f"更新现有分段结果，章节ID: {segmentation_data['chapter_id']}")
+                # 更新现有记录
+                logger.info(f"更新现有智能分段结果，分析项目ID: {segmentation_data['project_id']}，章节ID: {segmentation_data['chapter_id']}")
                 
-                # 获取现有的original_analysis，保留所有已有数据
-                current_analysis = existing_result.original_analysis or {}
-                
-                # 合并数据，保留6卡分析结果，添加智能分段数据
-                updated_analysis = {
-                    **current_analysis,  # 保留现有数据（包括6卡分析）
-                    "segmentation": segmentation_data,
-                    "segments": segmentation_data["segments"],  # 新格式
-                    "smart_segmentation_saved_at": datetime.utcnow().isoformat()
-                }
-                
-                existing_result.original_analysis = updated_analysis
+                existing_result.original_content = segmentation_data["original_content"]
+                existing_result.segments = segmentation_data["segments"]
+                existing_result.segment_count = segmentation_data["segment_count"]
+                existing_result.total_length = segmentation_data["total_length"]
+                existing_result.segments_length = segmentation_data["segments_length"]
+                existing_result.model_used = segmentation_data["model_used"]
+                existing_result.validation_passed = segmentation_data["validation_passed"]
                 existing_result.updated_at = datetime.utcnow()
+                
+                db.commit()
+                db.refresh(existing_result)
+                
+                return {
+                    "success": True,
+                    "action": "updated",
+                    "segmentation_id": existing_result.id,
+                    "message": f"智能分段结果已更新，分析项目ID: {segmentation_data['project_id']}，章节ID: {segmentation_data['chapter_id']}"
+                }
                 
             else:
                 # 创建新记录
-                logger.info(f"创建新分段结果记录，章节ID: {segmentation_data['chapter_id']}")
+                logger.info(f"创建新的智能分段记录，分析项目ID: {segmentation_data['project_id']}，章节ID: {segmentation_data['chapter_id']}")
                 
-                new_result = AnalysisResult(
+                new_segmentation = SmartSegmentation(
+                    project_id=segmentation_data["project_id"],
                     chapter_id=segmentation_data["chapter_id"],
-                    original_analysis={
-                        "segmentation": segmentation_data,
-                        "segments": segmentation_data["segments"],  # 新格式
-                        "smart_segmentation_saved_at": datetime.utcnow().isoformat()
-                    },
-                    status='completed',
-                    processing_time=0,
-                    confidence_score=95,  # 分段质量评分
-                    created_at=datetime.utcnow(),
-                    completed_at=datetime.utcnow()
+                    original_content=segmentation_data["original_content"],
+                    segments=segmentation_data["segments"],
+                    segment_count=segmentation_data["segment_count"],
+                    total_length=segmentation_data["total_length"],
+                    segments_length=segmentation_data["segments_length"],
+                    model_used=segmentation_data["model_used"],
+                    validation_passed=segmentation_data["validation_passed"]
                 )
                 
-                db.add(new_result)
-            
-            db.commit()
-            
-            return {
-                "storage_method": "analysis_result",
-                "chapter_id": segmentation_data["chapter_id"],
-                "timestamp": datetime.utcnow().isoformat()
-            }
-            
+                db.add(new_segmentation)
+                db.commit()
+                db.refresh(new_segmentation)
+                
+                return {
+                    "success": True,
+                    "action": "created",
+                    "segmentation_id": new_segmentation.id,
+                    "message": f"智能分段结果已创建，分析项目ID: {segmentation_data['project_id']}，章节ID: {segmentation_data['chapter_id']}"
+                }
+                
         except Exception as e:
-            logger.error(f"保存分段结果失败: {str(e)}")
+            logger.error(f"保存智能分段结果失败: {str(e)}")
             db.rollback()
             raise
 
-    async def get_cached_segments(self, chapter_id: int, db: Session) -> Optional[List[str]]:
-        """从数据库获取缓存的分段结果"""
+    async def get_cached_segments(self, project_id: int, chapter_id: int, db: Session) -> Optional[List[str]]:
+        """从独立的智能分段表获取分段结果"""
         try:
-            logger.info(f"开始查询章节 {chapter_id} 的分段数据")
+            logger.info(f"开始查询分析项目 {project_id} 章节 {chapter_id} 的智能分段数据")
 
-            # 查询所有AnalysisResult记录，检查是否有该章节的数据
-            all_results = db.query(AnalysisResult).filter(
-                AnalysisResult.chapter_id == chapter_id
-            ).all()
-
-            logger.info(f"找到 {len(all_results)} 条AnalysisResult记录，章节ID: {chapter_id}")
-
-            for result in all_results:
-                logger.info(f"记录详情 - ID: {result.id}, 状态: {result.status}, 有original_analysis: {result.original_analysis is not None}")
-
-            existing_result = db.query(AnalysisResult).filter(
-                AnalysisResult.chapter_id == chapter_id,
-                AnalysisResult.status == 'completed'
+            # 查询智能分段表
+            segmentation_result = db.query(SmartSegmentation).filter(
+                SmartSegmentation.project_id == project_id,
+                SmartSegmentation.chapter_id == chapter_id
             ).first()
 
-            if existing_result:
-                logger.info(f"找到completed状态的记录: ID={existing_result.id}")
-                logger.info(f"original_analysis存在: {existing_result.original_analysis is not None}")
-
-                if existing_result.original_analysis:
-                    logger.info(f"original_analysis内容: {existing_result.original_analysis}")
-                    original_data = existing_result.original_analysis
-
-                    # 直接检查original_analysis中是否有segments字段（新格式）
-                    if "segments" in original_data:
-                        segments = original_data["segments"]
-                        logger.info(f"从缓存获取分段结果（新格式），章节ID: {chapter_id}，共 {len(segments)} 段")
-                        return segments
-
-                    # 检查是否有segmentation子字段（旧格式）
-                    segmentation_data = original_data.get("segmentation")
-                    if segmentation_data:
-                        logger.info(f"找到segmentation数据: {segmentation_data}")
-                        if "segments" in segmentation_data:
-                            segments = segmentation_data["segments"]
-                            logger.info(f"从缓存获取分段结果（旧格式），章节ID: {chapter_id}，共 {len(segments)} 段")
-                            return segments
-                        else:
-                            logger.warning(f"segmentation数据中没有segments字段: {segmentation_data}")
-                    else:
-                        logger.warning(f"original_analysis中既没有segments字段也没有segmentation字段: {original_data}")
-                else:
-                    logger.warning(f"记录ID={existing_result.id}的original_analysis为空")
+            if segmentation_result:
+                logger.info(f"找到智能分段记录: ID={segmentation_result.id}, 分段数量={segmentation_result.segment_count}")
+                segments = segmentation_result.segments
+                logger.info(f"从智能分段表获取分段结果，分析项目ID: {project_id}，章节ID: {chapter_id}，共 {len(segments)} 段")
+                return segments
             else:
-                logger.info(f"未找到章节 {chapter_id} 的completed状态分段结果")
-
-            logger.info(f"未找到缓存的分段结果，章节ID: {chapter_id}")
-            return None
+                logger.info(f"未找到分析项目 {project_id} 章节 {chapter_id} 的智能分段结果")
+                return None
 
         except Exception as e:
-            logger.error(f"获取缓存分段结果失败: {str(e)}")
-            import traceback
-            logger.error(f"完整错误堆栈: {traceback.format_exc()}")
+            logger.error(f"获取智能分段结果失败: {str(e)}")
             return None

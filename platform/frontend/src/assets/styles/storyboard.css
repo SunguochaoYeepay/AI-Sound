@@ -49,6 +49,142 @@
   border-left: 3px solid var(--primary-color, #1890ff);
 }
 
+/* 对话分析样式 */
+.dialogue-analysis {
+  margin-top: 8px;
+}
+
+.dialogue-segment {
+  margin-bottom: 12px;
+  padding: 8px;
+  background: var(--segment-bg, #f8f9fa);
+  border-radius: 6px;
+  border-left: 3px solid var(--dialogue-color, #52c41a);
+  transition: all 0.3s ease;
+}
+
+.dialogue-segment .segment-info {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 4px;
+  font-size: 12px;
+}
+
+.dialogue-segment .speaker {
+  background: var(--speaker-bg, #e6f7ff);
+  color: var(--speaker-color, #1890ff);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+}
+
+.dialogue-segment .text-type {
+  background: var(--type-bg, #f6ffed);
+  color: var(--type-color, #52c41a);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  transition: all 0.3s ease;
+}
+
+/* 心理活动特殊样式 */
+.dialogue-segment[data-text-type="inner_monologue"] {
+  border-left-color: var(--inner-monologue-color, #722ed1);
+  background: var(--inner-monologue-bg, #f9f0ff);
+}
+
+.dialogue-segment[data-text-type="inner_monologue"] .text-type {
+  background: var(--inner-monologue-type-bg, #efdbff);
+  color: var(--inner-monologue-type-color, #722ed1);
+}
+
+.dialogue-segment .segment-text {
+  color: var(--text-color, #333);
+  font-size: 14px;
+  line-height: 1.5;
+  transition: color 0.3s ease;
+}
+
+/* 暗色主题支持 */
+[data-theme="dark"] .dialogue-segment {
+  background: var(--segment-bg-dark, #2a2a2a);
+  border-left-color: var(--dialogue-color-dark, #73d13d);
+}
+
+[data-theme="dark"] .dialogue-segment .speaker {
+  background: var(--speaker-bg-dark, #111b26);
+  color: var(--speaker-color-dark, #40a9ff);
+}
+
+[data-theme="dark"] .dialogue-segment .text-type {
+  background: var(--type-bg-dark, #162312);
+  color: var(--type-color-dark, #73d13d);
+}
+
+[data-theme="dark"] .dialogue-segment .segment-text {
+  color: var(--text-color-dark, #d1d5db);
+}
+
+/* 暗色主题心理活动样式 */
+[data-theme="dark"] .dialogue-segment[data-text-type="inner_monologue"] {
+  background: var(--inner-monologue-bg-dark, #2a1a3a);
+  border-left-color: var(--inner-monologue-color-dark, #9254de);
+}
+
+[data-theme="dark"] .dialogue-segment[data-text-type="inner_monologue"] .text-type {
+  background: var(--inner-monologue-type-bg-dark, #1a0d2e);
+  color: var(--inner-monologue-type-color-dark, #9254de);
+}
+
+/* 使用CSS变量支持主题切换 */
+:root {
+  --segment-bg: #f8f9fa;
+  --segment-bg-dark: #2a2a2a;
+  --dialogue-color: #52c41a;
+  --dialogue-color-dark: #73d13d;
+  --speaker-bg: #e6f7ff;
+  --speaker-bg-dark: #111b26;
+  --speaker-color: #1890ff;
+  --speaker-color-dark: #40a9ff;
+  --type-bg: #f6ffed;
+  --type-bg-dark: #162312;
+  --type-color: #52c41a;
+  --type-color-dark: #73d13d;
+  --text-color: #333;
+  --text-color-dark: #d1d5db;
+  --inner-monologue-color: #722ed1;
+  --inner-monologue-color-dark: #9254de;
+  --inner-monologue-bg: #f9f0ff;
+  --inner-monologue-bg-dark: #2a1a3a;
+  --inner-monologue-type-bg: #efdbff;
+  --inner-monologue-type-bg-dark: #1a0d2e;
+  --inner-monologue-type-color: #722ed1;
+  --inner-monologue-type-color-dark: #9254de;
+}
+
+/* 暗色主题下的自动适配 */
+@media (prefers-color-scheme: dark) {
+  .dialogue-segment {
+    background: var(--segment-bg-dark);
+    border-left-color: var(--dialogue-color-dark);
+  }
+  
+  .dialogue-segment .speaker {
+    background: var(--speaker-bg-dark);
+    color: var(--speaker-color-dark);
+  }
+  
+  .dialogue-segment .text-type {
+    background: var(--type-bg-dark);
+    color: var(--type-color-dark);
+  }
+  
+  .dialogue-segment .segment-text {
+    color: var(--text-color-dark);
+  }
+}
+
 .character-header {
   display: flex;
   align-items: center;

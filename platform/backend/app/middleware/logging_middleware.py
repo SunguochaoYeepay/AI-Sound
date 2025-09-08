@@ -111,7 +111,11 @@ class LoggingMiddleware(BaseHTTPMiddleware):
                     elif response.status_code >= 400:
                         logger.warning(log_message)
                     else:
-                        logger.info(log_message)
+                        # 只记录重要API的INFO日志，其他记录为DEBUG
+                        if any(important_path in path for important_path in ['/login', '/logout', '/sessions', '/analysis']):
+                            logger.info(log_message)
+                        else:
+                            logger.debug(log_message)
                     
                     # 然后记录到数据库
                     log_api_request(

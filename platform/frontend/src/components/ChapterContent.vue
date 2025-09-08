@@ -175,7 +175,7 @@
       })
       
       // 调用段落分析API
-      const response = await storyboardAPI.sixCardAnalysis(props.chapter?.id, [segmentIndex])
+      const response = await storyboardAPI.sixCardAnalysis(props.projectId, props.chapter?.id, [segmentIndex])
       
       if (response.data?.success) {
         message.success({

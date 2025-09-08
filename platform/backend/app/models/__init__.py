@@ -8,7 +8,8 @@ from .book import Book
 from .book_chapter import BookChapter  
 from .audio import AudioFile
 from .analysis_result import AnalysisResult
-from .analysis_session import AnalysisSession
+from .smart_segmentation import SmartSegmentation
+# from .analysis_session import AnalysisSession  # 🚀 已简化，不再使用会话模型
 from .storyboard_cards import (
     StoryboardAnalysisSession, BaseStoryboardCard, StoryCard, CharacterCard,
     SceneCard, EventCard, EmotionCard, AudioStoryboardCard
@@ -58,7 +59,7 @@ __all__ = [
     'NovelProject',
     'VoiceProfile',
     'Character',
-    'AnalysisSession',
+    # 'AnalysisSession',  # 🚀 已简化，不再使用会话模型
     'AnalysisResult',
     'StoryboardAnalysisSession',
     'BaseStoryboardCard',

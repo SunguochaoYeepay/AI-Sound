@@ -10,10 +10,9 @@ import asyncio
 import json
 
 from app.database import get_db
-from app.services import AnalysisService
-from app.models import AnalysisSession, AnalysisResult, Book, NovelProject
+# from app.services import AnalysisService  # 🚀 已简化，不再使用会话模型
+from app.models import AnalysisResult, Book, NovelProject
 from app.schemas import (
-    AnalysisSessionResponse, AnalysisSessionCreate,
     AnalysisResultResponse, AnalysisConfigUpdate
 )
 from app.utils.exceptions import (

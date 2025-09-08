@@ -44,7 +44,47 @@ async def create_storyboard_session(
             analysis_params=session_data.analysis_params
         )
         
-        return session.to_dict()
+        # 获取项目信息以获取book_id
+        from app.models.novel_project import NovelProject
+        project = db.query(NovelProject).filter(NovelProject.id == session.project_id).first()
+        
+        # 获取书籍信息
+        book_info = None
+        if project and project.book_id:
+            from app.models import Book
+            book = db.query(Book).filter(Book.id == project.book_id).first()
+            if book:
+                book_info = {
+                    "id": book.id,
+                    "title": book.title,
+                    "author": book.author or "未知作者",
+                    "description": book.description
+                }
+        
+        # 返回会话信息，包含所有必需字段
+        return {
+            "id": session.id,
+            "book_id": project.book_id if project else None,
+            "book": book_info,
+            "session_name": session.session_name,
+            "description": session.description,
+            "analysis_type": "standard",  # 默认值
+            "llm_config": session.llm_config or {},
+            "analysis_params": session.analysis_params or {},
+            "status": session.status,
+            "progress": session.progress,
+            "current_step": session.current_step,
+            "total_chapters": session.total_chapters,
+            "analyzed_chapters": session.completed_chapters,  # 映射字段名
+            "failed_chapters": session.failed_chapters,
+            "book_confirmed": False,  # 默认值
+            "storyboard_confirmed": False,  # 默认值
+            "error_message": session.error_message,
+            "created_at": session.created_at.isoformat() if session.created_at else None,
+            "started_at": session.started_at.isoformat() if session.started_at else None,
+            "completed_at": session.completed_at.isoformat() if session.completed_at else None,
+            "updated_at": session.updated_at.isoformat() if session.updated_at else None
+        }
         
     except ServiceException as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -74,15 +114,62 @@ def get_storyboard_sessions(
         )
         
         # 获取总数
-        total_query = db.query(StoryboardAnalysisSession)
+        from app.models.analysis_session import AnalysisSession
+        from app.models.novel_project import NovelProject
+        
+        total_query = db.query(AnalysisSession)
         if book_id:
-            total_query = total_query.filter(StoryboardAnalysisSession.book_id == book_id)
+            total_query = total_query.join(NovelProject, AnalysisSession.project_id == NovelProject.id)
+            total_query = total_query.filter(NovelProject.book_id == book_id)
         if status:
-            total_query = total_query.filter(StoryboardAnalysisSession.status == status)
+            total_query = total_query.filter(AnalysisSession.status == status)
         total = total_query.count()
         
+        # 构建会话响应数据
+        session_responses = []
+        for session in sessions:
+            # 获取项目信息
+            project = db.query(NovelProject).filter(NovelProject.id == session.project_id).first()
+            
+            # 获取书籍信息
+            book_info = None
+            if project and project.book_id:
+                from app.models import Book
+                book = db.query(Book).filter(Book.id == project.book_id).first()
+                if book:
+                    book_info = {
+                        "id": book.id,
+                        "title": book.title,
+                        "author": book.author or "未知作者",
+                        "description": book.description
+                    }
+            
+            session_responses.append({
+                "id": session.id,
+                "book_id": project.book_id if project else None,
+                "book": book_info,
+                "session_name": session.session_name,
+                "description": session.description,
+                "analysis_type": "standard",
+                "llm_config": session.llm_config or {},
+                "analysis_params": session.analysis_params or {},
+                "status": session.status,
+                "progress": session.progress,
+                "current_step": session.current_step,
+                "total_chapters": session.total_chapters,
+                "analyzed_chapters": session.completed_chapters,
+                "failed_chapters": session.failed_chapters,
+                "book_confirmed": False,
+                "storyboard_confirmed": False,
+                "error_message": session.error_message,
+                "created_at": session.created_at.isoformat() if session.created_at else None,
+                "started_at": session.started_at.isoformat() if session.started_at else None,
+                "completed_at": session.completed_at.isoformat() if session.completed_at else None,
+                "updated_at": session.updated_at.isoformat() if session.updated_at else None
+            })
+        
         return {
-            "sessions": [session.to_dict() for session in sessions],
+            "sessions": session_responses,
             "total": total,
             "skip": skip,
             "limit": limit
@@ -90,6 +177,61 @@ def get_storyboard_sessions(
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"获取会话列表失败: {str(e)}")
+
+
+@router.get("/sessions/{session_id}/chapters")
+def get_session_chapters(session_id: int, db: Session = Depends(get_db)):
+    """
+    获取分析会话的章节列表
+    """
+    try:
+        # 获取会话信息
+        from app.models.analysis_session import AnalysisSession
+        session = db.query(AnalysisSession).filter(AnalysisSession.id == session_id).first()
+        if not session:
+            raise HTTPException(status_code=404, detail="分析会话不存在")
+        
+        # 获取项目信息
+        from app.models.novel_project import NovelProject
+        project = db.query(NovelProject).filter(NovelProject.id == session.project_id).first()
+        if not project:
+            raise HTTPException(status_code=404, detail="项目不存在")
+        
+        # 获取书籍的章节列表
+        from app.models import BookChapter
+        chapters = db.query(BookChapter).filter(
+            BookChapter.book_id == project.book_id
+        ).order_by(BookChapter.chapter_number).all()
+        
+        # 构建章节响应数据
+        chapter_list = []
+        for chapter in chapters:
+            chapter_list.append({
+                "id": chapter.id,
+                "book_id": chapter.book_id,
+                "chapter_title": chapter.chapter_title,
+                "chapter_number": chapter.chapter_number,
+                "content": chapter.content,
+                "word_count": chapter.word_count,
+                "analysis_status": chapter.analysis_status,
+                "created_at": chapter.created_at.isoformat() if chapter.created_at else None,
+                "updated_at": chapter.updated_at.isoformat() if chapter.updated_at else None
+            })
+        
+        return {
+            "success": True,
+            "data": {
+                "session_id": session_id,
+                "book_id": project.book_id,
+                "chapters": chapter_list,
+                "total": len(chapter_list)
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取章节列表失败: {str(e)}")
 
 
 @router.get("/sessions/{session_id}", response_model=StoryboardSessionResponse)
@@ -104,7 +246,47 @@ def get_storyboard_session(session_id: int, db: Session = Depends(get_db)):
         if not session:
             raise HTTPException(status_code=404, detail="分析会话不存在")
         
-        return session.to_dict()
+        # 获取项目信息以获取book_id
+        from app.models.novel_project import NovelProject
+        project = db.query(NovelProject).filter(NovelProject.id == session.project_id).first()
+        
+        # 获取书籍信息
+        book_info = None
+        if project and project.book_id:
+            from app.models import Book
+            book = db.query(Book).filter(Book.id == project.book_id).first()
+            if book:
+                book_info = {
+                    "id": book.id,
+                    "title": book.title,
+                    "author": book.author or "未知作者",
+                    "description": book.description
+                }
+        
+        # 返回会话信息，包含所有必需字段
+        return {
+            "id": session.id,
+            "book_id": project.book_id if project else None,
+            "book": book_info,
+            "session_name": session.session_name,
+            "description": session.description,
+            "analysis_type": "standard",  # 默认值
+            "llm_config": session.llm_config or {},
+            "analysis_params": session.analysis_params or {},
+            "status": session.status,
+            "progress": session.progress,
+            "current_step": session.current_step,
+            "total_chapters": session.total_chapters,
+            "analyzed_chapters": session.completed_chapters,  # 映射字段名
+            "failed_chapters": session.failed_chapters,
+            "book_confirmed": False,  # 默认值
+            "storyboard_confirmed": False,  # 默认值
+            "error_message": session.error_message,
+            "created_at": session.created_at.isoformat() if session.created_at else None,
+            "started_at": session.started_at.isoformat() if session.started_at else None,
+            "completed_at": session.completed_at.isoformat() if session.completed_at else None,
+            "updated_at": session.updated_at.isoformat() if session.updated_at else None
+        }
         
     except HTTPException:
         raise
@@ -471,6 +653,7 @@ async def get_storyboard_review_data(session_id: int, chapter_id: int, db: Sessi
             
             # 先检查数据库中是否有AnalysisResult记录
             analysis_results = db.query(AnalysisResult).filter(
+                AnalysisResult.session_id == session_id,
                 AnalysisResult.chapter_id == chapter_id
             ).all()
             logger.info(f"🔍 数据库中找到 {len(analysis_results)} 条AnalysisResult记录")
@@ -480,7 +663,7 @@ async def get_storyboard_review_data(session_id: int, chapter_id: int, db: Sessi
                 if result.original_analysis:
                     logger.info(f"🔍 original_analysis字段内容: {result.original_analysis}")
             
-            segments = await segmentation_service.get_cached_segments(chapter_id, db)
+            segments = await segmentation_service.get_cached_segments(session_id, chapter_id, db)
             logger.info(f"🔍 get_cached_segments返回结果: {segments}")
             
             if segments and len(segments) > 0:

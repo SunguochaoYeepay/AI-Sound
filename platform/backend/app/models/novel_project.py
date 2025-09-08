@@ -42,7 +42,7 @@ class NovelProject(Base):
     
     # 关系
     book = relationship("Book", back_populates="projects")
-    analysis_sessions = relationship("AnalysisSession", back_populates="project", cascade="all, delete-orphan")
+    # analysis_sessions = relationship("AnalysisSession", back_populates="project", cascade="all, delete-orphan")  # 🚀 已简化，不再使用会话模型
     synthesis_tasks = relationship("SynthesisTask", back_populates="project")
     audio_files = relationship("AudioFile", back_populates="project", cascade="all, delete-orphan")
     music_generation_tasks = relationship("MusicGenerationTask", back_populates="novel_project", cascade="all, delete-orphan")

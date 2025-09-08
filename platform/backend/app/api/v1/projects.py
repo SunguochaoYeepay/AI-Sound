@@ -12,7 +12,7 @@ import logging
 from datetime import datetime
 
 from app.database import get_db
-from app.models import NovelProject, VoiceProfile, Book  # 🚀 TextSegment已删除
+from app.models import NovelProject, VoiceProfile, Book, AudioFile  # 🚀 TextSegment已删除
 from app.utils import log_system_event
 
 logger = logging.getLogger(__name__)
@@ -135,6 +135,7 @@ async def create_project(
     book_id: Optional[int] = Form(None),
     initial_characters: str = Form("[]"),
     settings: str = Form("{}"),
+    status: str = Form("pending"),
     db: Session = Depends(get_db)
 ):
     """创建项目"""
@@ -240,6 +241,59 @@ async def create_project(
     except Exception as e:
         logger.error(f"创建项目失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"创建失败: {str(e)}")
+
+@router.get("/{project_id}/chapters")
+async def get_project_chapters(
+    project_id: int,
+    db: Session = Depends(get_db)
+):
+    """获取项目关联的章节列表"""
+    try:
+        # 获取项目信息
+        project = db.query(NovelProject).filter(NovelProject.id == project_id).first()
+        if not project:
+            raise HTTPException(status_code=404, detail="项目不存在")
+        
+        # 获取项目关联的书籍章节
+        chapters = db.query(Book).filter(Book.id == project.book_id).first()
+        if not chapters:
+            raise HTTPException(status_code=404, detail="关联书籍不存在")
+        
+        # 获取章节列表
+        from app.models import BookChapter
+        chapter_list = db.query(BookChapter).filter(
+            BookChapter.book_id == project.book_id
+        ).order_by(BookChapter.chapter_number).all()
+        
+        # 转换为字典格式
+        chapters_data = []
+        for chapter in chapter_list:
+            chapters_data.append({
+                "id": chapter.id,
+                "chapter_number": chapter.chapter_number,
+                "title": chapter.chapter_title or f"第{chapter.chapter_number}章",
+                "content": chapter.content[:100] + "..." if len(chapter.content) > 100 else chapter.content,
+                "word_count": chapter.word_count or len(chapter.content),
+                "created_at": chapter.created_at.isoformat() if chapter.created_at else None
+            })
+        
+        return {
+            "success": True,
+            "data": {
+                "chapters": chapters_data,
+                "book_info": {
+                    "id": chapters.id,
+                    "title": chapters.title,
+                    "author": chapters.author
+                }
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取项目章节失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取项目章节失败: {str(e)}")
 
 @router.get("/{project_id}")
 async def get_project(

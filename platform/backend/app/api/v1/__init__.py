@@ -11,7 +11,7 @@ from typing import Dict, Any
 from .auth import router as auth_router
 from .books import router as books_router
 from .chapters import router as chapters_router
-from .analysis import router as analysis_router
+# from .analysis import router as analysis_router  # 🚀 已简化，不再使用会话模型
 from .storyboard import router as storyboard_router
 from .audio_script import router as audio_script_router
 from .synthesis import router as synthesis_router
@@ -29,6 +29,8 @@ from .scene_analysis import router as scene_analysis_router
 from .environment_generation import router as environment_generation_router
 
 from .segment_analysis import router as segment_analysis_router
+from .integrated_analysis import router as integrated_analysis_router
+from .smart_segmentation import router as smart_segmentation_router
 
 # Import sound editor router (for multi-track audio editor)
 from .sound_editor import router as sound_editor_router
@@ -114,12 +116,12 @@ from .roles import router as roles_router
 api.include_router(auth_router)
 api.include_router(books_router, tags=["Books"])
 api.include_router(chapters_router, tags=["Chapters"])
-api.include_router(analysis_router, tags=["Analysis"])
-api.include_router(storyboard_router, tags=["Storyboard Analysis"])
+# api.include_router(analysis_router, tags=["Analysis"])  # 🚀 已简化，不再使用会话模型
+# api.include_router(storyboard_router, tags=["Storyboard Analysis"])  # 🚀 已简化，不再使用会话模型
 api.include_router(audio_script_router, tags=["Audio Script"])
 api.include_router(synthesis_router, tags=["Synthesis"])
 api.include_router(presets_router, tags=["Presets"])
-# api.include_router(projects_router, tags=["Projects"])  # 🚀 已迁移到novel_reader，暂时注释避免冲突
+api.include_router(projects_router, tags=["Projects"])  # 🚀 重新启用项目管理API
 api.include_router(characters_router, tags=["Characters"])
 api.include_router(audio_library_router, tags=["Audio Library"])
 api.include_router(audio_sync_router, tags=["Audio Sync"])
@@ -134,6 +136,8 @@ api.include_router(scene_analysis_router, tags=["Scene Analysis"])
 api.include_router(environment_generation_router, tags=["Environment Generation"])
 
 api.include_router(segment_analysis_router, prefix="/segment_analysis", tags=["Segment Analysis"])
+api.include_router(integrated_analysis_router, tags=["Integrated Analysis"])
+api.include_router(smart_segmentation_router, prefix="/smart-segmentation", tags=["Smart Segmentation"])
 api.include_router(system_router, tags=["System Settings"])
 api.include_router(logs_router, tags=["Log Monitor"])
 api.include_router(backup_router, tags=["Database Backup"])

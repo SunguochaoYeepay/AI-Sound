@@ -557,12 +557,13 @@ class OllamaCharacterDetector:
                 # 移除多余的空格和换行
                 text = ' '.join(text.split())
                 
-                # 确保引号内容被正确识别为对话
+                # 确保引号内容被正确识别为对话，但保留引号以维持文本完整性
                 if text.startswith('"') and text.endswith('"') and text_type == 'narration':
-                    text = text[1:-1]  # 移除引号
+                    # text = text[1:-1]  # 注释掉：不移除引号以保持文本完整性
                     text_type = 'dialogue'
                 elif text.startswith('"') and text.endswith('"') and text_type == 'dialogue':
-                    text = text[1:-1]  # 移除引号
+                    # text = text[1:-1]  # 注释掉：不移除引号以保持文本完整性
+                    pass
             
             # 3. 验证speaker和text_type的一致性
             if text_type == 'dialogue' and speaker == '旁白':
@@ -649,9 +650,9 @@ class OllamaCharacterDetector:
             text = segment['text'].strip()
             speaker = segment['speaker']
             
-            # 基础清理：去除多余引号
-            if text.startswith('"') and text.endswith('"'):
-                text = text[1:-1]
+            # 基础清理：保留引号以维持文本完整性
+            # if text.startswith('"') and text.endswith('"'):
+            #     text = text[1:-1]  # 注释掉：保留引号以维持文本完整性
             
             # 确保旁白标记正确
             if text.startswith('旁白：'):
@@ -682,9 +683,9 @@ class OllamaCharacterDetector:
                 # 标准化引号
                 text = text.replace('"', '"').replace('"', '"').replace("'", '"').replace("'", '"')
                 
-                # 如果整个文本被引号包围，这是纯对话
+                # 如果整个文本被引号包围，这是纯对话，但保留引号以维持文本完整性
                 if text.startswith('"') and text.endswith('"') and text.count('"') == 2:
-                    segment['text'] = text[1:-1]  # 去掉引号
+                    # segment['text'] = text[1:-1]  # 注释掉：不去掉引号以保持文本完整性
                     segment['text_type'] = 'dialogue'
                 elif text.startswith('"') and text.endswith('"') and text.count('"') > 2:
                     # 复杂嵌套引号，需要特殊处理
@@ -1114,9 +1115,9 @@ class OllamaCharacterDetector:
 {specialized_instructions}
 
 关键原则：
-- 引号内容 = 角色对话
+- 引号内容 = 角色对话（保留引号）
 - 描述动作 = 旁白
-- "角色说：'话语'" = 分为两段：动作(旁白) + 话语(角色)
+- "角色说：'话语'" = 分为两段：动作(旁白) + "话语"(角色，保留引号)
 - 🔥 角色名称必须精确识别，不要混淆相似名称
 - 🔥 医疗救助情节要识别为医疗事件，不是普通对话
 - 🔥 穿越情节要识别为特殊事件，不是普通场景
@@ -1164,15 +1165,34 @@ class OllamaCharacterDetector:
 
 核心任务：
 1. 按句子分段，识别每段的说话者
-2. 分离混合格式："角色说：'对话'" → 两段：动作(旁白) + 对话(角色)  
-3. 引号内容=角色对话，描述动作=旁白
-4. 确保所有文本都在segments中体现
+2. 分离混合格式："角色说：'对话'" → 两段：动作(旁白) + "对话"(角色，保留引号)  
+3. 引号内容=角色对话（保留引号），描述动作=旁白
+4. 确保所有文本都在segments中体现，包括引号
+
+**🎯 说话者识别规则（重要）：**
+- **直接对话**：有引号且明确说话者的内容 → speaker = 具体角色名，text_type = "dialogue"
+- **心理活动**：描述角色内心想法、感受、思考的内容 → speaker = "旁白"，text_type = "inner_monologue"
+- **动作描述**：描述角色行为、环境、场景的内容 → speaker = "旁白"，text_type = "narration"
+- **环境描述**：描述场景、氛围、背景的内容 → speaker = "旁白"，text_type = "narration"
+
+**关键判断标准：**
+- 引号内的内容 = 直接对话（角色说话）
+- "心想"、"觉得"、"感到"、"意识到"、"心脏猛地一缩"等描述内心活动的词汇 = 心理活动（旁白叙述）
+- "低头"、"抬头"、"看着"、"听到"等动作 = 动作描述（旁白叙述）
+- 环境、场景、氛围描述 = 环境描述（旁白叙述）
+
+**示例分析：**
+- "快看这女子的衣装!" → speaker: "人群"，text_type: "dialogue" (直接对话)
+- "莫不是西域来的怪人?" → speaker: "人群"，text_type: "dialogue" (直接对话)
+- "林薇低头看着自己身上的白大褂" → speaker: "旁白"，text_type: "narration" (动作描述)
+- "心脏猛地一缩——她竟真的穿越到了课本里的盛唐长安" → speaker: "旁白"，text_type: "inner_monologue" (心理活动描述)
 
 关键规则：
 - 每个完整句子都要成为一个segment
 - "XX说："等动作描述 → 旁白
-- 引号内的实际话语 → 对应角色
+- 引号内的实际话语 → 对应角色（保留引号）
 - 纯描述性文字 → 旁白
+- **speaker字段不能为空！**
 
 文本：
 {text}
@@ -1181,6 +1201,7 @@ class OllamaCharacterDetector:
 - segments总字数应接近原文字数
 - 每个句子都必须包含在某个segment中
 - 不能跳过任何内容段落
+- **每个segment的speaker字段必须有值！**
 
 输出JSON格式：
 {{
@@ -1192,9 +1213,51 @@ class OllamaCharacterDetector:
   ]
 }}
 
-只输出JSON，确保包含所有文本内容。"""
+只输出JSON，确保包含所有文本内容，且每个segment的speaker字段都有明确的值。"""
         
         return prompt
+
+    def _merge_adjacent_narration(self, segments: List[Dict]) -> List[Dict]:
+        """合并相邻的旁白段落（包括心理活动）"""
+        if not segments:
+            return segments
+        
+        merged_segments = []
+        current_narration = None
+        
+        for segment in segments:
+            # 合并所有旁白类型的内容（narration和inner_monologue，且speaker为旁白）
+            if (segment.get('speaker') == '旁白' and 
+                segment.get('text_type') in ['narration', 'inner_monologue']):
+                if current_narration is None:
+                    # 开始新的旁白段落
+                    current_narration = segment.copy()
+                else:
+                    # 合并到当前旁白段落
+                    current_narration['text'] += segment['text']
+                    # 更新置信度为平均值
+                    current_narration['confidence'] = (current_narration['confidence'] + segment['confidence']) / 2
+                    # 如果合并了不同类型的旁白，保持为narration类型
+                    if current_narration['text_type'] != segment['text_type']:
+                        current_narration['text_type'] = 'narration'
+            else:
+                # 如果不是旁白（对话等），先保存当前的旁白段落（如果有）
+                if current_narration is not None:
+                    merged_segments.append(current_narration)
+                    current_narration = None
+                # 添加当前段落
+                merged_segments.append(segment)
+        
+        # 处理最后一个旁白段落
+        if current_narration is not None:
+            merged_segments.append(current_narration)
+        
+        # 重新编号
+        for i, segment in enumerate(merged_segments):
+            segment['order'] = i + 1
+        
+        logger.info(f"旁白合并完成：原始{len(segments)}个段落 → 合并后{len(merged_segments)}个段落")
+        return merged_segments
 
     def _call_ollama(self, prompt: str) -> Optional[str]:
         """调用Ollama API"""
@@ -1282,6 +1345,9 @@ class OllamaCharacterDetector:
                         'detection_rule': 'ollama_ai',
                         'text_type': text_type
                     })
+                
+                # 🔥 新增：合并相邻的旁白
+                segments = self._merge_adjacent_narration(segments)
                 
                 # 处理characters
                 characters = []

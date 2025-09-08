@@ -88,6 +88,10 @@ const props = defineProps({
   chapter: {
     type: Object,
     default: () => ({})
+  },
+  projectId: {
+    type: [String, Number],
+    required: true
   }
 })
 
@@ -120,7 +124,7 @@ const handleSixCardAnalysis = async (segmentIndex) => {
     })
     
           // 调用段落分析API
-    const response = await storyboardAPI.sixCardAnalysis(props.chapter?.id, [segmentIndex])
+    const response = await storyboardAPI.sixCardAnalysis(props.projectId, props.chapter?.id, [segmentIndex])
     
     if (response.data?.success) {
       message.success({
@@ -167,7 +171,7 @@ const handleAnalyzeAllSegments = async () => {
     })
     
           // 调用批量段落分析API
-    const response = await storyboardAPI.sixCardAnalysis(props.chapter?.id, Array.from({ length: props.textSegments.length }, (_, i) => i))
+    const response = await storyboardAPI.sixCardAnalysis(props.projectId, props.chapter?.id, Array.from({ length: props.textSegments.length }, (_, i) => i))
     
     if (response.data?.success) {
       message.success({
@@ -200,7 +204,7 @@ const handleAnalyzeAllSegments = async () => {
 }
 
 const getSegmentTimeRange = (index) => {
-  if (!props.timelineDetails.length) return `段落 ${index + 1}`
+  if (!props.timelineDetails.length) return '待分析'
   
   // 直接使用AI分析时建立的对应关系
   const audioCard = props.timelineDetails[index]
@@ -212,8 +216,8 @@ const getSegmentTimeRange = (index) => {
     }
   }
   
-  // 如果没有对应关系，使用默认的段落索引
-  return `段落 ${index + 1}`
+  // 如果没有对应关系，显示待分析
+  return '待分析'
 }
 
 const getIssueColor = (type) => {

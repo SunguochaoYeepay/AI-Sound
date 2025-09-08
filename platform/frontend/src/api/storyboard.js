@@ -32,12 +32,13 @@ export const storyboardAPI = {
   },
 
   /**
-   * 获取会话状态
+   * 获取会话状态 - 已废弃，使用项目API
    * @param {number} sessionId - 会话ID
    * @returns {Promise} 会话状态
    */
   getSessionStatus: (sessionId) => {
-    return apiClient.get(`/storyboard/sessions/${sessionId}`)
+    // TODO: 替换为项目状态API
+    return Promise.reject(new Error('会话API已废弃，请使用项目API'))
   },
 
   /**
@@ -64,8 +65,9 @@ export const storyboardAPI = {
    * @param {number} sessionId - 会话ID
    * @returns {Promise} 章节列表
    */
-  getSessionChapters: (sessionId) => {
-    return apiClient.get(`/storyboard/sessions/${sessionId}/chapters`)
+  getSessionChapters: (projectId) => {
+    // 使用项目章节API
+    return apiClient.get(`/projects/${projectId}/chapters`)
   },
 
   /**
@@ -83,8 +85,9 @@ export const storyboardAPI = {
    * @param {number} chapterId - 章节ID
    * @returns {Promise} 确认数据
    */
-  getStoryboardReviewData: (sessionId, chapterId) => {
-    return apiClient.get(`/storyboard/review/${sessionId}/${chapterId}`)
+  getStoryboardReviewData: (projectId, chapterId) => {
+    // TODO: 替换为项目章节数据API
+    return Promise.reject(new Error('故事板API已废弃，请使用项目API'))
   },
 
   /**
@@ -122,8 +125,11 @@ export const storyboardAPI = {
    * @param {number} chapterId - 章节ID
    * @returns {Promise} 分段结果
    */
-  smartSegmentation: (chapterId) => {
-    return llmAnalysisClient.post(`/chapters/${chapterId}/smart-segmentation`)
+  smartSegmentation: (projectId, chapterId) => {
+    return llmAnalysisClient.post(`/smart-segmentation/segment`, {
+      project_id: projectId,
+      chapter_id: chapterId
+    })
   },
 
   /**
@@ -131,38 +137,44 @@ export const storyboardAPI = {
    * @param {number} chapterId - 章节ID
    * @returns {Promise} 分段结果
    */
-  getSegmentationResult: (chapterId) => {
-    return apiClient.get(`/chapters/${chapterId}/segmentation-result`)
+  getSegmentationResult: (projectId, chapterId) => {
+    return apiClient.get(`/smart-segmentation/${projectId}/${chapterId}/segments`)
   },
 
   /**
    * 对章节段落进行6卡分析
+   * @param {number} sessionId - 分析项目ID
    * @param {number} chapterId - 章节ID
    * @param {Array} segmentIndices - 要分析的段落索引数组，null表示分析所有段落
    * @returns {Promise} 6卡分析结果
    */
-  sixCardAnalysis: (chapterId, segmentIndices = null) => {
-    const data = segmentIndices ? { segment_indices: segmentIndices } : {}
+  sixCardAnalysis: (projectId, chapterId, segmentIndices = null) => {
+    const data = { project_id: projectId }
+    if (segmentIndices) {
+      data.segment_indices = segmentIndices
+    }
     return llmAnalysisClient.post(`/chapters/${chapterId}/six-card-analysis`, data)
   },
 
   /**
    * 分析单个段落（别名方法，调用sixCardAnalysis）
+   * @param {number} sessionId - 分析项目ID
    * @param {number} chapterId - 章节ID
    * @param {Array} segmentIndices - 要分析的段落索引数组
    * @returns {Promise} 6卡分析结果
    */
-  analyzeSegment: (chapterId, segmentIndices) => {
-    return storyboardAPI.sixCardAnalysis(chapterId, segmentIndices)
+  analyzeSegment: (sessionId, chapterId, segmentIndices) => {
+    return storyboardAPI.sixCardAnalysis(sessionId, chapterId, segmentIndices)
   },
 
   /**
    * 获取章节6卡分析结果
+   * @param {number} sessionId - 分析项目ID
    * @param {number} chapterId - 章节ID
    * @returns {Promise} 6卡分析结果
    */
-  getSixCardResults: (chapterId) => {
-    return apiClient.get(`/chapters/${chapterId}/six-card-results`)
+  getSixCardResults: (projectId, chapterId) => {
+    return apiClient.get(`/chapters/${chapterId}/six-card-results?project_id=${projectId}`)
   },
 
   /**

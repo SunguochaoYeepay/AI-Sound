@@ -4,7 +4,7 @@
 """
 
 from .chapter_service import ChapterService
-from .analysis_service import AnalysisService
+# from .analysis_service import AnalysisService  # 🚀 已简化，不再使用会话模型
 # 音频生成服务已移动到 novel_reader.py
 from .preset_service import PresetService
 # from .dify_client import DifyClient, DifyClientFactory  # 🚀 已删除 - 文件不存在

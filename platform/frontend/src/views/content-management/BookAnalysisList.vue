@@ -4,14 +4,14 @@
     <div class="page-header">
       <div class="header-left">
         <h2>书籍分析管理</h2>
-        <p class="header-desc">管理和监控AI驱动的6卡片分析会话</p>
+        <p class="header-desc">管理和监控AI驱动的6卡片分析项目</p>
       </div>
       <div class="header-right">
         <a-button type="primary" @click="showCreateModal" :loading="loading">
           <template #icon>
             <PlusOutlined />
           </template>
-          创建新分析
+          创建新项目
         </a-button>
       </div>
     </div>
@@ -22,7 +22,7 @@
         <a-col :span="6">
           <a-card>
             <a-statistic
-              title="总分析会话"
+              title="总分析项目"
               :value="sessionCount"
               :value-style="{ color: '#1890ff' }"
             />
@@ -69,18 +69,17 @@
               allow-clear
               style="width: 100%"
             >
-              <a-select-option value="pending">等待分析</a-select-option>
-              <a-select-option value="analyzing">分析中</a-select-option>
-              <a-select-option value="completed">分析完成</a-select-option>
-              <a-select-option value="ready_for_review">待确认</a-select-option>
-              <a-select-option value="confirmed">已确认</a-select-option>
-              <a-select-option value="failed">分析失败</a-select-option>
+              <a-select-option value="pending">等待处理</a-select-option>
+              <a-select-option value="processing">处理中</a-select-option>
+              <a-select-option value="completed">已完成</a-select-option>
+              <a-select-option value="paused">已暂停</a-select-option>
+              <a-select-option value="failed">处理失败</a-select-option>
             </a-select>
           </a-col>
           <a-col :span="8">
             <a-input-search
               v-model:value="filters.search"
-              placeholder="搜索书籍名称或会话ID"
+              placeholder="搜索书籍名称或项目ID"
               @search="handleSearch"
               style="width: 100%"
             />
@@ -95,7 +94,7 @@
       </a-card>
     </div>
 
-    <!-- 分析会话列表 -->
+    <!-- 分析项目列表 -->
     <div class="sessions-table">
       <a-card>
         <a-table
@@ -125,6 +124,11 @@
                 <div class="book-author">{{ record.book?.author || '未知作者' }}</div>
               </div>
             </template>
+            <template v-else-if="column.key === 'description'">
+              <div class="project-description">
+                {{ record.description || '-' }}
+              </div>
+            </template>
             <template v-else-if="column.key === 'created_at'">
               {{ formatDate(record.created_at) }}
             </template>
@@ -134,36 +138,12 @@
                   size="small"
                   type="primary"
                   @click="viewDetail(record.id)"
-                  :disabled="!record.book"
                 >
                   查看详情
                 </a-button>
-                <a-button
-                  v-if="record.status === 'pending'"
-                  size="small"
-                  @click="startAnalysis(record.id)"
-                  :loading="record.starting"
-                >
-                  开始分析
-                </a-button>
-                <a-button
-                  v-if="record.status === 'ready_for_review'"
-                  size="small"
-                  type="success"
-                  @click="confirmSession(record.id)"
-                >
-                  确认通过
-                </a-button>
-                <a-button
-                  v-if="['completed', 'ready_for_review', 'confirmed'].includes(record.status)"
-                  size="small"
-                  @click="reanalyzeSession(record.id)"
-                >
-                  重新分析
-                </a-button>
                 <a-popconfirm
-                  title="确定要删除这个分析会话吗？"
-                  @confirm="deleteSession(record.id)"
+                  title="确定要删除这个分析项目吗？"
+                  @confirm="deleteProject(record.id)"
                 >
                   <a-button size="small" danger>删除</a-button>
                 </a-popconfirm>
@@ -177,7 +157,7 @@
     <!-- 创建分析模态框 -->
     <a-modal
       v-model:open="createModalVisible"
-      title="创建新分析会话"
+      title="创建新分析项目"
       @ok="handleCreateSession"
       @cancel="createModalVisible = false"
       :confirm-loading="creating"
@@ -193,6 +173,19 @@
             filter-option
           />
         </a-form-item>
+        <a-form-item label="项目名称" required>
+          <a-input
+            v-model:value="createForm.projectName"
+            placeholder="请输入项目名称"
+          />
+        </a-form-item>
+        <a-form-item label="项目描述">
+          <a-textarea
+            v-model:value="createForm.description"
+            placeholder="请输入项目描述（可选）"
+            :rows="3"
+          />
+        </a-form-item>
       </a-form>
     </a-modal>
   </div>
@@ -206,6 +199,7 @@ import { PlusOutlined } from '@ant-design/icons-vue'
 import { useStoryboardStore } from '@/stores/storyboard'
 import { STATUS_CONFIG } from '@/api/storyboard'
 import booksAPI from '@/api/books'
+import projectsAPI from '@/api/projects'
 
 const router = useRouter()
 const storyboardStore = useStoryboardStore()
@@ -216,6 +210,7 @@ const creating = ref(false)
 const booksLoading = ref(false)
 const createModalVisible = ref(false)
 const booksOptions = ref([])
+const projects = ref([])
 
 const filters = ref({
   status: undefined,
@@ -223,7 +218,9 @@ const filters = ref({
 })
 
 const createForm = ref({
-  bookId: undefined
+  bookId: undefined,
+  projectName: '',
+  description: ''
 })
 
 const pagination = ref({
@@ -238,10 +235,16 @@ const pagination = ref({
 // 表格列定义
 const columns = [
   {
-    title: '会话ID',
+    title: '项目ID',
     dataIndex: 'id',
     key: 'id',
     width: 80
+  },
+  {
+    title: '项目名称',
+    dataIndex: 'name',
+    key: 'name',
+    width: 200
   },
   {
     title: '书籍信息',
@@ -254,14 +257,9 @@ const columns = [
     width: 120
   },
   {
-    title: '进度',
-    key: 'progress',
-    width: 150
-  },
-  {
-    title: '当前步骤',
-    dataIndex: 'current_step',
-    key: 'current_step',
+    title: '描述',
+    dataIndex: 'description',
+    key: 'description',
     width: 200
   },
   {
@@ -279,46 +277,41 @@ const columns = [
 
 // 计算属性 - 确保数据是数组格式
 const sessionCount = computed(() => {
-  const sessions = storyboardStore.sessions
-  return Array.isArray(sessions) ? sessions.length : 0
+  return Array.isArray(projects.value) ? projects.value.length : 0
 })
 
 const completedSessions = computed(() => {
-  const sessions = storyboardStore.sessions
-  if (!Array.isArray(sessions)) return []
-  return sessions.filter(s => s.status === 'completed' || s.status === 'confirmed')
+  if (!Array.isArray(projects.value)) return []
+  return projects.value.filter(p => p.status === 'completed')
 })
 
 const pendingSessions = computed(() => {
-  const sessions = storyboardStore.sessions
-  if (!Array.isArray(sessions)) return []
-  return sessions.filter(s => s.status === 'pending' || s.status === 'analyzing')
+  if (!Array.isArray(projects.value)) return []
+  return projects.value.filter(p => p.status === 'pending' || p.status === 'processing')
 })
 
 const failedSessions = computed(() => {
-  const sessions = storyboardStore.sessions
-  if (!Array.isArray(sessions)) return []
-  return sessions.filter(s => s.status === 'failed')
+  if (!Array.isArray(projects.value)) return []
+  return projects.value.filter(p => p.status === 'failed')
 })
 
 const filteredSessions = computed(() => {
-  const sessions = storyboardStore.sessions
-  if (!Array.isArray(sessions)) return []
+  if (!Array.isArray(projects.value)) return []
 
-  let filtered = sessions
+  let filtered = projects.value
 
   // 状态筛选
   if (filters.value.status) {
-    filtered = filtered.filter(s => s.status === filters.value.status)
+    filtered = filtered.filter(p => p.status === filters.value.status)
   }
 
   // 搜索筛选
   if (filters.value.search) {
     const search = filters.value.search.toLowerCase()
-    filtered = filtered.filter(s => 
-      s.id.toString().includes(search) ||
-      s.book?.title?.toLowerCase().includes(search) ||
-      s.book?.author?.toLowerCase().includes(search)
+    filtered = filtered.filter(p => 
+      p.id.toString().includes(search) ||
+      p.name?.toLowerCase().includes(search) ||
+      p.description?.toLowerCase().includes(search)
     )
   }
 
@@ -329,10 +322,15 @@ const filteredSessions = computed(() => {
 const loadSessions = async () => {
   try {
     loading.value = true
-    await storyboardStore.loadSessions()
+    const response = await projectsAPI.getProjects()
+    if (response.data && response.data.data) {
+      projects.value = response.data.data
+    } else {
+      projects.value = []
+    }
   } catch (error) {
-    message.error('加载会话列表失败')
-    console.error('Load sessions error:', error)
+    message.error('加载项目列表失败')
+    console.error('Load projects error:', error)
   } finally {
     loading.value = false
   }
@@ -377,27 +375,33 @@ const handleCreateSession = async () => {
     return
   }
 
+  if (!createForm.value.projectName) {
+    message.error('请输入项目名称')
+    return
+  }
+
   try {
     creating.value = true
     
-    // 获取选中的书籍信息来生成会话名称
-    const selectedBook = booksOptions.value.find(book => book.value === createForm.value.bookId)
-    const sessionName = selectedBook ? selectedBook.label + ' - AI分析会话' : 'AI分析会话'
+    const projectData = {
+      book_id: createForm.value.bookId,
+      name: createForm.value.projectName,
+      description: createForm.value.description || '基于6类卡片方案的AI驱动小说分析项目',
+      status: 'pending'
+    }
     
-    const session = await storyboardStore.createAnalysisSession(
-      createForm.value.bookId,
-      sessionName,
-      '基于6类卡片方案的AI驱动小说分析'
-    )
-    message.success('分析会话创建成功')
+    const response = await projectsAPI.createProject(projectData)
+    message.success('分析项目创建成功')
     createModalVisible.value = false
     createForm.value.bookId = undefined
+    createForm.value.projectName = ''
+    createForm.value.description = ''
     
     // 跳转到详情页面
-    router.push(`/content-management/book-analysis/${session.id}`)
+    router.push(`/content-management/book-analysis/${response.data.id}`)
   } catch (error) {
-    message.error('创建分析会话失败')
-    console.error('Create session error:', error)
+    message.error('创建分析项目失败')
+    console.error('Create project error:', error)
   } finally {
     creating.value = false
   }
@@ -407,43 +411,15 @@ const viewDetail = (sessionId) => {
   router.push(`/content-management/book-analysis/${sessionId}`)
 }
 
-const startAnalysis = async (sessionId) => {
-  try {
-    await storyboardStore.startAnalysis(sessionId)
-    message.success('分析已开始')
-  } catch (error) {
-    message.error('开始分析失败')
-    console.error('Start analysis error:', error)
-  }
-}
 
-const confirmSession = async (sessionId) => {
+const deleteProject = async (projectId) => {
   try {
-    await storyboardStore.confirmSession(sessionId)
-    message.success('会话已确认')
+    await projectsAPI.deleteProject(projectId)
+    message.success('项目已删除')
+    await loadSessions() // 重新加载列表
   } catch (error) {
-    message.error('确认会话失败')
-    console.error('Confirm session error:', error)
-  }
-}
-
-const reanalyzeSession = async (sessionId) => {
-  try {
-    await storyboardStore.reanalyzeSession(sessionId)
-    message.success('重新分析已开始')
-  } catch (error) {
-    message.error('重新分析失败')
-    console.error('Reanalyze session error:', error)
-  }
-}
-
-const deleteSession = async (sessionId) => {
-  try {
-    await storyboardStore.deleteSession(sessionId)
-    message.success('会话已删除')
-  } catch (error) {
-    message.error('删除会话失败')
-    console.error('Delete session error:', error)
+    message.error('删除项目失败')
+    console.error('Delete project error:', error)
   }
 }
 
@@ -465,17 +441,31 @@ const handleTableChange = (pag) => {
 }
 
 const getStatusColor = (status) => {
-  return STATUS_CONFIG[status]?.color || '#d9d9d9'
+  const statusColors = {
+    'pending': '#fa8c16',
+    'processing': '#1890ff',
+    'completed': '#52c41a',
+    'paused': '#d9d9d9',
+    'failed': '#f5222d'
+  }
+  return statusColors[status] || '#d9d9d9'
 }
 
 const getStatusText = (status) => {
-  return STATUS_CONFIG[status]?.name || '未知状态'
+  const statusTexts = {
+    'pending': '等待处理',
+    'processing': '处理中',
+    'completed': '已完成',
+    'paused': '已暂停',
+    'failed': '处理失败'
+  }
+  return statusTexts[status] || '未知状态'
 }
 
 const getProgressStatus = (status) => {
   if (status === 'failed') return 'exception'
-  if (status === 'completed' || status === 'confirmed') return 'success'
-  if (status === 'analyzing') return 'active'
+  if (status === 'completed') return 'success'
+  if (status === 'processing') return 'active'
   return 'normal'
 }
 
@@ -541,5 +531,14 @@ onMounted(() => {
 .book-author {
   font-size: 12px;
   color: #666;
+}
+
+.project-description {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #666;
+  font-size: 12px;
 }
 </style>

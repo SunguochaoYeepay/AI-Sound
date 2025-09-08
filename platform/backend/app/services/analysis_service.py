@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
 
-from ..models import Book, BookChapter, NovelProject, AnalysisSession, AnalysisResult
+from ..models import Book, BookChapter, NovelProject, AnalysisResult
 # from .dify_client import DifyClient  # 🚀 已删除 - 文件不存在
 from ..exceptions import ServiceException, DifyAPIException
 # 使用统一的WebSocket管理器
@@ -32,7 +32,7 @@ class AnalysisSessionManager:
         target_type: str,
         target_ids: List[int] = None,
         config: Dict[str, Any] = None
-    ) -> AnalysisSession:
+    ) -> Dict[str, Any]:
         """创建新的分析会话"""
         
         # 验证项目存在

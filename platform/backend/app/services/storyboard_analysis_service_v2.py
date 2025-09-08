@@ -46,10 +46,11 @@ class StoryboardAnalysisServiceV2:
         self.story_analyzer = StoryAnalyzer(self.llm_client)
         self.character_analyzer = CharacterAnalyzer(self.llm_client)
     
-    def get_session(self, session_id: int) -> Optional[StoryboardAnalysisSession]:
+    def get_session(self, session_id: int):
         """获取分析会话"""
-        return self.db.query(StoryboardAnalysisSession).filter(
-            StoryboardAnalysisSession.id == session_id
+        from app.models.analysis_session import AnalysisSession
+        return self.db.query(AnalysisSession).filter(
+            AnalysisSession.id == session_id
         ).first()
     
     def get_session_cards(self, session_id: int, chapter_id: Optional[int] = None, card_type: Optional[str] = None) -> List[BaseStoryboardCard]:
@@ -441,41 +442,83 @@ class StoryboardAnalysisServiceV2:
     # ==================== API方法补充 ====================
     
     def get_sessions(self, book_id: Optional[int] = None, status: Optional[str] = None, 
-                    skip: int = 0, limit: int = 20) -> List[StoryboardAnalysisSession]:
+                    skip: int = 0, limit: int = 20):
         """获取会话列表"""
-        query = self.db.query(StoryboardAnalysisSession)
+        from app.models.analysis_session import AnalysisSession
+        from app.models.novel_project import NovelProject
         
+        query = self.db.query(AnalysisSession)
+        
+        # 如果需要按book_id过滤，需要通过项目表关联
         if book_id:
-            query = query.filter(StoryboardAnalysisSession.book_id == book_id)
+            query = query.join(NovelProject, AnalysisSession.project_id == NovelProject.id)
+            query = query.filter(NovelProject.book_id == book_id)
+        
         if status:
-            query = query.filter(StoryboardAnalysisSession.status == status)
+            query = query.filter(AnalysisSession.status == status)
         
         return query.offset(skip).limit(limit).all()
     
     async def create_analysis_session(self, book_id: int, session_name: str, 
                                     description: str = None, analysis_type: str = 'standard',
                                     llm_config: Dict[str, Any] = None, 
-                                    analysis_params: Dict[str, Any] = None) -> StoryboardAnalysisSession:
-        """创建分析会话"""
-        session = StoryboardAnalysisSession(
-            book_id=book_id,
-            session_name=session_name,
-            description=description,
-            analysis_type=analysis_type,
-            status='pending',
-            progress=0,
-            total_chapters=0,
-            analyzed_chapters=0,
-            failed_chapters=0,
-            book_confirmed=False,
-            storyboard_confirmed=False
-        )
+                                    analysis_params: Dict[str, Any] = None):
+        """创建分析会话 - 先创建项目，再创建会话"""
+        from app.models.novel_project import NovelProject
+        from app.models.analysis_session import AnalysisSession
         
-        self.db.add(session)
-        self.db.commit()
-        self.db.refresh(session)
-        
-        return session
+        try:
+            # 第一步：创建或获取项目
+            project = self.db.query(NovelProject).filter(
+                NovelProject.book_id == book_id,
+                NovelProject.name == session_name
+            ).first()
+            
+            if not project:
+                # 创建新项目
+                project = NovelProject(
+                    book_id=book_id,
+                    name=session_name,
+                    description=description or f"基于书籍 {book_id} 的分析项目",
+                    status='active',
+                    config={}
+                )
+                self.db.add(project)
+                self.db.commit()
+                self.db.refresh(project)
+                logger.debug(f"创建新项目: {project.id} - {project.name}")
+            else:
+                logger.debug(f"使用现有项目: {project.id} - {project.name}")
+            
+            # 第二步：创建分析会话
+            session = AnalysisSession(
+                project_id=project.id,
+                session_name=session_name,
+                description=description,
+                target_type='full_book',
+                target_config={},
+                llm_config=llm_config or {},
+                analysis_params=analysis_params or {},
+                status='pending',
+                progress=0,
+                current_step='等待开始',
+                total_chapters=0,
+                completed_chapters=0,
+                failed_chapters=0
+            )
+            
+            self.db.add(session)
+            self.db.commit()
+            self.db.refresh(session)
+            
+            logger.debug(f"创建分析会话: {session.id} - {session.session_name}")
+            
+            return session
+            
+        except Exception as e:
+            logger.error(f"创建分析会话失败: {str(e)}")
+            self.db.rollback()
+            raise ServiceException(f"创建分析会话失败: {str(e)}")
     
     def update_card(self, card_id: int, content: Dict[str, Any]) -> BaseStoryboardCard:
         """更新卡片内容"""

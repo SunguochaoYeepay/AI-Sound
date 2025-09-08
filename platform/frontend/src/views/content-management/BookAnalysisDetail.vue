@@ -3,14 +3,14 @@
     <!-- 进度监控 -->
     <ProgressMonitor 
       v-if="isAnalyzing"
-      :session-id="sessionId"
+      :project-id="projectId"
       @progress-update="handleProgressUpdate"
     />
 
     <!-- 主要内容区域 -->
     <div class="main-content">
       <ContentReviewTab 
-        :session-id="sessionId"
+        :project-id="projectId"
         :session="currentSession"
         :cards="cards"
         :loading="loading"
@@ -38,7 +38,7 @@ const router = useRouter()
 const storyboardStore = useStoryboardStore()
 
 // 响应式数据
-const sessionId = computed(() => route.params.sessionId)
+const projectId = computed(() => route.params.projectId)
 const loading = ref(false)
 
 // 计算属性
@@ -49,15 +49,16 @@ const isAnalyzing = computed(() =>
 )
 
 // 方法
-const loadSessionData = async () => {
-  if (!sessionId.value) return
+const loadProjectData = async () => {
+  if (!projectId.value) return
   
   try {
     loading.value = true
-    await storyboardStore.loadSessionDetail(sessionId.value)
-    await storyboardStore.loadSessionCards(sessionId.value)
+    // TODO: 实现项目数据加载逻辑
+    // await storyboardStore.loadProjectDetail(projectId.value)
+    // await storyboardStore.loadProjectCards(projectId.value)
   } catch (error) {
-    message.error('加载会话数据失败')
+    message.error('加载项目数据失败')
   } finally {
     loading.value = false
   }
@@ -65,7 +66,8 @@ const loadSessionData = async () => {
 
 const startAnalysis = async () => {
   try {
-    await storyboardStore.startAnalysis(sessionId.value)
+    // TODO: 实现项目分析启动逻辑
+    // await storyboardStore.startProjectAnalysis(projectId.value)
     message.success('分析已开始')
   } catch (error) {
     message.error('开始分析失败')
@@ -74,16 +76,18 @@ const startAnalysis = async () => {
 
 const confirmSession = async () => {
   try {
-    await storyboardStore.confirmSession(sessionId.value)
-    message.success('会话已确认')
+    // TODO: 实现项目确认逻辑
+    // await storyboardStore.confirmProject(projectId.value)
+    message.success('项目已确认')
   } catch (error) {
-    message.error('确认会话失败')
+    message.error('确认项目失败')
   }
 }
 
 const reanalyzeSession = async () => {
   try {
-    await storyboardStore.reanalyzeSession(sessionId.value)
+    // TODO: 实现项目重新分析逻辑
+    // await storyboardStore.reanalyzeProject(projectId.value)
     message.success('重新分析已开始')
   } catch (error) {
     message.error('重新分析失败')
@@ -132,16 +136,16 @@ const handleChapterAnalyze = async (chapterId) => {
 }
 
 // 监听路由变化
-watch(sessionId, () => {
-  if (sessionId.value) {
-    loadSessionData()
+watch(projectId, () => {
+  if (projectId.value) {
+    loadProjectData()
   }
 })
 
 // 生命周期
 onMounted(() => {
-  if (sessionId.value) {
-    loadSessionData()
+  if (projectId.value) {
+    loadProjectData()
   }
 })
 </script>

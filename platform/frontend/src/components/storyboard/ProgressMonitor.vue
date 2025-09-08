@@ -57,13 +57,13 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useWebSocket } from '@/composables/useWebSocket'
 
 const props = defineProps({
-  sessionId: String
+  projectId: [String, Number]
 })
 
 const emit = defineEmits(['progress-update'])
 
 // WebSocket状态
-const { isConnected, progress, currentStep, error } = useWebSocket(props.sessionId)
+const { isConnected, progress, currentStep, error } = useWebSocket(props.projectId)
 
 // 显示状态
 const showDetailedProgress = ref(false)
