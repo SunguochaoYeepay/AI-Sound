@@ -1,5 +1,5 @@
 """
-音频分镜卡生成器服务
+音频分镜卡生成器服务 - LLM优化版本
 基于段落剧本生成完整的音频分镜卡JSON
 专注段落级音频配置，确保输出JSON符合设计规范
 """
@@ -9,13 +9,23 @@ import json
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 
+from app.services.storyboard_analysis.llm_client import LLMClient
+from app.utils.llm_config_loader import llm_config_loader
+
 logger = logging.getLogger(__name__)
 
 
 class AudioStoryboardGenerator:
-    """音频分镜卡生成器 - 基于段落剧本生成音频分镜卡"""
+    """音频分镜卡生成器 - LLM优化版本，基于段落剧本生成音频分镜卡"""
     
     def __init__(self):
+        # 初始化LLM客户端
+        self.llm_config = llm_config_loader.get_config()
+        self.llm = LLMClient(
+            model=self.llm_config["model"], 
+            base_url=self.llm_config["base_url"]
+        )
+        self.llm.timeout = self.llm_config["timeout"]
         # 音轨配置规则
         self.track_configs = {
             "main_track": {  # 旁白+对话音轨
@@ -127,7 +137,7 @@ class AudioStoryboardGenerator:
             }
         }
     
-    def generate_paragraph_storyboard(self, 
+    async def generate_paragraph_storyboard(self, 
                                     paragraph_script: Dict[str, Any],
                                     paragraph_id: str) -> Dict[str, Any]:
         """
@@ -162,7 +172,7 @@ class AudioStoryboardGenerator:
             sound_effects = self._generate_sound_effects(scene_card, event_card, timeline["total_duration"])
             
             # 6. 生成背景音乐配置
-            background_music = self._generate_background_music(scene_card, emotion_card)
+            background_music = await self._generate_background_music(scene_card, emotion_card)
             
             # 7. 生成混音参数
             mixing_parameters = self._generate_mixing_parameters(
@@ -405,29 +415,11 @@ class AudioStoryboardGenerator:
         
         return sound_effects
     
-    def _generate_background_music(self, scene_card: Dict[str, Any], emotion_card: Dict[str, Any]) -> Dict[str, Any]:
-        """生成背景音乐配置"""
+    async def _generate_background_music(self, scene_card: Dict[str, Any], emotion_card: Dict[str, Any]) -> Dict[str, Any]:
+        """生成背景音乐配置 - LLM智能版本"""
         
-        atmosphere = scene_card.get("atmosphere", "日常对话")
-        primary_emotion = emotion_card.get("primary_emotion", "平静")
-        
-        # 根据场景和情绪选择音乐
-        if "紧张" in atmosphere or "激烈" in atmosphere:
-            music_config = self.scene_music_rules["紧张激烈"]
-        elif "安静" in atmosphere or "祥和" in atmosphere:
-            music_config = self.scene_music_rules["安静祥和"]
-        elif "神秘" in atmosphere or "诡异" in atmosphere:
-            music_config = self.scene_music_rules["神秘诡异"]
-        else:
-            music_config = self.scene_music_rules["日常对话"]
-        
-        # 根据情绪调整音乐参数
-        if primary_emotion in ["愤怒", "紧张"]:
-            music_config["volume"] = min(40, music_config["volume"] + 5)
-            music_config["tempo"] = "快节奏"
-        elif primary_emotion in ["悲伤", "平静"]:
-            music_config["volume"] = max(20, music_config["volume"] - 5)
-            music_config["tempo"] = "慢节奏"
+        # 使用LLM智能生成音乐配置
+        music_config = await self._generate_llm_music_config(scene_card, emotion_card)
         
         return {
             "type": music_config["type"],
@@ -629,4 +621,118 @@ class AudioStoryboardGenerator:
                 "format": "WAV",
                 "quality": "高"
             }
+        }
+    
+    async def _generate_llm_music_config(self, scene_card: Dict[str, Any], emotion_card: Dict[str, Any]) -> Dict[str, Any]:
+        """使用LLM智能生成音乐配置"""
+        try:
+            # 检查缓存
+            cache_key = f"music_config_{hash(str(scene_card) + str(emotion_card))}"
+            if cache_key in self.music_config_cache:
+                logger.debug(f"[LLM_MUSIC_CONFIG] 缓存命中: {cache_key}")
+                return self.music_config_cache[cache_key]
+            
+            # 构建LLM提示词
+            prompt = f"""你是一个专业的音频制作师。请根据以下场景和情感信息，推荐合适的背景音乐配置。
+
+场景信息：
+- 地点: {scene_card.get('location', '未知')}
+- 时间: {scene_card.get('time', '未知')}
+- 氛围: {scene_card.get('atmosphere', '未知')}
+
+情感信息：
+- 整体基调: {emotion_card.get('overall_tone', '未知')}
+- 主要情感: {emotion_card.get('primary_emotion', '未知')}
+- 情感强度: {emotion_card.get('emotional_intensity', 5)}
+
+请推荐以下音乐配置参数：
+1. 音乐类型：紧张战斗音乐、轻柔背景音乐、神秘氛围音乐、轻快日常音乐等
+2. 情感基调：紧张激烈、安静祥和、神秘诡异、轻松愉快等
+3. 节奏：快节奏、慢节奏、中节奏、中快节奏等
+4. 乐器：鼓、弦乐、铜管、钢琴、长笛、竖琴、电子音效、打击乐、吉他、口琴、手风琴等
+5. 音量：20-50之间的数值
+6. 淡入时间：1.0-4.0秒
+7. 淡出时间：2.0-4.0秒
+
+请返回JSON格式：
+{{
+    "type": "音乐类型",
+    "mood": "情感基调",
+    "tempo": "节奏",
+    "instruments": ["乐器1", "乐器2", "乐器3"],
+    "volume": 30,
+    "fade_in": 2.0,
+    "fade_out": 3.0,
+    "reasoning": "推荐理由"
+}}"""
+
+            # 调用LLM
+            response = await self.llm.call_json(prompt)
+            
+            if response and all(key in response for key in ['type', 'mood', 'tempo', 'volume']):
+                # 验证和调整参数
+                volume = max(15, min(60, int(response.get('volume', 30))))
+                fade_in = max(0.5, min(5.0, float(response.get('fade_in', 2.0))))
+                fade_out = max(1.0, min(6.0, float(response.get('fade_out', 3.0))))
+                
+                music_config = {
+                    "type": response.get('type', '轻快日常音乐'),
+                    "mood": response.get('mood', '轻松愉快'),
+                    "tempo": response.get('tempo', '中快节奏'),
+                    "instruments": response.get('instruments', ['吉他', '口琴']),
+                    "volume": volume,
+                    "fade_in": fade_in,
+                    "fade_out": fade_out
+                }
+                
+                # 缓存结果
+                if len(self.music_config_cache) < self.cache_max_size:
+                    self.music_config_cache[cache_key] = music_config
+                
+                logger.debug(f"[LLM_MUSIC_CONFIG] 推荐理由: {response.get('reasoning', '无推荐理由')}")
+                return music_config
+            else:
+                logger.warning(f"[LLM_MUSIC_CONFIG] LLM返回格式错误: {response}")
+                return self._get_fallback_music_config(scene_card, emotion_card)
+                
+        except Exception as e:
+            logger.error(f"[LLM_MUSIC_CONFIG] LLM分析失败: {str(e)}")
+            return self._get_fallback_music_config(scene_card, emotion_card)
+    
+    def _get_fallback_music_config(self, scene_card: Dict[str, Any], emotion_card: Dict[str, Any]) -> Dict[str, Any]:
+        """获取后备音乐配置（基于硬编码规则）"""
+        atmosphere = scene_card.get("atmosphere", "日常对话")
+        primary_emotion = emotion_card.get("primary_emotion", "平静")
+        
+        # 根据场景和情绪选择音乐
+        if "紧张" in atmosphere or "激烈" in atmosphere:
+            music_config = self.scene_music_rules["紧张激烈"]
+        elif "安静" in atmosphere or "祥和" in atmosphere:
+            music_config = self.scene_music_rules["安静祥和"]
+        elif "神秘" in atmosphere or "诡异" in atmosphere:
+            music_config = self.scene_music_rules["神秘诡异"]
+        else:
+            music_config = self.scene_music_rules["日常对话"]
+        
+        # 根据情绪调整音乐参数
+        if primary_emotion in ["愤怒", "紧张"]:
+            music_config["volume"] = min(40, music_config["volume"] + 5)
+            music_config["tempo"] = "快节奏"
+        elif primary_emotion in ["悲伤", "平静"]:
+            music_config["volume"] = max(20, music_config["volume"] - 5)
+            music_config["tempo"] = "慢节奏"
+        
+        return music_config
+    
+    def clear_cache(self):
+        """清空缓存"""
+        self.music_config_cache.clear()
+        logger.info("[AUDIO_STORYBOARD] 音乐配置缓存已清空")
+    
+    def get_cache_stats(self) -> Dict[str, Any]:
+        """获取缓存统计信息"""
+        return {
+            "cache_size": len(self.music_config_cache),
+            "cache_max_size": self.cache_max_size,
+            "cache_usage": len(self.music_config_cache) / self.cache_max_size
         }

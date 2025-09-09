@@ -1,6 +1,6 @@
 """
-环境音智能匹配引擎
-支持精确匹配、语义相似度匹配和标签匹配
+环境音智能匹配引擎 - LLM优化版本
+支持精确匹配、LLM智能语义匹配和标签匹配
 为新的环境音优化流程提供智能关联能力
 """
 
@@ -9,11 +9,14 @@ from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime
 import asyncio
 import re
+import json
 from difflib import SequenceMatcher
 
 from app.models.environment_sound import EnvironmentSound
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_
+from app.services.storyboard_analysis.llm_client import LLMClient
+from app.utils.llm_config_loader import llm_config_loader
 
 logger = logging.getLogger(__name__)
 
@@ -41,11 +44,19 @@ class MatchResult:
         }
 
 class SoundMatchingEngine:
-    """环境音智能匹配引擎"""
+    """环境音智能匹配引擎 - LLM优化版本"""
     
     def __init__(self):
-        # 语义相似度关键词映射
-        self.SEMANTIC_SIMILARITY_MAP = {
+        # 初始化LLM客户端
+        self.llm_config = llm_config_loader.get_config()
+        self.llm = LLMClient(
+            model=self.llm_config["model"], 
+            base_url=self.llm_config["base_url"]
+        )
+        self.llm.timeout = self.llm_config["timeout"]
+        
+        # 保留基础的关键词映射作为后备方案
+        self.BASIC_SEMANTIC_MAP = {
             # 天气类
             '雨声': ['下雨', '雨水', '雨点', '雨滴', '细雨', '暴雨', '小雨', '大雨', '雨珠'],
             '雷声': ['打雷', '雷鸣', '雷电', '闪电', '轰隆', '雷暴'],
@@ -71,10 +82,11 @@ class SoundMatchingEngine:
             '音乐声': ['音乐', '乐器', '歌曲', '演奏']
         }
         
-        # 相关性权重配置
+        # 优化后的权重配置
         self.MATCH_WEIGHTS = {
             'exact': 1.0,      # 精确匹配
-            'semantic': 0.85,  # 语义匹配
+            'llm_semantic': 0.95,  # LLM智能语义匹配
+            'basic_semantic': 0.8,  # 基础语义匹配
             'tag': 0.7,        # 标签匹配
             'fuzzy': 0.6,      # 模糊匹配
             'category': 0.5    # 分类匹配
@@ -83,7 +95,11 @@ class SoundMatchingEngine:
         # 最低匹配阈值
         self.MIN_CONFIDENCE_THRESHOLD = 0.4
         
-        logger.info("[SOUND_MATCHING] 环境音智能匹配引擎初始化完成")
+        # 缓存机制
+        self.similarity_cache = {}
+        self.cache_max_size = 1000
+        
+        logger.info("[SOUND_MATCHING] 环境音智能匹配引擎(LLM优化版)初始化完成")
     
     async def find_matching_sounds(self, 
                                  environment_keywords: List[str], 
@@ -162,22 +178,37 @@ class SoundMatchingEngine:
                 matches.append(match)
                 continue
             
-            # 2. 语义相似度匹配
-            semantic_score = self._calculate_semantic_similarity(keyword_lower, sound_name)
-            if semantic_score >= 0.7:
+            # 2. LLM智能语义相似度匹配
+            llm_semantic_score = await self._calculate_llm_semantic_similarity(keyword_lower, sound_name)
+            if llm_semantic_score >= 0.6:  # 降低阈值，因为LLM更智能
                 match = MatchResult(
                     sound_id=sound.id,
                     sound_name=sound.name,
-                    match_type='semantic',
-                    confidence=self.MATCH_WEIGHTS['semantic'] * semantic_score,
-                    similarity_score=semantic_score,
-                    reason=f"语义相似匹配 (相似度: {semantic_score:.2f})"
+                    match_type='llm_semantic',
+                    confidence=self.MATCH_WEIGHTS['llm_semantic'] * llm_semantic_score,
+                    similarity_score=llm_semantic_score,
+                    reason=f"LLM智能语义匹配 (相似度: {llm_semantic_score:.2f})"
                 )
                 match.matched_keywords = [keyword]
                 matches.append(match)
                 continue
             
-            # 3. 标签匹配
+            # 3. 基础语义相似度匹配（后备方案）
+            basic_semantic_score = self._calculate_basic_semantic_similarity(keyword_lower, sound_name)
+            if basic_semantic_score >= 0.7:
+                match = MatchResult(
+                    sound_id=sound.id,
+                    sound_name=sound.name,
+                    match_type='basic_semantic',
+                    confidence=self.MATCH_WEIGHTS['basic_semantic'] * basic_semantic_score,
+                    similarity_score=basic_semantic_score,
+                    reason=f"基础语义匹配 (相似度: {basic_semantic_score:.2f})"
+                )
+                match.matched_keywords = [keyword]
+                matches.append(match)
+                continue
+            
+            # 4. 标签匹配
             tag_match_score = await self._check_tag_match(keyword, sound, db)
             if tag_match_score >= 0.5:
                 match = MatchResult(
@@ -192,7 +223,7 @@ class SoundMatchingEngine:
                 matches.append(match)
                 continue
             
-            # 4. 模糊匹配 (编辑距离)
+            # 5. 模糊匹配 (编辑距离)
             fuzzy_score = self._calculate_fuzzy_similarity(keyword_lower, sound_name)
             if fuzzy_score >= 0.6:
                 match = MatchResult(
@@ -208,10 +239,61 @@ class SoundMatchingEngine:
         
         return matches
     
-    def _calculate_semantic_similarity(self, keyword: str, sound_name: str) -> float:
-        """计算语义相似度"""
-        # 检查是否在语义映射中
-        for main_keyword, related_words in self.SEMANTIC_SIMILARITY_MAP.items():
+    async def _calculate_llm_semantic_similarity(self, keyword: str, sound_name: str) -> float:
+        """使用LLM计算智能语义相似度"""
+        try:
+            # 检查缓存
+            cache_key = f"{keyword}|{sound_name}"
+            if cache_key in self.similarity_cache:
+                return self.similarity_cache[cache_key]
+            
+            # 构建LLM提示词
+            prompt = f"""你是一个专业的环境音效分析师。请分析以下两个环境音描述的语义相似度：
+
+关键词："{keyword}"
+环境音名称："{sound_name}"
+
+请从以下维度分析相似度：
+1. 声音类型相似性（如都是自然音、机械音等）
+2. 声音特征相似性（如都是持续音、瞬间音等）
+3. 场景适用性相似性（如都适合室内、室外等）
+4. 情感氛围相似性（如都是紧张、舒缓等）
+
+请返回一个0-1之间的相似度分数，其中：
+- 1.0：完全相似或相同
+- 0.8-0.9：高度相似
+- 0.6-0.7：中等相似
+- 0.4-0.5：低度相似
+- 0.0-0.3：不相似
+
+请只返回JSON格式：
+{{"similarity_score": 0.85, "reason": "都是自然音效，适合户外场景"}}"""
+
+            # 调用LLM
+            response = await self.llm.call_json(prompt)
+            
+            if response and 'similarity_score' in response:
+                similarity_score = float(response['similarity_score'])
+                
+                # 缓存结果
+                if len(self.similarity_cache) < self.cache_max_size:
+                    self.similarity_cache[cache_key] = similarity_score
+                
+                logger.debug(f"[LLM_SEMANTIC] '{keyword}' vs '{sound_name}' = {similarity_score}")
+                return similarity_score
+            else:
+                logger.warning(f"[LLM_SEMANTIC] LLM返回格式错误: {response}")
+                return 0.0
+                
+        except Exception as e:
+            logger.error(f"[LLM_SEMANTIC] 计算相似度失败: {str(e)}")
+            # 降级到基础语义匹配
+            return self._calculate_basic_semantic_similarity(keyword, sound_name)
+    
+    def _calculate_basic_semantic_similarity(self, keyword: str, sound_name: str) -> float:
+        """计算基础语义相似度（后备方案）"""
+        # 检查是否在基础语义映射中
+        for main_keyword, related_words in self.BASIC_SEMANTIC_MAP.items():
             if main_keyword in sound_name:
                 # 检查keyword是否是相关词
                 for related_word in related_words:
@@ -222,7 +304,7 @@ class SoundMatchingEngine:
                     return 0.8
         
         # 反向检查
-        for main_keyword, related_words in self.SEMANTIC_SIMILARITY_MAP.items():
+        for main_keyword, related_words in self.BASIC_SEMANTIC_MAP.items():
             if main_keyword in keyword:
                 for related_word in related_words:
                     if related_word in sound_name or sound_name in related_word:
@@ -326,6 +408,84 @@ class SoundMatchingEngine:
         
         logger.info(f"[SOUND_MATCHING] 搜索完成，找到{len(matches)}个结果")
         return matches
+    
+    async def batch_llm_semantic_analysis(self, 
+                                        keyword_sound_pairs: List[Tuple[str, str]]) -> Dict[str, float]:
+        """
+        批量LLM语义分析，提升性能
+        
+        Args:
+            keyword_sound_pairs: [(keyword, sound_name), ...] 列表
+            
+        Returns:
+            {f"{keyword}|{sound_name}": similarity_score} 字典
+        """
+        try:
+            if not keyword_sound_pairs:
+                return {}
+            
+            # 构建批量分析提示词
+            pairs_text = "\n".join([f"{i+1}. 关键词: '{pair[0]}' | 环境音: '{pair[1]}'" 
+                                  for i, pair in enumerate(keyword_sound_pairs)])
+            
+            prompt = f"""你是一个专业的环境音效分析师。请批量分析以下关键词与环境音名称的语义相似度：
+
+{pairs_text}
+
+请从以下维度分析每个配对的相似度：
+1. 声音类型相似性（如都是自然音、机械音等）
+2. 声音特征相似性（如都是持续音、瞬间音等）
+3. 场景适用性相似性（如都适合室内、室外等）
+4. 情感氛围相似性（如都是紧张、舒缓等）
+
+请返回JSON格式，包含每个配对的相似度分数（0-1之间）：
+{{
+  "results": [
+    {{"index": 1, "similarity_score": 0.85, "reason": "都是自然音效"}},
+    {{"index": 2, "similarity_score": 0.3, "reason": "类型差异较大"}},
+    ...
+  ]
+}}"""
+
+            # 调用LLM
+            response = await self.llm.call_json(prompt)
+            
+            if response and 'results' in response:
+                results = {}
+                for item in response['results']:
+                    index = item.get('index', 0) - 1  # 转换为0基索引
+                    if 0 <= index < len(keyword_sound_pairs):
+                        keyword, sound_name = keyword_sound_pairs[index]
+                        cache_key = f"{keyword}|{sound_name}"
+                        similarity_score = float(item.get('similarity_score', 0.0))
+                        results[cache_key] = similarity_score
+                        
+                        # 缓存结果
+                        if len(self.similarity_cache) < self.cache_max_size:
+                            self.similarity_cache[cache_key] = similarity_score
+                
+                logger.info(f"[BATCH_LLM] 批量分析了{len(results)}个配对")
+                return results
+            else:
+                logger.warning(f"[BATCH_LLM] LLM返回格式错误: {response}")
+                return {}
+                
+        except Exception as e:
+            logger.error(f"[BATCH_LLM] 批量分析失败: {str(e)}")
+            return {}
+    
+    def clear_cache(self):
+        """清空缓存"""
+        self.similarity_cache.clear()
+        logger.info("[SOUND_MATCHING] 缓存已清空")
+    
+    def get_cache_stats(self) -> Dict[str, Any]:
+        """获取缓存统计信息"""
+        return {
+            "cache_size": len(self.similarity_cache),
+            "cache_max_size": self.cache_max_size,
+            "cache_usage": len(self.similarity_cache) / self.cache_max_size
+        }
 
     async def batch_match_analysis_result(self, 
                                         analysis_result: Dict[str, Any], 

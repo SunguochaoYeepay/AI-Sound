@@ -1169,6 +1169,13 @@ class OllamaCharacterDetector:
 3. 引号内容=角色对话（保留引号），描述动作=旁白
 4. 确保所有文本都在segments中体现，包括引号
 
+**🔥 混合句子分离规则（重要）：**
+- 当遇到"动作描述+说话动词+引号内容"的混合格式时，必须分离为两段
+- 示例："接过玉佩轻声道：'多谢萧公子。'" → 分离为：
+  * 第一段："接过玉佩轻声道：" → speaker: "旁白", text_type: "narration"
+  * 第二段："多谢萧公子。" → speaker: "林薇", text_type: "dialogue"
+- 说话动词包括：说、道、喊、叫、问、答、轻声道、喊道、叫道、问道、轻声问道等
+
 **🎯 说话者识别规则（重要）：**
 - **直接对话**：有引号且明确说话者的内容 → speaker = 具体角色名，text_type = "dialogue"
 - **心理活动**：描述角色内心想法、感受、思考的内容 → speaker = "旁白"，text_type = "inner_monologue"
@@ -1186,10 +1193,14 @@ class OllamaCharacterDetector:
 - "莫不是西域来的怪人?" → speaker: "人群"，text_type: "dialogue" (直接对话)
 - "林薇低头看着自己身上的白大褂" → speaker: "旁白"，text_type: "narration" (动作描述)
 - "心脏猛地一缩——她竟真的穿越到了课本里的盛唐长安" → speaker: "旁白"，text_type: "inner_monologue" (心理活动描述)
+- "接过玉佩轻声道：" → speaker: "旁白"，text_type: "narration" (动作描述，不是对话)
+- "多谢萧公子。" → speaker: "林薇"，text_type: "dialogue" (引号内的对话)
+- "指尖轻轻触碰萧景琰的左腿，轻声问道：" → speaker: "旁白"，text_type: "narration" (动作描述，不是对话)
+- "这里疼吗？" → speaker: "林薇"，text_type: "dialogue" (引号内的对话)
 
 关键规则：
 - 每个完整句子都要成为一个segment
-- "XX说："等动作描述 → 旁白
+- "XX说："、"XX轻声道："、"XX喊道："、"XX轻声问道："等动作描述 → 旁白
 - 引号内的实际话语 → 对应角色（保留引号）
 - 纯描述性文字 → 旁白
 - **speaker字段不能为空！**

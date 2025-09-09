@@ -272,7 +272,7 @@ class IntelligentDetectionService:
                 # 🔥 降低门槛：只要有一定特征就交给大模型判断
                 
                 # 1. 有角色动作描述（扩展匹配范围）
-                has_speaker_action = re.search(r'([一-龯]{2,6})[^，。！？]*?[说道讲叫喊问答回复表示抬举点头摇头看着][:：]', text)
+                has_speaker_action = re.search(r'([一-龯]{2,6})[^，。！？]*?[说道讲叫喊问答回复表示抬举点头摇头看着轻声道声道问道][:：]', text)
                 
                 # 2. 包含引号对话
                 has_quotes = '"' in text or '"' in text or '"' in text
@@ -305,7 +305,7 @@ class IntelligentDetectionService:
                     reason = "引号+说话动作+较长文本"
                 
                 # 🔥 明确的混合标志：包含完整的对话格式
-                elif (re.search(r'[说道喊叫问答回复表示][:：]', text)) and has_narration_content:
+                elif (re.search(r'[说道喊叫问答回复表示轻声道声道问道][:：]', text)) and has_narration_content:
                     # 必须同时有：对话标记 + 叙述词汇
                     should_check = True
                     reason = "对话标记+叙述内容"
@@ -333,7 +333,7 @@ class IntelligentDetectionService:
                     reason = "对话动作+较长文本"
                 
                 # 🔥 新增：包含对话标记的文本（降低门槛）
-                elif re.search(r'[说道喊叫问答回复表示][:：]', text) and len(text) > 15:
+                elif re.search(r'[说道喊叫问答回复表示轻声道声道问道][:：]', text) and len(text) > 15:
                     should_check = True
                     reason = "对话标记+基本长度"
                 
