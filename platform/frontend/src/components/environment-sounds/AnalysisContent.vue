@@ -67,6 +67,7 @@
                 :key="track.segment_id"
                 class="track-item"
                 :class="{ 'has-match': track.has_match, 'has-generated': track.has_generated }"
+                @click="handleTrackClick(track)"
               >
                 <div class="track-header">
                   <div class="track-time">
@@ -81,15 +82,15 @@
                 
                 <div class="track-keywords">
                   <a-tag 
-                    v-for="keyword in track.environment_keywords.slice(0, 3)" 
+                    v-for="keyword in getTrackKeywords(track).slice(0, 3)" 
                     :key="keyword"
                     size="small"
                     color="blue"
                   >
                     {{ keyword }}
                   </a-tag>
-                  <span v-if="track.environment_keywords.length > 3" class="more-keywords">
-                    +{{ track.environment_keywords.length - 3 }}
+                  <span v-if="getTrackKeywords(track).length > 3" class="more-keywords">
+                    +{{ getTrackKeywords(track).length - 3 }}
                   </span>
                 </div>
                 
@@ -110,12 +111,12 @@
                 <div class="track-confidence">
                   <span class="confidence-label">置信度:</span>
                   <a-progress 
-                    :percent="track.confidence * 100" 
+                    :percent="(track.confidence || 0.8) * 100" 
                     :show-info="false"
                     size="small"
-                    style="width: 100px; margin: 0 8px;"
+                    style="width: 80px; margin: 0 6px;"
                   />
-                  <span class="confidence-text">{{ (track.confidence * 100).toFixed(0) }}%</span>
+                  <span class="confidence-text">{{ ((track.confidence || 0.8) * 100).toFixed(0) }}%</span>
                 </div>
                 
                 <!-- 轨道操作按钮 -->
@@ -224,8 +225,30 @@ const emit = defineEmits([
   'generate-track',
   'play-track',
   'download-track',
-  'regenerate-track'
+  'regenerate-track',
+  'show-track-detail'
 ])
+
+// 🚀 第三阶段：获取轨道关键词（兼容新旧数据格式）
+const getTrackKeywords = (track) => {
+  // 新格式：单个keyword字段
+  if (track.keyword) {
+    return [track.keyword]
+  }
+  
+  // 旧格式：environment_keywords数组
+  if (track.environment_keywords && Array.isArray(track.environment_keywords)) {
+    return track.environment_keywords
+  }
+  
+  // 备用方案：从描述中提取关键词
+  if (track.description) {
+    return [track.description]
+  }
+  
+  // 默认返回空数组
+  return []
+}
 
 // 计算属性：按段落分组轨道
 const groupedTracks = computed(() => {
@@ -279,7 +302,7 @@ const groupedTracks = computed(() => {
   // 为每个段落添加环境音标识
   result.forEach(paragraph => {
     paragraph.hasEnvironment = paragraph.tracks.some(track => 
-      track.environment_keywords && track.environment_keywords.length > 0
+      getTrackKeywords(track).length > 0
     )
   })
   
@@ -307,6 +330,32 @@ const formatTime = (seconds) => {
   const mins = Math.floor(seconds / 60)
   const secs = Math.floor(seconds % 60)
   return `${mins}:${secs.toString().padStart(2, '0')}`
+}
+
+// 处理轨道点击事件
+const handleTrackClick = (track) => {
+  const keywords = getTrackKeywords(track)
+  
+  // 构建环境音信息对象
+  const soundInfo = {
+    name: keywords[0] || '环境音',
+    category: track.duration_type === 'instant' ? '动作音' : '自然音',
+    description: track.description || track.chinese_description || track.scene_description || '暂无描述',
+    source: track.source || '书籍分析',
+    chapter_number: props.selectedChapter?.chapter_number || 1,
+    keyword: keywords[0] || '',
+    duration: track.duration || 30,
+    intensity: track.intensity || 'medium',
+    volume: 50,
+    loop: false,
+    status: track.has_generated ? 'completed' : 'pending',
+    progress: track.has_generated ? 100 : 0,
+    audioUrl: track.audio_url || '',
+    fileSize: track.file_size || '0',
+    quality: '标准'
+  }
+  
+  emit('show-track-detail', soundInfo)
 }
 </script>
 
@@ -418,15 +467,18 @@ const formatTime = (seconds) => {
 
 .track-item {
   border: 1px solid #e8e8e8;
-  border-radius: 6px;
-  padding: 12px;
-  margin-bottom: 12px;
+  border-radius: 4px;  /* 🚀 更小圆角：6px → 4px */
+  padding: 6px;  /* 🚀 进一步减少：8px → 6px */
+  margin-bottom: 6px;  /* 🚀 进一步减少：8px → 6px */
   background: #fff;
   transition: all 0.3s ease;
+  cursor: pointer;
 }
 
 .track-item:hover {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border-color: #1890ff;
+  background: #f0f8ff;
+  box-shadow: 0 2px 8px rgba(24, 144, 255, 0.1);
 }
 
 .track-item.has-match {
@@ -441,7 +493,7 @@ const formatTime = (seconds) => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
+  margin-bottom: 4px;  /* 🚀 进一步减少：6px → 4px */
 }
 
 .track-time {
@@ -450,7 +502,7 @@ const formatTime = (seconds) => {
 }
 
 .track-keywords {
-  margin-bottom: 8px;
+  margin-bottom: 4px;  /* 🚀 进一步减少：6px → 4px */
 }
 
 .more-keywords {
@@ -461,24 +513,25 @@ const formatTime = (seconds) => {
 
 .track-description {
   color: #333;
-  margin-bottom: 8px;
-  line-height: 1.4;
+  margin-bottom: 4px;  /* 🚀 进一步减少：6px → 4px */
+  line-height: 1.2;  /* 🚀 更紧凑：从1.3 → 1.2 */
+  font-size: 13px;  /* 🚀 稍微小一点的字体 */
 }
 
 .track-confidence {
   display: flex;
   align-items: center;
-  margin-bottom: 12px;
+  margin-bottom: 6px;  /* 🚀 大幅减少：从12px → 6px */
 }
 
 .confidence-label {
-  font-size: 12px;
+  font-size: 11px;  /* 🚀 更小字体：12px → 11px */
   color: #666;
-  margin-right: 8px;
+  margin-right: 6px;  /* 🚀 减少间距：8px → 6px */
 }
 
 .confidence-text {
-  font-size: 12px;
+  font-size: 11px;  /* 🚀 更小字体：12px → 11px */
   color: #666;
 }
 

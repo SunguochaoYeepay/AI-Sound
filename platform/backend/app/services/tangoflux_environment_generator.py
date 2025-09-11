@@ -691,11 +691,104 @@ class TangoFluxEnvironmentGenerator:
         if to_remove:
             logger.info(f"[TANGOFLUX_GEN] 清理了{len(to_remove)}个过期任务")
     
+    def _detect_track_format(self, track: Dict[str, Any]) -> str:
+        """检测轨道数据格式类型"""
+        if 'environment_keywords' in track:
+            return 'environment_analysis'  # 环境音分析结果格式
+        elif 'type' in track and track.get('type') == '环境音效':
+            return 'audio_storyboard'      # 音频制作卡格式
+        else:
+            return 'unknown'               # 未知格式
+    
+    async def _generate_english_prompt(self, chinese_description: str, scene_context: Dict[str, Any] = None) -> str:
+        """使用AI生成英文提示词 - 带场景上下文"""
+        try:
+            if scene_context:
+                location = scene_context.get('location', '')
+                time = scene_context.get('time', '')
+                atmosphere = scene_context.get('atmosphere', '')
+                
+                prompt = f"""
+                将以下中文环境音描述翻译为英文提示词，用于AI音频生成：
+                
+                环境音：{chinese_description}
+                场景：{location}
+                时间：{time}
+                氛围：{atmosphere}
+                
+                请生成详细的英文提示词，包含场景、时间、氛围等上下文信息。
+                """
+            else:
+                prompt = f"将以下中文环境音描述翻译为英文提示词，用于AI音频生成：{chinese_description}"
+            
+            # 调用LLM API（使用现有的LLM客户端）
+            from app.services.storyboard_analysis.llm_client import LLMClient
+            llm_client = LLMClient()
+            response = await llm_client.call(prompt)
+            
+            # 提取生成的英文提示词
+            english_prompt = response.strip()
+            
+            logger.info(f"[TANGOFLUX_GEN] 生成英文提示词: {chinese_description} -> {english_prompt}")
+            return english_prompt
+            
+        except Exception as e:
+            logger.error(f"[TANGOFLUX_GEN] 生成英文提示词失败: {e}")
+            # 返回默认英文提示词
+            return f"Ambient sound: {chinese_description}"
+    
+    def _volume_to_intensity(self, volume: int) -> str:
+        """从音量推导强度级别"""
+        if volume <= 30:
+            return 'low'
+        elif volume <= 50:
+            return 'medium'
+        else:
+            return 'high'
+    
+    async def _convert_track_to_generation_request(self, track: Dict[str, Any], scene_context: Dict[str, Any] = None) -> Dict[str, Any]:
+        """转换轨道数据为生成请求 - 支持两种格式"""
+        
+        format_type = self._detect_track_format(track)
+        
+        if format_type == 'environment_analysis':
+            # 环境音分析结果格式
+            keyword = track.get('environment_keywords', [''])[0] if track.get('environment_keywords') else ''
+            description = track.get('chinese_description', '')
+            english_prompt = track.get('english_prompt', '')
+            duration = track.get('duration', 30.0)
+            intensity = track.get('intensity_level', 'medium')
+            
+        elif format_type == 'audio_storyboard':
+            # 音频制作卡格式
+            keyword = track.get('description', '')
+            description = track.get('description', '')
+            english_prompt = await self._generate_english_prompt(keyword, scene_context)
+            duration = track.get('end_time', 30) - track.get('start_time', 0)
+            intensity = self._volume_to_intensity(track.get('volume', 40))
+            
+        else:
+            # 默认处理
+            keyword = track.get('description', '')
+            description = track.get('description', '')
+            english_prompt = await self._generate_english_prompt(keyword)
+            duration = track.get('duration', 30.0)
+            intensity = 'medium'
+        
+        return {
+            'keyword': keyword,
+            'description': description,
+            'duration': duration,
+            'intensity': intensity,
+            'english_prompt': english_prompt
+        }
+    
     async def generate_project_environment_sounds(self, 
                                                 project_id: int,
                                                 tracks_to_generate: List[tuple],
                                                 task_id: str,
-                                                chapter_id: str = None) -> Dict[str, Any]:
+                                                chapter_id: str = None,
+                                                scene_context: Dict[str, Any] = None) -> Dict[str, Any]:
         """
         为项目生成环境音文件
         
@@ -722,22 +815,16 @@ class TangoFluxEnvironmentGenerator:
             # 转换轨道数据为生成请求
             generation_requests = []
             for index, track in tracks_to_generate:
-                # 从轨道数据中提取生成参数
-                keyword = track.get('environment_keywords', [''])[0] if track.get('environment_keywords') else ''
-                if not keyword and track.get('scene_description'):
-                    keyword = track.get('scene_description')
-                
-                # 提取英文提示词
-                english_prompt = track.get('english_prompt', '')
-                
-                generation_request = {
-                    'keyword': keyword,
-                    'description': track.get('scene_description', ''),
-                    'duration': track.get('duration', 30.0),
-                    'intensity': track.get('intensity_level', 'medium'),
-                    'english_prompt': english_prompt  # 添加英文提示词
-                }
-                generation_requests.append(generation_request)
+                try:
+                    request = await self._convert_track_to_generation_request(track, scene_context)
+                    generation_requests.append(request)
+                    logger.info(f"[TANGOFLUX_GEN] 转换轨道数据: {track.get('description', 'unknown')} -> {request['keyword']}")
+                except Exception as e:
+                    logger.error(f"[TANGOFLUX_GEN] 转换轨道数据失败: {e}")
+                    continue
+            
+            if not generation_requests:
+                raise ValueError("没有有效的轨道数据可生成")
             
             # 批量生成环境音
             generation_tasks = await self.batch_generate_environment_sounds(

@@ -32,7 +32,7 @@
         />
       </a-form-item>
 
-      <!-- 选择书籍 -->
+      <!-- 第一步：选择书籍 -->
       <a-form-item label="选择书籍" name="book_id">
         <a-select
           v-model:value="formData.book_id"
@@ -49,6 +49,33 @@
             {{ book.title }}
           </a-select-option>
         </a-select>
+      </a-form-item>
+
+      <!-- 第二步：选择书籍分析项目 -->
+      <a-form-item 
+        v-if="formData.book_id" 
+        label="选择书籍分析项目" 
+        name="novel_project_id"
+      >
+        <a-select
+          v-model:value="formData.novel_project_id"
+          placeholder="请选择该书籍的书籍分析项目"
+          allow-clear
+          :loading="projectsLoading"
+          @change="handleProjectChange"
+        >
+          <a-select-option
+            v-for="project in novelProjects"
+            :key="project.id"
+            :value="project.id"
+          >
+            {{ project.name || '未命名项目' }} (ID: {{ project.id }})
+          </a-select-option>
+        </a-select>
+        <div class="form-help-text">
+          <InfoCircleOutlined />
+          选择已完成的书籍分析项目，环境音分析将直接使用该项目的分析结果
+        </div>
       </a-form-item>
 
   
@@ -75,7 +102,8 @@
 <script setup>
 import { ref, reactive, watch } from 'vue'
 import { message } from 'ant-design-vue'
-import { environmentGenerationAPI } from '@/api'
+import { InfoCircleOutlined } from '@ant-design/icons-vue'
+import { environmentGenerationAPI, readerAPI } from '@/api'
 
 // Props
 const props = defineProps({
@@ -99,12 +127,15 @@ const emit = defineEmits(['update:open', 'create'])
 // 响应式数据
 const formRef = ref()
 const submitting = ref(false)
+const projectsLoading = ref(false)
+const novelProjects = ref([])
 
 // 表单数据
 const formData = reactive({
   name: '',
   description: '',
-  book_id: null
+  book_id: null,
+  novel_project_id: null
 })
 
 // 表单验证规则
@@ -118,17 +149,77 @@ const rules = {
   ],
   book_id: [
     { required: true, message: '请选择要分析的书籍', trigger: 'change' }
+  ],
+  novel_project_id: [
+    { required: true, message: '请选择书籍分析项目', trigger: 'change' }
   ]
 }
 
 // 监听书籍变化
 const handleBookChange = async (bookId) => {
   if (!bookId) {
+    // 清空书籍分析项目选择
+    formData.novel_project_id = null
+    novelProjects.value = []
     return
   }
   
-  // 可以在这里加载书籍详情信息
   console.log('选择的书籍ID:', bookId)
+  
+  // 加载该书籍的书籍分析项目列表
+  try {
+    projectsLoading.value = true
+    const response = await readerAPI.getProjects({ book_id: bookId })
+    
+    if (response.data.success) {
+      // 处理API返回的数据结构
+      const responseData = response.data.data
+      let projects = []
+      
+      if (Array.isArray(responseData)) {
+        // 直接是数组
+        projects = responseData
+      } else if (responseData && Array.isArray(responseData.projects)) {
+        // 是包含projects字段的对象
+        projects = responseData.projects
+      } else {
+        projects = []
+      }
+      
+      novelProjects.value = projects
+      
+      console.log('加载到书籍分析项目:', novelProjects.value.length, '个')
+      console.log('项目数据详情:', novelProjects.value)
+      
+      // 检查每个项目的字段
+      novelProjects.value.forEach((project, index) => {
+        console.log(`项目 ${index + 1}:`, {
+          id: project.id,
+          name: project.name,
+          book_id: project.book_id,
+          status: project.status
+        })
+      })
+      
+      if (novelProjects.value.length === 0) {
+        message.warning('该书籍还没有书籍分析项目，请先进行书籍分析')
+      }
+    } else {
+      message.error('加载书籍分析项目失败')
+      novelProjects.value = []
+    }
+  } catch (error) {
+    console.error('加载书籍分析项目失败:', error)
+    message.error('加载书籍分析项目失败')
+    novelProjects.value = []
+  } finally {
+    projectsLoading.value = false
+  }
+}
+
+// 监听书籍分析项目变化
+const handleProjectChange = (projectId) => {
+  console.log('选择的书籍分析项目ID:', projectId)
 }
 
 // 提交表单
@@ -137,11 +228,12 @@ const handleSubmit = async () => {
     await formRef.value.validate()
     submitting.value = true
 
-    // 构建创建项目的数据 - 仅创建项目，不进行任何分析
+    // 构建创建项目的数据 - 关联书籍分析项目
     const projectData = {
       name: formData.name,
       description: formData.description,
       book_id: formData.book_id,
+      novel_project_id: formData.novel_project_id,  // 关联书籍分析项目
       // 不进行任何分析，用户需要在详情页面手动选择章节并分析
       analysis_options: {
         auto_analyze: false,  // 不自动分析
@@ -174,8 +266,12 @@ const handleClose = () => {
   Object.assign(formData, {
     name: '',
     description: '',
-    book_id: null
+    book_id: null,
+    novel_project_id: null
   })
+  
+  // 清空书籍分析项目列表
+  novelProjects.value = []
   
   emit('update:open', false)
 }
@@ -195,6 +291,21 @@ watch(() => props.open, (newVal) => {
 
 .ant-form-item {
   margin-bottom: 24px;
+}
+
+.form-help-text {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: #f6f8fa;
+  border-radius: 4px;
+  color: #666;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.form-help-text .anticon {
+  margin-right: 4px;
+  color: #1890ff;
 }
 
 .ant-form-item-label {

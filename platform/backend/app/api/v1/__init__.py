@@ -27,6 +27,7 @@ from .novel_reader import router as novel_reader_router
 from .environment_sounds import router as environment_sounds_router
 from .scene_analysis import router as scene_analysis_router
 from .environment_generation import router as environment_generation_router
+from .analysis.chapters_analysis import router as chapters_analysis_router
 
 from .segment_analysis import router as segment_analysis_router
 from .integrated_analysis import router as integrated_analysis_router
@@ -134,6 +135,8 @@ api.include_router(data_consistency_router, tags=["Data Consistency"])
 api.include_router(environment_sounds_router, prefix="/environment-sounds", tags=["Environment Sounds"])
 api.include_router(scene_analysis_router, tags=["Scene Analysis"])
 api.include_router(environment_generation_router, tags=["Environment Generation"])
+# 注册章节分析路由，保持原有路径前缀
+api.include_router(chapters_analysis_router, tags=["Chapter Analysis"])
 
 api.include_router(segment_analysis_router, prefix="/segment_analysis", tags=["Segment Analysis"])
 api.include_router(integrated_analysis_router, tags=["Integrated Analysis"])

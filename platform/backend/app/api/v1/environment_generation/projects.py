@@ -52,12 +52,13 @@ async def create_environment_project(
             else:
                 logger.warning(f"[ENV_GEN_API] 未找到书籍: {request.book_id}")
         
-        # 创建新项目 - 仅创建项目，不进行任何分析
+        # 创建新项目 - 关联书籍分析项目
         new_project = EnvironmentProject(
             name=request.name,
             description=request.description,
             status="created",  # 初始状态为created，表示项目已创建但未分析
             book_id=request.book_id,  # 设置书籍ID
+            novel_project_id=request.novel_project_id,  # 关联书籍分析项目ID
             analysis_result={},  # 空的分析结果
             matching_result={},  # 空的匹配结果
             chapter_ids=[],  # 空数组，等待用户选择具体章节
@@ -81,6 +82,7 @@ async def create_environment_project(
                 "description": new_project.description,
                 "status": new_project.status,
                 "book_id": getattr(new_project, 'book_id', None),  # 安全访问book_id字段
+                "novel_project_id": getattr(new_project, 'novel_project_id', None),  # 关联的书籍分析项目ID
                 "chapter_ids": new_project.chapter_ids,
                 "analysis_options": new_project.analysis_options,
                 "analysis_tracks": new_project.analysis_tracks,
@@ -113,17 +115,79 @@ async def get_environment_project(
         if not project:
             raise HTTPException(status_code=404, detail="项目不存在")
         
+        # 🚀 第三阶段修改：优先从关联的书籍分析项目加载分析结果
+        analysis_result = project.analysis_result or {}
+        novel_project_id = getattr(project, 'novel_project_id', None)
+        
+        if novel_project_id and (not analysis_result or len(analysis_result) == 0):
+            logger.info(f"[ENV_GEN_API] 从关联的书籍分析项目加载分析结果: {novel_project_id}")
+            try:
+                # 从书籍分析项目加载6卡分析结果
+                from app.models.analysis_result import AnalysisResult
+                book_analysis_results = db.query(AnalysisResult).filter(
+                    AnalysisResult.project_id == novel_project_id
+                ).all()
+                
+                if book_analysis_results:
+                    # 构建章节分析结果字典，并转换为环境音轨道格式
+                    book_analysis_dict = {}
+                    for result in book_analysis_results:
+                        if result.original_analysis and result.chapter_id:
+                            # 检查是否有6卡分析结果
+                            original_data = result.original_analysis
+                            if isinstance(original_data, dict) and 'six_card_results' in original_data:
+                                # 🚀 第三阶段：从6卡分析结果中提取环境音数据
+                                six_card_results = original_data.get('six_card_results', [])
+                                environment_sounds = []
+                                
+                                for six_card_result in six_card_results:
+                                    # 从scene_card中提取environment_sounds
+                                    scene_card = six_card_result.get('scene_card', {})
+                                    if 'environment_sounds' in scene_card:
+                                        chapter_environment_sounds = scene_card['environment_sounds']
+                                        if isinstance(chapter_environment_sounds, list):
+                                            for sound in chapter_environment_sounds:
+                                                sound['chapter_id'] = result.chapter_id
+                                                sound['segment_index'] = six_card_result.get('_metadata', {}).get('segment_index', 0)
+                                                environment_sounds.append(sound)
+                                
+                                if environment_sounds:
+                                    # 转换为environment_tracks格式
+                                    from app.api.v1.environment_generation.generation import convert_to_frontend_format
+                                    environment_tracks = convert_to_frontend_format(environment_sounds)
+                                    
+                                    # 构建章节分析结果
+                                    chapter_analysis = {
+                                        "environment_tracks": environment_tracks,
+                                        "source": "book_analysis",
+                                        "chapter_id": result.chapter_id,
+                                        "total_sounds": len(environment_sounds)
+                                    }
+                                    book_analysis_dict[str(result.chapter_id)] = chapter_analysis
+                                    logger.info(f"[ENV_GEN_API] 章节{result.chapter_id}提取到{len(environment_sounds)}个环境音")
+                    
+                    if book_analysis_dict:
+                        analysis_result = book_analysis_dict
+                        logger.info(f"[ENV_GEN_API] 成功从书籍分析项目加载{len(book_analysis_dict)}个章节的分析结果")
+                    else:
+                        logger.warning(f"[ENV_GEN_API] 书籍分析项目{novel_project_id}没有环境音数据")
+                else:
+                    logger.warning(f"[ENV_GEN_API] 书籍分析项目{novel_project_id}没有分析结果")
+            except Exception as e:
+                logger.error(f"[ENV_GEN_API] 从书籍分析项目加载分析结果失败: {str(e)}")
+        
         # 构建响应数据
         project_data = {
             "id": project.id,
             "name": project.name,
             "description": project.description,
             "book_id": getattr(project, 'book_id', None),  # 安全访问book_id字段
+            "novel_project_id": novel_project_id,  # 关联的书籍分析项目ID
             "book_name": project.book_name,
             "chapter_ids": project.chapter_ids,
             "chapter_name": project.chapter_name,
             "status": project.status,
-            "analysis_result": project.analysis_result,
+            "analysis_result": analysis_result,  # 使用加载的分析结果
             "matching_result": project.matching_result,
             "created_at": project.created_at,
             "updated_at": project.updated_at
@@ -134,7 +198,7 @@ async def get_environment_project(
             "success": True,
             "data": {
                 "project": project_data,
-                "analysis_result": project.analysis_result  # 单独返回分析结果
+                "analysis_result": analysis_result  # 返回加载的分析结果
             },
             "message": "获取项目详情成功"
         }

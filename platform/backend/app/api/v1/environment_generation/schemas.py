@@ -51,6 +51,7 @@ class EnvironmentProjectCreateRequest(BaseModel):
     name: str
     description: Optional[str] = ""
     book_id: Optional[int] = None
+    novel_project_id: Optional[int] = None  # 关联的书籍分析项目ID
     chapter_ids: Optional[List[int]] = []
     analysis_options: Optional[Dict[str, Any]] = {}
 

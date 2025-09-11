@@ -105,7 +105,12 @@ class SixCardAnalyzer:
     "location": "具体地点",
     "time": "时间描述",
     "atmosphere": "整体氛围",
-    "environment_sounds": ["环境音效1", "环境音效2"],
+    "environment_sounds": [
+      {
+        "keyword": "环境音效关键词",
+        "description": "该环境音效的详细描述，包含场景上下文信息"
+      }
+    ],
     "visual_elements": ["视觉元素1", "视觉元素2"],
     "sensory_details": ["触觉/嗅觉等其他感官细节"]
   },
@@ -130,8 +135,12 @@ class SixCardAnalyzer:
   "audio_script_card": {
     "voice_direction": "语音指导",
     "pacing": "节奏控制",
-    "background_music": "背景音乐建议",
-    "sound_effects": ["音效1", "音效2"],
+    "background_music": [
+      {
+        "keyword": "背景音乐关键词",
+        "description": "该背景音乐的详细描述，包含情感和氛围信息"
+      }
+    ],
     "voice_characteristics": "声音特征要求"
   }
 }
@@ -158,11 +167,17 @@ class SixCardAnalyzer:
 【场景分析特别要求】
 1. 【时代背景识别】：必须准确识别场景的时代背景（古代/现代/未来/架空等）
 2. 【环境音效匹配】：environment_sounds必须与时代背景完全匹配
-   - 古代场景：使用"马蹄声"、"叫卖声"、"钟声"、"风声"等古代音效
-   - 现代场景：使用"车流声"、"交通声"、"建筑声"等现代音效
    - 严禁混用：古代场景不能出现现代音效，现代场景不能出现古代音效
 3. 【场景一致性】：location、time、atmosphere、environment_sounds必须保持时代一致性
 4. 【音效具体性】：环境音效要具体明确，避免模糊描述
+5. 【环境音效结构化】：environment_sounds必须为对象数组，每个环境音效包含独立的关键词和描述
+   - 每个环境音效对象包含keyword（关键词）和description（详细描述）
+   - description必须包含该音效的具体场景上下文信息
+   - 例如：{"keyword": "马蹄声", "description": "古代街道夜晚的马蹄声，节奏缓慢，营造宁静氛围"}
+6. 【背景音乐结构化】：background_music必须为对象数组，每个背景音乐包含独立的关键词和描述
+   - 每个背景音乐对象包含keyword（关键词）和description（详细描述）
+   - description必须包含该音乐的情感、氛围、节奏等详细信息
+   - 例如：{"keyword": "宁静祥和的背景音乐", "description": "轻柔的背景音乐，营造夜晚街道的宁静氛围，节奏缓慢"}
 
 请分析以下段落："""
 
@@ -196,7 +211,7 @@ class SixCardAnalyzer:
             if self.script_generator:
                 try:
                     paragraph_id = f"paragraph_{segment_index}"
-                    paragraph_script = self.script_generator.generate_paragraph_script(
+                    paragraph_script = await self.script_generator.generate_paragraph_script(
                         segment_text, response, paragraph_id
                     )
                     
@@ -228,7 +243,7 @@ class SixCardAnalyzer:
                     }
                     
                     # 生成音频制作卡
-                    audio_storyboard_card = self.storyboard_generator.generate_paragraph_storyboard(
+                    audio_storyboard_card = await self.storyboard_generator.generate_paragraph_storyboard(
                         paragraph_script_data, f"paragraph_{segment_index}"
                     )
                     response["audio_storyboard_card"] = audio_storyboard_card
@@ -304,7 +319,12 @@ class SixCardAnalyzer:
                 "location": "未指定",
                 "time": "未知时间",
                 "atmosphere": "中性",
-                "environment_sounds": [],
+                "environment_sounds": [
+                    {
+                        "keyword": "默认环境音",
+                        "description": "基础环境音效，用于fallback场景"
+                    }
+                ],
                 "visual_elements": [],
                 "sensory_details": []
             },
@@ -323,8 +343,12 @@ class SixCardAnalyzer:
             "audio_script_card": {
                 "voice_direction": "标准语音",
                 "pacing": "正常节奏",
-                "background_music": "无",
-                "sound_effects": [],
+                "background_music": [
+                    {
+                        "keyword": "默认背景音乐",
+                        "description": "基础背景音乐，用于fallback场景"
+                    }
+                ],
                 "voice_characteristics": "标准音色"
             },
             "audio_storyboard_card": {
@@ -446,8 +470,12 @@ class SixCardAnalyzer:
         return {
             "voice_direction": "标准语音",
             "pacing": "正常节奏",
-            "background_music": "无",
-            "sound_effects": [],
+            "background_music": [
+                {
+                    "keyword": "默认背景音乐",
+                    "description": "基础背景音乐，用于fallback场景"
+                }
+            ],
             "voice_characteristics": "标准音色"
         }
 

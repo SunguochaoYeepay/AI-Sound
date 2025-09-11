@@ -1245,7 +1245,13 @@ export const environmentGenerationAPI = {
 
   // 删除轨道
   deleteTrack: (projectId, trackIndex) =>
-    apiClient.delete(`/environment-generation/track/${projectId}/${trackIndex}`)
+    apiClient.delete(`/environment-generation/track/${projectId}/${trackIndex}`),
+
+  // 从书籍分析结果获取环境音数据
+  getBookAnalysisEnvironmentSounds: (projectId, chapterId = null) => {
+    const params = chapterId ? `?chapter_id=${chapterId}` : ''
+    return apiClient.get(`/environment-generation/book-analysis/${projectId}/environment-sounds${params}`)
+  }
 }
 
 

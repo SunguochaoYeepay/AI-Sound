@@ -24,7 +24,7 @@ class NovelProject(Base):
     description = Column(Text)
     
     # 项目状态
-    status = Column(String(20), default='pending')  # pending, processing, paused, completed, failed
+    status = Column(String(20), default='active')  # active(正常), deleted(已删除)
     
     # 时间记录
     started_at = Column(DateTime)

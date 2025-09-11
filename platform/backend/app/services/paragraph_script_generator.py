@@ -141,7 +141,7 @@ class ParagraphScriptGenerator:
             logger.warning(f"音频分镜卡生成器导入失败: {e}")
             self.storyboard_generator = None
     
-    def generate_paragraph_script(self, 
+    async def generate_paragraph_script(self, 
                                  paragraph_text: str, 
                                  six_card_analysis: Dict[str, Any],
                                  paragraph_id: str) -> Dict[str, Any]:
@@ -180,7 +180,7 @@ class ParagraphScriptGenerator:
                     }
                     
                     # 生成音频分镜卡
-                    audio_storyboard_card = self.storyboard_generator.generate_paragraph_storyboard(
+                    audio_storyboard_card = await self.storyboard_generator.generate_paragraph_storyboard(
                         paragraph_script_data, paragraph_id
                     )
                     

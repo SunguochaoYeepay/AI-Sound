@@ -33,7 +33,7 @@
           分析环境音
         </a-button>
         
-        <!-- 重新分析环境音 -->
+        <!-- 加载环境音数据 -->
         <a-button 
           v-if="hasAnalysis"
           type="default" 
@@ -41,7 +41,7 @@
           :loading="analysisLoading"
         >
           <ReloadOutlined />
-          重新分析
+          加载环境音
         </a-button>
         
         <!-- 生成当前章节环境音 -->

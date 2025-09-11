@@ -4,7 +4,7 @@
 
 from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks, Body
 from fastapi.responses import FileResponse, StreamingResponse
-from typing import Dict, Any, List, Tuple
+from typing import Dict, Any, List, Tuple, Optional
 from datetime import datetime
 import os
 import json
@@ -16,6 +16,7 @@ from app.services.environment_project_service import EnvironmentProjectService
 from app.utils.logger import get_logger
 from app.database import get_db
 from app.models.environment_generation import EnvironmentProject
+from app.models.novel_project import NovelProject
 from .schemas import BatchGenerationRequest
 
 logger = get_logger(__name__)
@@ -967,3 +968,204 @@ async def mix_environment_sounds_task(
             })
         except Exception as ws_error:
             logger.warning(f"[ENV_MIX_TASK] WebSocket错误通知失败: {str(ws_error)}")
+
+
+@router.get("/book-analysis/{project_id}/environment-sounds")
+async def get_book_analysis_environment_sounds(
+    project_id: int,
+    chapter_id: Optional[int] = None,
+    db: Session = Depends(get_db)
+):
+    """从书籍分析结果中获取环境音数据"""
+    try:
+        logger.info(f"[ENV_GEN_API] 获取书籍分析环境音数据，项目ID: {project_id}，章节ID: {chapter_id}")
+        
+        # 获取项目信息
+        project = db.query(NovelProject).filter(NovelProject.id == project_id).first()
+        if not project:
+            raise HTTPException(status_code=404, detail="未找到项目")
+        
+        # 获取书籍分析结果
+        from app.models.analysis_result import AnalysisResult
+        analysis_results = db.query(AnalysisResult).filter(
+            AnalysisResult.project_id == project_id
+        ).all()
+        
+        if not analysis_results:
+            raise HTTPException(status_code=404, detail="未找到书籍分析结果")
+        
+        # 构建分析结果字典
+        analysis_result = {}
+        for result in analysis_results:
+            if result.original_analysis:
+                # 修复：original_analysis已经是字典类型，不需要json.loads
+                chapter_data = result.original_analysis
+                if isinstance(chapter_data, str):
+                    chapter_data = json.loads(chapter_data)
+                analysis_result[str(result.chapter_id)] = chapter_data
+        
+        # 提取环境音数据
+        environment_sounds = extract_environment_sounds_from_analysis(analysis_result, chapter_id)
+        
+        # 转换为前端需要的格式
+        formatted_data = convert_to_frontend_format(environment_sounds)
+        
+        logger.info(f"[ENV_GEN_API] 成功提取{len(formatted_data)}个环境音数据")
+        
+        return {
+            "success": True,
+            "data": formatted_data,
+            "message": f"成功提取{len(formatted_data)}个环境音数据"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[ENV_GEN_API] 获取书籍分析环境音失败: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "message": "获取书籍分析环境音失败"
+        }
+
+
+def extract_environment_sounds_from_analysis(book_analysis: Dict[str, Any], chapter_id: Optional[int] = None) -> List[Dict[str, Any]]:
+    """从书籍分析结果中提取环境音数据"""
+    environment_sounds = []
+    
+    if chapter_id:
+        # 单章节模式
+        chapter_data = book_analysis.get(str(chapter_id), {})
+        
+        # 🚀 第三阶段：支持6卡分析结果格式
+        if 'six_card_results' in chapter_data:
+            six_card_results = chapter_data.get('six_card_results', [])
+            for six_card_result in six_card_results:
+                scene_card = six_card_result.get('scene_card', {})
+                character_card = six_card_result.get('character_card', {})
+                sounds = scene_card.get('environment_sounds', [])
+                
+                # 提取旁白内容
+                narrator_content = ""
+                if 'narrator' in character_card:
+                    narrator_content = character_card['narrator'].get('content', '')
+                
+                # 为每个环境音添加章节信息
+                for sound in sounds:
+                    if isinstance(sound, dict):
+                        sound_copy = sound.copy()
+                        sound_copy['chapter_id'] = chapter_id
+                        sound_copy['segment_index'] = six_card_result.get('_metadata', {}).get('segment_index', 0)
+                        sound_copy['narration_text'] = narrator_content  # 添加旁白内容
+                        environment_sounds.append(sound_copy)
+                    elif isinstance(sound, str):
+                        # 如果是字符串，创建基本的环境音对象
+                        sound_obj = {
+                            'keyword': sound,
+                            'description': sound,
+                            'chapter_id': chapter_id,
+                            'segment_index': six_card_result.get('_metadata', {}).get('segment_index', 0),
+                            'narration_text': narrator_content  # 添加旁白内容
+                        }
+                        environment_sounds.append(sound_obj)
+        else:
+            # 兼容旧格式
+            scene_card = chapter_data.get('scene_card', {})
+            sounds = scene_card.get('environment_sounds', [])
+            
+            # 为每个环境音添加章节信息
+            for sound in sounds:
+                if isinstance(sound, dict):
+                    sound_copy = sound.copy()
+                    sound_copy['chapter_id'] = chapter_id
+                    environment_sounds.append(sound_copy)
+                elif isinstance(sound, str):
+                    # 如果是字符串，创建基本的环境音对象
+                    sound_obj = {
+                        'keyword': sound,
+                        'description': sound,
+                        'chapter_id': chapter_id
+                    }
+                    environment_sounds.append(sound_obj)
+    else:
+        # 多章节模式
+        for chapter_id_str, chapter_data in book_analysis.items():
+            if isinstance(chapter_data, dict):
+                # 🚀 第三阶段：支持6卡分析结果格式
+                if 'six_card_results' in chapter_data:
+                    six_card_results = chapter_data.get('six_card_results', [])
+                    for six_card_result in six_card_results:
+                        scene_card = six_card_result.get('scene_card', {})
+                        character_card = six_card_result.get('character_card', {})
+                        chapter_sounds = scene_card.get('environment_sounds', [])
+                        
+                        # 提取旁白内容
+                        narrator_content = ""
+                        if 'narrator' in character_card:
+                            narrator_content = character_card['narrator'].get('content', '')
+                        
+                        # 为每个环境音添加章节信息
+                        for sound in chapter_sounds:
+                            if isinstance(sound, dict):
+                                sound_copy = sound.copy()
+                                sound_copy['chapter_id'] = int(chapter_id_str)
+                                sound_copy['segment_index'] = six_card_result.get('_metadata', {}).get('segment_index', 0)
+                                sound_copy['narration_text'] = narrator_content  # 添加旁白内容
+                                environment_sounds.append(sound_copy)
+                            elif isinstance(sound, str):
+                                # 如果是字符串，创建基本的环境音对象
+                                sound_obj = {
+                                    'keyword': sound,
+                                    'description': sound,
+                                    'chapter_id': int(chapter_id_str),
+                                    'segment_index': six_card_result.get('_metadata', {}).get('segment_index', 0),
+                                    'narration_text': narrator_content  # 添加旁白内容
+                                }
+                                environment_sounds.append(sound_obj)
+                else:
+                    # 兼容旧格式
+                    scene_card = chapter_data.get('scene_card', {})
+                    chapter_sounds = scene_card.get('environment_sounds', [])
+                    
+                    # 为每个环境音添加章节信息
+                    for sound in chapter_sounds:
+                        if isinstance(sound, dict):
+                            sound_copy = sound.copy()
+                            sound_copy['chapter_id'] = int(chapter_id_str)
+                            environment_sounds.append(sound_copy)
+                        elif isinstance(sound, str):
+                            # 如果是字符串，创建基本的环境音对象
+                            sound_obj = {
+                                'keyword': sound,
+                                'description': sound,
+                                'chapter_id': int(chapter_id_str)
+                            }
+                            environment_sounds.append(sound_obj)
+    
+    return environment_sounds
+
+
+def convert_to_frontend_format(environment_sounds: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """转换为前端需要的格式"""
+    formatted_tracks = []
+    
+    for i, sound in enumerate(environment_sounds):
+        track = {
+            "track_id": f"book_analysis_{i+1:03d}",
+            "keyword": sound.get("keyword", ""),
+            "description": sound.get("description", ""),
+            "source": "book_analysis",  # 标识数据来源
+            "duration": 30.0,  # 默认时长
+            "intensity": "medium",  # 默认强度
+            "english_prompt": "",  # 将由AI生成
+            "chapter_id": sound.get("chapter_id"),
+            "paragraph_index": sound.get("segment_index", 0),  # 🚀 修复：使用segment_index字段
+            # 🚀 添加旁白内容字段
+            "narration_text": sound.get("narration_text", ""),
+            "start_time": (sound.get("segment_index", 0) * 30),  # 简单的时间计算
+            "generated_file_path": None,  # 默认未生成
+            "confidence": 0.85  # 🚀 修复NaN：添加默认置信度
+        }
+        formatted_tracks.append(track)
+    
+    return formatted_tracks

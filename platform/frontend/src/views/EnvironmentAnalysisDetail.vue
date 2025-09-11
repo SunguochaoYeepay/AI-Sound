@@ -71,6 +71,7 @@
           @play-track="handlePlayTrack"
           @download-track="handleDownloadTrack"
           @regenerate-track="handleRegenerateTrack"
+          @show-track-detail="handleShowSoundDetail"
         />
           </div>
         </a-col>
@@ -94,6 +95,14 @@
       @retry="handleProgressRetry"
       @refresh="handleProgressRefresh"
     />
+
+    <!-- 环境音详情抽屉 -->
+    <EnvironmentSoundDetailDrawer
+      :visible="detailDrawerVisible"
+      :sound-info="selectedSoundInfo"
+      @update:visible="detailDrawerVisible = $event"
+      @refresh="handleRefreshEnvironmentSounds"
+    />
   </div>
 </template>
 
@@ -107,6 +116,7 @@ import AnalysisHeader from '@/components/environment-sounds/AnalysisHeader.vue'
 import AnalysisContent from '@/components/environment-sounds/AnalysisContent.vue'
 import EnvironmentProjectHeader from '@/components/environment-sounds/EnvironmentProjectHeader.vue'
 import EnvironmentProgressBar from '@/components/environment-sounds/EnvironmentProgressBar.vue'
+import EnvironmentSoundDetailDrawer from '@/components/environment-sounds/EnvironmentSoundDetailDrawer.vue'
 import { environmentGenerationAPI } from '@/api'
 import { chaptersAPI } from '@/api'
 import { booksAPI } from '@/api'
@@ -153,6 +163,10 @@ const generationErrorMessage = ref('')
 
 // 环境音轨道
 const environmentTracks = ref([])
+
+// 环境音详情抽屉
+const detailDrawerVisible = ref(false)
+const selectedSoundInfo = ref({})
 
 // 防重复加载机制
 const isLoadingProject = ref(false)
@@ -396,6 +410,19 @@ const handleProgressRefresh = () => {
   loadProjectInfo()
 }
 
+// 环境音详情抽屉相关方法
+const handleShowSoundDetail = (soundInfo) => {
+  selectedSoundInfo.value = soundInfo
+  detailDrawerVisible.value = true
+}
+
+const handleRefreshEnvironmentSounds = () => {
+  // 刷新环境音数据
+  if (selectedChapter.value) {
+    loadEnvironmentSoundsFromBookAnalysis(projectInfo.value.novel_project_id, selectedChapter.value.id)
+  }
+}
+
 // 页面初始化
 onMounted(async () => {
   await loadProjectInfo()
@@ -405,6 +432,17 @@ onMounted(async () => {
   
   // 监听WebSocket消息
   window.addEventListener('websocket_message', handleWebSocketMessage)
+  
+  // 如果有章节且有关联的书籍分析项目，自动加载第一个章节的环境音数据
+  if (chapters.value.length > 0 && projectInfo.value.novel_project_id) {
+    const firstChapter = chapters.value[0]
+    selectedChapter.value = firstChapter
+    try {
+      await loadEnvironmentSoundsFromBookAnalysis(projectInfo.value.novel_project_id, firstChapter.id)
+    } catch (error) {
+      console.error('自动加载第一个章节环境音失败:', error)
+    }
+  }
 })
 
 onUnmounted(() => {
@@ -772,40 +810,32 @@ const handlePageChange = async (pageInfo) => {
 }
 
 // 选择章节
-const handleChapterSelect = (chapterId) => {
+const handleChapterSelect = async (chapterId) => {
   selectedChapter.value = chapters.value.find(ch => ch.id === chapterId)
   
-  // 加载当前章节的分析结果
-  const chapterAnalysis = analysisResults.value[chapterId]
-  if (chapterAnalysis && Object.keys(chapterAnalysis).length > 0) {
-    const newTracks = chapterAnalysis.environment_tracks || []
-    
-    // 保留已更新的轨道状态，避免覆盖WebSocket更新的generated_file_path
-    if (environmentTracks.value.length > 0 && newTracks.length === environmentTracks.value.length) {
-      newTracks.forEach((newTrack, index) => {
-        const existingTrack = environmentTracks.value[index]
-        if (existingTrack && existingTrack.generated_file_path && !newTrack.generated_file_path) {
-          newTrack.generated_file_path = existingTrack.generated_file_path
-          console.log(`🔄 保留轨道${index}的生成文件路径:`, existingTrack.generated_file_path)
-        }
-      })
-    } else if (newTracks.length > 0) {
-      // 如果前端没有轨道状态，检查数据库中是否已有生成的文件路径
-      console.log('🔍 检查数据库中轨道生成状态:', newTracks.map((track, index) => ({
-        index,
-        hasGeneratedPath: !!track.generated_file_path,
-        generatedPath: track.generated_file_path
-      })))
+  console.log('📖 选择章节:', {
+    chapterId,
+    chapterTitle: selectedChapter.value?.title,
+    novelProjectId: projectInfo.value.novel_project_id
+  })
+  
+  // 从书籍分析结果加载环境音数据
+  if (projectInfo.value.novel_project_id && selectedChapter.value) {
+    try {
+      await loadEnvironmentSoundsFromBookAnalysis(projectInfo.value.novel_project_id, selectedChapter.value.id)
+    } catch (error) {
+      console.error('加载章节环境音失败:', error)
+      environmentTracks.value = []
+      hasAnalysis.value = false
     }
-    
-    environmentTracks.value = newTracks
   } else {
-    // 清空环境轨道，因为该章节没有分析结果
+    // 清空环境轨道
     environmentTracks.value = []
+    hasAnalysis.value = false
   }
 }
 
-// 开始分析
+// 开始分析（修改为加载书籍分析结果）
 const startAnalysis = async () => {
   if (!selectedChapter.value) {
     message.warning('请先选择要分析的章节')
@@ -815,89 +845,23 @@ const startAnalysis = async () => {
   try {
     analysisLoading.value = true
     
-
-
-    // 总是使用章节分析API，只分析当前选中的章节
-
+    // 从书籍分析结果加载环境音数据
+    await loadEnvironmentSoundsFromBookAnalysis(projectInfo.value.novel_project_id, selectedChapter.value.id)
     
-    const response = await environmentGenerationAPI.analyzeChapters({
-      chapter_ids: [selectedChapter.value.id],
-      analysis_options: {
-        mode: 'auto',
-        environment_types: ['nature', 'urban', 'indoor', 'action'],
-        precision: 'medium',
-        existing_project_id: projectInfo.value.id  // 指定现有项目ID
-      }
-    })
-    
-    if (response.data.success) {
-      // 将分析结果保存到当前章节
-      analysisResults.value[selectedChapter.value.id] = response.data.analysis_result
-      environmentTracks.value = response.data.analysis_result?.environment_tracks || []
-      
-      console.log('✅ 章节分析完成，设置环境轨道:', {
-        chapterId: selectedChapter.value.id,
-        tracksCount: environmentTracks.value.length
-      })
-      
-      // 保存分析结果到项目
-      if (projectInfo.value) {
-        try {
-          // 构建完整的分析结果（保持多章节格式）
-          const fullAnalysisResult = { ...analysisResults.value }
-          
-          // 直接更新项目分析结果，不调用analyzeBook API
-          console.log('💾 直接更新项目分析结果')
-          
-          const updateResponse = await environmentGenerationAPI.updateProjectAnalysis(projectInfo.value.id, {
-            analysis_result: fullAnalysisResult,
-            status: 'analyzed'
-          })
-          
-          if (updateResponse.data.success) {
-            console.log('✅ 分析结果已保存到项目:', projectInfo.value.id)
-            message.success('章节环境音分析完成')
-          } else {
-            console.error('保存分析结果失败:', updateResponse.data)
-            message.warning('分析完成，但保存结果失败')
-          }
-        } catch (saveError) {
-          console.error('保存分析结果失败:', saveError)
-          message.warning('分析完成，但保存结果失败')
-        }
-      } else {
-        console.warn('⚠️ 没有项目信息，无法保存分析结果')
-        message.success('章节环境音分析完成')
-      }
-    } else {
-      // 🔥 优化：简化错误提示，避免重复信息
-      const errorData = response.data
-      console.error('❌ 环境音分析失败:', errorData)
-      
-      // 构建简洁的错误信息
-      let errorMessage = errorData.error || errorData.message || '分析失败'
-      
-      // 如果有章节ID信息，添加到错误信息中
-      if (errorData.chapter_id && errorData.chapter_id !== '未知') {
-        errorMessage = `章节[${errorData.chapter_id}]: ${errorMessage}`
-      }
-      
-      // 只显示错误消息，不重复显示建议
-      message.error(errorMessage)
-      
-      // 清空当前章节的分析结果
-      delete analysisResults.value[selectedChapter.value.id]
-      environmentTracks.value = []
-    }
   } catch (error) {
-    console.error('分析失败:', error)
-    message.error('分析失败: ' + (error.response?.data?.detail || error.message))
+    console.error('加载书籍分析环境音失败:', error)
+    
+    // 如果没有书籍分析结果，引导用户进行书籍分析
+    message.warning('请先进行书籍分析，然后才能查看环境音数据')
+    
+    // 跳转到书籍分析页面
+    router.push(`/content-management/book-analysis/${projectInfo.value.book_id}`)
   } finally {
     analysisLoading.value = false
   }
 }
 
-// 重新分析
+// 重新分析（修改为重新加载书籍分析结果）
 const handleReanalyze = async () => {
   if (!selectedChapter.value) {
     message.warning('请先选择要分析的章节')
@@ -907,86 +871,59 @@ const handleReanalyze = async () => {
   try {
     analysisLoading.value = true
     
-    // 清空当前章节的分析结果
-    delete analysisResults.value[selectedChapter.value.id]
+    // 清空当前章节的环境音数据
     environmentTracks.value = []
     
-    // 重新分析当前章节
-    const response = await environmentGenerationAPI.analyzeChapters({
-      chapter_ids: [selectedChapter.value.id],
-      analysis_options: {
-        mode: 'auto',
-        environment_types: ['nature', 'urban', 'indoor', 'action'],
-        precision: 'medium',
-        existing_project_id: projectInfo.value.id,
-        force_reanalyze: true  // 强制重新分析
+    // 重新从书籍分析结果加载环境音数据
+    await loadEnvironmentSoundsFromBookAnalysis(projectInfo.value.novel_project_id, selectedChapter.value.id)
+    
+  } catch (error) {
+    console.error('重新加载书籍分析环境音失败:', error)
+    
+    // 如果没有书籍分析结果，引导用户进行书籍分析
+    Modal.confirm({
+      title: '⚠️ 需要先进行书籍分析',
+      content: '当前章节尚未进行书籍分析，无法加载环境音数据。请先进行书籍分析，然后才能查看环境音信息。',
+      okText: '去书籍分析',
+      cancelText: '取消',
+      onOk: () => {
+        // 跳转到书籍分析页面
+        router.push(`/content-management/book-analysis/${projectInfo.value.book_id}`)
       }
     })
-    
+  } finally {
+    analysisLoading.value = false
+  }
+}
+
+// 从书籍分析结果加载环境音数据
+const loadEnvironmentSoundsFromBookAnalysis = async (novelProjectId, chapterId) => {
+  try {
+    const response = await environmentGenerationAPI.getBookAnalysisEnvironmentSounds(novelProjectId, chapterId)
     if (response.data.success) {
-      // 将分析结果保存到当前章节
-      analysisResults.value[selectedChapter.value.id] = response.data.analysis_result
-      environmentTracks.value = response.data.analysis_result?.environment_tracks || []
+      environmentTracks.value = response.data.data
       
-      console.log('✅ 章节重新分析完成，设置环境轨道:', {
-        chapterId: selectedChapter.value.id,
+      // 🚀 第三阶段修复：更新analysisResults以让hasAnalysis计算属性正确工作
+      if (!analysisResults.value[chapterId]) {
+        analysisResults.value[chapterId] = {}
+      }
+      analysisResults.value[chapterId].environment_tracks = response.data.data
+      analysisResults.value[chapterId].source = 'book_analysis'
+      analysisResults.value[chapterId].loaded_at = new Date().toISOString()
+      
+      console.log('✅ 从书籍分析加载环境音成功:', {
+        novelProjectId,
+        chapterId,
         tracksCount: environmentTracks.value.length
       })
       
-      // 保存分析结果到项目
-      if (projectInfo.value) {
-        try {
-          // 构建完整的分析结果（保持多章节格式）
-          const fullAnalysisResult = { ...analysisResults.value }
-          
-          // 直接更新项目分析结果
-          console.log('💾 更新项目分析结果')
-          
-          const updateResponse = await environmentGenerationAPI.updateProjectAnalysis(projectInfo.value.id, {
-            analysis_result: fullAnalysisResult,
-            status: 'analyzed'
-          })
-          
-          if (updateResponse.data.success) {
-            console.log('✅ 重新分析结果已保存到项目:', projectInfo.value.id)
-            message.success('章节环境音重新分析完成')
-          } else {
-            console.error('保存重新分析结果失败:', updateResponse.data)
-            message.warning('重新分析完成，但保存结果失败')
-          }
-        } catch (saveError) {
-          console.error('保存重新分析结果失败:', saveError)
-          message.warning('重新分析完成，但保存结果失败')
-        }
-      } else {
-        console.warn('⚠️ 没有项目信息，无法保存重新分析结果')
-        message.success('章节环境音重新分析完成')
-      }
+      message.success(`成功加载${environmentTracks.value.length}个环境音数据`)
     } else {
-      // 🔥 优化：简化重新分析错误提示，避免重复信息
-      const errorData = response.data
-      console.error('❌ 环境音重新分析失败:', errorData)
-      
-      // 构建简洁的错误信息
-      let errorMessage = errorData.error || errorData.message || '重新分析失败'
-      
-      // 如果有章节ID信息，添加到错误信息中
-      if (errorData.chapter_id && errorData.chapter_id !== '未知') {
-        errorMessage = `章节[${errorData.chapter_id}]: ${errorMessage}`
-      }
-      
-      // 只显示错误消息，不重复显示建议
-      message.error(errorMessage)
-      
-      // 清空当前章节的分析结果
-      delete analysisResults.value[selectedChapter.value.id]
-      environmentTracks.value = []
+      throw new Error(response.data.error || '获取书籍分析环境音失败')
     }
   } catch (error) {
-    console.error('重新分析失败:', error)
-    message.error('重新分析失败: ' + (error.response?.data?.detail || error.message))
-  } finally {
-    analysisLoading.value = false
+    console.error('从书籍分析加载环境音失败:', error)
+    throw error // 重新抛出错误，让上层处理
   }
 }
 
