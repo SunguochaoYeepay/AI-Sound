@@ -26,6 +26,11 @@ class AudioStoryboardGenerator:
             base_url=self.llm_config["base_url"]
         )
         self.llm.timeout = self.llm_config["timeout"]
+        
+        # 🚀 添加音乐配置缓存
+        self.music_config_cache = {}
+        self.cache_max_size = 100
+        
         # 音轨配置规则
         self.track_configs = {
             "main_track": {  # 旁白+对话音轨
@@ -168,8 +173,8 @@ class AudioStoryboardGenerator:
             # 4. 生成角色语音配置
             voice_assignments = self._generate_voice_assignments(synthesis_json)
             
-            # 5. 生成音效配置
-            sound_effects = self._generate_sound_effects(scene_card, event_card, timeline["total_duration"])
+            # 5. 🚀 智能生成详细环境音配置（延迟到此处）
+            sound_effects = await self._generate_detailed_sound_effects(scene_card, event_card, timeline["total_duration"])
             
             # 6. 生成背景音乐配置
             background_music = await self._generate_background_music(scene_card, emotion_card)
@@ -288,26 +293,49 @@ class AudioStoryboardGenerator:
         
         audio_tracks["background_music"] = background_track
         
-        # 环境音效音轨
+        # 环境音效音轨（使用6卡分析结果）
         environment_track = self.track_configs["environment_sound"].copy()
         environment_track["segments"] = []
         
-        # 根据场景确定环境音效
-        location = scene_card.get("location", "未知场景")
-        env_config = self._get_environment_config(location)
-        
-        if env_config:
+        # 🚀 优先使用6卡分析的环境音数据
+        environment_sounds = scene_card.get("environment_sounds", [])
+        if environment_sounds:
+            # 从6卡分析结果提取环境音
+            sound_keywords = []
+            for sound in environment_sounds:
+                if isinstance(sound, dict):
+                    sound_keywords.append(sound.get("keyword", "环境音效"))
+                else:
+                    sound_keywords.append(str(sound))
+            
             environment_track["segments"].append({
                 "segment_id": "env_sound_001",
                 "start_time": 0,
-                "end_time": total_duration,  # 修复：使用正确的总时长
+                "end_time": total_duration,
                 "sound_type": "环境音效",
-                "sounds": env_config["sounds"],
-                "volume": env_config["volume"],
-                "spatial": env_config["spatial"],
-                "reverb": env_config["reverb"],
+                "sounds": sound_keywords,  # 🚀 使用6卡分析的关键词
+                "volume": 40,  # 默认音量
+                "spatial": "环绕立体声",  # 默认空间效果
+                "reverb": "自然混响",  # 默认混响
                 "effects": environment_track.get("effects", ["空间化", "混响"])
             })
+        else:
+            # 🔄 备用方案：使用硬编码规则（仅当6卡分析没有环境音时）
+            location = scene_card.get("location", "未知场景")
+            env_config = self._get_environment_config(location)
+            
+            if env_config:
+                environment_track["segments"].append({
+                    "segment_id": "env_sound_001",
+                    "start_time": 0,
+                    "end_time": total_duration,
+                    "sound_type": "环境音效",
+                    "sounds": env_config["sounds"],
+                    "volume": env_config["volume"],
+                    "spatial": env_config["spatial"],
+                    "reverb": env_config["reverb"],
+                    "effects": environment_track.get("effects", ["空间化", "混响"])
+                })
         
         audio_tracks["environment_sound"] = environment_track
         
@@ -384,15 +412,25 @@ class AudioStoryboardGenerator:
         
         sound_effects = []
         
-        # 从场景卡提取环境音效
+        # 从场景卡提取环境音效（使用6卡分析结果）
         environment_sounds = scene_card.get("environment_sounds", [])
         for i, sound in enumerate(environment_sounds):
+            # 处理新的6卡分析格式：{keyword, description}
+            if isinstance(sound, dict):
+                keyword = sound.get("keyword", "环境音效")
+                description = sound.get("description", keyword)
+            else:
+                # 兼容旧格式：字符串
+                keyword = str(sound)
+                description = keyword
+                
             sound_effects.append({
                 "effect_id": f"env_effect_{i+1:03d}",
                 "type": "环境音效",
-                "description": sound,
+                "keyword": keyword,  # 🚀 添加关键词字段
+                "description": description,  # 🚀 使用正确的描述
                 "start_time": 0,
-                "end_time": total_duration if total_duration > 0 else 30,  # 与主音轨同步
+                "end_time": total_duration if total_duration > 0 else 30,
                 "volume": 40,
                 "spatial": "环绕",
                 "effects": ["空间化", "混响"]
@@ -414,6 +452,107 @@ class AudioStoryboardGenerator:
                 })
         
         return sound_effects
+    
+    async def _generate_detailed_sound_effects(self, scene_card: Dict[str, Any], event_card: Dict[str, Any], total_duration: float = 0) -> List[Dict[str, Any]]:
+        """🚀 智能生成详细环境音配置（使用LLM延迟分析）"""
+        
+        sound_effects = []
+        
+        # 从6卡分析获取基础环境音关键词
+        environment_sounds = scene_card.get("environment_sounds", [])
+        
+        if environment_sounds:
+            # 🚀 使用LLM为每个环境音生成详细配置
+            detailed_sounds = await self._enhance_environment_sounds_with_llm(
+                environment_sounds, scene_card, event_card
+            )
+            
+            for i, sound_detail in enumerate(detailed_sounds):
+                sound_effects.append({
+                    "effect_id": f"env_effect_{i+1:03d}",
+                    "type": "环境音效",
+                    "keyword": sound_detail.get("keyword", "环境音效"),
+                    "description": sound_detail.get("description", ""),
+                    "start_time": sound_detail.get("start_time", 0),
+                    "end_time": sound_detail.get("end_time", total_duration),
+                    "volume": sound_detail.get("volume", 40),
+                    "spatial": sound_detail.get("spatial", "环绕"),
+                    "effects": sound_detail.get("effects", ["空间化", "混响"]),
+                    "duration_type": sound_detail.get("duration_type", "continuous"),
+                    "intensity": sound_detail.get("intensity", "medium")
+                })
+        else:
+            # 备用方案：使用原有逻辑
+            sound_effects = self._generate_sound_effects(scene_card, event_card, total_duration)
+        
+        return sound_effects
+    
+    async def _enhance_environment_sounds_with_llm(self, 
+                                                 environment_sounds: List[str], 
+                                                 scene_card: Dict[str, Any], 
+                                                 event_card: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """🚀 使用LLM为环境音生成详细配置"""
+        try:
+            prompt = f"""你是一个专业的音频制作师。请为以下环境音效生成详细的音频配置参数。
+
+场景信息：
+- 地点: {scene_card.get('location', '未知')}
+- 时间: {scene_card.get('time', '未知')}  
+- 氛围: {scene_card.get('atmosphere', '未知')}
+
+事件信息：
+- 主要事件: {event_card.get('main_event', '未知')}
+- 事件类型: {event_card.get('significance', '日常')}
+
+环境音关键词: {', '.join(environment_sounds)}
+
+请为每个环境音生成详细配置，返回JSON格式：
+{{
+    "enhanced_sounds": [
+        {{
+            "keyword": "环境音关键词",
+            "description": "该环境音的详细描述，包含场景上下文",
+            "start_time": 0,
+            "end_time": 30,
+            "volume": 40,
+            "spatial": "环绕/立体声/近距离",
+            "effects": ["空间化", "混响"],
+            "duration_type": "continuous/instant",
+            "intensity": "low/medium/high"
+        }}
+    ]
+}}"""
+
+            response = await self.llm.call_json(prompt)
+            
+            if response and "enhanced_sounds" in response:
+                return response["enhanced_sounds"]
+            else:
+                # LLM失败时的备用方案
+                return self._create_fallback_sound_details(environment_sounds)
+                
+        except Exception as e:
+            logger.error(f"[LLM_SOUND_ENHANCE] LLM增强失败: {str(e)}")
+            return self._create_fallback_sound_details(environment_sounds)
+    
+    def _create_fallback_sound_details(self, environment_sounds: List[str]) -> List[Dict[str, Any]]:
+        """创建环境音的备用详细配置"""
+        fallback_sounds = []
+        
+        for sound in environment_sounds:
+            fallback_sounds.append({
+                "keyword": sound,
+                "description": f"{sound}的环境音效",
+                "start_time": 0,
+                "end_time": 30,
+                "volume": 40,
+                "spatial": "环绕",
+                "effects": ["空间化", "混响"],
+                "duration_type": "continuous",
+                "intensity": "medium"
+            })
+        
+        return fallback_sounds
     
     async def _generate_background_music(self, scene_card: Dict[str, Any], emotion_card: Dict[str, Any]) -> Dict[str, Any]:
         """生成背景音乐配置 - LLM智能版本"""

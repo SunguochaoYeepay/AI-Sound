@@ -6,9 +6,11 @@
 from .character_detectors import ProgrammaticCharacterDetector
 from .advanced_character_detector import AdvancedCharacterDetector
 from .ollama_character_detector import OllamaCharacterDetector
+from .analysis_character_detector import AnalysisCharacterDetector
 
 __all__ = [
     'ProgrammaticCharacterDetector',
     'AdvancedCharacterDetector', 
-    'OllamaCharacterDetector'
+    'OllamaCharacterDetector',
+    'AnalysisCharacterDetector'
 ] 

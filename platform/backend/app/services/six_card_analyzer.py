@@ -12,12 +12,14 @@ from sqlalchemy.orm import Session
 
 from app.services.storyboard_analysis.llm_client import LLMClient
 from app.utils.llm_config_loader import llm_config_loader
+from app.services.smart_character_card_merger import SmartCharacterCardMerger
 
 logger = logging.getLogger(__name__)
 
 
 class SixCardAnalyzer:
-    """6卡分析器 - 基于段落生成6类卡片"""
+    """5卡分析器 - 基于段落生成5类卡片（对话+角色+场景+事件+情绪）
+    音频分镜卡将独立生成以提升性能"""
     
     def __init__(self):
         # 从统一配置加载器读取LLM模型设置
@@ -28,30 +30,27 @@ class SixCardAnalyzer:
         )
         self.llm.timeout = self.llm_config["timeout"]
         
-        # 6卡分析提示词
+        # 初始化智能角色卡合并器
+        self.character_merger = SmartCharacterCardMerger()
+        
+        # 5卡分析提示词（移除音频卡，独立生成）
         self.analysis_prompt = self._build_analysis_prompt()
         
-        # 导入段落剧本生成器
-        try:
-            from app.services.paragraph_script_generator import ParagraphScriptGenerator
-            self.script_generator = ParagraphScriptGenerator()
-            logger.info("段落剧本生成器初始化成功")
-        except ImportError as e:
-            logger.warning(f"段落剧本生成器导入失败: {e}")
-            self.script_generator = None
+        # 段落剧本生成器已移除，简化5卡分析流程
+        self.script_generator = None
         
-        # 🔥 新增：导入音频分镜生成器
+        # 🚀 新增：导入独立音频分镜卡生成服务
         try:
-            from app.services.audio_storyboard_generator import AudioStoryboardGenerator
-            self.storyboard_generator = AudioStoryboardGenerator()
-            logger.info("音频分镜生成器初始化成功")
+            from app.services.independent_audio_storyboard_service import IndependentAudioStoryboardService
+            self.audio_storyboard_service = IndependentAudioStoryboardService()
+            logger.info("独立音频分镜卡生成服务初始化成功")
         except ImportError as e:
-            logger.warning(f"音频分镜生成器导入失败: {e}")
-            self.storyboard_generator = None
+            logger.warning(f"独立音频分镜卡生成服务导入失败: {e}")
+            self.audio_storyboard_service = None
     
     def _build_analysis_prompt(self) -> str:
-        """构建6卡分析提示词"""
-        return """任务：分析以下小说段落，生成6类卡片的JSON结构。
+        """构建5卡分析提示词（移除音频卡以提升性能）"""
+        return """任务：分析以下小说段落，生成5类卡片的JSON结构。
 
 【重要要求】
 1. 角色识别必须完整：包括所有提到的角色，无论是否说话，包括群众、路人、背景角色等
@@ -59,13 +58,12 @@ class SixCardAnalyzer:
 3. 角色分类要准确：区分主角、配角、背景角色、群众等不同层级
 4. 环境描述要详细：包括所有感官元素（视觉、听觉、触觉、嗅觉等）
 
-【6类卡片说明】
+【5类卡片说明】
 1. 故事卡(story_card): 该段落的核心情节和主题
 2. 角色卡(character_card): 该段落中所有角色的表现，包括旁白
 3. 场景卡(scene_card): 该段落的场景描述和环境元素
 4. 事件卡(event_card): 该段落的具体事件和动作
 5. 情绪卡(emotion_card): 该段落的情感变化和氛围
-6. 音频剧本卡(audio_script_card): 该段落的音频制作指导
 
 【角色识别特别说明】
 - 主角：有明确对话和行动的主要角色
@@ -105,14 +103,8 @@ class SixCardAnalyzer:
     "location": "具体地点",
     "time": "时间描述",
     "atmosphere": "整体氛围",
-    "environment_sounds": [
-      {
-        "keyword": "环境音效关键词",
-        "description": "该环境音效的详细描述，包含场景上下文信息"
-      }
-    ],
-    "visual_elements": ["视觉元素1", "视觉元素2"],
-    "sensory_details": ["触觉/嗅觉等其他感官细节"]
+    "environment_sounds": ["环境音效关键词1", "环境音效关键词2"],
+    "visual_elements": ["主要视觉元素"]
   },
   "event_card": {
     "main_event": "主要事件",
@@ -122,26 +114,8 @@ class SixCardAnalyzer:
   },
   "emotion_card": {
     "overall_tone": "整体情感基调",
-    "emotion_changes": [
-      {
-        "from": "起始情感",
-        "to": "结束情感",
-        "trigger": "触发因素"
-      }
-    ],
     "emotional_intensity": 8,
-    "primary_emotion": "紧张"
-  },
-  "audio_script_card": {
-    "voice_direction": "语音指导",
-    "pacing": "节奏控制",
-    "background_music": [
-      {
-        "keyword": "背景音乐关键词",
-        "description": "该背景音乐的详细描述，包含情感和氛围信息"
-      }
-    ],
-    "voice_characteristics": "声音特征要求"
+    "primary_emotion": "主要情感"
   }
 }
 ```
@@ -151,11 +125,10 @@ class SixCardAnalyzer:
 2. 区分直接对话和旁白叙述
 3. 注意环境描述的细节
 4. 情感分析要准确反映段落的情感变化
-5. 音频指导要具体且可操作
-6. 【重要】角色对话必须是原文中的具体文字，不是描述性总结
-7. 【重要】旁白内容必须是原文中的具体叙述文字，不是描述性总结
-8. 如果角色没有直接对话，dialogue字段为空数组[]
-9. 如果段落主要是叙述，将整个段落作为旁白内容
+5. 【重要】角色对话必须是原文中的具体文字，不是描述性总结
+6. 【重要】旁白内容必须是原文中的具体叙述文字，不是描述性总结
+7. 如果角色没有直接对话，dialogue字段为空数组[]
+8. 如果段落主要是叙述，将整个段落作为旁白内容
 
 【角色识别特别规则】
 1. 【直接角色】：在段落中直接出现、有具体行为或对话的角色
@@ -170,29 +143,100 @@ class SixCardAnalyzer:
    - 严禁混用：古代场景不能出现现代音效，现代场景不能出现古代音效
 3. 【场景一致性】：location、time、atmosphere、environment_sounds必须保持时代一致性
 4. 【音效具体性】：环境音效要具体明确，避免模糊描述
-5. 【环境音效结构化】：environment_sounds必须为对象数组，每个环境音效包含独立的关键词和描述
-   - 每个环境音效对象包含keyword（关键词）和description（详细描述）
-   - description必须包含该音效的具体场景上下文信息
-   - 例如：{"keyword": "马蹄声", "description": "古代街道夜晚的马蹄声，节奏缓慢，营造宁静氛围"}
-6. 【背景音乐结构化】：background_music必须为对象数组，每个背景音乐包含独立的关键词和描述
-   - 每个背景音乐对象包含keyword（关键词）和description（详细描述）
-   - description必须包含该音乐的情感、氛围、节奏等详细信息
-   - 例如：{"keyword": "宁静祥和的背景音乐", "description": "轻柔的背景音乐，营造夜晚街道的宁静氛围，节奏缓慢"}
+5. 【环境音效简化】：environment_sounds为字符串数组，只包含关键词
+   - 例如：["马蹄声", "叫卖声", "风声"]
 
 请分析以下段落："""
 
-    async def analyze_segment(self, segment_text: str, segment_index: int, chapter_id: int = None) -> Dict[str, Any]:
-        """分析单个段落，生成6卡数据"""
+    def _build_4card_analysis_prompt(self) -> str:
+        """构建4卡分析提示词（角色卡通过智能合并生成）"""
+        return """任务：分析以下小说段落，生成4类卡片的JSON结构（角色卡已从对话分析结果中获取）。
+
+【重要要求】
+1. 环境描述要详细：包括所有感官元素（视觉、听觉、触觉、嗅觉等）
+2. 事件分析要准确：识别主要事件和子事件
+3. 情感分析要深入：分析整体情感基调和强度
+
+【4类卡片说明】
+1. 故事卡(story_card): 该段落的核心情节和主题
+2. 场景卡(scene_card): 该段落的场景描述和环境元素
+3. 事件卡(event_card): 该段落的具体事件和动作
+4. 情绪卡(emotion_card): 该段落的情感变化和氛围
+
+【返回格式】
+请返回严格的JSON格式，包含以下结构：
+
+```json
+{
+  "story_card": {
+    "theme": "该段落的主题",
+    "plot_point": "核心情节点",
+    "narrative_purpose": "叙事目的"
+  },
+  "scene_card": {
+    "location": "具体地点",
+    "time": "时间描述",
+    "atmosphere": "整体氛围",
+    "environment_sounds": ["环境音效关键词1", "环境音效关键词2"],
+    "visual_elements": ["主要视觉元素"]
+  },
+  "event_card": {
+    "main_event": "主要事件",
+    "sub_events": ["子事件1", "子事件2"],
+    "significance": "关键转折/日常对话/战斗场景",
+    "causality": "因果关系"
+  },
+  "emotion_card": {
+    "overall_tone": "整体情感基调",
+    "emotional_intensity": 8,
+    "primary_emotion": "主要情感"
+  }
+}
+```
+
+【场景分析特别要求】
+1. 【时代背景识别】：必须准确识别场景的时代背景（古代/现代/未来/架空等）
+2. 【环境音效匹配】：environment_sounds必须与时代背景完全匹配
+   - 严禁混用：古代场景不能出现现代音效，现代场景不能出现古代音效
+3. 【场景一致性】：location、time、atmosphere、environment_sounds必须保持时代一致性
+4. 【音效具体性】：环境音效要具体明确，避免模糊描述
+5. 【环境音效简化】：environment_sounds为字符串数组，只包含关键词
+   - 例如：["马蹄声", "叫卖声", "风声"]
+
+请分析以下段落："""
+
+    async def analyze_segment(self, segment_text: str, segment_index: int, chapter_id: int = None, dialogue_result: dict = None) -> Dict[str, Any]:
+        """分析单个段落，生成5卡数据（音频卡独立生成）
+        
+        Args:
+            segment_text: 段落文本
+            segment_index: 段落索引
+            chapter_id: 章节ID
+            dialogue_result: 对话分析结果，如果提供则使用智能合并优化
+        """
         try:
-            logger.info(f"开始分析段落 {segment_index}，长度: {len(segment_text)} 字符")
+            logger.debug(f"5卡分析段落 {segment_index}: {len(segment_text)}字符")
             
-            # 调用LLM进行分析
-            prompt = self.analysis_prompt + "\n\n" + segment_text
-            response = await self.llm.call_json(prompt)
+            # 智能合并优化：如果有对话分析结果，使用4卡分析 + 智能合并
+            if dialogue_result and dialogue_result.get('detected_characters'):
+                logger.info(f"段落 {segment_index} 使用智能合并优化（4卡分析）")
+                prompt = self._build_4card_analysis_prompt() + "\n\n" + segment_text
+                response = await self.llm.call_json(prompt)
+                
+                # 智能合并角色卡
+                if response and 'character_card' not in response:
+                    response['character_card'] = {}
+                response['character_card'] = self.character_merger.merge_dialogue_to_character_card(dialogue_result)
+                logger.info(f"段落 {segment_index} 智能合并完成")
+            else:
+                logger.info(f"段落 {segment_index} 使用标准5卡分析")
+                # 调用LLM进行5卡分析
+                prompt = self.analysis_prompt + "\n\n" + segment_text
+                response = await self.llm.call_json(prompt)
             
             # 验证返回结果
-            if not self._validate_six_cards(response):
-                logger.warning(f"段落 {segment_index} 6卡分析结果验证失败")
+            if not self._validate_five_cards(response):
+                logger.warning(f"段落 {segment_index} 5卡分析结果验证失败")
                 response = self._create_fallback_cards(segment_text, segment_index)
             
             # 场景一致性验证暂时跳过，避免方法不存在错误
@@ -207,64 +251,18 @@ class SixCardAnalyzer:
                 "model_used": self.llm_config["model"]
             }
             
-            # 🔥 新增：生成段落剧本（synthesis_json）
-            if self.script_generator:
-                try:
-                    paragraph_id = f"paragraph_{segment_index}"
-                    paragraph_script = await self.script_generator.generate_paragraph_script(
-                        segment_text, response, paragraph_id
-                    )
-                    
-                    # 将synthesis_json添加到6卡分析结果中
-                    response["synthesis_json"] = paragraph_script["synthesis_json"]
-                    response["paragraph_script"] = paragraph_script
-                    
-                    logger.info(f"段落 {segment_index} 剧本生成成功，包含 {len(paragraph_script['synthesis_json']['synthesis_plan'])} 个segment")
-                except Exception as e:
-                    logger.error(f"段落 {segment_index} 剧本生成失败: {str(e)}")
-                    # 创建基础的synthesis_json作为fallback
-                    response["synthesis_json"] = self._create_fallback_synthesis_json(segment_text, segment_index)
-            else:
-                logger.warning("段落剧本生成器未初始化，使用fallback synthesis_json")
-                response["synthesis_json"] = self._create_fallback_synthesis_json(segment_text, segment_index)
+            # 🔥 生成基础的synthesis_json（简化版本，不包含音频分镜卡）
+            response["synthesis_json"] = self._create_fallback_synthesis_json(segment_text, segment_index)
             
-            # 🔥 新增：生成音频制作卡
-            if self.storyboard_generator:
-                try:
-                    # 构建段落剧本数据
-                    paragraph_script_data = {
-                        "synthesis_json": response["synthesis_json"],
-                        "story_card": response.get("story_card", {}),
-                        "character_card": response.get("character_card", {}),
-                        "scene_card": response.get("scene_card", {}),
-                        "event_card": response.get("event_card", {}),
-                        "emotion_card": response.get("emotion_card", {}),
-                        "audio_script_card": response.get("audio_script_card", {})
-                    }
-                    
-                    # 生成音频制作卡
-                    audio_storyboard_card = await self.storyboard_generator.generate_paragraph_storyboard(
-                        paragraph_script_data, f"paragraph_{segment_index}"
-                    )
-                    response["audio_storyboard_card"] = audio_storyboard_card
-                    logger.info(f"段落 {segment_index} 音频制作卡生成成功")
-                except Exception as e:
-                    logger.error(f"段落 {segment_index} 音频制作卡生成失败: {str(e)}")
-                    # 创建基础的audio_storyboard_card作为fallback
-                    response["audio_storyboard_card"] = self._create_fallback_audio_storyboard_card(segment_text, segment_index)
-            else:
-                logger.warning("音频分镜生成器未初始化，使用fallback audio_storyboard_card")
-                response["audio_storyboard_card"] = self._create_fallback_audio_storyboard_card(segment_text, segment_index)
-            
-            logger.info(f"段落 {segment_index} 6卡分析完成")
+            # 🚀 音频分镜卡将独立生成，不在此处处理以提升性能
+            logger.debug(f"段落 {segment_index} 5卡分析完成")
             return response
             
         except Exception as e:
-            logger.error(f"段落 {segment_index} 6卡分析失败: {str(e)}")
+            logger.error(f"段落 {segment_index} 5卡分析失败: {str(e)}")
             fallback_result = self._create_fallback_cards(segment_text, segment_index)
-            # 为fallback结果也添加synthesis_json和audio_storyboard_card
+            # 为fallback结果添加基础的synthesis_json
             fallback_result["synthesis_json"] = self._create_fallback_synthesis_json(segment_text, segment_index)
-            fallback_result["audio_storyboard_card"] = self._create_fallback_audio_storyboard_card(segment_text, segment_index)
             return fallback_result
 
     async def analyze_segments(self, segments: List[str]) -> List[Dict[str, Any]]:
@@ -276,14 +274,85 @@ class SixCardAnalyzer:
             result = await self.analyze_segment(segment, i + 1)
             results.append(result)
         
-        logger.info(f"完成所有段落6卡分析，共 {len(results)} 个结果")
+        logger.info(f"完成所有段落5卡分析，共 {len(results)} 个结果")
         return results
+    
+    async def generate_audio_storyboard_for_segment(self, 
+                                                  segment_result: Dict[str, Any],
+                                                  segment_text: str,
+                                                  segment_index: int) -> Dict[str, Any]:
+        """
+        为单个段落生成音频分镜卡（独立调用）
+        
+        Args:
+            segment_result: 5卡分析结果
+            segment_text: 原始段落文本  
+            segment_index: 段落索引
+            
+        Returns:
+            包含audio_storyboard_card的完整结果
+        """
+        if not self.audio_storyboard_service:
+            logger.warning("独立音频分镜卡生成服务未初始化")
+            segment_result["audio_storyboard_card"] = self._create_fallback_audio_storyboard_card(segment_text, segment_index)
+            return segment_result
+        
+        try:
+            # 使用独立服务生成音频分镜卡
+            audio_storyboard = await self.audio_storyboard_service.generate_audio_storyboard(
+                segment_result, segment_text, segment_index
+            )
+            segment_result["audio_storyboard_card"] = audio_storyboard
+            logger.info(f"段落 {segment_index} 音频分镜卡独立生成成功")
+        except Exception as e:
+            logger.error(f"段落 {segment_index} 音频分镜卡独立生成失败: {str(e)}")
+            segment_result["audio_storyboard_card"] = self._create_fallback_audio_storyboard_card(segment_text, segment_index)
+        
+        return segment_result
+    
+    async def batch_generate_audio_storyboards(self, 
+                                             segment_results: List[Dict[str, Any]],
+                                             segment_texts: List[str]) -> List[Dict[str, Any]]:
+        """
+        批量生成音频分镜卡（独立调用）
+        
+        Args:
+            segment_results: 5卡分析结果列表
+            segment_texts: 原始段落文本列表
+            
+        Returns:
+            包含audio_storyboard_card的完整结果列表
+        """
+        if not self.audio_storyboard_service:
+            logger.warning("独立音频分镜卡生成服务未初始化，使用fallback")
+            for i, segment_result in enumerate(segment_results):
+                segment_result["audio_storyboard_card"] = self._create_fallback_audio_storyboard_card(segment_texts[i], i)
+            return segment_results
+        
+        try:
+            # 使用独立服务批量生成音频分镜卡
+            audio_storyboards = await self.audio_storyboard_service.batch_generate_audio_storyboards(
+                segment_results, segment_texts
+            )
+            
+            # 将音频分镜卡添加到对应的段落结果中
+            for i, (segment_result, audio_storyboard) in enumerate(zip(segment_results, audio_storyboards)):
+                segment_result["audio_storyboard_card"] = audio_storyboard
+            
+            logger.info(f"批量生成音频分镜卡完成，共 {len(segment_results)} 个结果")
+        except Exception as e:
+            logger.error(f"批量生成音频分镜卡失败: {str(e)}")
+            # fallback处理
+            for i, segment_result in enumerate(segment_results):
+                segment_result["audio_storyboard_card"] = self._create_fallback_audio_storyboard_card(segment_texts[i], i)
+        
+        return segment_results
 
-    def _validate_six_cards(self, cards: Dict[str, Any]) -> bool:
-        """验证6卡结果是否完整"""
+    def _validate_five_cards(self, cards: Dict[str, Any]) -> bool:
+        """验证5卡结果是否完整（移除audio_script_card）"""
         required_cards = [
             "story_card", "character_card", "scene_card", 
-            "event_card", "emotion_card", "audio_script_card"
+            "event_card", "emotion_card"
         ]
         
         for card_type in required_cards:

@@ -72,15 +72,15 @@ class OllamaCharacterDetector:
             if text_length <= strategy["short_text_threshold"]:
                 # 短文本：使用14B高精度模型
                 selected_model = strategy["short_model"]
-                self.logger.info(f"📝 短文本({text_length}字符) → 使用高精度模型: {selected_model}")
+                self.logger.debug(f"📝 文本{text_length}字符 → 模型: {selected_model}")
             elif text_length >= strategy["long_text_threshold"]:
                 # 长文本：使用7B高速模型
                 selected_model = strategy["long_model"]
-                self.logger.info(f"📄 长文本({text_length}字符) → 使用高速模型: {selected_model}")
+                self.logger.debug(f"📄 文本{text_length}字符 → 模型: {selected_model}")
             else:
                 # 中等文本：使用7B高速模型，避免超时
                 selected_model = strategy["long_model"]
-                self.logger.info(f"📝 中等文本({text_length}字符) → 使用高速模型: {selected_model}")
+                self.logger.debug(f"📝 文本{text_length}字符 → 模型: {selected_model}")
         
         # 保存选择的模型名称到实例变量
         self.model_name = selected_model
@@ -459,13 +459,9 @@ class OllamaCharacterDetector:
                 # 🚀 发送实时结果更新
                 await self._send_partial_results(session_id, result)
             
-            # 🔥 修复：增加内容完整性校验和重试
-            logger.info(f"🔍 调用完整性校验前 - result keys: {list(result.keys())}")
+            # 内容完整性校验
             segments_list = result.get('segments', [])
-            logger.info(f"🔍 调用完整性校验前 - segments数量: {len(segments_list)}")
-            if len(segments_list) > 0:
-                first_seg = segments_list[0]
-                logger.info(f"🔍 第一个segment: order={first_seg.get('order')}, text_len={len(first_seg.get('text', ''))}, speaker='{first_seg.get('speaker')}'")
+            logger.debug(f"🔍 分析结果: {len(segments_list)}个segments, {len(result.get('characters', []))}个角色")
             
             completeness_valid = self._validate_completeness(text, result['segments'])
             if not completeness_valid:
@@ -847,7 +843,7 @@ class OllamaCharacterDetector:
                 partial_result
             )
             
-            logger.info(f"发送部分结果：{len(result.get('segments', []))}段落，{len(result.get('characters', []))}个角色")
+            logger.debug(f"发送部分结果：{len(result.get('segments', []))}段落，{len(result.get('characters', []))}个角色")
             
         except Exception as e:
             logger.warning(f"发送部分结果失败: {str(e)}")
@@ -858,28 +854,22 @@ class OllamaCharacterDetector:
             # 统计原文字数（去除空格和换行）
             original_chars = len(original_text.replace(' ', '').replace('\n', '').replace('\r', ''))
             
-            # 🔍 调试：检查segments参数
-            logger.info(f"🔍 完整性校验 - segments数量: {len(segments)}")
-            if len(segments) > 0:
-                logger.info(f"🔍 第一个segment示例: {segments[0]}")
-                logger.info(f"🔍 最后一个segment示例: {segments[-1]}")
-            else:
-                logger.error(f"❌ segments为空列表！这是问题所在")
+            # 简化调试信息
+            logger.debug(f"🔍 完整性校验 - segments数量: {len(segments)}")
+            if len(segments) == 0:
+                logger.error(f"❌ segments为空列表！")
             
             # 统计segments字数（去除空格和换行）
             segment_chars = sum(len(seg.get('text', '').replace(' ', '').replace('\n', '').replace('\r', '')) for seg in segments)
             
-            # 🔍 调试：详细统计信息
+            # 简化统计信息
             if segment_chars == 0 and len(segments) > 0:
-                logger.warning(f"异常：有{len(segments)}个segments但总字数为0，检查segments内容")
-                for i, seg in enumerate(segments[:3]):  # 只检查前3个
-                    text = seg.get('text', '')
-                    logger.warning(f"Segment {i}: text='{text}', length={len(text)}")
+                logger.warning(f"异常：有{len(segments)}个segments但总字数为0")
             
             # 计算完整度比例
             completeness_ratio = segment_chars / original_chars if original_chars > 0 else 0
             
-            logger.info(f"内容完整性校验: 原文{original_chars}字符，分析结果{segment_chars}字符，完整度{completeness_ratio:.2%}")
+            logger.info(f"✅ 对话分析完整性: {completeness_ratio:.1%} ({segment_chars}/{original_chars}字符)")
             
             # 根据快速模式调整完整性阈值
             if self.settings.get("fastModeEnabled", True):
@@ -1267,7 +1257,7 @@ class OllamaCharacterDetector:
         for i, segment in enumerate(merged_segments):
             segment['order'] = i + 1
         
-        logger.info(f"旁白合并完成：原始{len(segments)}个段落 → 合并后{len(merged_segments)}个段落")
+        logger.debug(f"旁白合并: {len(segments)}→{len(merged_segments)}个段落")
         return merged_segments
 
     def _call_ollama(self, prompt: str) -> Optional[str]:
@@ -1314,7 +1304,7 @@ class OllamaCharacterDetector:
                 }
             
             # 记录原始响应用于调试
-            logger.info(f"Ollama原始响应: {response[:500]}...")
+            logger.debug(f"Ollama响应: {len(response)}字符")
             
             # 提取JSON部分
             json_start = response.find('{')
@@ -1324,7 +1314,7 @@ class OllamaCharacterDetector:
                 json_str = response[json_start:json_end]
                 data = json.loads(json_str)
                 
-                logger.info(f"解析的JSON数据: {json.dumps(data, ensure_ascii=False, indent=2)}")
+                logger.debug(f"JSON解析成功: {len(data.get('segments', []))}个segments")
                 
                 # 处理segments
                 segments = []

@@ -43,6 +43,7 @@ async def smart_segmentation(
         logger.info(f"开始对章节 {chapter_id} 进行智能分段")
         segmentation_result = await segmentation_service.segment_and_save(
             chapter.content,
+            8,  # 使用固定的project_id = 8
             chapter_id,
             db
         )
@@ -83,7 +84,7 @@ async def get_segmentation_result(
         segmentation_service = SmartSegmentationService()
 
         # 获取缓存的分段结果
-        segments = await segmentation_service.get_cached_segments(project_id, chapter_id, db)
+        segments = await segmentation_service.get_cached_segments(8, chapter_id, db)
 
         if segments:
             return {
@@ -130,7 +131,7 @@ async def six_card_analysis(
         segmentation_service = SmartSegmentationService()
 
         # 获取分段结果
-        segments = await segmentation_service.get_cached_segments(project_id, chapter_id, db)
+        segments = await segmentation_service.get_cached_segments(8, chapter_id, db)
         if not segments:
             raise HTTPException(status_code=400, detail="未找到分段结果，请先执行智能分段")
 
@@ -152,22 +153,22 @@ async def six_card_analysis(
 
         # 导入6卡分析器
         from app.services.six_card_analyzer import SixCardAnalyzer
-        from app.detectors.ollama_character_detector import OllamaCharacterDetector
+        from app.detectors.analysis_character_detector import AnalysisCharacterDetector
+        from app.utils.analysis_logger import AnalysisLogger
 
         # 创建分析器实例
-        character_detector = OllamaCharacterDetector()
+        character_detector = AnalysisCharacterDetector()
         six_card_analyzer = SixCardAnalyzer()
 
-        # 执行段落分析：先对话分析，再6卡分析
-        logger.info(f"开始对章节 {chapter_id} 的 {len(target_segments)} 个段落进行分析")
+        # 执行段落分析：先对话分析，再5卡分析，最后音频分镜卡
+        AnalysisLogger.log_analysis_start(chapter_id, len(target_segments))
 
         analysis_results = []
         for segment_index, segment_text in target_segments:
             try:
-                logger.info(f"分析段落 {segment_index + 1}/{len(segments)}")
+                AnalysisLogger.log_segment_start(segment_index, len(segments))
                 
                 # 第一步：对话分析和角色识别
-                logger.info(f"第一步：对段落 {segment_index + 1} 进行对话分析...")
                 chapter_info = {
                     "chapter_id": chapter_id,
                     "chapter_title": f"段落_{segment_index + 1}",
@@ -176,11 +177,29 @@ async def six_card_analysis(
                 }
                 dialogue_analysis = await character_detector.analyze_text(segment_text, chapter_info)
                 
-                # 第二步：6卡分析
-                logger.info(f"第二步：对段落 {segment_index + 1} 进行6卡分析...")
-                six_card_result = await six_card_analyzer.analyze_segment(segment_text, segment_index, chapter_id)
+                # 记录第1步完成
+                segments_count = len(dialogue_analysis.get('segments', []))
+                characters_count = len(dialogue_analysis.get('characters', []))
+                AnalysisLogger.log_step1_dialogue(segment_index, segments_count, characters_count)
                 
-                # 第三步：整合结果
+                # 第二步：5卡分析（传入对话分析结果进行智能合并优化）
+                six_card_result = await six_card_analyzer.analyze_segment(segment_text, segment_index, chapter_id, dialogue_analysis)
+                
+                # 记录第2步完成
+                synthesis_segments = len(six_card_result.get('synthesis_json', {}).get('synthesis_plan', []))
+                AnalysisLogger.log_step2_five_cards(segment_index, synthesis_segments)
+                
+                # 第三步：音频分镜卡生成（独立调用）
+                six_card_result = await six_card_analyzer.generate_audio_storyboard_for_segment(
+                    six_card_result, segment_text, segment_index
+                )
+                
+                # 记录第3步完成
+                sound_effects_count = len(six_card_result.get('audio_storyboard_card', {}).get('sound_effects', []))
+                background_music_count = len(six_card_result.get('audio_storyboard_card', {}).get('background_music', []))
+                AnalysisLogger.log_step3_audio_storyboard(segment_index, sound_effects_count, background_music_count)
+                
+                # 整合结果
                 combined_result = {
                     **six_card_result,
                     "dialogue_analysis": dialogue_analysis,
@@ -191,12 +210,21 @@ async def six_card_analysis(
                 }
                 
                 analysis_results.append(combined_result)
-                logger.info(f"段落 {segment_index + 1} 分析完成")
+                AnalysisLogger.log_segment_complete(segment_index)
                 
             except Exception as e:
-                logger.error(f"段落 {segment_index + 1} 分析失败: {str(e)}")
+                AnalysisLogger.log_analysis_error(segment_index, str(e))
                 # 创建失败时的默认结果
                 fallback_result = six_card_analyzer._create_fallback_cards(segment_text, segment_index)
+                # 为fallback结果也生成音频分镜卡
+                try:
+                    fallback_result = await six_card_analyzer.generate_audio_storyboard_for_segment(
+                        fallback_result, segment_text, segment_index
+                    )
+                except Exception as audio_error:
+                    logger.error(f"fallback音频分镜卡生成也失败: {str(audio_error)}")
+                    # 最终fallback
+                    fallback_result["audio_storyboard_card"] = six_card_analyzer._create_fallback_audio_storyboard_card(segment_text, segment_index)
                 analysis_results.append(fallback_result)
 
         # 保存分析结果到数据库
@@ -204,7 +232,7 @@ async def six_card_analysis(
             chapter_id, project_id, analysis_results, analysis_type, db
         )
 
-        logger.info(f"章节 {chapter_id} 6卡分析完成，共分析 {len(analysis_results)} 个段落")
+        AnalysisLogger.log_analysis_complete(chapter_id, len(analysis_results))
 
         return {
             "success": True,
@@ -433,7 +461,7 @@ async def save_six_card_analysis_results(chapter_id: int, project_id: int, resul
             # 获取该章节的所有段落数量
             from app.services.smart_segmentation_service import SmartSegmentationService
             segmentation_service = SmartSegmentationService()
-            segments = await segmentation_service.get_cached_segments(project_id, chapter_id, db)
+            segments = await segmentation_service.get_cached_segments(8, chapter_id, db)
             total_segments = len(segments) if segments else 0
             
             # 获取已分析的段落数量
