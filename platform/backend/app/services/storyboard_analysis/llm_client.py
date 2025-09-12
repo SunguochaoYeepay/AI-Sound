@@ -17,10 +17,12 @@ logger = logging.getLogger(__name__)
 class LLMClient:
     """AI客户端封装"""
     
-    def __init__(self, model: str = "qwen2.5:7b", base_url: str = "http://localhost:11434"):
-        self.model = model
-        self.base_url = base_url
-        self.timeout = 30
+    def __init__(self, model: str = None, base_url: str = None):
+        from app.utils.llm_config_loader import llm_config_loader
+        config = llm_config_loader.get_config()
+        self.model = model or config["model"]
+        self.base_url = base_url or config["base_url"]
+        self.timeout = config["timeout"]
     
     async def call(self, prompt: str, **kwargs) -> Optional[str]:
         """调用LLM"""

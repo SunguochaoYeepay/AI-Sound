@@ -19,8 +19,10 @@ class AIDirectorService:
     
     def __init__(self):
         import os
-        self.ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434")  # 从环境变量获取Ollama服务地址
-        self.default_model = "qwen2.5:14b"  # 使用中文友好的模型
+        from app.utils.llm_config_loader import llm_config_loader
+        config = llm_config_loader.get_config()
+        self.ollama_url = config["base_url"]  # 从统一配置获取Ollama服务地址
+        self.default_model = config["model"]  # 使用统一配置的模型
         
         # 镜头语言模板
         self.shot_types = {

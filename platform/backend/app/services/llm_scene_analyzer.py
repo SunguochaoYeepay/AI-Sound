@@ -42,9 +42,10 @@ class OllamaLLMSceneAnalyzer:
     """基于Ollama HTTP API的智能场景分析器"""
     
     def __init__(self):
-        # Ollama配置
-        self.ollama_base_url = os.getenv("OLLAMA_URL", "http://localhost:11434")
-        self.model_name = os.getenv("OLLAMA_MODEL", "qwen2.5:14b")  # 🔥 改用中文优化模型
+        from app.utils.llm_config_loader import llm_config_loader
+        config = llm_config_loader.get_config()
+        self.ollama_base_url = config["base_url"]
+        self.model_name = config["model"]  # 使用统一配置的模型
         
         logger.info(f"[LLM_ANALYZER] 初始化完成，模型: {self.model_name}, URL: {self.ollama_base_url}")
 

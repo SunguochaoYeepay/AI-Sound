@@ -152,11 +152,13 @@ class AITTSOptimizer:
                 return response
             else:
                 # 直接调用Ollama API
-                ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434")
+                from app.utils.llm_config_loader import llm_config_loader
+                config = llm_config_loader.get_config()
+                ollama_url = config["base_url"]
                 api_url = f"{ollama_url}/api/generate"
                 
                 payload = {
-                    "model": "qwen2.5:14b",
+                    "model": config["model"],
                     "prompt": prompt,
                     "stream": False,
                     "options": {

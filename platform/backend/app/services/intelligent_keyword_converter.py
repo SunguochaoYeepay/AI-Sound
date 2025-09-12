@@ -29,9 +29,10 @@ class IntelligentKeywordConverter:
     """智能关键词转换器"""
     
     def __init__(self):
-        # Ollama配置
-        self.ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-        self.model_name = os.getenv("OLLAMA_MODEL", "qwen2.5:14b")
+        from app.utils.llm_config_loader import llm_config_loader
+        config = llm_config_loader.get_config()
+        self.ollama_base_url = config["base_url"]
+        self.model_name = config["model"]  # 使用统一配置的模型
         
         # 关键词缓存，提高效率
         self._conversion_cache = {}

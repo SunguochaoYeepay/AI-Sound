@@ -19,18 +19,22 @@ class OllamaCharacterDetector:
     def __init__(self, model_name: str = "auto", ollama_url: str = None):
         self.base_model_name = model_name
         self.model_name = model_name  # 初始化时设置默认值
-        self.api_url = ollama_url or "http://localhost:11434/api/generate"
+        from app.utils.llm_config_loader import llm_config_loader
+        config = llm_config_loader.get_config()
+        self.api_url = ollama_url or f"{config['base_url']}/api/generate"
         self.logger = logging.getLogger(__name__)
         
         # 读取系统设置
         self.settings = self._load_system_settings()
         
         # 智能模型选择策略
+        from app.utils.llm_config_loader import llm_config_loader
+        config = llm_config_loader.get_config()
         self.model_selection_strategy = {
             "short_text_threshold": 2000,  # 短文本阈值
             "long_text_threshold": 6000,   # 长文本阈值
-            "short_model": "qwen2.5:14b",  # 短文本使用14B高精度模型
-            "long_model": "qwen2.5:7b"     # 长文本使用7B高速模型
+            "short_model": config["model"],  # 使用统一配置的模型
+            "long_model": config["model"]    # 使用统一配置的模型
         }
         
         mode = "快速模式" if self.settings.get("fastModeEnabled", True) else "标准模式"
@@ -88,7 +92,7 @@ class OllamaCharacterDetector:
 
     def _get_model_options(self) -> Dict:
         """🎯 获取平衡的分析参数 - 修复内容丢失问题"""
-        if self.model_name == "qwen2.5:14b":
+        if "14b" in self.model_name:
             # 14B模型：确保输出完整性
             return {
                 "temperature": 0.2,    # 低温度确保稳定性
@@ -311,7 +315,7 @@ class OllamaCharacterDetector:
             self.model_name = self._select_optimal_model(text)
             
             # 🎯 简化分块策略：提高阈值减少分块
-            if self.model_name == "qwen2.5:14b":
+            if "14b" in self.model_name:
                 chunk_threshold = 6000  # 14B模型：6000字符启用分块
                 max_chunk_size = 4000   # 14B模型：每块4000字符
             else:
@@ -529,7 +533,7 @@ class OllamaCharacterDetector:
         primary_result['processing_stats']['dialogue_segments'] = len([s for s in refined_segments if s['text_type'] == 'dialogue'])
         primary_result['processing_stats']['narration_segments'] = len([s for s in refined_segments if s['text_type'] == 'narration'])
         primary_result['processing_stats']['secondary_check_applied'] = True
-        primary_result['processing_stats']['model_version'] = "qwen2.5:14b"
+        primary_result['processing_stats']['model_version'] = self.model_name
         
         logger.info(f"✅ 通用二次检查完成，段落数: {len(refined_segments)}")
         return primary_result
@@ -1091,7 +1095,7 @@ class OllamaCharacterDetector:
 - 穿越情节是核心，不是普通场景
 """
         
-        prompt = f"""你是中文小说文本分析专家，使用qwen2.5:14b模型。请分析以下小说文本。
+        prompt = f"""你是中文小说文本分析专家，使用{self.model_name}模型。请分析以下小说文本。
 
 文本：{text[:4000] if len(text) > 4000 else text}
 

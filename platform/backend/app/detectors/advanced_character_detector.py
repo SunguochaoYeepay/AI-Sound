@@ -210,8 +210,10 @@ class AdvancedCharacterDetector:
     def _call_ollama_simple(self, prompt: str) -> Optional[str]:
         """简化的Ollama调用，用于快速判断"""
         try:
+            from app.utils.llm_config_loader import llm_config_loader
+            config = llm_config_loader.get_config()
             payload = {
-                "model": "qwen2.5:14b",  # 🔥 使用中文优化模型
+                "model": config["model"],  # 使用统一配置的模型
                 "prompt": prompt,
                 "stream": False,
                 "options": {
@@ -220,8 +222,10 @@ class AdvancedCharacterDetector:
                 }
             }
             
+            from app.utils.llm_config_loader import llm_config_loader
+            config = llm_config_loader.get_config()
             response = requests.post(
-                "http://localhost:11434/api/generate",
+                f"{config['base_url']}/api/generate",
                 json=payload,
                 timeout=30  # 短超时
             )

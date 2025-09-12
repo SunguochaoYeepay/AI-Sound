@@ -15,8 +15,10 @@ class TranslationService:
     """翻译服务 - 使用Ollama进行中文到英文的翻译"""
     
     def __init__(self):
-        self.ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434")
-        self.model = "qwen2.5:14b"  # 使用中文友好的模型
+        from app.utils.llm_config_loader import llm_config_loader
+        config = llm_config_loader.get_config()
+        self.ollama_url = config["base_url"]
+        self.model = config["model"]  # 使用统一配置的模型
     
     async def batch_translate_chinese_to_english(self, text_list: List[str]) -> List[str]:
         """批量翻译中文文本为英文
