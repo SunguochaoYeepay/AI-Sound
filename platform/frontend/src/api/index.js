@@ -1251,7 +1251,13 @@ export const environmentGenerationAPI = {
   getBookAnalysisEnvironmentSounds: (projectId, chapterId = null) => {
     const params = chapterId ? `?chapter_id=${chapterId}` : ''
     return apiClient.get(`/environment-generation/book-analysis/${projectId}/environment-sounds${params}`)
-  }
+  },
+
+  // 同步章节环境音数据到环境音项目
+  syncChapterEnvironmentSounds: (envProjectId, chapterId, options = {}) =>
+    apiClient.post(`/environment-generation/projects/${envProjectId}/sync-chapter/${chapterId}`, {
+      mode: options.mode || 'overwrite'
+    })
 }
 
 

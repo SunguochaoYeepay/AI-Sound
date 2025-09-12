@@ -988,6 +988,110 @@ async def mix_environment_sounds_task(
             logger.warning(f"[ENV_MIX_TASK] WebSocket错误通知失败: {str(ws_error)}")
 
 
+@router.post("/projects/{env_project_id}/sync-chapter/{chapter_id}")
+async def sync_chapter_environment_sounds(
+    env_project_id: int,
+    chapter_id: int,
+    request: Dict[str, Any] = Body(default={}),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """
+    同步章节环境音数据到环境音项目
+    从书籍分析结果提取环境音数据并保存到环境音项目的analysis_result中
+    """
+    try:
+        mode = request.get('mode', 'overwrite')  # overwrite 或 merge
+        logger.info(f"[ENV_SYNC_API] 开始同步章节环境音，环境音项目ID: {env_project_id}，章节ID: {chapter_id}，模式: {mode}")
+        
+        # 获取环境音项目
+        env_service = EnvironmentProjectService(db)
+        env_project = env_service.get_by_project_id(env_project_id)
+        
+        if not env_project:
+            raise HTTPException(status_code=404, detail="未找到环境音项目")
+        
+        if not env_project.novel_project_id:
+            raise HTTPException(status_code=400, detail="环境音项目未关联书籍分析项目")
+        
+        logger.info(f"[ENV_SYNC_API] 从书籍分析项目 {env_project.novel_project_id} 中提取章节 {chapter_id} 的环境音数据")
+        
+        # 获取书籍分析结果
+        from app.models.analysis_result import AnalysisResult
+        analysis_result = db.query(AnalysisResult).filter(
+            AnalysisResult.project_id == env_project.novel_project_id,
+            AnalysisResult.chapter_id == chapter_id
+        ).first()
+        
+        if not analysis_result or not analysis_result.original_analysis:
+            raise HTTPException(status_code=404, detail=f"未找到章节 {chapter_id} 的书籍分析结果")
+        
+        # 构建分析结果字典
+        chapter_data = analysis_result.original_analysis
+        if isinstance(chapter_data, str):
+            chapter_data = json.loads(chapter_data)
+        
+        book_analysis = {str(chapter_id): chapter_data}
+        
+        # 提取环境音数据
+        environment_sounds = extract_environment_sounds_from_analysis(book_analysis, chapter_id)
+        
+        if not environment_sounds:
+            raise HTTPException(status_code=404, detail=f"章节 {chapter_id} 中未找到可同步的环境音数据")
+        
+        # 转换为环境音项目需要的格式
+        environment_tracks = _convert_to_environment_tracks_format(environment_sounds)
+        
+        # 更新环境音项目的分析结果
+        current_analysis_result = env_project.analysis_result or {}
+        
+        if mode == 'overwrite':
+            # 覆盖模式：直接替换该章节的数据
+            current_analysis_result[str(chapter_id)] = {
+                'environment_tracks': environment_tracks,
+                'chapter_id': chapter_id,
+                'sync_timestamp': datetime.now().isoformat(),
+                'source': 'book_analysis_sync'
+            }
+        elif mode == 'merge':
+            # 合并模式：与现有数据合并
+            if str(chapter_id) in current_analysis_result:
+                existing_tracks = current_analysis_result[str(chapter_id)].get('environment_tracks', [])
+                # 简单合并：新数据追加到现有数据后面
+                merged_tracks = existing_tracks + environment_tracks
+                current_analysis_result[str(chapter_id)]['environment_tracks'] = merged_tracks
+            else:
+                current_analysis_result[str(chapter_id)] = {
+                    'environment_tracks': environment_tracks,
+                    'chapter_id': chapter_id,
+                    'sync_timestamp': datetime.now().isoformat(),
+                    'source': 'book_analysis_sync'
+                }
+        
+        # 保存到数据库
+        env_project.analysis_result = current_analysis_result
+        db.commit()
+        
+        logger.info(f"[ENV_SYNC_API] 成功同步章节 {chapter_id} 的环境音数据，共 {len(environment_tracks)} 个轨道")
+        
+        return {
+            "success": True,
+            "data": {
+                "chapter_id": chapter_id,
+                "tracks_count": len(environment_tracks),
+                "environment_tracks": environment_tracks,
+                "mode": mode,
+                "sync_timestamp": datetime.now().isoformat()
+            },
+            "message": f"成功同步章节 {chapter_id} 的环境音数据，共 {len(environment_tracks)} 个轨道"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[ENV_SYNC_API] 同步章节环境音失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"同步章节环境音失败: {str(e)}")
+
+
 @router.get("/book-analysis/{project_id}/environment-sounds")
 async def get_book_analysis_environment_sounds(
     project_id: int,
@@ -1199,6 +1303,67 @@ def extract_environment_sounds_from_analysis(book_analysis: Dict[str, Any], chap
                             environment_sounds.append(sound_obj)
     
     return environment_sounds
+
+
+def _convert_to_environment_tracks_format(environment_sounds: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """转换为环境音项目需要的轨道格式"""
+    environment_tracks = []
+    
+    for sound in environment_sounds:
+        # 基础字段映射
+        keyword = sound.get("keyword", "")
+        description = sound.get("description", "")
+        chinese_description = sound.get("chinese_description") or description
+        
+        # 计算时长和强度
+        start_time = sound.get("start_time", 0)
+        end_time = sound.get("end_time", 30)
+        duration = max(1.0, end_time - start_time) if end_time > start_time else 30.0
+        
+        # 从音量推导强度
+        volume = sound.get("volume", 40)
+        if volume <= 30:
+            intensity = "low"
+        elif volume <= 50:
+            intensity = "medium"
+        else:
+            intensity = "high"
+        
+        # 构建轨道数据（保留分镜原始字段 + 补齐生成所需字段）
+        track = {
+            # 生成器需要的字段
+            "environment_keywords": [keyword] if keyword else [],  # 关键：生成端筛选依赖此字段
+            "chinese_description": chinese_description,
+            "english_prompt": sound.get("english_prompt", ""),  # 如果没有会在生成时自动生成
+            "duration": duration,
+            "intensity": intensity,
+            
+            # 保留分镜原始字段
+            "keyword": keyword,
+            "description": description,
+            "start_time": start_time,
+            "end_time": end_time,
+            "volume": volume,
+            "spatial_position": sound.get("spatial_position", "center"),
+            "fade_in": sound.get("fade_in", 0.2),
+            "fade_out": sound.get("fade_out", 0.2),
+            
+            # 元数据字段
+            "chapter_id": sound.get("chapter_id"),
+            "segment_index": sound.get("segment_index", 0),
+            "narration_text": sound.get("narration_text", ""),
+            "source": "book_analysis_sync",
+            "sync_timestamp": datetime.now().isoformat(),
+            
+            # 生成状态字段
+            "generated_file_path": None,
+            "generation_status": "pending",
+            "confidence": 0.9
+        }
+        
+        environment_tracks.append(track)
+    
+    return environment_tracks
 
 
 def convert_to_frontend_format(environment_sounds: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

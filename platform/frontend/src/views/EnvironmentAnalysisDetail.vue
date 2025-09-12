@@ -55,6 +55,7 @@
           :has-mixing-file="hasMixingFile"
           @start-analysis="startAnalysis"
           @reanalyze="handleReanalyze"
+          @sync-environment-sounds="handleSyncEnvironmentSounds"
           @generate-all-sounds="handleGenerateAllSounds"
           @mix-sounds="handleMixSounds"
           @play-mixing="handlePlayMixing"
@@ -419,7 +420,7 @@ const handleShowSoundDetail = (soundInfo) => {
 const handleRefreshEnvironmentSounds = () => {
   // 刷新环境音数据
   if (selectedChapter.value) {
-    loadEnvironmentSoundsFromBookAnalysis(projectInfo.value.novel_project_id, selectedChapter.value.id)
+    loadEnvironmentSoundsFromProject(selectedChapter.value.id)
   }
 }
 
@@ -438,7 +439,7 @@ onMounted(async () => {
     const firstChapter = chapters.value[0]
     selectedChapter.value = firstChapter
     try {
-      await loadEnvironmentSoundsFromBookAnalysis(projectInfo.value.novel_project_id, firstChapter.id)
+      await loadEnvironmentSoundsFromProject(firstChapter.id)
     } catch (error) {
       console.error('自动加载第一个章节环境音失败:', error)
     }
@@ -822,7 +823,7 @@ const handleChapterSelect = async (chapterId) => {
   // 从书籍分析结果加载环境音数据
   if (projectInfo.value.novel_project_id && selectedChapter.value) {
     try {
-      await loadEnvironmentSoundsFromBookAnalysis(projectInfo.value.novel_project_id, selectedChapter.value.id)
+      await loadEnvironmentSoundsFromProject(selectedChapter.value.id)
     } catch (error) {
       console.error('加载章节环境音失败:', error)
       environmentTracks.value = []
@@ -845,8 +846,8 @@ const startAnalysis = async () => {
   try {
     analysisLoading.value = true
     
-    // 从书籍分析结果加载环境音数据
-    await loadEnvironmentSoundsFromBookAnalysis(projectInfo.value.novel_project_id, selectedChapter.value.id)
+    // 从环境音项目加载环境音数据
+    await loadEnvironmentSoundsFromProject(selectedChapter.value.id)
     
   } catch (error) {
     console.error('加载书籍分析环境音失败:', error)
@@ -874,8 +875,8 @@ const handleReanalyze = async () => {
     // 清空当前章节的环境音数据
     environmentTracks.value = []
     
-    // 重新从书籍分析结果加载环境音数据
-    await loadEnvironmentSoundsFromBookAnalysis(projectInfo.value.novel_project_id, selectedChapter.value.id)
+    // 重新从环境音项目加载环境音数据
+    await loadEnvironmentSoundsFromProject(selectedChapter.value.id)
     
   } catch (error) {
     console.error('重新加载书籍分析环境音失败:', error)
@@ -896,34 +897,146 @@ const handleReanalyze = async () => {
   }
 }
 
-// 从书籍分析结果加载环境音数据
-const loadEnvironmentSoundsFromBookAnalysis = async (novelProjectId, chapterId) => {
+// 同步环境音数据
+const handleSyncEnvironmentSounds = async () => {
+  if (!selectedChapter.value) {
+    message.warning('请先选择要分析的章节')
+    return
+  }
+
+  if (!projectInfo.value.id) {
+    message.error('环境音项目ID不存在')
+    return
+  }
+
   try {
-    const response = await environmentGenerationAPI.getBookAnalysisEnvironmentSounds(novelProjectId, chapterId)
+    analysisLoading.value = true
+    
+    console.log('🔄 开始同步环境音数据:', {
+      envProjectId: projectInfo.value.id,
+      chapterId: selectedChapter.value.id,
+      novelProjectId: projectInfo.value.novel_project_id
+    })
+    
+    // 调用同步API
+    const response = await environmentGenerationAPI.syncChapterEnvironmentSounds(
+      projectInfo.value.id,
+      selectedChapter.value.id,
+      { mode: 'overwrite' }
+    )
+    
     if (response.data.success) {
-      environmentTracks.value = response.data.data
+      // 处理两种可能的返回格式
+      let environmentTracksData, tracksCount
       
-      // 🚀 第三阶段修复：更新analysisResults以让hasAnalysis计算属性正确工作
+      if (Array.isArray(response.data.data)) {
+        // 格式1：data 直接是数组
+        environmentTracksData = response.data.data
+        tracksCount = environmentTracksData.length
+      } else if (response.data.data && response.data.data.environment_tracks) {
+        // 格式2：data 是对象，包含 environment_tracks
+        environmentTracksData = response.data.data.environment_tracks
+        tracksCount = response.data.data.tracks_count || environmentTracksData.length
+      } else {
+        // 兜底处理
+        environmentTracksData = []
+        tracksCount = 0
+      }
+      
+      // 更新前端显示的环境音数据
+      environmentTracks.value = environmentTracksData
+      
+      console.log('✅ 同步环境音数据成功:', {
+        tracksCount: environmentTracks.value.length,
+        chapterId: selectedChapter.value.id,
+        dataFormat: Array.isArray(response.data.data) ? 'array' : 'object'
+      })
+      
+      message.success(`成功同步${tracksCount}个环境音轨道`)
+    } else {
+      throw new Error(response.data.message || '同步失败')
+    }
+    
+  } catch (error) {
+    console.error('❌ 同步环境音数据失败:', error)
+    
+    if (error.response?.status === 404) {
+      if (error.response.data.detail?.includes('书籍分析结果')) {
+        Modal.confirm({
+          title: '⚠️ 需要先进行书籍分析',
+          content: '当前章节尚未进行书籍分析，无法同步环境音数据。请先进行书籍分析，然后才能同步环境音信息。',
+          okText: '去书籍分析',
+          cancelText: '取消',
+          onOk: () => {
+            router.push(`/content-management/book-analysis/${projectInfo.value.book_id}`)
+          }
+        })
+      } else {
+        message.error('未找到环境音项目或章节分析结果')
+      }
+    } else {
+      message.error(`同步环境音数据失败: ${error.message}`)
+    }
+  } finally {
+    analysisLoading.value = false
+  }
+}
+
+// 从环境音项目的持久化数据中加载环境音数据
+const loadEnvironmentSoundsFromProject = async (chapterId) => {
+  try {
+    // 重新获取项目信息，确保拿到最新的 analysis_result
+    const projectResponse = await environmentGenerationAPI.getProjectDetail(projectInfo.value.id)
+    if (!projectResponse.data.success) {
+      throw new Error('获取环境音项目详情失败')
+    }
+
+    const project = projectResponse.data.data
+    const analysisResult = project.analysis_result || {}
+    
+    // 从持久化的分析结果中提取当前章节的环境音数据
+    const chapterData = analysisResult[String(chapterId)]
+    if (chapterData && chapterData.environment_tracks) {
+      environmentTracks.value = chapterData.environment_tracks
+      
+      // 更新analysisResults以让hasAnalysis计算属性正确工作
       if (!analysisResults.value[chapterId]) {
         analysisResults.value[chapterId] = {}
       }
-      analysisResults.value[chapterId].environment_tracks = response.data.data
-      analysisResults.value[chapterId].source = 'book_analysis'
+      analysisResults.value[chapterId].environment_tracks = chapterData.environment_tracks
+      analysisResults.value[chapterId].source = 'environment_project_sync'
       analysisResults.value[chapterId].loaded_at = new Date().toISOString()
-      
-      console.log('✅ 从书籍分析加载环境音成功:', {
-        novelProjectId,
+
+      console.log('✅ 从环境音项目加载环境音成功:', {
         chapterId,
-        tracksCount: environmentTracks.value.length
+        tracksCount: environmentTracks.value.length,
+        source: chapterData.source,
+        syncTimestamp: chapterData.sync_timestamp
       })
-      
-      message.success(`成功加载${environmentTracks.value.length}个环境音数据`)
+
+      if (environmentTracks.value.length > 0) {
+        message.success(`成功加载${environmentTracks.value.length}个环境音数据`)
+      } else {
+        message.info('当前章节暂无环境音数据，请点击"同步环境音"获取数据')
+      }
     } else {
-      throw new Error(response.data.error || '获取书籍分析环境音失败')
+      // 没有持久化数据
+      environmentTracks.value = []
+      
+      // 清空analysisResults中的对应章节数据
+      if (analysisResults.value[chapterId]) {
+        delete analysisResults.value[chapterId]
+      }
+      
+      console.log('⚠️ 章节没有持久化的环境音数据:', {
+        chapterId,
+        availableChapters: Object.keys(analysisResult)
+      })
+      message.info('当前章节暂无环境音数据，请点击"同步环境音"获取数据')
     }
   } catch (error) {
-    console.error('从书籍分析加载环境音失败:', error)
-    throw error // 重新抛出错误，让上层处理
+    console.error('从环境音项目加载环境音失败:', error)
+    throw error
   }
 }
 

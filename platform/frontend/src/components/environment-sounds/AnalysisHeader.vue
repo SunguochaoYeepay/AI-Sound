@@ -33,15 +33,15 @@
           分析环境音
         </a-button>
         
-        <!-- 加载环境音数据 -->
+        <!-- 同步环境音数据 -->
         <a-button 
           v-if="hasAnalysis"
           type="default" 
-          @click="$emit('reanalyze')"
+          @click="$emit('sync-environment-sounds')"
           :loading="analysisLoading"
         >
           <ReloadOutlined />
-          加载环境音
+          同步环境音
         </a-button>
         
         <!-- 生成当前章节环境音 -->
@@ -141,6 +141,7 @@ defineProps({
 defineEmits([
   'start-analysis',
   'reanalyze',
+  'sync-environment-sounds',
   'generate-all-sounds',
   'mix-sounds',
   'play-mixing',
