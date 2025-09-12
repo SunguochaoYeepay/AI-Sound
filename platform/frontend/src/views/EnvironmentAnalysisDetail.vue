@@ -68,6 +68,7 @@
           :has-analysis="hasAnalysis"
           :environment-tracks="environmentTracks"
           :generation-loading="generationLoading"
+          :project-info="projectInfo"
           @generate-track="handleGenerateTrack"
           @play-track="handlePlayTrack"
           @download-track="handleDownloadTrack"

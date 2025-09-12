@@ -7,8 +7,7 @@ from typing import Dict, Any
 from datetime import datetime
 from sqlalchemy.orm import Session
 
-from app.services.narration_environment_analyzer import NarrationEnvironmentAnalyzer
-from app.services.chapter_environment_analyzer import ChapterEnvironmentAnalyzer
+# ChapterEnvironmentAnalyzer已删除，功能由EnvironmentDataService替代
 from app.services.environment_project_service import EnvironmentProjectService
 from app.utils.logger import get_logger
 from app.database import get_db
@@ -310,20 +309,20 @@ async def analyze_environment_from_synthesis_plan(
         for i, seg in enumerate(request.synthesis_plan):
             logger.debug(f"🔍 段落{i+1}: speaker='{seg.get('speaker')}', character='{seg.get('character')}', text='{seg.get('text', '')[:30]}...'")
         
-        # 初始化分析器
-        analyzer = NarrationEnvironmentAnalyzer()
-        
-        # 执行环境音分析
-        analysis_result = await analyzer.extract_and_analyze_narration(
-            synthesis_plan=request.synthesis_plan
+        # 🚨 旧的ChapterEnvironmentAnalyzer已删除，这个API端点已废弃
+        # 现在环境音分析通过书籍分析结果 + 同步API完成
+        raise HTTPException(
+            status_code=410,
+            detail="此API端点已废弃。请使用书籍分析结果配合同步环境音API完成环境音分析。"
         )
         
-        # 计算分析统计
+        # 以下代码保留作为参考，但不会执行
         analysis_stats = {
             'total_segments': len(request.synthesis_plan),
-            'environment_tracks': len(analysis_result.get('environment_tracks', [])),
+            'environment_tracks': 0,
             'analysis_timestamp': datetime.now().isoformat(),
-            'analysis_duration': analysis_result.get('analysis_duration', 0)
+            'analysis_duration': 0,
+            'status': 'deprecated'
         }
         
         # 🚀 保存到数据库 - 使用独立的环境音项目

@@ -1253,9 +1253,9 @@ export const environmentGenerationAPI = {
     return apiClient.get(`/environment-generation/book-analysis/${projectId}/environment-sounds${params}`)
   },
 
-  // 同步章节环境音数据到环境音项目
+  // 同步章节环境音数据到环境音项目 - 使用长超时客户端，因为需要逐个翻译环境音描述
   syncChapterEnvironmentSounds: (envProjectId, chapterId, options = {}) =>
-    apiClient.post(`/environment-generation/projects/${envProjectId}/sync-chapter/${chapterId}`, {
+    llmAnalysisClient.post(`/environment-generation/projects/${envProjectId}/sync-chapter/${chapterId}`, {
       mode: options.mode || 'overwrite'
     })
 }

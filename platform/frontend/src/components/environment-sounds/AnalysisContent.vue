@@ -64,7 +64,7 @@
             <div class="paragraph-tracks">
               <div 
                 v-for="(track, trackIndex) in paragraph.tracks" 
-                :key="track.segment_id"
+                :key="`${track.segment_index}-${trackIndex}`"
                 class="track-item-simple"
                 :class="{ 'has-match': track.has_match, 'has-generated': track.has_generated }"
                 @click="handleTrackClick(track)"
@@ -182,6 +182,10 @@ const props = defineProps({
   hasMixingFile: {
     type: Boolean,
     default: false
+  },
+  projectInfo: {
+    type: Object,
+    default: () => ({})
   }
 })
 
@@ -234,7 +238,7 @@ const groupedTracks = computed(() => {
   const paragraphs = {}
   
   props.environmentTracks.forEach(track => {
-    const paragraphKey = track.paragraph_index || track.segment_id || 0
+    const paragraphKey = track.paragraph_index || track.segment_index || 0
     
     if (!paragraphs[paragraphKey]) {
       paragraphs[paragraphKey] = {
@@ -313,6 +317,7 @@ const handleTrackClick = (track) => {
     name: keywords[0] || '环境音',
     category: track.duration_type === 'instant' ? '动作音' : '自然音',
     description: track.description || track.chinese_description || track.scene_description || '暂无描述',
+    english_prompt: track.english_prompt || '',
     source: track.source || '书籍分析',
     chapter_number: props.selectedChapter?.chapter_number || 1,
     keyword: keywords[0] || '',
@@ -324,7 +329,10 @@ const handleTrackClick = (track) => {
     progress: track.has_generated ? 100 : 0,
     audioUrl: track.audio_url || '',
     fileSize: track.file_size || '0',
-    quality: '标准'
+    quality: '标准',
+    // 🚀 新增：生成API所需的关键信息
+    projectId: props.projectInfo?.id,
+    trackIndex: track.index || track.track_index
   }
   
   emit('show-track-detail', soundInfo)

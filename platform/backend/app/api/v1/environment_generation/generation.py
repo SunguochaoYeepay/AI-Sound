@@ -1,23 +1,20 @@
 """
-环境音生成API端点
+简化的环境音生成API端点
+流程：书籍分析 → 同步环境音 → 生成音频 → 混音/文件操作
 """
 
-from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks, Body
-from fastapi.responses import FileResponse, StreamingResponse
-from typing import Dict, Any, List, Tuple, Optional
+from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks, Body, Query
+from typing import Dict, Any, List, Optional
 from datetime import datetime
-import os
-import json
 from sqlalchemy.orm import Session
 
 from app.services.tangoflux_environment_generator import TangoFluxEnvironmentGenerator
-from app.services.environment_project_service import EnvironmentProjectService
-
+from app.services.environment_mixing_service import EnvironmentMixingService
+from app.services.environment_data_service import EnvironmentDataService
+from app.services.environment_project_data_service import EnvironmentProjectDataService
+from app.services.environment_file_service import EnvironmentFileService
 from app.utils.logger import get_logger
 from app.database import get_db
-from app.models.environment_generation import EnvironmentProject
-from app.models.novel_project import NovelProject
-from .schemas import BatchGenerationRequest
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -30,97 +27,29 @@ async def generate_environment_sounds(
     request: Dict[str, Any] = Body(default={}),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
-    """
-    生成环境音文件
-    支持指定轨道索引或生成所有轨道
-    """
+    """生成环境音文件"""
     try:
-        # 从请求体中获取轨道索引
-        track_indices = request.get('track_indices') if request else None
-        logger.info(f"[ENV_GEN_API] 开始生成环境音，项目ID: {project_id}，轨道索引: {track_indices}")
+        track_indices = request.get('track_indices')
+        logger.info(f"[ENV_GEN] 开始生成，项目: {project_id}，轨道: {track_indices}")
         
-        # 获取环境音项目 - 支持通过环境音项目ID或合成项目ID查找
-        env_service = EnvironmentProjectService(db)
-        env_project = env_service.get_by_project_id(project_id)
-        logger.info(f"[ENV_GEN_API] 项目查找结果: {env_project.id if env_project else 'None'}")
-        
-        if not env_project:
-            logger.error(f"[ENV_GEN_API] 未找到环境音项目，项目ID: {project_id}")
-            raise HTTPException(status_code=404, detail="未找到环境音项目")
-        
-        if not env_project.analysis_result:
-            logger.error(f"[ENV_GEN_API] 环境音项目没有分析结果，项目ID: {project_id}")
-            raise HTTPException(status_code=404, detail="未找到环境音分析结果")
-        
-        # 处理多章节格式的分析结果
-        analysis_result = env_project.analysis_result
-        environment_tracks = []
-        
-        # 优先尝试从audio_storyboard_card.sound_effects提取（新格式）
-        if 'six_card_results' in analysis_result:
-            # 新格式：从六卡分析结果中提取sound_effects
-            for result in analysis_result.get('six_card_results', []):
-                audio_card = result.get('audio_storyboard_card', {})
-                sound_effects = audio_card.get('sound_effects', [])
-                for effect in sound_effects:
-                    # 转换为environment_tracks格式
-                    environment_tracks.append({
-                        'type': '环境音效',
-                        'keyword': effect.get('keyword', ''),
-                        'description': effect.get('description', ''),
-                        'start_time': effect.get('start_time', 0),
-                        'end_time': effect.get('end_time', 30),
-                        'volume': effect.get('volume', 40),
-                        'spatial_position': effect.get('spatial_position', 'center'),
-                        'fade_in': effect.get('fade_in', 0),
-                        'fade_out': effect.get('fade_out', 0)
-                    })
-        elif isinstance(analysis_result, dict) and not analysis_result.get('environment_tracks'):
-            # 多章节格式，收集所有章节的环境轨道
-            # 按章节ID数字顺序排序，确保轨道顺序一致
-            sorted_chapter_ids = sorted(analysis_result.keys(), key=lambda x: int(x))
-            for chapter_id in sorted_chapter_ids:
-                chapter_analysis = analysis_result[chapter_id]
-                if isinstance(chapter_analysis, dict) and chapter_analysis.get('environment_tracks'):
-                    environment_tracks.extend(chapter_analysis['environment_tracks'])
-        else:
-            # 单章节格式，直接获取environment_tracks
-            environment_tracks = analysis_result.get('environment_tracks', [])
+        # 获取项目和轨道数据
+        data_service = EnvironmentProjectDataService(db)
+        env_project = data_service.get_project_with_validation(project_id)
+        environment_tracks = data_service.extract_environment_tracks(env_project)
         
         if not environment_tracks:
             raise HTTPException(status_code=400, detail="没有环境音轨道配置")
         
-        # 确定要生成的轨道
-        tracks_to_generate = []
-        if track_indices:
-            # 生成指定轨道
-            for index in track_indices:
-                if 0 <= index < len(environment_tracks):
-                    track = environment_tracks[index]
-                    keywords = track.get('environment_keywords') or []
-                    if keywords:
-                        tracks_to_generate.append((index, track))
-                    else:
-                        logger.warning(f"轨道 {index} 无环境关键词，跳过生成")
-                else:
-                    logger.warning(f"轨道索引 {index} 超出范围，跳过")
-        else:
-            # 仅生成有关键词的轨道（跳过无环境音占位段）
-            for i, track in enumerate(environment_tracks):
-                keywords = track.get('environment_keywords') or []
-                if keywords:
-                    tracks_to_generate.append((i, track))
+        # 筛选要生成的轨道
+        tracks_to_generate = data_service.filter_tracks_for_generation(environment_tracks, track_indices)
         
         if not tracks_to_generate:
             raise HTTPException(status_code=400, detail="没有有效的轨道需要生成")
         
-        # 创建生成器实例
+        # 启动生成任务
         generator = TangoFluxEnvironmentGenerator()
-        
-        # 生成任务ID
         task_id = f"env_gen_{project_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         
-        # 在后台任务中执行生成
         background_tasks.add_task(
             generator.generate_project_environment_sounds,
             project_id=project_id,
@@ -128,7 +57,7 @@ async def generate_environment_sounds(
             task_id=task_id
         )
         
-        logger.info(f"[ENV_GEN_API] 环境音生成任务已启动: {task_id}")
+        logger.info(f"[ENV_GEN] 任务已启动: {task_id}")
         
         return {
             "success": True,
@@ -136,165 +65,16 @@ async def generate_environment_sounds(
                 "task_id": task_id,
                 "project_id": project_id,
                 "total_tracks": len(tracks_to_generate),
-                "status": "processing",
-                "message": f"环境音生成任务已启动，共 {len(tracks_to_generate)} 个轨道"
-            }
+                "status": "processing"
+            },
+            "message": f"生成任务已启动，共 {len(tracks_to_generate)} 个轨道"
         }
         
-    except HTTPException:
-        raise
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        logger.error(f"[ENV_GEN_API] 环境音生成失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"环境音生成失败: {str(e)}")
-
-
-@router.get("/preview/{project_id}/{track_index}")
-async def preview_environment_sound(
-    project_id: int,
-    track_index: int,
-    db: Session = Depends(get_db)
-):
-    """
-    预览环境音文件
-    """
-    try:
-        logger.info(f"[ENV_GEN_API] 预览环境音，项目ID: {project_id}，轨道索引: {track_index}")
-        
-        # 获取环境音项目 - 支持通过环境音项目ID或合成项目ID查找
-        env_service = EnvironmentProjectService(db)
-        env_project = env_service.get_by_project_id(project_id)
-        
-        if not env_project or not env_project.analysis_result:
-            raise HTTPException(status_code=404, detail="未找到环境音分析结果")
-        
-        # 处理多章节格式的分析结果
-        analysis_result = env_project.analysis_result
-        
-        # 如果是多章节格式，需要找到对应的轨道
-        if isinstance(analysis_result, dict) and not analysis_result.get('environment_tracks'):
-            # 多章节格式，遍历所有章节找到对应的轨道
-            all_tracks = []
-            for chapter_id, chapter_data in analysis_result.items():
-                if isinstance(chapter_data, dict) and 'environment_tracks' in chapter_data:
-                    all_tracks.extend(chapter_data['environment_tracks'])
-            
-            if track_index >= len(all_tracks):
-                raise HTTPException(status_code=404, detail="轨道索引超出范围")
-            
-            track = all_tracks[track_index]
-        else:
-            # 单章节格式，直接获取environment_tracks
-            environment_tracks = analysis_result.get('environment_tracks', [])
-            if track_index >= len(environment_tracks):
-                raise HTTPException(status_code=404, detail="轨道索引超出范围")
-            
-            track = environment_tracks[track_index]
-        
-        # 检查是否有生成的文件
-        if not track.get('generated_file_path'):
-            raise HTTPException(status_code=404, detail="环境音文件尚未生成")
-        
-        file_path = track['generated_file_path']
-        logger.info(f"[ENV_GEN_API] 检查文件路径: {file_path}")
-        logger.info(f"[ENV_GEN_API] 文件是否存在: {os.path.exists(file_path)}")
-        
-        if not os.path.exists(file_path):
-            raise HTTPException(status_code=404, detail="环境音文件不存在")
-        
-        # 返回音频文件
-        return FileResponse(
-            path=file_path,
-            media_type="audio/wav",
-            filename=f"environment_sound_{project_id}_{track_index}.wav"
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"[ENV_GEN_API] 预览环境音失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"预览环境音失败: {str(e)}")
-
-
-@router.get("/download/{project_id}/{track_index}")
-async def download_environment_sound(
-    project_id: int,
-    track_index: int,
-    db: Session = Depends(get_db)
-):
-    """
-    下载环境音文件
-    """
-    try:
-        logger.info(f"[ENV_GEN_API] 下载环境音，项目ID: {project_id}，轨道索引: {track_index}")
-        
-        # 获取环境音项目
-        env_service = EnvironmentProjectService(db)
-        env_project = env_service.get_by_project_id(project_id)
-        
-        if not env_project or not env_project.analysis_result:
-            raise HTTPException(status_code=404, detail="未找到环境音分析结果")
-        
-        # 处理多章节格式的分析结果
-        analysis_result = env_project.analysis_result
-        
-        # 如果是多章节格式，需要找到对应的轨道
-        if isinstance(analysis_result, dict) and not analysis_result.get('environment_tracks'):
-            # 多章节格式，遍历所有章节找到对应的轨道
-            all_tracks = []
-            for chapter_id, chapter_data in analysis_result.items():
-                if isinstance(chapter_data, dict) and 'environment_tracks' in chapter_data:
-                    all_tracks.extend(chapter_data['environment_tracks'])
-            
-            if track_index >= len(all_tracks):
-                raise HTTPException(status_code=404, detail="轨道索引超出范围")
-            
-            track = all_tracks[track_index]
-        else:
-            # 单章节格式，直接获取environment_tracks
-            environment_tracks = analysis_result.get('environment_tracks', [])
-            if track_index >= len(environment_tracks):
-                raise HTTPException(status_code=404, detail="轨道索引超出范围")
-            
-            track = environment_tracks[track_index]
-        
-        # 检查是否有生成的文件
-        if not track.get('generated_file_path'):
-            raise HTTPException(status_code=404, detail="环境音文件尚未生成")
-        
-        file_path = track['generated_file_path']
-        logger.info(f"[ENV_GEN_API] 文件路径: {file_path}")
-        logger.info(f"[ENV_GEN_API] 文件路径长度: {len(file_path) if file_path else 0}")
-        if not os.path.exists(file_path):
-            raise HTTPException(status_code=404, detail="环境音文件不存在")
-        
-        # 生成文件名 - 使用英文文件名避免编码问题
-        keywords = track.get('environment_keywords', [])
-        keyword_name = keywords[0] if keywords and len(keywords) > 0 else 'environment'
-        # 将中文关键词转换为英文或使用默认名称
-        if keyword_name == '娇喝声':
-            safe_filename = f"shout_{project_id}_{track_index}.wav"
-        elif keyword_name == '脚步声':
-            safe_filename = f"footsteps_{project_id}_{track_index}.wav"
-        elif keyword_name == '开门声':
-            safe_filename = f"door_open_{project_id}_{track_index}.wav"
-        else:
-            # 对于其他中文关键词，使用拼音或英文
-            safe_filename = f"environment_{project_id}_{track_index}.wav"
-        
-        # 返回音频文件 - 使用简单的英文文件名
-        return FileResponse(
-            path=file_path,
-            media_type="audio/wav",
-            filename=safe_filename
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"[ENV_GEN_API] 下载环境音失败: {str(e)}")
-        import traceback
-        logger.error(f"[ENV_GEN_API] 错误堆栈: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=f"下载环境音失败: {str(e)}")
+        logger.error(f"[ENV_GEN] 生成失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"生成失败: {str(e)}")
 
 
 @router.post("/mix/{project_id}")
@@ -304,132 +84,37 @@ async def mix_environment_sounds(
     request: Dict[str, Any] = Body(default={}),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
-    """
-    混音环境音文件
-    """
+    """混音环境音文件"""
     try:
-        # 从请求体中获取参数
-        track_indices = request.get('track_indices') if request else None
-        chapter_id = request.get('chapter_id') if request else None
-        logger.info(f"[ENV_GEN_API] 开始混音环境音，项目ID: {project_id}，章节ID: {chapter_id}，轨道索引: {track_indices}")
+        track_indices = request.get('track_indices')
+        chapter_id = request.get('chapter_id')
+        logger.info(f"[ENV_MIX] 开始混音，项目: {project_id}，章节: {chapter_id}，轨道: {track_indices}")
         
-        # 获取环境音项目
-        env_service = EnvironmentProjectService(db)
-        env_project = env_service.get_by_project_id(project_id)
-        
-        if not env_project or not env_project.analysis_result:
-            raise HTTPException(status_code=404, detail="未找到环境音分析结果")
-        
-        # 重新查询数据库，确保读取到最新数据
-        db.refresh(env_project)
-        # 强制重新查询项目数据
-        from app.models.environment_generation import EnvironmentProject
-        env_project = db.query(EnvironmentProject).filter(EnvironmentProject.id == project_id).first()
-        if not env_project:
-            raise HTTPException(status_code=404, detail="未找到环境音项目")
-        
-        logger.info(f"[ENV_GEN_API] 重新查询数据库，确保读取最新数据")
-        
-        # 处理多章节格式的分析结果
-        analysis_result = env_project.analysis_result
-        environment_tracks = []
-        
-        logger.info(f"[ENV_GEN_API] 分析结果类型: {type(analysis_result)}")
-        logger.info(f"[ENV_GEN_API] 分析结果键: {list(analysis_result.keys()) if isinstance(analysis_result, dict) else 'N/A'}")
-        
-        # 检查是否是多章节格式（键是章节ID）
-        if isinstance(analysis_result, dict) and not analysis_result.get('environment_tracks'):
-            # 多章节格式
-            if chapter_id:
-                # 只处理指定章节的轨道
-                if str(chapter_id) in analysis_result:
-                    chapter_analysis = analysis_result[str(chapter_id)]
-                    logger.info(f"[ENV_GEN_API] 处理指定章节 {chapter_id} 的分析结果")
-                    
-                    if isinstance(chapter_analysis, dict) and chapter_analysis.get('environment_tracks'):
-                        environment_tracks = chapter_analysis['environment_tracks']
-                        logger.info(f"[ENV_GEN_API] 章节 {chapter_id} 轨道数量: {len(environment_tracks)}")
-                    else:
-                        logger.warning(f"[ENV_GEN_API] 章节 {chapter_id} 没有环境轨道")
-                        environment_tracks = []
-                else:
-                    logger.warning(f"[ENV_GEN_API] 未找到章节 {chapter_id}")
-                    environment_tracks = []
-            else:
-                # 如果没有指定章节ID，收集所有章节的环境轨道（保持向后兼容）
-                sorted_chapter_ids = sorted(analysis_result.keys(), key=lambda x: int(x))
-                logger.info(f"[ENV_GEN_API] 多章节格式，未指定章节ID，收集所有章节: {sorted_chapter_ids}")
-                
-                for chapter_id in sorted_chapter_ids:
-                    chapter_analysis = analysis_result[chapter_id]
-                    logger.info(f"[ENV_GEN_API] 章节 {chapter_id} 分析结果: {type(chapter_analysis)}")
-                    
-                    if isinstance(chapter_analysis, dict) and chapter_analysis.get('environment_tracks'):
-                        chapter_tracks = chapter_analysis['environment_tracks']
-                        logger.info(f"[ENV_GEN_API] 章节 {chapter_id} 轨道数量: {len(chapter_tracks)}")
-                        environment_tracks.extend(chapter_tracks)
-                    else:
-                        logger.warning(f"[ENV_GEN_API] 章节 {chapter_id} 没有环境轨道")
-        else:
-            # 单章节格式，直接获取environment_tracks
-            environment_tracks = analysis_result.get('environment_tracks', [])
-            logger.info(f"[ENV_GEN_API] 单章节格式，轨道数量: {len(environment_tracks)}")
-        
-        logger.info(f"[ENV_GEN_API] 总轨道数量: {len(environment_tracks)}")
+        # 获取项目和轨道数据
+        data_service = EnvironmentProjectDataService(db)
+        env_project = data_service.get_project_with_validation(project_id)
+        environment_tracks = data_service.extract_environment_tracks(env_project, chapter_id)
         
         if not environment_tracks:
             raise HTTPException(status_code=400, detail="没有环境音轨道配置")
         
-        # 确定要混音的轨道
-        tracks_to_mix = []
-        if track_indices:
-            # 混音指定轨道
-            for index in track_indices:
-                if 0 <= index < len(environment_tracks):
-                    track = environment_tracks[index]
-                    if track.get('generated_file_path') and os.path.exists(track['generated_file_path']):
-                        tracks_to_mix.append((index, track))
-                    else:
-                        logger.warning(f"轨道 {index} 文件不存在，跳过")
-                else:
-                    logger.warning(f"轨道索引 {index} 超出范围，跳过")
-        else:
-            # 混音所有已生成的轨道
-            for i, track in enumerate(environment_tracks):
-                keywords = track.get('environment_keywords', [])
-                keyword_name = keywords[0] if keywords and len(keywords) > 0 else "无环境音"
-                logger.info(f"[ENV_GEN_API] 检查轨道 {i}: {keyword_name}")
-                logger.info(f"[ENV_GEN_API] 轨道 {i} 生成路径: {track.get('generated_file_path')}")
-                if track.get('generated_file_path'):
-                    logger.info(f"[ENV_GEN_API] 轨道 {i} 文件是否存在: {os.path.exists(track['generated_file_path'])}")
-                    if os.path.exists(track['generated_file_path']):
-                        tracks_to_mix.append((i, track))
-                        logger.info(f"[ENV_GEN_API] 轨道 {i} 添加到混音列表")
-                    else:
-                        logger.warning(f"[ENV_GEN_API] 轨道 {i} 文件不存在: {track['generated_file_path']}")
-                else:
-                    logger.warning(f"[ENV_GEN_API] 轨道 {i} 没有生成路径")
+        # 筛选要混音的轨道
+        tracks_to_mix = data_service.filter_tracks_for_mixing(environment_tracks, track_indices)
         
         if not tracks_to_mix:
             raise HTTPException(status_code=400, detail="没有可混音的环境音文件")
         
-        # 生成混音任务ID
+        # 启动混音任务
         task_id = f"env_mix_{project_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         
-        # 启动混音任务
-        logger.info(f"[ENV_GEN_API] 准备启动混音任务: {task_id}")
-        logger.info(f"[ENV_GEN_API] 混音轨道数量: {len(tracks_to_mix)}")
-        for i, (track_index, track) in enumerate(tracks_to_mix):
-            logger.info(f"[ENV_GEN_API] 轨道{i}: 索引={track_index}, 文件={track.get('generated_file_path')}")
-        
         background_tasks.add_task(
-            mix_environment_sounds_task,
+            EnvironmentMixingService.mix_environment_sounds_task,
             task_id=task_id,
             project_id=project_id,
             tracks_to_mix=tracks_to_mix
         )
         
-        logger.info(f"[ENV_GEN_API] 环境音混音任务已启动: {task_id}")
+        logger.info(f"[ENV_MIX] 任务已启动: {task_id}")
         
         return {
             "success": True,
@@ -437,131 +122,77 @@ async def mix_environment_sounds(
                 "task_id": task_id,
                 "project_id": project_id,
                 "total_tracks": len(tracks_to_mix),
-                "status": "processing",
-                "message": f"环境音混音任务已启动，共 {len(tracks_to_mix)} 个轨道"
-            }
+                "status": "processing"
+            },
+            "message": f"混音任务已启动，共 {len(tracks_to_mix)} 个轨道"
         }
         
-    except HTTPException:
-        raise
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        logger.error(f"[ENV_GEN_API] 环境音混音失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"环境音混音失败: {str(e)}")
+        logger.error(f"[ENV_MIX] 混音失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"混音失败: {str(e)}")
 
 
-@router.get("/mix-preview/{project_id}")
-async def preview_mixed_environment_sounds(
+@router.get("/file/{project_id}/{track_index}")
+async def handle_track_file(
     project_id: int,
+    track_index: int,
+    action: str = Query(..., description="文件操作类型: preview, download"),
     db: Session = Depends(get_db)
 ):
-    """
-    预览混音后的环境音文件
-    """
+    """统一的轨道文件处理端点"""
     try:
-        logger.info(f"[ENV_GEN_API] 预览混音环境音，项目ID: {project_id}")
+        logger.info(f"[ENV_FILE] {action} 轨道文件，项目: {project_id}，轨道: {track_index}")
         
-        # 获取环境音项目
-        env_service = EnvironmentProjectService(db)
-        env_project = env_service.get_by_project_id(project_id)
+        # 获取轨道数据
+        data_service = EnvironmentProjectDataService(db)
+        env_project, track = data_service.get_track_by_index(project_id, track_index)
         
-        if not env_project:
-            raise HTTPException(status_code=404, detail="未找到环境音项目")
+        # 检查文件
+        file_path = track.get('generated_file_path')
+        if not file_path:
+            raise HTTPException(status_code=404, detail="环境音文件尚未生成")
         
-        # 检查是否有混音文件
-        mixed_file_path = env_project.matching_result.get('mixed_file_path')
-        if not mixed_file_path or not os.path.exists(mixed_file_path):
-            raise HTTPException(status_code=404, detail="混音文件尚未生成")
+        # 生成文件名并返回响应
+        filename = EnvironmentFileService.generate_safe_filename(track, project_id, track_index)
+        return EnvironmentFileService.create_file_response(file_path, filename, action)
         
-        # 返回混音文件
-        return FileResponse(
-            path=mixed_file_path,
-            media_type="audio/wav",
-            filename=f"mixed_environment_{project_id}.wav"
-        )
-        
-    except HTTPException:
-        raise
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        logger.error(f"[ENV_GEN_API] 预览混音环境音失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"预览混音环境音失败: {str(e)}")
+        logger.error(f"[ENV_FILE] {action} 失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"{action} 失败: {str(e)}")
 
 
-@router.get("/mix-play/{project_id}")
-async def play_mixed_environment_sounds(
+@router.get("/mixed-file/{project_id}")
+async def handle_mixed_file(
     project_id: int,
+    action: str = Query(..., description="文件操作类型: preview, download, play"),
     db: Session = Depends(get_db)
 ):
-    """
-    播放混音后的环境音文件
-    """
+    """统一的混音文件处理端点"""
     try:
-        logger.info(f"[ENV_GEN_API] 播放混音环境音，项目ID: {project_id}")
+        logger.info(f"[ENV_MIXED_FILE] {action} 混音文件，项目: {project_id}")
         
-        # 获取环境音项目
-        env_service = EnvironmentProjectService(db)
-        env_project = env_service.get_by_project_id(project_id)
+        # 获取项目数据
+        data_service = EnvironmentProjectDataService(db)
+        env_project = data_service.get_project_with_validation(project_id)
         
-        if not env_project:
-            raise HTTPException(status_code=404, detail="未找到环境音项目")
-        
-        # 检查是否有混音文件
-        mixed_file_path = env_project.matching_result.get('mixed_file_path')
-        if not mixed_file_path or not os.path.exists(mixed_file_path):
+        # 检查混音文件
+        if not env_project.matching_result or not env_project.matching_result.get('mixed_file_path'):
             raise HTTPException(status_code=404, detail="混音文件尚未生成")
         
-        # 返回混音文件用于播放
-        return FileResponse(
-            path=mixed_file_path,
-            media_type="audio/wav",
-            headers={"Content-Disposition": "inline"}
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"[ENV_GEN_API] 播放混音环境音失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"播放混音环境音失败: {str(e)}")
-
-
-@router.get("/mix-download/{project_id}")
-async def download_mixed_environment_sounds(
-    project_id: int,
-    db: Session = Depends(get_db)
-):
-    """
-    下载混音后的环境音文件
-    """
-    try:
-        logger.info(f"[ENV_GEN_API] 下载混音环境音，项目ID: {project_id}")
-        
-        # 获取环境音项目
-        env_service = EnvironmentProjectService(db)
-        env_project = env_service.get_by_project_id(project_id)
-        
-        if not env_project:
-            raise HTTPException(status_code=404, detail="未找到环境音项目")
-        
-        # 检查是否有混音文件
-        mixed_file_path = env_project.matching_result.get('mixed_file_path')
-        if not mixed_file_path or not os.path.exists(mixed_file_path):
-            raise HTTPException(status_code=404, detail="混音文件尚未生成")
-        
-        # 生成文件名
+        file_path = env_project.matching_result['mixed_file_path']
         filename = f"mixed_environment_{project_id}.wav"
         
-        # 返回混音文件
-        return FileResponse(
-            path=mixed_file_path,
-            media_type="audio/wav",
-            filename=filename,
-            headers={"Content-Disposition": f"attachment; filename={filename}"}
-        )
+        return EnvironmentFileService.create_file_response(file_path, filename, action)
         
-    except HTTPException:
-        raise
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        logger.error(f"[ENV_GEN_API] 下载混音环境音失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"下载混音环境音失败: {str(e)}")
+        logger.error(f"[ENV_MIXED_FILE] {action} 失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"{action} 失败: {str(e)}")
 
 
 @router.get("/status/{project_id}")
@@ -569,20 +200,15 @@ async def get_generation_status(
     project_id: int,
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
-    """
-    获取环境音生成状态
-    """
+    """获取环境音生成状态"""
     try:
-        logger.info(f"[ENV_GEN_API] 获取生成状态，项目ID: {project_id}")
+        import os
+        logger.info(f"[ENV_STATUS] 获取状态，项目: {project_id}")
         
-        # 获取环境音项目
-        env_service = EnvironmentProjectService(db)
-        env_project = env_service.get_by_project_id(project_id)
-        
-        if not env_project:
-            raise HTTPException(status_code=404, detail="未找到环境音项目")
-        
-        environment_tracks = env_project.analysis_result.get('environment_tracks', []) if env_project.analysis_result else []
+        # 获取项目和轨道数据
+        data_service = EnvironmentProjectDataService(db)
+        env_project = data_service.get_project_with_validation(project_id)
+        environment_tracks = data_service.extract_environment_tracks(env_project)
         
         # 统计生成状态
         total_tracks = len(environment_tracks)
@@ -629,363 +255,11 @@ async def get_generation_status(
             }
         }
         
-    except HTTPException:
-        raise
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        logger.error(f"[ENV_GEN_API] 获取生成状态失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"获取生成状态失败: {str(e)}")
-
-
-@router.post("/finalize/{project_id}")
-async def finalize_generation(
-    project_id: int,
-    db: Session = Depends(get_db)
-) -> Dict[str, Any]:
-    """
-    完成环境音生成流程
-    """
-    try:
-        logger.info(f"[ENV_GEN_API] 完成环境音生成流程，项目ID: {project_id}")
-        
-        # 使用环境音项目服务完成项目
-        env_service = EnvironmentProjectService(db)
-        env_project = env_service.get_by_project_id(project_id)
-        
-        if not env_project or not env_project.analysis_result:
-            raise HTTPException(status_code=404, detail="未找到环境音分析结果")
-        
-        environment_tracks = env_project.analysis_result.get('environment_tracks', [])
-        
-        # 检查是否有轨道配置
-        if not environment_tracks:
-            raise HTTPException(status_code=400, detail="没有环境音轨道配置")
-        
-        # 完成项目
-        success = env_service.finalize_project(project_id)
-        
-        if not success:
-            raise HTTPException(status_code=500, detail="完成项目失败")
-        
-        logger.info(f"[ENV_GEN_API] 环境音生成流程完成，项目ID: {project_id}，轨道数量: {len(environment_tracks)}")
-        
-        return {
-            "success": True,
-            "data": {
-                "project_id": project_id,
-                "config": {
-                    "project_id": project_id,
-                    "environment_tracks": environment_tracks,
-                    "analysis_stats": env_project.matching_result.get('analysis_stats', {}) if env_project.matching_result else {},
-                    "session_stage": "completed",
-                    "total_tracks": len(environment_tracks)
-                }
-            },
-            "message": f"环境音生成流程完成，共 {len(environment_tracks)} 个轨道"
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"[ENV_GEN_API] 完成环境音生成流程失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"完成环境音生成流程失败: {str(e)}")
-
-
-@router.post("/batch-generate")
-async def batch_generate_environment_sounds(
-    request: BatchGenerationRequest,
-    background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db)
-) -> Dict[str, Any]:
-    """
-    批量生成环境音
-    """
-    try:
-        logger.info(f"[ENV_GEN_API] 开始批量生成环境音，轨道数量: {len(request.tracks)}")
-        
-        if not request.tracks:
-            raise HTTPException(status_code=400, detail="没有需要生成的轨道")
-        
-        # 转换前端数据格式为后端期望的格式
-        generation_requests = []
-        for track in request.tracks:
-            # 从environment_keywords中获取主要关键词
-            keywords = track.get('environment_keywords', [])
-            keyword = keywords[0] if keywords and len(keywords) > 0 else ''
-            if not keyword and track.get('scene_description'):
-                keyword = track.get('scene_description')
-            
-            generation_request = {
-                'keyword': keyword,
-                'description': track.get('scene_description', ''),
-                'duration': track.get('duration', 30.0),
-                'intensity': track.get('intensity_level', 'medium')
-            }
-            generation_requests.append(generation_request)
-        
-        # 创建生成器实例
-        generator = TangoFluxEnvironmentGenerator()
-        
-        # 生成任务ID
-        task_id = f"batch_gen_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{len(generation_requests)}"
-        
-        # 记录生成任务
-        generation_stats = {
-            "task_id": task_id,
-            "total_tracks": len(generation_requests),
-            "generated_tracks": 0,
-            "failed_tracks": 0,
-            "status": "processing",
-            "start_time": datetime.now().isoformat(),
-            "tracks": []
-        }
-        
-        # 在后台任务中执行生成
-        background_tasks.add_task(
-            generator.batch_generate_environment_sounds,
-            generation_requests=generation_requests,
-            max_concurrent=request.options.get('max_concurrent', 3)
-        )
-        
-        logger.info(f"[ENV_GEN_API] 批量生成任务已启动: {task_id}")
-        
-        return {
-            "success": True,
-            "data": {
-                "task_id": task_id,
-                "total_tracks": len(request.tracks),
-                "status": "processing",
-                "message": f"批量生成任务已启动，共 {len(request.tracks)} 个环境音"
-            }
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"[ENV_GEN_API] 批量生成失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"批量生成失败: {str(e)}")
-
-
-async def mix_environment_sounds_task(
-    task_id: str,
-    project_id: int,
-    tracks_to_mix: List[Tuple[int, Dict]]
-):
-    """
-    后台混音任务
-    """
-    try:
-        logger.info(f"[ENV_MIX_TASK] 开始混音任务: {task_id}")
-        logger.info(f"[ENV_MIX_TASK] 项目ID: {project_id}")
-        logger.info(f"[ENV_MIX_TASK] 要混音的轨道数量: {len(tracks_to_mix)}")
-        for i, (track_index, track) in enumerate(tracks_to_mix):
-            keywords = track.get('environment_keywords', [])
-            keyword_name = keywords[0] if keywords and len(keywords) > 0 else "无环境音"
-            logger.info(f"[ENV_MIX_TASK] 轨道{i}: 索引={track_index}, 关键词={keyword_name}")
-            logger.info(f"[ENV_MIX_TASK] 轨道{i}: 文件路径={track.get('generated_file_path')}")
-            logger.info(f"[ENV_MIX_TASK] 轨道{i}: 开始时间={track.get('start_time', 0)}, 时长={track.get('duration', 30)}")
-        
-        # 导入必要的模块
-        from pydub import AudioSegment
-        import os
-        from datetime import datetime
-        
-        # 获取环境音项目
-        from app.database import get_db
-        db = next(get_db())
-        try:
-            env_service = EnvironmentProjectService(db)
-            env_project = env_service.get_by_project_id(project_id)
-            
-            if not env_project:
-                logger.error(f"[ENV_MIX_TASK] 未找到环境音项目: {project_id}")
-                return
-            
-            logger.info(f"[ENV_MIX_TASK] 成功获取环境音项目: {env_project.id}")
-            logger.info(f"[ENV_MIX_TASK] 项目状态: {env_project.status}")
-            logger.info(f"[ENV_MIX_TASK] 项目分析结果: {type(env_project.analysis_result)}")
-            
-        except Exception as e:
-            logger.error(f"[ENV_MIX_TASK] 获取环境音项目失败: {str(e)}")
-            db.close()
-            return
-        
-        # 创建混音输出目录
-        output_dir = os.path.join("data", "environment_sounds", "mixed")
-        os.makedirs(output_dir, exist_ok=True)
-        logger.info(f"[ENV_MIX_TASK] 混音输出目录: {output_dir}")
-        
-        # 生成输出文件路径
-        output_filename = f"mixed_environment_{project_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.wav"
-        output_path = os.path.join(output_dir, output_filename)
-        logger.info(f"[ENV_MIX_TASK] 混音输出文件路径: {output_path}")
-        
-        # 加载所有音频文件
-        audio_segments = []
-        max_duration = 0
-        
-        for track_index, track in tracks_to_mix:
-            try:
-                file_path = track['generated_file_path']
-                logger.info(f"[ENV_MIX_TASK] 处理轨道 {track_index}: {file_path}")
-                logger.info(f"[ENV_MIX_TASK] 文件是否存在: {os.path.exists(file_path)}")
-                
-                if os.path.exists(file_path):
-                    # 加载音频文件
-                    logger.info(f"[ENV_MIX_TASK] 开始加载音频文件: {file_path}")
-                    audio = AudioSegment.from_wav(file_path)
-                    logger.info(f"[ENV_MIX_TASK] 音频加载成功，原始长度: {len(audio)}ms")
-                    
-                    # 获取轨道的时间信息
-                    start_time = track.get('start_time', 0.0)
-                    duration = track.get('duration', 30.0)
-                    logger.info(f"[ENV_MIX_TASK] 轨道时间信息: 开始={start_time}s, 时长={duration}s")
-                    
-                    # 调整音频长度以匹配轨道时长
-                    target_length = int(duration * 1000)  # 转换为毫秒
-                    logger.info(f"[ENV_MIX_TASK] 目标长度: {target_length}ms")
-                    
-                    if len(audio) < target_length:
-                        # 如果音频太短，循环播放
-                        repeat_count = target_length // len(audio) + 1
-                        logger.info(f"[ENV_MIX_TASK] 音频太短，需要循环 {repeat_count} 次")
-                        audio = audio * repeat_count
-                    
-                    audio = audio[:target_length]
-                    logger.info(f"[ENV_MIX_TASK] 调整后音频长度: {len(audio)}ms")
-                    
-                    # 设置音量（默认-15dB，避免过于突出）
-                    volume = track.get('volume', -15)
-                    logger.info(f"[ENV_MIX_TASK] 设置音量: {volume}dB")
-                    audio = audio + volume
-                    
-                    # 添加淡入淡出效果
-                    fade_in = int(track.get('fade_in', 1.0) * 1000)  # 转换为毫秒并转为整数
-                    fade_out = int(track.get('fade_out', 1.0) * 1000)
-                    logger.info(f"[ENV_MIX_TASK] 淡入淡出: {fade_in}ms / {fade_out}ms")
-                    audio = audio.fade_in(fade_in).fade_out(fade_out)
-                    
-                    # 计算在混音中的位置
-                    position = int(start_time * 1000)
-                    logger.info(f"[ENV_MIX_TASK] 混音位置: {position}ms")
-                    
-                    audio_segments.append({
-                        'audio': audio,
-                        'position': position,
-                        'track_index': track_index
-                    })
-                    
-                    # 更新最大时长
-                    track_end = position + len(audio)
-                    max_duration = max(max_duration, track_end)
-                    
-                    logger.info(f"[ENV_MIX_TASK] 轨道 {track_index} 处理完成")
-                    logger.info(f"[ENV_MIX_TASK] 轨道结束位置: {track_end}ms")
-                    logger.info(f"[ENV_MIX_TASK] 当前最大时长: {max_duration}ms")
-                else:
-                    logger.warning(f"[ENV_MIX_TASK] 文件不存在: {file_path}")
-                    
-            except Exception as e:
-                logger.error(f"[ENV_MIX_TASK] 加载轨道 {track_index} 失败: {str(e)}")
-                continue
-        
-        if not audio_segments:
-            logger.error(f"[ENV_MIX_TASK] 没有可混音的音频文件")
-            return
-        
-        logger.info(f"[ENV_MIX_TASK] 成功加载 {len(audio_segments)} 个音频段")
-        logger.info(f"[ENV_MIX_TASK] 最终混音时长: {max_duration}ms")
-        
-        # 创建混音轨道
-        mixed_audio = AudioSegment.silent(duration=max_duration)
-        logger.info(f"[ENV_MIX_TASK] 创建静音轨道，长度: {len(mixed_audio)}ms")
-        
-        # 叠加所有音频
-        for segment_info in audio_segments:
-            try:
-                mixed_audio = mixed_audio.overlay(
-                    segment_info['audio'],
-                    position=segment_info['position']
-                )
-                logger.info(f"[ENV_MIX_TASK] 叠加轨道 {segment_info['track_index']}")
-            except Exception as e:
-                logger.error(f"[ENV_MIX_TASK] 叠加轨道 {segment_info['track_index']} 失败: {str(e)}")
-                continue
-        
-        # 导出混音文件
-        mixed_audio.export(output_path, format="wav")
-        
-        # 更新项目状态 - 重新获取数据库会话确保数据一致性
-        try:
-            # 重新获取数据库会话
-            db.close()
-            db = next(get_db())
-            env_service = EnvironmentProjectService(db)
-            env_project = env_service.get_by_project_id(project_id)
-            
-            if env_project:
-                # 获取现有的matching_result
-                current_matching_result = env_project.matching_result or {}
-                
-                # 创建新的matching_result，保留现有数据
-                new_matching_result = {
-                    **current_matching_result,
-                    'mixed_file_path': output_path,
-                    'mixed_file_size': os.path.getsize(output_path),
-                    'mixed_duration': len(mixed_audio) / 1000.0,  # 转换为秒
-                    'mixed_tracks_count': len(tracks_to_mix),
-                    'mixed_at': datetime.now().isoformat()
-                }
-                
-                # 更新整个matching_result字段
-                env_project.matching_result = new_matching_result
-                
-                db.commit()
-                logger.info(f"[ENV_MIX_TASK] 数据库更新成功，混音文件路径已保存: {output_path}")
-                logger.info(f"[ENV_MIX_TASK] 更新后的matching_result: {new_matching_result}")
-            else:
-                logger.error(f"[ENV_MIX_TASK] 重新查询项目失败，项目ID: {project_id}")
-        except Exception as db_error:
-            logger.error(f"[ENV_MIX_TASK] 数据库更新失败: {str(db_error)}")
-        finally:
-            db.close()
-        
-        logger.info(f"[ENV_MIX_TASK] 混音完成: {output_path}")
-         
-         # 发送WebSocket通知
-        try:
-             from app.websocket.manager import websocket_manager
-             await websocket_manager.broadcast_message({
-                 "type": "environment_mixing_progress",
-                 "data": {
-                     "task_id": task_id,
-                     "project_id": project_id,
-                     "status": "completed",
-                     "mixed_file_path": output_path,
-                     "total_tracks": len(tracks_to_mix),
-                     "message": f"环境音混音完成，共 {len(tracks_to_mix)} 个轨道"
-                 }
-             })
-        except Exception as e:
-             logger.warning(f"[ENV_MIX_TASK] WebSocket通知失败: {str(e)}")
-        
-    except Exception as e:
-        logger.error(f"[ENV_MIX_TASK] 混音任务失败: {str(e)}")
-        
-        # 发送错误通知
-        try:
-            from app.websocket.manager import websocket_manager
-            await websocket_manager.broadcast_message({
-                "type": "environment_mixing_progress",
-                "data": {
-                    "task_id": task_id,
-                    "project_id": project_id,
-                    "status": "failed",
-                    "error_message": str(e),
-                    "message": f"环境音混音失败: {str(e)}"
-                }
-            })
-        except Exception as ws_error:
-            logger.warning(f"[ENV_MIX_TASK] WebSocket错误通知失败: {str(ws_error)}")
+        logger.error(f"[ENV_STATUS] 获取状态失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取状态失败: {str(e)}")
 
 
 @router.post("/projects/{env_project_id}/sync-chapter/{chapter_id}")
@@ -995,17 +269,17 @@ async def sync_chapter_environment_sounds(
     request: Dict[str, Any] = Body(default={}),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
-    """
-    同步章节环境音数据到环境音项目
-    从书籍分析结果提取环境音数据并保存到环境音项目的analysis_result中
-    """
+    """同步章节环境音数据到环境音项目"""
     try:
-        mode = request.get('mode', 'overwrite')  # overwrite 或 merge
-        logger.info(f"[ENV_SYNC_API] 开始同步章节环境音，环境音项目ID: {env_project_id}，章节ID: {chapter_id}，模式: {mode}")
+        import json
+        from app.models.analysis_result import AnalysisResult
+        
+        mode = request.get('mode', 'overwrite')
+        logger.info(f"[ENV_SYNC] 同步章节环境音，项目: {env_project_id}，章节: {chapter_id}，模式: {mode}")
         
         # 获取环境音项目
-        env_service = EnvironmentProjectService(db)
-        env_project = env_service.get_by_project_id(env_project_id)
+        data_service = EnvironmentProjectDataService(db)
+        env_project = data_service.env_service.get_by_project_id(env_project_id)
         
         if not env_project:
             raise HTTPException(status_code=404, detail="未找到环境音项目")
@@ -1013,10 +287,7 @@ async def sync_chapter_environment_sounds(
         if not env_project.novel_project_id:
             raise HTTPException(status_code=400, detail="环境音项目未关联书籍分析项目")
         
-        logger.info(f"[ENV_SYNC_API] 从书籍分析项目 {env_project.novel_project_id} 中提取章节 {chapter_id} 的环境音数据")
-        
         # 获取书籍分析结果
-        from app.models.analysis_result import AnalysisResult
         analysis_result = db.query(AnalysisResult).filter(
             AnalysisResult.project_id == env_project.novel_project_id,
             AnalysisResult.chapter_id == chapter_id
@@ -1025,27 +296,61 @@ async def sync_chapter_environment_sounds(
         if not analysis_result or not analysis_result.original_analysis:
             raise HTTPException(status_code=404, detail=f"未找到章节 {chapter_id} 的书籍分析结果")
         
-        # 构建分析结果字典
+        # 提取和转换数据
         chapter_data = analysis_result.original_analysis
         if isinstance(chapter_data, str):
             chapter_data = json.loads(chapter_data)
         
         book_analysis = {str(chapter_id): chapter_data}
-        
-        # 提取环境音数据
-        environment_sounds = extract_environment_sounds_from_analysis(book_analysis, chapter_id)
+        environment_sounds = EnvironmentDataService.extract_environment_sounds_from_analysis(book_analysis, chapter_id)
         
         if not environment_sounds:
             raise HTTPException(status_code=404, detail=f"章节 {chapter_id} 中未找到可同步的环境音数据")
         
-        # 转换为环境音项目需要的格式
-        environment_tracks = _convert_to_environment_tracks_format(environment_sounds)
+        environment_tracks = EnvironmentDataService.convert_to_environment_tracks_format(environment_sounds)
+        
+        # 🚀 新增：使用LLM批量翻译中文描述生成英文提示词
+        from app.services.translation_service import TranslationService
+        translation_service = TranslationService()
+        
+        # 收集需要翻译的描述
+        tracks_to_translate = []
+        descriptions_to_translate = []
+        
+        for i, track in enumerate(environment_tracks):
+            chinese_description = track.get('chinese_description', '')
+            if chinese_description and not track.get('english_prompt'):
+                tracks_to_translate.append(i)
+                descriptions_to_translate.append(f"环境音效描述: {chinese_description}")
+        
+        # 批量翻译
+        if descriptions_to_translate:
+            try:
+                logger.info(f"[ENV_SYNC] 开始批量翻译 {len(descriptions_to_translate)} 个环境音描述")
+                english_prompts = await translation_service.batch_translate_chinese_to_english(descriptions_to_translate)
+                
+                # 应用翻译结果
+                for track_index, english_prompt in zip(tracks_to_translate, english_prompts):
+                    track = environment_tracks[track_index]
+                    # 清理翻译结果，移除可能的前缀
+                    if english_prompt.lower().startswith('environmental sound'):
+                        english_prompt = english_prompt[len('environmental sound'):].strip(':').strip()
+                    track['english_prompt'] = f"Natural ambient sound: {english_prompt}"
+                    
+                logger.info(f"[ENV_SYNC] 批量翻译完成: {len(descriptions_to_translate)} 个描述")
+                
+            except Exception as e:
+                logger.error(f"[ENV_SYNC] 批量翻译失败: {str(e)}")
+                # 翻译失败时为每个轨道生成基础英文提示
+                for track_index in tracks_to_translate:
+                    track = environment_tracks[track_index]
+                    keyword = track.get('keyword', '环境音')
+                    track['english_prompt'] = f"Natural ambient sound of {keyword}, environmental audio, realistic and clear"
         
         # 更新环境音项目的分析结果
         current_analysis_result = env_project.analysis_result or {}
         
         if mode == 'overwrite':
-            # 覆盖模式：直接替换该章节的数据
             current_analysis_result[str(chapter_id)] = {
                 'environment_tracks': environment_tracks,
                 'chapter_id': chapter_id,
@@ -1053,10 +358,8 @@ async def sync_chapter_environment_sounds(
                 'source': 'book_analysis_sync'
             }
         elif mode == 'merge':
-            # 合并模式：与现有数据合并
             if str(chapter_id) in current_analysis_result:
                 existing_tracks = current_analysis_result[str(chapter_id)].get('environment_tracks', [])
-                # 简单合并：新数据追加到现有数据后面
                 merged_tracks = existing_tracks + environment_tracks
                 current_analysis_result[str(chapter_id)]['environment_tracks'] = merged_tracks
             else:
@@ -1067,11 +370,16 @@ async def sync_chapter_environment_sounds(
                     'source': 'book_analysis_sync'
                 }
         
-        # 保存到数据库
+        # 保存到数据库 - 🚀 修复：使用flag_modified告诉SQLAlchemy JSON字段已修改
+        from sqlalchemy.orm.attributes import flag_modified
         env_project.analysis_result = current_analysis_result
-        db.commit()
+        flag_modified(env_project, 'analysis_result')  # 标记字段已修改
         
-        logger.info(f"[ENV_SYNC_API] 成功同步章节 {chapter_id} 的环境音数据，共 {len(environment_tracks)} 个轨道")
+        logger.info(f"[ENV_SYNC] 准备提交数据库更新，项目: {env_project_id}")
+        db.commit()
+        logger.info(f"[ENV_SYNC] 数据库更新完成")
+        
+        logger.info(f"[ENV_SYNC] 成功同步章节 {chapter_id}，共 {len(environment_tracks)} 个轨道")
         
         return {
             "success": True,
@@ -1088,8 +396,8 @@ async def sync_chapter_environment_sounds(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[ENV_SYNC_API] 同步章节环境音失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"同步章节环境音失败: {str(e)}")
+        logger.error(f"[ENV_SYNC] 同步失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"同步失败: {str(e)}")
 
 
 @router.get("/book-analysis/{project_id}/environment-sounds")
@@ -1098,17 +406,19 @@ async def get_book_analysis_environment_sounds(
     chapter_id: Optional[int] = None,
     db: Session = Depends(get_db)
 ):
-    """从书籍分析结果中获取环境音数据"""
+    """从书籍分析结果中获取环境音数据（用于预览）"""
     try:
-        logger.info(f"[ENV_GEN_API] 获取书籍分析环境音数据，项目ID: {project_id}，章节ID: {chapter_id}")
+        import json
+        from app.models.novel_project import NovelProject
+        from app.models.analysis_result import AnalysisResult
         
-        # 获取项目信息
+        logger.info(f"[ENV_BOOK_ANALYSIS] 获取环境音数据，项目: {project_id}，章节: {chapter_id}")
+        
+        # 获取项目和分析结果
         project = db.query(NovelProject).filter(NovelProject.id == project_id).first()
         if not project:
             raise HTTPException(status_code=404, detail="未找到项目")
         
-        # 获取书籍分析结果
-        from app.models.analysis_result import AnalysisResult
         analysis_results = db.query(AnalysisResult).filter(
             AnalysisResult.project_id == project_id
         ).all()
@@ -1120,19 +430,16 @@ async def get_book_analysis_environment_sounds(
         analysis_result = {}
         for result in analysis_results:
             if result.original_analysis:
-                # 修复：original_analysis已经是字典类型，不需要json.loads
                 chapter_data = result.original_analysis
                 if isinstance(chapter_data, str):
                     chapter_data = json.loads(chapter_data)
                 analysis_result[str(result.chapter_id)] = chapter_data
         
-        # 提取环境音数据
-        environment_sounds = extract_environment_sounds_from_analysis(analysis_result, chapter_id)
+        # 提取和转换数据
+        environment_sounds = EnvironmentDataService.extract_environment_sounds_from_analysis(analysis_result, chapter_id)
+        formatted_data = EnvironmentDataService.convert_to_frontend_format(environment_sounds)
         
-        # 转换为前端需要的格式
-        formatted_data = convert_to_frontend_format(environment_sounds)
-        
-        logger.info(f"[ENV_GEN_API] 成功提取{len(formatted_data)}个环境音数据")
+        logger.info(f"[ENV_BOOK_ANALYSIS] 成功提取 {len(formatted_data)} 个环境音数据")
         
         return {
             "success": True,
@@ -1143,251 +450,9 @@ async def get_book_analysis_environment_sounds(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[ENV_GEN_API] 获取书籍分析环境音失败: {e}")
+        logger.error(f"[ENV_BOOK_ANALYSIS] 获取失败: {e}")
         return {
             "success": False,
             "error": str(e),
             "message": "获取书籍分析环境音失败"
         }
-
-
-def extract_environment_sounds_from_analysis(book_analysis: Dict[str, Any], chapter_id: Optional[int] = None) -> List[Dict[str, Any]]:
-    """从书籍分析结果中提取环境音数据"""
-    environment_sounds = []
-    
-    if chapter_id:
-        # 单章节模式
-        chapter_data = book_analysis.get(str(chapter_id), {})
-        
-        # 🚀 第三阶段：支持6卡分析结果格式
-        if 'six_card_results' in chapter_data:
-            six_card_results = chapter_data.get('six_card_results', [])
-            for six_card_result in six_card_results:
-                scene_card = six_card_result.get('scene_card', {})
-                character_card = six_card_result.get('character_card', {})
-                audio_storyboard_card = six_card_result.get('audio_storyboard_card', {})
-                
-                # 提取旁白内容
-                narrator_content = ""
-                if 'narrator' in character_card:
-                    narrator_content = character_card['narrator'].get('content', '')
-                
-                # 🚀 优先从 audio_storyboard_card.sound_effects 中提取详细描述
-                sound_effects = audio_storyboard_card.get('sound_effects', [])
-                if sound_effects:
-                    # 有详细的环境音描述，使用详细描述
-                    for effect in sound_effects:
-                        if isinstance(effect, dict):
-                            sound_obj = {
-                                'keyword': effect.get('keyword', ''),
-                                'description': effect.get('description', ''),
-                                'chinese_description': effect.get('description', ''),  # 使用详细描述
-                                'chapter_id': chapter_id,
-                                'segment_index': six_card_result.get('_metadata', {}).get('segment_index', 0),
-                                'narration_text': narrator_content
-                            }
-                            environment_sounds.append(sound_obj)
-                else:
-                    # 回退到 scene_card.environment_sounds
-                    sounds = scene_card.get('environment_sounds', [])
-                    for sound in sounds:
-                        if isinstance(sound, str):
-                            # 新格式：字符串关键词
-                            sound_obj = {
-                                'keyword': sound,
-                                'description': f'{sound}的环境音效',  # 简单描述
-                                'chinese_description': f'{sound}的环境音效',  # 添加中文描述字段
-                                'chapter_id': chapter_id,
-                                'segment_index': six_card_result.get('_metadata', {}).get('segment_index', 0),
-                                'narration_text': narrator_content
-                            }
-                            environment_sounds.append(sound_obj)
-                        elif isinstance(sound, dict):
-                            # 兼容旧格式：对象格式
-                            sound_copy = sound.copy()
-                            sound_copy['chapter_id'] = chapter_id
-                            sound_copy['segment_index'] = six_card_result.get('_metadata', {}).get('segment_index', 0)
-                            sound_copy['narration_text'] = narrator_content
-                            environment_sounds.append(sound_copy)
-        else:
-            # 兼容旧格式
-            scene_card = chapter_data.get('scene_card', {})
-            sounds = scene_card.get('environment_sounds', [])
-            
-            # 为每个环境音添加章节信息
-            for sound in sounds:
-                if isinstance(sound, dict):
-                    sound_copy = sound.copy()
-                    sound_copy['chapter_id'] = chapter_id
-                    environment_sounds.append(sound_copy)
-                elif isinstance(sound, str):
-                    # 如果是字符串，创建基本的环境音对象
-                    sound_obj = {
-                        'keyword': sound,
-                        'description': sound,
-                        'chapter_id': chapter_id
-                    }
-                    environment_sounds.append(sound_obj)
-    else:
-        # 多章节模式
-        for chapter_id_str, chapter_data in book_analysis.items():
-            if isinstance(chapter_data, dict):
-                # 🚀 第三阶段：支持6卡分析结果格式
-                if 'six_card_results' in chapter_data:
-                    six_card_results = chapter_data.get('six_card_results', [])
-                    for six_card_result in six_card_results:
-                        scene_card = six_card_result.get('scene_card', {})
-                        character_card = six_card_result.get('character_card', {})
-                        audio_storyboard_card = six_card_result.get('audio_storyboard_card', {})
-                        
-                        # 提取旁白内容
-                        narrator_content = ""
-                        if 'narrator' in character_card:
-                            narrator_content = character_card['narrator'].get('content', '')
-                        
-                        # 🚀 优先从 audio_storyboard_card.sound_effects 中提取详细描述
-                        sound_effects = audio_storyboard_card.get('sound_effects', [])
-                        if sound_effects:
-                            # 有详细的环境音描述，使用详细描述
-                            for effect in sound_effects:
-                                if isinstance(effect, dict):
-                                    sound_obj = {
-                                        'keyword': effect.get('keyword', ''),
-                                        'description': effect.get('description', ''),
-                                        'chinese_description': effect.get('description', ''),  # 使用详细描述
-                                        'chapter_id': int(chapter_id_str),
-                                        'segment_index': six_card_result.get('_metadata', {}).get('segment_index', 0),
-                                        'narration_text': narrator_content
-                                    }
-                                    environment_sounds.append(sound_obj)
-                        else:
-                            # 回退到 scene_card.environment_sounds
-                            chapter_sounds = scene_card.get('environment_sounds', [])
-                            for sound in chapter_sounds:
-                                if isinstance(sound, str):
-                                    # 新格式：字符串关键词
-                                    sound_obj = {
-                                        'keyword': sound,
-                                        'description': f'{sound}的环境音效',  # 简单描述
-                                        'chinese_description': f'{sound}的环境音效',  # 添加中文描述字段
-                                        'chapter_id': int(chapter_id_str),
-                                        'segment_index': six_card_result.get('_metadata', {}).get('segment_index', 0),
-                                        'narration_text': narrator_content
-                                    }
-                                    environment_sounds.append(sound_obj)
-                                elif isinstance(sound, dict):
-                                    # 兼容旧格式：对象格式
-                                    sound_copy = sound.copy()
-                                    sound_copy['chapter_id'] = int(chapter_id_str)
-                                    sound_copy['segment_index'] = six_card_result.get('_metadata', {}).get('segment_index', 0)
-                                    sound_copy['narration_text'] = narrator_content
-                                    environment_sounds.append(sound_copy)
-                else:
-                    # 兼容旧格式
-                    scene_card = chapter_data.get('scene_card', {})
-                    chapter_sounds = scene_card.get('environment_sounds', [])
-                    
-                    # 为每个环境音添加章节信息
-                    for sound in chapter_sounds:
-                        if isinstance(sound, dict):
-                            sound_copy = sound.copy()
-                            sound_copy['chapter_id'] = int(chapter_id_str)
-                            environment_sounds.append(sound_copy)
-                        elif isinstance(sound, str):
-                            # 如果是字符串，创建基本的环境音对象
-                            sound_obj = {
-                                'keyword': sound,
-                                'description': sound,
-                                'chapter_id': int(chapter_id_str)
-                            }
-                            environment_sounds.append(sound_obj)
-    
-    return environment_sounds
-
-
-def _convert_to_environment_tracks_format(environment_sounds: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """转换为环境音项目需要的轨道格式"""
-    environment_tracks = []
-    
-    for sound in environment_sounds:
-        # 基础字段映射
-        keyword = sound.get("keyword", "")
-        description = sound.get("description", "")
-        chinese_description = sound.get("chinese_description") or description
-        
-        # 计算时长和强度
-        start_time = sound.get("start_time", 0)
-        end_time = sound.get("end_time", 30)
-        duration = max(1.0, end_time - start_time) if end_time > start_time else 30.0
-        
-        # 从音量推导强度
-        volume = sound.get("volume", 40)
-        if volume <= 30:
-            intensity = "low"
-        elif volume <= 50:
-            intensity = "medium"
-        else:
-            intensity = "high"
-        
-        # 构建轨道数据（保留分镜原始字段 + 补齐生成所需字段）
-        track = {
-            # 生成器需要的字段
-            "environment_keywords": [keyword] if keyword else [],  # 关键：生成端筛选依赖此字段
-            "chinese_description": chinese_description,
-            "english_prompt": sound.get("english_prompt", ""),  # 如果没有会在生成时自动生成
-            "duration": duration,
-            "intensity": intensity,
-            
-            # 保留分镜原始字段
-            "keyword": keyword,
-            "description": description,
-            "start_time": start_time,
-            "end_time": end_time,
-            "volume": volume,
-            "spatial_position": sound.get("spatial_position", "center"),
-            "fade_in": sound.get("fade_in", 0.2),
-            "fade_out": sound.get("fade_out", 0.2),
-            
-            # 元数据字段
-            "chapter_id": sound.get("chapter_id"),
-            "segment_index": sound.get("segment_index", 0),
-            "narration_text": sound.get("narration_text", ""),
-            "source": "book_analysis_sync",
-            "sync_timestamp": datetime.now().isoformat(),
-            
-            # 生成状态字段
-            "generated_file_path": None,
-            "generation_status": "pending",
-            "confidence": 0.9
-        }
-        
-        environment_tracks.append(track)
-    
-    return environment_tracks
-
-
-def convert_to_frontend_format(environment_sounds: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """转换为前端需要的格式"""
-    formatted_tracks = []
-    
-    for i, sound in enumerate(environment_sounds):
-        track = {
-            "track_id": f"book_analysis_{i+1:03d}",
-            "keyword": sound.get("keyword", ""),
-            "description": sound.get("description", ""),
-            "chinese_description": sound.get("chinese_description", ""),  # 添加中文描述字段
-            "source": "book_analysis",  # 标识数据来源
-            "duration": 30.0,  # 默认时长
-            "intensity": "medium",  # 默认强度
-            "english_prompt": "",  # 将由AI生成
-            "chapter_id": sound.get("chapter_id"),
-            "paragraph_index": sound.get("segment_index", 0),  # 🚀 修复：使用segment_index字段
-            # 🚀 添加旁白内容字段
-            "narration_text": sound.get("narration_text", ""),
-            "start_time": (sound.get("segment_index", 0) * 30),  # 简单的时间计算
-            "generated_file_path": None,  # 默认未生成
-            "confidence": 0.85  # 🚀 修复NaN：添加默认置信度
-        }
-        formatted_tracks.append(track)
-    
-    return formatted_tracks

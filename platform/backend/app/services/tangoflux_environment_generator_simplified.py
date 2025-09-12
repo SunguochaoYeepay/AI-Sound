@@ -4,7 +4,6 @@
 """
 
 import logging
-import os
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
@@ -24,9 +23,30 @@ class TangoFluxEnvironmentGenerator:
         logger.info("[TANGOFLUX_GEN] 简化版环境音生成器初始化完成")
     
     def convert_track_to_request(self, track: Dict[str, Any]) -> Dict[str, Any]:
-        """转换轨道数据为生成请求 - 已废弃，现在直接传递完整轨道数据"""
-        logger.warning("[TANGOFLUX_GEN] convert_track_to_request方法已废弃，应直接使用轨道数据")
-        return track
+        """转换轨道数据为生成请求"""
+        # 优先从environment_keywords获取关键词
+        keywords = track.get('environment_keywords', [])
+        keyword = keywords[0] if keywords else ''
+        
+        # 如果没有关键词，尝试其他字段
+        if not keyword:
+            keyword = track.get('keyword', '') or track.get('description', '')
+        
+        # 获取描述
+        description = track.get('chinese_description', '') or track.get('description', '')
+        
+        # 获取其他参数
+        duration = track.get('duration', 30.0)
+        intensity = track.get('intensity', 'medium')
+        english_prompt = track.get('english_prompt', '')
+        
+        return {
+            'keyword': keyword,
+            'description': description,
+            'duration': duration,
+            'intensity': intensity,
+            'english_prompt': english_prompt
+        }
     
     async def generate_project_environment_sounds(self, 
                                                 project_id: int,
@@ -53,41 +73,39 @@ class TangoFluxEnvironmentGenerator:
                 logger.error("[TANGOFLUX_GEN] TangoFlux服务不可用，生成取消")
                 return {"success": False, "error": "TangoFlux服务不可用"}
             
-            # 准备轨道数据用于生成
-            track_data_list = []
-            track_index_mapping = []  # 保存轨道索引映射
-            
+            # 转换轨道数据为生成请求
+            generation_requests = []
             for index, track in tracks_to_generate:
                 try:
-                    # 直接使用轨道数据，不需要转换
-                    track_data_list.append(track)
-                    track_index_mapping.append(index)
+                    request = self.convert_track_to_request(track)
+                    # 添加原始信息用于数据库保存
+                    request['track_index'] = index
+                    request['track_data'] = track
+                    generation_requests.append(request)
                     
-                    logger.info(f"[TANGOFLUX_GEN] 准备生成轨道: {track.get('keyword', 'unknown')} (索引: {index})")
+                    logger.info(f"[TANGOFLUX_GEN] 转换轨道数据: {track.get('description', 'unknown')} -> {request['keyword']}")
                 except Exception as e:
-                    logger.error(f"[TANGOFLUX_GEN] 轨道数据无效: {e}")
+                    logger.error(f"[TANGOFLUX_GEN] 转换轨道数据失败: {e}")
                     continue
             
-            if not track_data_list:
+            if not generation_requests:
                 raise ValueError("没有有效的轨道数据可生成")
             
-            # 批量生成环境音 - 并发数可配置
-            max_concurrent = int(os.environ.get('TANGOFLUX_MAX_CONCURRENT', '3'))
+            # 批量生成环境音
             generation_results = await self.core_generator.batch_generate_audio(
-                track_data_list=track_data_list,
-                max_concurrent=max_concurrent
+                requests=generation_requests,
+                max_concurrent=3
             )
             
-            # 添加轨道信息到结果中 - 直接使用轨道数据，减少硬编码默认值
+            # 添加原始信息到结果中
             for i, result in enumerate(generation_results):
-                if i < len(track_data_list):
-                    track_data = track_data_list[i]
+                if i < len(generation_requests):
                     result.update({
-                        'keyword': track_data.get('keyword', f'track_{i}'),  # 更有意义的默认值
-                        'description': track_data.get('chinese_description') or track_data.get('description', ''),
-                        'duration': track_data.get('duration', 30.0),  # 保留作为最后的安全默认值
-                        'intensity': track_data.get('intensity', 'medium'),  # 保留作为最后的安全默认值
-                        'track_index': track_index_mapping[i]
+                        'keyword': generation_requests[i]['keyword'],
+                        'description': generation_requests[i]['description'],
+                        'duration': generation_requests[i]['duration'],
+                        'intensity': generation_requests[i]['intensity'],
+                        'track_index': generation_requests[i]['track_index']
                     })
             
             # 保存到数据库
@@ -97,7 +115,7 @@ class TangoFluxEnvironmentGenerator:
                 
                 # 构建轨道映射
                 track_mapping = {}
-                for i, track_index in enumerate(track_index_mapping):
+                for i, (track_index, _) in enumerate(tracks_to_generate):
                     track_mapping[track_index] = i
                 
                 # 保存生成的音频
@@ -108,11 +126,10 @@ class TangoFluxEnvironmentGenerator:
                 )
                 
                 # 更新项目轨道状态
-                tracks_to_generate_rebuilt = [(track_index_mapping[i], track_data_list[i]) for i in range(len(track_index_mapping))]
                 update_success = db_service.update_project_tracks(
                     project_id=project_id,
                     saved_sounds=saved_sounds,
-                    tracks_to_generate=tracks_to_generate_rebuilt
+                    tracks_to_generate=tracks_to_generate
                 )
                 
                 if update_success:

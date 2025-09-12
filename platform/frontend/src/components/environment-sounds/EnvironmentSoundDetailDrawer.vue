@@ -137,23 +137,32 @@ const generateSound = async () => {
   try {
     generating.value = true
     
-    // 调用生成API
-    const response = await environmentGenerationAPI.generateSingleSound({
-      keyword: props.soundInfo?.keyword || '',
-      description: props.soundInfo?.description || '',
-      duration: props.soundInfo?.duration || 30,
-      intensity: props.soundInfo?.intensity || 'medium'
-    })
+    // 检查必需的参数
+    if (!props.soundInfo?.projectId) {
+      throw new Error('缺少项目ID信息')
+    }
+    
+    if (props.soundInfo?.trackIndex === undefined) {
+      throw new Error('缺少轨道索引信息')
+    }
+    
+    // 调用正确的生成API
+    const response = await environmentGenerationAPI.startGeneration(
+      props.soundInfo.projectId,
+      {
+        track_indices: [props.soundInfo.trackIndex]
+      }
+    )
 
     if (response.data.success) {
-      message.success('环境音生成完成')
+      message.success('环境音生成任务已启动')
       emit('refresh')
     } else {
-      throw new Error(response.data.error || '生成失败')
+      throw new Error(response.data.message || '生成失败')
     }
   } catch (error) {
     console.error('生成环境音失败:', error)
-    message.error('环境音生成失败')
+    message.error(error.message || '环境音生成失败')
   } finally {
     generating.value = false
   }

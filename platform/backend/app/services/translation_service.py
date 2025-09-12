@@ -7,7 +7,7 @@ import aiohttp
 import json
 import re
 import os
-from typing import Dict
+from typing import Dict, List
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +18,89 @@ class TranslationService:
         self.ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434")
         self.model = "qwen2.5:14b"  # 使用中文友好的模型
     
+    async def batch_translate_chinese_to_english(self, text_list: List[str]) -> List[str]:
+        """批量翻译中文文本为英文
+        
+        Args:
+            text_list: 中文文本列表
+            
+        Returns:
+            翻译后的英文文本列表
+        """
+        if not text_list:
+            return []
+        
+        try:
+            # 构建批量翻译提示
+            text_items = []
+            for i, text in enumerate(text_list):
+                if text and text.strip():
+                    text_items.append(f"{i+1}. {text}")
+                else:
+                    text_items.append(f"{i+1}. [空文本]")
+            
+            prompt = f"""请将以下中文文本批量翻译为英文，保持原意和语境。每个翻译结果单独一行，按顺序返回。
+
+中文文本列表：
+{chr(10).join(text_items)}
+
+请按以下格式返回翻译结果：
+1. [第一个翻译结果]
+2. [第二个翻译结果]
+...
+"""
+            
+            async with aiohttp.ClientSession() as session:
+                payload = {
+                    "model": self.model,
+                    "prompt": prompt,
+                    "stream": False,
+                    "options": {
+                        "temperature": 0.3,
+                        "max_tokens": 2000,  # 增加token数量支持批量翻译
+                        "top_p": 0.9
+                    }
+                }
+                
+                async with session.post(
+                    f"{self.ollama_url}/api/generate",
+                    json=payload,
+                    timeout=aiohttp.ClientTimeout(total=120)  # 增加超时时间
+                ) as response:
+                    if response.status == 200:
+                        result = await response.json()
+                        translated_text = result.get('response', '').strip()
+                        
+                        # 解析批量翻译结果
+                        translations = self._parse_batch_translation_result(translated_text, len(text_list))
+                        
+                        logger.info(f"批量翻译成功: {len(text_list)}个文本")
+                        return translations
+                    else:
+                        logger.error(f"Ollama API调用失败: {response.status}")
+                        return text_list  # 翻译失败时返回原文
+                        
+        except Exception as e:
+            logger.error(f"批量翻译失败: {str(e)}")
+            return text_list  # 翻译失败时返回原文
+
+    def _parse_batch_translation_result(self, result_text: str, expected_count: int) -> List[str]:
+        """解析批量翻译结果"""
+        lines = result_text.strip().split('\n')
+        translations = []
+        
+        for line in lines:
+            line = line.strip()
+            if re.match(r'^\d+\.', line):  # 匹配 "1. 翻译结果" 格式
+                translation = re.sub(r'^\d+\.\s*', '', line)
+                translations.append(translation)
+        
+        # 确保返回正确数量的翻译结果
+        while len(translations) < expected_count:
+            translations.append("Translation failed")
+        
+        return translations[:expected_count]
+
     async def translate_chinese_to_english(self, chinese_text: str) -> str:
         """将中文文本翻译为英文
         
