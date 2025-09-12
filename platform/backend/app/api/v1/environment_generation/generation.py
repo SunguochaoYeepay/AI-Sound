@@ -56,8 +56,26 @@ async def generate_environment_sounds(
         analysis_result = env_project.analysis_result
         environment_tracks = []
         
-        # 检查是否是多章节格式（键是章节ID）
-        if isinstance(analysis_result, dict) and not analysis_result.get('environment_tracks'):
+        # 优先尝试从audio_storyboard_card.sound_effects提取（新格式）
+        if 'six_card_results' in analysis_result:
+            # 新格式：从六卡分析结果中提取sound_effects
+            for result in analysis_result.get('six_card_results', []):
+                audio_card = result.get('audio_storyboard_card', {})
+                sound_effects = audio_card.get('sound_effects', [])
+                for effect in sound_effects:
+                    # 转换为environment_tracks格式
+                    environment_tracks.append({
+                        'type': '环境音效',
+                        'keyword': effect.get('keyword', ''),
+                        'description': effect.get('description', ''),
+                        'start_time': effect.get('start_time', 0),
+                        'end_time': effect.get('end_time', 30),
+                        'volume': effect.get('volume', 40),
+                        'spatial_position': effect.get('spatial_position', 'center'),
+                        'fade_in': effect.get('fade_in', 0),
+                        'fade_out': effect.get('fade_out', 0)
+                    })
+        elif isinstance(analysis_result, dict) and not analysis_result.get('environment_tracks'):
             # 多章节格式，收集所有章节的环境轨道
             # 按章节ID数字顺序排序，确保轨道顺序一致
             sorted_chapter_ids = sorted(analysis_result.keys(), key=lambda x: int(x))
@@ -1043,32 +1061,50 @@ def extract_environment_sounds_from_analysis(book_analysis: Dict[str, Any], chap
             for six_card_result in six_card_results:
                 scene_card = six_card_result.get('scene_card', {})
                 character_card = six_card_result.get('character_card', {})
-                sounds = scene_card.get('environment_sounds', [])
+                audio_storyboard_card = six_card_result.get('audio_storyboard_card', {})
                 
                 # 提取旁白内容
                 narrator_content = ""
                 if 'narrator' in character_card:
                     narrator_content = character_card['narrator'].get('content', '')
                 
-                # 🚀 处理新的简化格式：environment_sounds现在是字符串数组
-                for sound in sounds:
-                    if isinstance(sound, str):
-                        # 新格式：字符串关键词
-                        sound_obj = {
-                            'keyword': sound,
-                            'description': f'{sound}的环境音效',  # 简单描述
-                            'chapter_id': chapter_id,
-                            'segment_index': six_card_result.get('_metadata', {}).get('segment_index', 0),
-                            'narration_text': narrator_content
-                        }
-                        environment_sounds.append(sound_obj)
-                    elif isinstance(sound, dict):
-                        # 兼容旧格式：对象格式
-                        sound_copy = sound.copy()
-                        sound_copy['chapter_id'] = chapter_id
-                        sound_copy['segment_index'] = six_card_result.get('_metadata', {}).get('segment_index', 0)
-                        sound_copy['narration_text'] = narrator_content
-                        environment_sounds.append(sound_copy)
+                # 🚀 优先从 audio_storyboard_card.sound_effects 中提取详细描述
+                sound_effects = audio_storyboard_card.get('sound_effects', [])
+                if sound_effects:
+                    # 有详细的环境音描述，使用详细描述
+                    for effect in sound_effects:
+                        if isinstance(effect, dict):
+                            sound_obj = {
+                                'keyword': effect.get('keyword', ''),
+                                'description': effect.get('description', ''),
+                                'chinese_description': effect.get('description', ''),  # 使用详细描述
+                                'chapter_id': chapter_id,
+                                'segment_index': six_card_result.get('_metadata', {}).get('segment_index', 0),
+                                'narration_text': narrator_content
+                            }
+                            environment_sounds.append(sound_obj)
+                else:
+                    # 回退到 scene_card.environment_sounds
+                    sounds = scene_card.get('environment_sounds', [])
+                    for sound in sounds:
+                        if isinstance(sound, str):
+                            # 新格式：字符串关键词
+                            sound_obj = {
+                                'keyword': sound,
+                                'description': f'{sound}的环境音效',  # 简单描述
+                                'chinese_description': f'{sound}的环境音效',  # 添加中文描述字段
+                                'chapter_id': chapter_id,
+                                'segment_index': six_card_result.get('_metadata', {}).get('segment_index', 0),
+                                'narration_text': narrator_content
+                            }
+                            environment_sounds.append(sound_obj)
+                        elif isinstance(sound, dict):
+                            # 兼容旧格式：对象格式
+                            sound_copy = sound.copy()
+                            sound_copy['chapter_id'] = chapter_id
+                            sound_copy['segment_index'] = six_card_result.get('_metadata', {}).get('segment_index', 0)
+                            sound_copy['narration_text'] = narrator_content
+                            environment_sounds.append(sound_copy)
         else:
             # 兼容旧格式
             scene_card = chapter_data.get('scene_card', {})
@@ -1098,32 +1134,50 @@ def extract_environment_sounds_from_analysis(book_analysis: Dict[str, Any], chap
                     for six_card_result in six_card_results:
                         scene_card = six_card_result.get('scene_card', {})
                         character_card = six_card_result.get('character_card', {})
-                        chapter_sounds = scene_card.get('environment_sounds', [])
+                        audio_storyboard_card = six_card_result.get('audio_storyboard_card', {})
                         
                         # 提取旁白内容
                         narrator_content = ""
                         if 'narrator' in character_card:
                             narrator_content = character_card['narrator'].get('content', '')
                         
-                        # 🚀 处理新的简化格式：environment_sounds现在是字符串数组
-                        for sound in chapter_sounds:
-                            if isinstance(sound, str):
-                                # 新格式：字符串关键词
-                                sound_obj = {
-                                    'keyword': sound,
-                                    'description': f'{sound}的环境音效',  # 简单描述
-                                    'chapter_id': int(chapter_id_str),
-                                    'segment_index': six_card_result.get('_metadata', {}).get('segment_index', 0),
-                                    'narration_text': narrator_content
-                                }
-                                environment_sounds.append(sound_obj)
-                            elif isinstance(sound, dict):
-                                # 兼容旧格式：对象格式
-                                sound_copy = sound.copy()
-                                sound_copy['chapter_id'] = int(chapter_id_str)
-                                sound_copy['segment_index'] = six_card_result.get('_metadata', {}).get('segment_index', 0)
-                                sound_copy['narration_text'] = narrator_content
-                                environment_sounds.append(sound_copy)
+                        # 🚀 优先从 audio_storyboard_card.sound_effects 中提取详细描述
+                        sound_effects = audio_storyboard_card.get('sound_effects', [])
+                        if sound_effects:
+                            # 有详细的环境音描述，使用详细描述
+                            for effect in sound_effects:
+                                if isinstance(effect, dict):
+                                    sound_obj = {
+                                        'keyword': effect.get('keyword', ''),
+                                        'description': effect.get('description', ''),
+                                        'chinese_description': effect.get('description', ''),  # 使用详细描述
+                                        'chapter_id': int(chapter_id_str),
+                                        'segment_index': six_card_result.get('_metadata', {}).get('segment_index', 0),
+                                        'narration_text': narrator_content
+                                    }
+                                    environment_sounds.append(sound_obj)
+                        else:
+                            # 回退到 scene_card.environment_sounds
+                            chapter_sounds = scene_card.get('environment_sounds', [])
+                            for sound in chapter_sounds:
+                                if isinstance(sound, str):
+                                    # 新格式：字符串关键词
+                                    sound_obj = {
+                                        'keyword': sound,
+                                        'description': f'{sound}的环境音效',  # 简单描述
+                                        'chinese_description': f'{sound}的环境音效',  # 添加中文描述字段
+                                        'chapter_id': int(chapter_id_str),
+                                        'segment_index': six_card_result.get('_metadata', {}).get('segment_index', 0),
+                                        'narration_text': narrator_content
+                                    }
+                                    environment_sounds.append(sound_obj)
+                                elif isinstance(sound, dict):
+                                    # 兼容旧格式：对象格式
+                                    sound_copy = sound.copy()
+                                    sound_copy['chapter_id'] = int(chapter_id_str)
+                                    sound_copy['segment_index'] = six_card_result.get('_metadata', {}).get('segment_index', 0)
+                                    sound_copy['narration_text'] = narrator_content
+                                    environment_sounds.append(sound_copy)
                 else:
                     # 兼容旧格式
                     scene_card = chapter_data.get('scene_card', {})
@@ -1156,6 +1210,7 @@ def convert_to_frontend_format(environment_sounds: List[Dict[str, Any]]) -> List
             "track_id": f"book_analysis_{i+1:03d}",
             "keyword": sound.get("keyword", ""),
             "description": sound.get("description", ""),
+            "chinese_description": sound.get("chinese_description", ""),  # 添加中文描述字段
             "source": "book_analysis",  # 标识数据来源
             "duration": 30.0,  # 默认时长
             "intensity": "medium",  # 默认强度

@@ -695,7 +695,8 @@ class TangoFluxEnvironmentGenerator:
         """检测轨道数据格式类型"""
         if 'environment_keywords' in track:
             return 'environment_analysis'  # 环境音分析结果格式
-        elif 'type' in track and track.get('type') == '环境音效':
+        elif ('type' in track and track.get('type') == '环境音效') or \
+             ('keyword' in track and 'description' in track and 'start_time' in track):
             return 'audio_storyboard'      # 音频制作卡格式
         else:
             return 'unknown'               # 未知格式
@@ -761,7 +762,7 @@ class TangoFluxEnvironmentGenerator:
             
         elif format_type == 'audio_storyboard':
             # 音频制作卡格式
-            keyword = track.get('description', '')
+            keyword = track.get('keyword', '') or track.get('description', '')
             description = track.get('description', '')
             english_prompt = await self._generate_english_prompt(keyword, scene_context)
             duration = track.get('end_time', 30) - track.get('start_time', 0)

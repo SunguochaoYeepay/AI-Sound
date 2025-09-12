@@ -919,16 +919,20 @@
   }
 
   .tracks-list {
-    max-height: 300px;
+    max-height: 200px;
     overflow-y: auto;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+    gap: 12px;
   }
 
   .track-item {
     background: white;
     border: 1px solid #e8e8e8;
     border-radius: 6px;
-    padding: 12px;
-    margin-bottom: 8px;
+    padding: 10px;
+    height: fit-content;
+    min-height: 100px;
   }
 
   .track-header {
@@ -963,10 +967,10 @@
   .track-config-item {
     border: 1px solid #e2e8f0;
     border-radius: 8px;
-    padding: 16px;
-    margin-bottom: 16px;
+    padding: 12px;
     background: #fafafa;
     transition: all 0.3s ease;
+    height: fit-content;
   }
 
   .track-config-item:hover {
@@ -1021,6 +1025,12 @@
     color: #1f2937;
   }
 
+  .environment-tracks-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+    gap: 16px;
+  }
+
   .next-steps {
     margin-top: 24px;
   }
@@ -1058,18 +1068,22 @@
   }
 
   .sound-list {
-    max-height: 300px;
+    max-height: 200px;
     overflow-y: auto;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 12px;
   }
 
   .sound-item {
     background: white;
     border: 1px solid #e8e8e8;
     border-radius: 6px;
-    padding: 12px;
-    margin-bottom: 8px;
+    padding: 10px;
     cursor: pointer;
     transition: all 0.3s ease;
+    height: fit-content;
+    min-height: 120px;
   }
 
   .sound-item:hover {

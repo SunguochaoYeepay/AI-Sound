@@ -60,67 +60,39 @@
               <div class="text-content">{{ paragraph.narrationText || '暂无旁白内容' }}</div>
             </div>
             
-            <!-- 该段落的环境音轨道 -->
+            <!-- 该段落的环境音轨道 - 简化显示 -->
             <div class="paragraph-tracks">
               <div 
                 v-for="(track, trackIndex) in paragraph.tracks" 
                 :key="track.segment_id"
-                class="track-item"
+                class="track-item-simple"
                 :class="{ 'has-match': track.has_match, 'has-generated': track.has_generated }"
                 @click="handleTrackClick(track)"
               >
-                <div class="track-header">
-                  <div class="track-time">
-                    {{ formatTime(track.start_time) }} - {{ formatTime(track.start_time + track.duration) }}
+                <!-- 简化的轨道信息显示 -->
+                <div class="track-info-simple">
+                  <div class="track-name-duration">
+                    <div class="track-name">
+                      {{ getTrackKeywords(track)[0] || '环境音' }}
+                    </div>
+                    <div class="track-duration">
+                      {{ track.duration.toFixed(1) }}s
+                    </div>
                   </div>
-                  <div class="track-status">
-                    <a-tag v-if="track.has_generated" color="success" size="small">已生成</a-tag>
-                    <a-tag v-else-if="track.has_match" color="warning" size="small">已匹配</a-tag>
-                    <a-tag v-else color="default" size="small">需生成</a-tag>
+                  <div class="track-description-simple">
+                    {{ track.chinese_description || track.description || track.scene_description || (track.english_prompt ? `英文提示词: ${track.english_prompt}` : '暂无描述') }}
                   </div>
                 </div>
                 
-                <div class="track-keywords">
-                  <a-tag 
-                    v-for="keyword in getTrackKeywords(track).slice(0, 3)" 
-                    :key="keyword"
-                    size="small"
-                    color="blue"
-                  >
-                    {{ keyword }}
-                  </a-tag>
-                  <span v-if="getTrackKeywords(track).length > 3" class="more-keywords">
-                    +{{ getTrackKeywords(track).length - 3 }}
-                  </span>
-                </div>
-                
-                <!-- 声音类型标签 -->
-                <div class="track-type" v-if="track.duration_type">
-                  <a-tag 
-                    :color="track.duration_type === 'instant' ? 'orange' : 'green'"
-                    size="small"
-                  >
-                    {{ track.duration_type === 'instant' ? '瞬时音' : '持续音' }}
-                  </a-tag>
-                </div>
-                
-                <div class="track-description">
-                  {{ track.chinese_description || track.description || track.scene_description || (track.english_prompt ? `英文提示词: ${track.english_prompt}` : '暂无描述') }}
-                </div>
-                
-                <div class="track-confidence">
-                  <span class="confidence-label">置信度:</span>
-                  <a-progress 
-                    :percent="(track.confidence || 0.8) * 100" 
-                    :show-info="false"
-                    size="small"
-                    style="width: 80px; margin: 0 6px;"
-                  />
-                  <span class="confidence-text">{{ ((track.confidence || 0.8) * 100).toFixed(0) }}%</span>
+                <!-- 状态指示器 -->
+                <div class="track-status-indicator">
+                  <a-tag v-if="track.has_generated" color="success" size="small">已生成</a-tag>
+                  <a-tag v-else-if="track.has_match" color="warning" size="small">已匹配</a-tag>
+                  <a-tag v-else color="default" size="small">需生成</a-tag>
                 </div>
                 
                 <!-- 轨道操作按钮 -->
-                <div class="track-actions">
+                <div class="track-actions-simple">
                   <a-space size="small">
                     <!-- 生成按钮 -->
                     <a-button 
@@ -128,7 +100,7 @@
                       type="primary" 
                       size="small"
                       :loading="track.generating"
-                      @click="$emit('generate-track', track, trackIndex)"
+                      @click.stop="$emit('generate-track', track, trackIndex)"
                     >
                       🎵 生成
                     </a-button>
@@ -138,7 +110,7 @@
                       v-if="track.has_generated"
                       size="small"
                       :loading="track.playing"
-                      @click="$emit('play-track', track, trackIndex)"
+                      @click.stop="$emit('play-track', track, trackIndex)"
                     >
                       🎵 播放
                     </a-button>
@@ -147,9 +119,9 @@
                     <a-button 
                       v-if="track.has_generated"
                       size="small"
-                      @click="$emit('download-track', track, trackIndex)"
+                      @click.stop="$emit('download-track', track, trackIndex)"
                     >
-                      ⬇️ 下载
+                      📥 下载
                     </a-button>
                     
                     <!-- 重新生成按钮 -->
@@ -157,9 +129,9 @@
                       v-if="track.has_generated"
                       size="small"
                       :loading="track.regenerating"
-                      @click="$emit('regenerate-track', track, trackIndex)"
+                      @click.stop="$emit('regenerate-track', track, trackIndex)"
                     >
-                      🔄 重新生成
+                      🔄 重生成
                     </a-button>
                   </a-space>
                 </div>
@@ -538,6 +510,91 @@ const handleTrackClick = (track) => {
 .track-actions {
   display: flex;
   justify-content: flex-end;
+}
+
+/* 简化的轨道项样式 */
+.track-item-simple {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  border: 1px solid var(--ant-border-color);
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin-bottom: 8px;
+  background: var(--ant-component-background);
+  transition: all 0.3s ease;
+  cursor: pointer;
+  min-height: 60px;
+}
+
+.track-item-simple:hover {
+  box-shadow: 0 2px 8px var(--ant-box-shadow);
+  transform: translateY(-1px);
+}
+
+.track-item-simple.has-match {
+  border-left: 3px solid #52c41a;
+}
+
+.track-item-simple.has-generated {
+  border-left: 3px solid #1890ff;
+}
+
+.track-info-simple {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  flex: 1;
+  flex-direction: column;
+}
+
+.track-name-duration {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+}
+
+.track-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ant-text-color);
+  min-width: 120px;
+}
+
+.track-duration {
+  font-size: 12px;
+  color: var(--ant-text-color-secondary);
+  background: var(--ant-color-fill-tertiary);
+  padding: 2px 8px;
+  border-radius: 4px;
+  min-width: 50px;
+  text-align: center;
+}
+
+.track-description-simple {
+  font-size: 12px;
+  color: var(--ant-text-color-secondary);
+  line-height: 1.4;
+  margin-top: 4px;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.track-status-indicator {
+  margin-right: 12px;
+  margin-top: 4px;
+}
+
+.track-actions-simple {
+  display: flex;
+  align-items: flex-start;
+  margin-top: 4px;
 }
 
 .no-tracks {

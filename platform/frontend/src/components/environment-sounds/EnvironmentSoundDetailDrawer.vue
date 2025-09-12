@@ -7,106 +7,46 @@
     @close="handleClose"
     @update:open="$emit('update:visible', $event)"
   >
-    <!-- 基本信息 -->
-    <div class="info-section">
-      <h3>基本信息</h3>
-      <a-descriptions :column="2" bordered>
-        <a-descriptions-item label="环境音名称">
-          <a-tag color="blue">{{ soundInfo.name || '未命名' }}</a-tag>
-        </a-descriptions-item>
-        <a-descriptions-item label="类型分类">
-          <a-tag :color="getCategoryColor(soundInfo.category)">
-            {{ soundInfo.category || '未分类' }}
+    <!-- 环境音信息 -->
+    <div class="sound-info-section">
+      <div class="sound-info">
+        <div class="info-row">
+          <span class="label">名称：</span>
+          <span class="value">{{ soundInfo.name || '未命名' }}</span>
+        </div>
+        <div class="info-row">
+          <span class="label">时长：</span>
+          <span class="value">{{ soundInfo.duration || 30 }}秒</span>
+        </div>
+        <div class="info-row">
+          <span class="label">状态：</span>
+          <a-tag :color="hasGenerated ? 'success' : 'default'">
+            {{ hasGenerated ? '已生成' : '未生成' }}
           </a-tag>
-        </a-descriptions-item>
-        <a-descriptions-item label="描述信息" :span="2">
-          {{ soundInfo.description || '暂无描述' }}
-        </a-descriptions-item>
-        <a-descriptions-item label="来源">
-          <a-tag color="green">{{ soundInfo.source || '书籍分析' }}</a-tag>
-        </a-descriptions-item>
-        <a-descriptions-item label="章节">
-          第{{ soundInfo.chapter_number || '?' }}章
-        </a-descriptions-item>
-      </a-descriptions>
-    </div>
-
-    <!-- 生成参数 -->
-    <div class="params-section">
-      <h3>生成参数</h3>
-      <a-form :model="soundParams" layout="vertical">
-        <a-row :gutter="16">
-          <a-col :span="12">
-            <a-form-item label="时长设置">
-              <a-input-number 
-                v-model:value="soundParams.duration" 
-                :min="1" 
-                :max="300" 
-                addon-after="秒"
-                :disabled="generating"
-              />
-            </a-form-item>
-          </a-col>
-          <a-col :span="12">
-            <a-form-item label="强度等级">
-              <a-select 
-                v-model:value="soundParams.intensity"
-                :disabled="generating"
-              >
-                <a-select-option value="low">低</a-select-option>
-                <a-select-option value="medium">中</a-select-option>
-                <a-select-option value="high">高</a-select-option>
-              </a-select>
-            </a-form-item>
-          </a-col>
-        </a-row>
-        <a-form-item label="音量控制">
-          <a-slider 
-            v-model:value="soundParams.volume" 
-            :min="0" 
-            :max="100"
-            :disabled="generating"
-          />
-          <div class="slider-label">{{ soundParams.volume }}%</div>
-        </a-form-item>
-        <a-form-item label="循环设置">
-          <a-switch 
-            v-model:checked="soundParams.loop"
-            :disabled="generating"
-          />
-          <span class="switch-label">{{ soundParams.loop ? '循环播放' : '单次播放' }}</span>
-        </a-form-item>
-      </a-form>
-    </div>
-
-    <!-- 生成状态 -->
-    <div class="status-section">
-      <h3>生成状态</h3>
-      <a-steps :current="generationStep" size="small">
-        <a-step title="准备中" />
-        <a-step title="生成中" />
-        <a-step title="完成" />
-      </a-steps>
-      
-      <div v-if="generationProgress > 0" class="progress-section">
-        <a-progress 
-          :percent="generationProgress" 
-          :status="generationStatus === 'failed' ? 'exception' : 'active'"
-        />
-        <p class="progress-text">{{ generationStatusText }}</p>
-      </div>
-
-      <div v-if="generationLogs.length > 0" class="logs-section">
-        <h4>生成日志</h4>
-        <div class="logs-container">
-          <div 
-            v-for="(log, index) in generationLogs" 
-            :key="index"
-            class="log-item"
-            :class="log.type"
-          >
-            <span class="log-time">{{ log.time }}</span>
-            <span class="log-message">{{ log.message }}</span>
+        </div>
+        <div class="info-row">
+          <span class="label">关键词：</span>
+          <div class="keywords-list">
+            <a-tag 
+              v-for="keyword in getKeywordsList()" 
+              :key="keyword"
+              color="blue"
+              size="small"
+            >
+              {{ keyword }}
+            </a-tag>
+          </div>
+        </div>
+        <div class="info-row">
+          <span class="label">描述：</span>
+          <div class="description-text">
+            {{ soundInfo.description || '暂无场景描述' }}
+          </div>
+        </div>
+        <div class="info-row" v-if="soundInfo.english_prompt">
+          <span class="label">英文提示词：</span>
+          <div class="description-text">
+            {{ soundInfo.english_prompt }}
           </div>
         </div>
       </div>
@@ -136,76 +76,7 @@
         >
           下载
         </a-button>
-        <a-button 
-          danger
-          @click="deleteSound"
-          :disabled="!hasGenerated"
-        >
-          删除
-        </a-button>
       </a-space>
-    </div>
-
-    <!-- 预览功能 -->
-    <div v-if="hasGenerated" class="preview-section">
-      <h3>音频预览</h3>
-      <div class="waveform-container">
-        <div class="waveform-placeholder">
-          <SoundOutlined style="font-size: 24px; color: #1890ff;" />
-          <p>音频波形图</p>
-          <p class="audio-info">
-            时长: {{ soundInfo.duration }}秒 | 
-            文件大小: {{ soundInfo.fileSize }}MB | 
-            质量: {{ soundInfo.quality }}
-          </p>
-        </div>
-      </div>
-      
-      <div class="audio-controls">
-        <a-space>
-          <a-button 
-            size="small" 
-            @click="playSound"
-            :disabled="playing"
-            :loading="playing"
-          >
-            {{ playing ? '播放中...' : '播放' }}
-          </a-button>
-          <a-button 
-            size="small" 
-            @click="pauseSound"
-            :disabled="!playing"
-          >
-            暂停
-          </a-button>
-          <a-button 
-            size="small" 
-            @click="stopSound"
-            :disabled="!playing"
-          >
-            停止
-          </a-button>
-        </a-space>
-      </div>
-    </div>
-
-    <!-- 模板区域 -->
-    <div class="template-section">
-      <h3>保存为模板</h3>
-      <a-form layout="inline">
-        <a-form-item>
-          <a-input 
-            v-model:value="templateName" 
-            placeholder="模板名称"
-            style="width: 200px"
-          />
-        </a-form-item>
-        <a-form-item>
-          <a-button @click="saveAsTemplate" :disabled="!templateName">
-            保存模板
-          </a-button>
-        </a-form-item>
-      </a-form>
     </div>
   </a-drawer>
 </template>
@@ -230,84 +101,51 @@ const props = defineProps({
 const emit = defineEmits(['update:visible', 'refresh'])
 
 // 响应式数据
-const soundParams = ref({
-  duration: 30,
-  intensity: 'medium',
-  volume: 50,
-  loop: false
-})
-
 const generating = ref(false)
 const playing = ref(false)
-const generationProgress = ref(0)
-const generationStatus = ref('pending')
-const generationLogs = ref([])
-const templateName = ref('')
 
 // 计算属性
 const hasGenerated = computed(() => {
-  return soundInfo.value.status === 'completed' && soundInfo.value.audioUrl
+  return props.soundInfo?.status === 'completed' && props.soundInfo?.audioUrl
 })
 
 const canGenerate = computed(() => {
-  return !generating.value && soundInfo.value.keyword
-})
-
-const generationStep = computed(() => {
-  if (generationStatus.value === 'pending') return 0
-  if (generationStatus.value === 'generating') return 1
-  if (generationStatus.value === 'completed') return 2
-  if (generationStatus.value === 'failed') return 1
-  return 0
-})
-
-const generationStatusText = computed(() => {
-  switch (generationStatus.value) {
-    case 'pending': return '等待生成'
-    case 'generating': return '正在生成环境音...'
-    case 'completed': return '生成完成'
-    case 'failed': return '生成失败'
-    default: return '未知状态'
-  }
+  return !generating.value && props.soundInfo?.keyword
 })
 
 // 方法
-const getCategoryColor = (category) => {
-  const colors = {
-    '自然音': 'green',
-    '城市音': 'blue',
-    '室内音': 'orange',
-    '动作音': 'red'
+const getKeywordsList = () => {
+  if (!props.soundInfo) return []
+  
+  // 尝试从不同字段获取关键词
+  if (props.soundInfo.keyword) {
+    return [props.soundInfo.keyword]
   }
-  return colors[category] || 'default'
+  
+  if (props.soundInfo.environment_keywords && Array.isArray(props.soundInfo.environment_keywords)) {
+    return props.soundInfo.environment_keywords
+  }
+  
+  if (props.soundInfo.name) {
+    return [props.soundInfo.name]
+  }
+  
+  return []
 }
 
 const generateSound = async () => {
   try {
     generating.value = true
-    generationProgress.value = 0
-    generationStatus.value = 'generating'
-    generationLogs.value = []
-
-    // 添加生成日志
-    addLog('info', '开始生成环境音...')
-    addLog('info', `参数: 时长${soundParams.value.duration}秒, 强度${soundParams.value.intensity}`)
-
+    
     // 调用生成API
     const response = await environmentGenerationAPI.generateSingleSound({
-      keyword: soundInfo.value.keyword,
-      description: soundInfo.value.description,
-      duration: soundParams.value.duration,
-      intensity: soundParams.value.intensity,
-      volume: soundParams.value.volume,
-      loop: soundParams.value.loop
+      keyword: props.soundInfo?.keyword || '',
+      description: props.soundInfo?.description || '',
+      duration: props.soundInfo?.duration || 30,
+      intensity: props.soundInfo?.intensity || 'medium'
     })
 
     if (response.data.success) {
-      generationStatus.value = 'completed'
-      generationProgress.value = 100
-      addLog('success', '环境音生成完成')
-      
       message.success('环境音生成完成')
       emit('refresh')
     } else {
@@ -315,8 +153,6 @@ const generateSound = async () => {
     }
   } catch (error) {
     console.error('生成环境音失败:', error)
-    generationStatus.value = 'failed'
-    addLog('error', `生成失败: ${error.message}`)
     message.error('环境音生成失败')
   } finally {
     generating.value = false
@@ -340,16 +176,6 @@ const playSound = async () => {
   }
 }
 
-const pauseSound = () => {
-  playing.value = false
-  message.info('暂停播放')
-}
-
-const stopSound = () => {
-  playing.value = false
-  message.info('停止播放')
-}
-
 const downloadSound = async () => {
   try {
     // 实现下载逻辑
@@ -360,154 +186,80 @@ const downloadSound = async () => {
   }
 }
 
-const deleteSound = () => {
-  // 实现删除逻辑
-  message.success('环境音已删除')
-  emit('refresh')
-}
-
-const saveAsTemplate = () => {
-  // 实现保存模板逻辑
-  message.success(`模板"${templateName.value}"已保存`)
-  templateName.value = ''
-}
-
-const addLog = (type, message) => {
-  generationLogs.value.push({
-    type,
-    message,
-    time: new Date().toLocaleTimeString()
-  })
-}
-
 const handleClose = () => {
   emit('update:visible', false)
 }
-
-// 监听props变化
-watch(() => props.soundInfo, (newInfo) => {
-  if (newInfo) {
-    // 更新参数
-    soundParams.value = {
-      duration: newInfo.duration || 30,
-      intensity: newInfo.intensity || 'medium',
-      volume: newInfo.volume || 50,
-      loop: newInfo.loop || false
-    }
-    
-    // 更新状态
-    generationStatus.value = newInfo.status || 'pending'
-    generationProgress.value = newInfo.progress || 0
-  }
-}, { immediate: true })
 </script>
 
 <style scoped>
-.info-section,
-.params-section,
-.status-section,
-.actions-section,
-.preview-section,
-.template-section {
+.sound-info-section,
+.actions-section {
   margin-bottom: 24px;
 }
 
-.info-section h3,
-.params-section h3,
-.status-section h3,
-.preview-section h3,
-.template-section h3 {
-  margin-bottom: 16px;
-  color: #1890ff;
-  font-weight: 600;
-}
-
-.slider-label {
-  text-align: center;
-  margin-top: 8px;
-  color: #666;
-}
-
-.switch-label {
-  margin-left: 8px;
-  color: #666;
-}
-
-.progress-section {
-  margin-top: 16px;
-}
-
-.progress-text {
-  text-align: center;
-  margin-top: 8px;
-  color: #666;
-}
-
-.logs-section {
-  margin-top: 16px;
-}
-
-.logs-section h4 {
-  margin-bottom: 8px;
-  color: #333;
-}
-
-.logs-container {
-  max-height: 200px;
-  overflow-y: auto;
+/* 环境音信息样式 */
+.sound-info {
+  background: #fafafa;
   border: 1px solid #f0f0f0;
-  border-radius: 4px;
-  padding: 8px;
+  border-radius: 6px;
+  padding: 16px;
 }
 
-.log-item {
+.info-row {
   display: flex;
-  margin-bottom: 4px;
-  font-size: 12px;
+  align-items: flex-start;
+  margin-bottom: 12px;
 }
 
-.log-item.info {
-  color: #1890ff;
+.info-row:last-child {
+  margin-bottom: 0;
 }
 
-.log-item.success {
-  color: #52c41a;
-}
-
-.log-item.error {
-  color: #ff4d4f;
-}
-
-.log-time {
-  margin-right: 8px;
-  color: #999;
+.info-row .label {
+  font-weight: 500;
+  color: #333;
   min-width: 80px;
+  margin-right: 12px;
+  flex-shrink: 0;
 }
 
-.log-message {
+.info-row .value {
+  color: #666;
+}
+
+.keywords-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.description-text {
+  color: #666;
+  line-height: 1.5;
+  background: #fff;
+  padding: 8px 12px;
+  border-radius: 4px;
+  border: 1px solid #e8e8e8;
   flex: 1;
 }
 
-.waveform-container {
-  border: 1px solid #f0f0f0;
-  border-radius: 4px;
-  padding: 16px;
-  text-align: center;
-  background: #fafafa;
+/* 暗色主题适配 */
+[data-theme='dark'] .sound-info {
+  background: var(--ant-color-bg-layout);
+  border-color: var(--ant-border-color-split);
 }
 
-.waveform-placeholder {
-  color: #666;
+[data-theme='dark'] .info-row .label {
+  color: var(--ant-color-text);
 }
 
-.audio-info {
-  font-size: 12px;
-  color: #999;
-  margin-top: 8px;
+[data-theme='dark'] .info-row .value {
+  color: var(--ant-color-text-secondary);
 }
 
-.audio-controls {
-  margin-top: 16px;
-  text-align: center;
+[data-theme='dark'] .description-text {
+  color: var(--ant-color-text-secondary);
+  background: var(--ant-color-bg-container);
+  border-color: var(--ant-border-color-split);
 }
 </style>
