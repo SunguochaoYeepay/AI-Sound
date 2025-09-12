@@ -554,12 +554,23 @@ class AnalysisCharacterDetector:
             # 记录原始响应用于调试
             logger.debug(f"Ollama响应: {len(response)}字符")
             
-            # 提取JSON部分
-            json_start = response.find('{')
-            json_end = response.rfind('}') + 1
+            # 提取JSON部分 - 改进处理<think>标签
+            # 首先尝试移除<think>标签
+            clean_response = response
+            if '<think>' in response and '</think>' in response:
+                # 移除<think>标签及其内容
+                start_tag = response.find('<think>')
+                end_tag = response.find('</think>') + len('</think>')
+                clean_response = response[:start_tag] + response[end_tag:]
+                logger.debug("已移除<think>标签内容")
+            
+            json_start = clean_response.find('{')
+            json_end = clean_response.rfind('}') + 1
             
             if json_start != -1 and json_end != -1:
-                json_str = response[json_start:json_end]
+                json_str = clean_response[json_start:json_end]
+                logger.debug(f"提取的JSON字符串长度: {len(json_str)}")
+                logger.debug(f"JSON字符串前100字符: {json_str[:100]}")
                 data = json.loads(json_str)
                 
                 logger.debug(f"JSON解析成功: {len(data.get('segments', []))}个segments")
@@ -645,7 +656,21 @@ class AnalysisCharacterDetector:
                 
         except json.JSONDecodeError as e:
             logger.error(f"解析Ollama JSON响应失败: {str(e)}")
-            logger.error(f"原始响应: {response}")
+            logger.error(f"原始响应长度: {len(response)}字符")
+            logger.error(f"原始响应前200字符: {response[:200]}")
+            logger.error(f"原始响应后200字符: {response[-200:]}")
+            
+            # 尝试提取JSON部分进行调试
+            if '<think>' in response and '</think>' in response:
+                start_tag = response.find('<think>')
+                end_tag = response.find('</think>') + len('</think>')
+                clean_response = response[:start_tag] + response[end_tag:]
+                json_start = clean_response.find('{')
+                json_end = clean_response.rfind('}') + 1
+                if json_start != -1 and json_end != -1:
+                    json_str = clean_response[json_start:json_end]
+                    logger.error(f"清理后的JSON字符串: {json_str}")
+            
             return {'segments': [], 'characters': []}
         except Exception as e:
             logger.error(f"处理Ollama响应异常: {str(e)}")
