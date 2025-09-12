@@ -75,8 +75,13 @@
                     <div class="track-name">
                       {{ getTrackKeywords(track)[0] || '环境音' }}
                     </div>
-                    <div class="track-duration">
-                      {{ track.duration.toFixed(1) }}s
+                    <div class="track-time-info">
+                      <div class="track-time-range">
+                        {{ track.start_time.toFixed(1) }}s - {{ track.end_time.toFixed(1) }}s
+                      </div>
+                      <div class="track-duration">
+                        {{ track.duration.toFixed(1) }}s
+                      </div>
                     </div>
                   </div>
                   <div class="track-description-simple">
@@ -568,6 +573,23 @@ const handleTrackClick = (track) => {
   font-weight: 500;
   color: var(--ant-text-color);
   min-width: 120px;
+}
+
+.track-time-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.track-time-range {
+  font-size: 11px;
+  color: var(--ant-text-color-tertiary);
+  background: var(--ant-color-fill-quaternary);
+  padding: 1px 6px;
+  border-radius: 3px;
+  min-width: 80px;
+  text-align: center;
 }
 
 .track-duration {

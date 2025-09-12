@@ -64,6 +64,54 @@ async def smart_segmentation(
         logger.error(f"章节 {chapter_id} 智能分段失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"智能分段失败: {str(e)}")
 
+@router.post("/{chapter_id}/re-smart-segmentation")
+async def re_smart_segmentation(
+    chapter_id: int,
+    db: Session = Depends(get_db)
+):
+    """重新智能分段章节内容（覆盖旧结果）"""
+    try:
+        # 获取章节
+        chapter = db.query(BookChapter).filter(BookChapter.id == chapter_id).first()
+        if not chapter:
+            raise HTTPException(status_code=404, detail="章节不存在")
+
+        # 检查章节是否有内容
+        if not chapter.content or len(chapter.content.strip()) == 0:
+            raise HTTPException(status_code=400, detail="章节内容为空，无法进行分段")
+
+        # 导入智能分段服务
+        from app.services.smart_segmentation_service import SmartSegmentationService
+
+        # 创建分段服务实例
+        segmentation_service = SmartSegmentationService()
+
+        # 执行重新智能分段（强制覆盖）
+        logger.info(f"开始对章节 {chapter_id} 进行重新智能分段（覆盖模式）")
+        segmentation_result = await segmentation_service.segment_and_save(
+            chapter.content,
+            8,  # 使用固定的project_id = 8
+            chapter_id,
+            db,
+            force_update=True  # 强制覆盖旧结果
+        )
+
+        if segmentation_result["success"]:
+            logger.info(f"章节 {chapter_id} 重新智能分段成功，共生成 {segmentation_result['segmentation_data']['segment_count']} 个段落")
+            return {
+                "success": True,
+                "message": "重新智能分段完成",
+                "data": segmentation_result
+            }
+        else:
+            raise HTTPException(status_code=500, detail=segmentation_result.get("error", "重新分段失败"))
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"章节 {chapter_id} 重新智能分段失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"重新智能分段失败: {str(e)}")
+
 @router.get("/{chapter_id}/segmentation-result")
 async def get_segmentation_result(
     chapter_id: int,
@@ -83,8 +131,8 @@ async def get_segmentation_result(
         # 创建分段服务实例
         segmentation_service = SmartSegmentationService()
 
-        # 获取缓存的分段结果
-        segments = await segmentation_service.get_cached_segments(8, chapter_id, db)
+        # 获取缓存的分段结果 - 使用正确的项目ID
+        segments = await segmentation_service.get_cached_segments(project_id, chapter_id, db)
 
         if segments:
             return {
@@ -130,8 +178,8 @@ async def six_card_analysis(
         # 创建分段服务实例
         segmentation_service = SmartSegmentationService()
 
-        # 获取分段结果
-        segments = await segmentation_service.get_cached_segments(8, chapter_id, db)
+        # 获取分段结果 - 使用正确的项目ID
+        segments = await segmentation_service.get_cached_segments(project_id, chapter_id, db)
         if not segments:
             raise HTTPException(status_code=400, detail="未找到分段结果，请先执行智能分段")
 
@@ -461,7 +509,7 @@ async def save_six_card_analysis_results(chapter_id: int, project_id: int, resul
             # 获取该章节的所有段落数量
             from app.services.smart_segmentation_service import SmartSegmentationService
             segmentation_service = SmartSegmentationService()
-            segments = await segmentation_service.get_cached_segments(8, chapter_id, db)
+            segments = await segmentation_service.get_cached_segments(project_id, chapter_id, db)
             total_segments = len(segments) if segments else 0
             
             # 获取已分析的段落数量

@@ -15,6 +15,7 @@
       @chapter-change="handleChapterChange"
       @analyze-chapter="analyzeCurrentChapter"
       @smart-segmentation="handleSmartSegmentation"
+      @re-smart-segmentation="handleReSmartSegmentation"
     />
 
     <!-- 主要内容区域 -->
@@ -56,13 +57,14 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
-import { message } from 'ant-design-vue'
+import { message, Modal } from 'ant-design-vue'
 import CardDetailDrawer from './CardDetailDrawer.vue'
 import ProgressMonitor from './ProgressMonitor.vue'
 import ChapterSelector from './ChapterSelector.vue'
 import OriginalTextPanel from './OriginalTextPanel.vue'
 import ScriptDetailPanel from './ScriptDetailPanel.vue'
 import { storyboardAPI } from '@/api/storyboard'
+import { chapterAnalysisAPI } from '@/api'
 
 // Props
 const props = defineProps({
@@ -487,6 +489,57 @@ const handleSmartSegmentation = async () => {
   } finally {
     segmentingChapter.value = false
   }
+}
+
+const handleReSmartSegmentation = async () => {
+  if (!selectedChapter.value || segmentingChapter.value) return
+
+  // 显示确认对话框
+  Modal.confirm({
+    title: '重新智能分段',
+    content: '重新智能分段将覆盖当前的分段结果，确定继续吗？',
+    okText: '确定',
+    cancelText: '取消',
+    onOk: async () => {
+      segmentingChapter.value = true
+      try {
+        // 显示长时间操作提示
+        message.info({
+          content: '重新智能分段正在进行中，这可能需要1-2分钟，请耐心等待...',
+          duration: 5,
+          key: 're-segmentation'
+        })
+
+        // 调用重新智能分段API
+        const response = await chapterAnalysisAPI.reSmartSegmentation(parseInt(selectedChapter.value))
+
+        if (response.data?.success) {
+          message.success({
+            content: `🎉 重新智能分段完成！共生成 ${response.data.data.segmentation_data.segment_count} 个段落`,
+            duration: 5,
+            key: 're-segmentation'
+          })
+
+          // 刷新智能分段数据
+          await loadSmartSegmentationData(parseInt(selectedChapter.value))
+          
+          // 提示用户需要重新执行段落分析
+          message.info('分段已更新，请重新执行"段落分析全部"以使用新的分段结果')
+        } else {
+          throw new Error(response.data?.message || '重新智能分段失败')
+        }
+      } catch (error) {
+        console.error('[ContentReviewTab] 重新智能分段失败:', error)
+        message.error({
+          content: `❌ 重新智能分段失败: ${error.message || '未知错误'}`,
+          duration: 5,
+          key: 're-segmentation'
+        })
+      } finally {
+        segmentingChapter.value = false
+      }
+    }
+  })
 }
 
 // 只加载智能分段数据，不触发6卡分析

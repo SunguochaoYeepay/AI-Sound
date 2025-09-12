@@ -132,10 +132,10 @@ class SmartSegmentationService:
         logger.info(f"分段验证通过，长度差异: {length_diff:.2%}")
         return True
 
-    async def segment_and_save(self, content: str, project_id: int, chapter_id: int, db: Session) -> Dict[str, Any]:
+    async def segment_and_save(self, content: str, project_id: int, chapter_id: int, db: Session, force_update: bool = False) -> Dict[str, Any]:
         """智能分段并持久化保存到数据库"""
         try:
-            logger.debug(f"开始智能分段并持久化，分析项目ID: {project_id}，章节ID: {chapter_id}")
+            logger.debug(f"开始智能分段并持久化，分析项目ID: {project_id}，章节ID: {chapter_id}，强制覆盖: {force_update}")
             
             # 1. 执行智能分段
             segments = await self.segment_content(content)
@@ -156,11 +156,12 @@ class SmartSegmentationService:
                 "segments_length": [len(seg) for seg in segments],
                 "created_at": datetime.utcnow().isoformat(),
                 "model_used": "qwen3:8b",
-                "validation_passed": True
+                "validation_passed": True,
+                "force_update": force_update
             }
             
             # 4. 保存到数据库
-            saved_result = await self._save_segmentation_result(segmentation_data, db)
+            saved_result = await self._save_segmentation_result(segmentation_data, db, force_update)
             
             logger.debug(f"分段持久化成功，分析项目ID: {project_id}，章节ID: {chapter_id}，共 {len(segments)} 段")
             
@@ -179,7 +180,7 @@ class SmartSegmentationService:
                 "segments": []
             }
 
-    async def _save_segmentation_result(self, segmentation_data: Dict[str, Any], db: Session) -> Dict[str, Any]:
+    async def _save_segmentation_result(self, segmentation_data: Dict[str, Any], db: Session, force_update: bool = False) -> Dict[str, Any]:
         """保存分段结果到独立的智能分段表"""
         try:
             # 检查是否已有该分析项目和章节的分段结果
@@ -189,27 +190,38 @@ class SmartSegmentationService:
             ).first()
             
             if existing_result:
-                # 更新现有记录
-                logger.info(f"更新现有智能分段结果，分析项目ID: {segmentation_data['project_id']}，章节ID: {segmentation_data['chapter_id']}")
-                
-                existing_result.original_content = segmentation_data["original_content"]
-                existing_result.segments = segmentation_data["segments"]
-                existing_result.segment_count = segmentation_data["segment_count"]
-                existing_result.total_length = segmentation_data["total_length"]
-                existing_result.segments_length = segmentation_data["segments_length"]
-                existing_result.model_used = segmentation_data["model_used"]
-                existing_result.validation_passed = segmentation_data["validation_passed"]
-                existing_result.updated_at = datetime.utcnow()
-                
-                db.commit()
-                db.refresh(existing_result)
-                
-                return {
-                    "success": True,
-                    "action": "updated",
-                    "segmentation_id": existing_result.id,
-                    "message": f"智能分段结果已更新，分析项目ID: {segmentation_data['project_id']}，章节ID: {segmentation_data['chapter_id']}"
-                }
+                if force_update:
+                    # 强制覆盖现有记录
+                    logger.info(f"强制覆盖现有智能分段结果，分析项目ID: {segmentation_data['project_id']}，章节ID: {segmentation_data['chapter_id']}")
+                    
+                    existing_result.original_content = segmentation_data["original_content"]
+                    existing_result.segments = segmentation_data["segments"]
+                    existing_result.segment_count = segmentation_data["segment_count"]
+                    existing_result.total_length = segmentation_data["total_length"]
+                    existing_result.segments_length = segmentation_data["segments_length"]
+                    existing_result.model_used = segmentation_data["model_used"]
+                    existing_result.validation_passed = segmentation_data["validation_passed"]
+                    existing_result.updated_at = datetime.utcnow()
+                    
+                    db.commit()
+                    db.refresh(existing_result)
+                    
+                    return {
+                        "success": True,
+                        "action": "force_updated",
+                        "segmentation_id": existing_result.id,
+                        "message": f"智能分段结果已强制覆盖，分析项目ID: {segmentation_data['project_id']}，章节ID: {segmentation_data['chapter_id']}"
+                    }
+                else:
+                    # 非强制覆盖，返回现有结果
+                    logger.info(f"智能分段结果已存在，跳过更新，分析项目ID: {segmentation_data['project_id']}，章节ID: {segmentation_data['chapter_id']}")
+                    
+                    return {
+                        "success": True,
+                        "action": "skipped",
+                        "segmentation_id": existing_result.id,
+                        "message": f"智能分段结果已存在，未进行更新，分析项目ID: {segmentation_data['project_id']}，章节ID: {segmentation_data['chapter_id']}"
+                    }
                 
             else:
                 # 创建新记录

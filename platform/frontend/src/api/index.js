@@ -12,6 +12,21 @@ export const systemAPI = {
   prepareChapterSynthesis: (chapterId) => apiClient.post(`/analysis/chapter/${chapterId}/prepare`)
 }
 
+// 章节分析API
+export const chapterAnalysisAPI = {
+  // 智能分段
+  smartSegmentation: (chapterId) => llmAnalysisClient.post(`/chapters/${chapterId}/smart-segmentation`),
+  
+  // 重新智能分段
+  reSmartSegmentation: (chapterId) => llmAnalysisClient.post(`/chapters/${chapterId}/re-smart-segmentation`),
+  
+  // 获取分段结果
+  getSegmentationResult: (chapterId, projectId) => llmAnalysisClient.get(`/chapters/${chapterId}/segmentation-result?project_id=${projectId}`),
+  
+  // 6卡分析
+  sixCardAnalysis: (chapterId, data) => llmAnalysisClient.post(`/chapters/${chapterId}/six-card-analysis`, data)
+}
+
 // 语音克隆API
 export const voiceAPI = {
   // 上传参考音频文件和可选的latent文件

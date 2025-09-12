@@ -15,8 +15,12 @@
           <span class="value">{{ soundInfo.name || '未命名' }}</span>
         </div>
         <div class="info-row">
+          <span class="label">时间范围：</span>
+          <span class="value">{{ (soundInfo.start_time || 0).toFixed(1) }}s - {{ (soundInfo.end_time || 0).toFixed(1) }}s</span>
+        </div>
+        <div class="info-row">
           <span class="label">时长：</span>
-          <span class="value">{{ soundInfo.duration || 30 }}秒</span>
+          <span class="value">{{ (soundInfo.duration || 0).toFixed(1) }}秒</span>
         </div>
         <div class="info-row">
           <span class="label">状态：</span>

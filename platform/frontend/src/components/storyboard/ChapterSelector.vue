@@ -35,6 +35,20 @@
           智能分段
         </a-button>
 
+        <!-- 重新智能分段按钮 -->
+        <a-button
+          v-if="canReSegmentChapter()"
+          type="default"
+          :loading="segmentingChapter"
+          @click="handleReSmartSegmentation"
+          size="small"
+        >
+          <template #icon>
+            <ReloadOutlined />
+          </template>
+          重新智能分段
+        </a-button>
+
         <!-- 分析按钮 -->
         <a-button
           v-if="canAnalyzeChapter()"
@@ -103,7 +117,7 @@ const props = defineProps({
 })
 
 // Emits
-const emit = defineEmits(['chapter-change', 'analyze-chapter', 'smart-segmentation'])
+const emit = defineEmits(['chapter-change', 'analyze-chapter', 'smart-segmentation', 're-smart-segmentation'])
 
 // Methods
 const handleChapterChange = (value) => {
@@ -116,6 +130,10 @@ const handleAnalyzeChapter = () => {
 
 const handleSmartSegmentation = () => {
   emit('smart-segmentation')
+}
+
+const handleReSmartSegmentation = () => {
+  emit('re-smart-segmentation')
 }
 
 const getChapterAnalysisStatusColor = () => {
@@ -149,6 +167,11 @@ const canReanalyzeChapter = () => {
 const canSegmentChapter = () => {
   // 检查是否有选中的章节，且没有智能分段数据
   return props.selectedChapter && props.selectedChapter !== '' && !hasSmartSegmentation()
+}
+
+const canReSegmentChapter = () => {
+  // 检查是否有选中的章节，且已有智能分段数据
+  return props.selectedChapter && props.selectedChapter !== '' && hasSmartSegmentation()
 }
 
 const hasSmartSegmentation = () => {
