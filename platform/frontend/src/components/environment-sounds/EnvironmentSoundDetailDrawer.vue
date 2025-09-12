@@ -86,6 +86,7 @@ import { ref, computed, watch } from 'vue'
 import { message } from 'ant-design-vue'
 import { SoundOutlined } from '@ant-design/icons-vue'
 import { environmentGenerationAPI } from '@/api'
+import { playEnvironmentTrack } from '@/utils/audioService'
 
 const props = defineProps({
   visible: {
@@ -171,27 +172,62 @@ const generateSound = async () => {
 const playSound = async () => {
   try {
     playing.value = true
-    // 实现播放逻辑
-    message.info('开始播放环境音')
     
-    // 模拟播放
-    setTimeout(() => {
-      playing.value = false
-    }, 3000)
+    // 检查必需的参数
+    if (!props.soundInfo?.projectId || props.soundInfo?.trackIndex === undefined) {
+      throw new Error('缺少播放所需的项目信息')
+    }
+    
+    // 构建轨道标题
+    const trackTitle = `${props.soundInfo.name || '环境音'}`
+    
+    console.log('🎵 播放环境音:', {
+      项目ID: props.soundInfo.projectId,
+      轨道索引: props.soundInfo.trackIndex,
+      轨道标题: trackTitle,
+      文件路径: props.soundInfo.audioUrl
+    })
+    
+    // 使用统一的音频播放服务
+    await playEnvironmentTrack(props.soundInfo.projectId, props.soundInfo.trackIndex, trackTitle)
+    message.success(`🎵 播放: ${trackTitle}`)
+    
   } catch (error) {
     console.error('播放失败:', error)
-    message.error('播放失败')
+    message.error('播放失败: ' + (error.message || '未知错误'))
+  } finally {
     playing.value = false
   }
 }
 
 const downloadSound = async () => {
   try {
-    // 实现下载逻辑
-    message.success('开始下载环境音')
+    // 检查必需的参数
+    if (!props.soundInfo?.projectId || props.soundInfo?.trackIndex === undefined) {
+      throw new Error('缺少下载所需的项目信息')
+    }
+    
+    const response = await environmentGenerationAPI.downloadEnvironmentSound(
+      props.soundInfo.projectId,
+      props.soundInfo.trackIndex
+    )
+    
+    const filename = `${props.soundInfo.name || '环境音'}_${props.soundInfo.projectId}_${props.soundInfo.trackIndex}.wav`
+    
+    const blob = new Blob([response.data], { type: 'audio/wav' })
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    window.URL.revokeObjectURL(url)
+    
+    message.success('环境音下载完成')
   } catch (error) {
     console.error('下载失败:', error)
-    message.error('下载失败')
+    message.error('下载失败: ' + (error.response?.data?.detail || error.message || '未知错误'))
   }
 }
 

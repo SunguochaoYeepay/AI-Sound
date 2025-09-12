@@ -1211,19 +1211,19 @@ export const environmentGenerationAPI = {
 
   // 播放混音环境音
   playMixedEnvironmentSounds: (projectId) =>
-    apiClient.get(`/environment-generation/mix-play/${projectId}`, {
+    apiClient.get(`/environment-generation/mixed-file/${projectId}?action=preview`, {
       responseType: 'blob'
     }),
 
   // 下载混音环境音
   downloadMixedEnvironmentSounds: (projectId) =>
-    apiClient.get(`/environment-generation/mix-download/${projectId}`, {
+    apiClient.get(`/environment-generation/mixed-file/${projectId}?action=download`, {
       responseType: 'blob'
     }),
 
   // 下载单个环境音
   downloadEnvironmentSound: (projectId, trackIndex) =>
-    apiClient.get(`/environment-generation/download/${projectId}/${trackIndex}`, {
+    apiClient.get(`/environment-generation/file/${projectId}/${trackIndex}?action=download`, {
       responseType: 'blob'
     }),
 

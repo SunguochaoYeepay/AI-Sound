@@ -260,7 +260,7 @@ const groupedTracks = computed(() => {
     }
     
     // 添加轨道
-    const hasGenerated = track.generated_file_path && track.generated_file_path.length > 0
+    const hasGenerated = track.generation_status === 'completed' && track.generated_file_path
     paragraphs[paragraphKey].tracks.push({
       ...track,
       has_generated: hasGenerated,
@@ -325,9 +325,9 @@ const handleTrackClick = (track) => {
     intensity: track.intensity || 'medium',
     volume: 50,
     loop: false,
-    status: track.has_generated ? 'completed' : 'pending',
-    progress: track.has_generated ? 100 : 0,
-    audioUrl: track.audio_url || '',
+    status: track.generation_status === 'completed' ? 'completed' : 'pending',
+    progress: track.generation_status === 'completed' ? 100 : 0,
+    audioUrl: track.generated_file_path || '',
     fileSize: track.file_size || '0',
     quality: '标准',
     // 🚀 新增：生成API所需的关键信息

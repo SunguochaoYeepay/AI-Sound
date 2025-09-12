@@ -228,7 +228,7 @@ export class AudioService {
     const audioInfo = {
       id: `env_track_${projectId}_${trackIndex}`,
       title: trackTitle,
-      url: `/api/v1/environment-generation/preview/${projectId}/${trackIndex}`,
+      url: `/api/v1/environment-generation/file/${projectId}/${trackIndex}?action=preview`,
       type: 'environment_track',
       metadata: {
         projectId,
@@ -251,7 +251,7 @@ export class AudioService {
     const audioInfo = {
       id: `env_mix_${projectId}`,
       title: mixTitle,
-      url: `/api/v1/environment-generation/mix-play/${projectId}`,
+      url: `/api/v1/environment-generation/mixed-file/${projectId}?action=preview`,
       type: 'environment_mix',
       metadata: {
         projectId,
